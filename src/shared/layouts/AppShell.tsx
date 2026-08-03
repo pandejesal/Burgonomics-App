@@ -1,0 +1,48 @@
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import { BottomTabBar } from "@/shared/navigation/BottomTabBar";
+import { TopBar } from "@/shared/navigation/TopBar";
+import { OfflineBanner } from "./OfflineBanner";
+import { PageTransition } from "@/shared/components/common/PageTransition";
+
+interface AppShellProps {
+  children: React.ReactNode;
+  title?: string;
+  backTo?: string;
+  rightSlot?: React.ReactNode;
+  showTabs?: boolean;
+  showTopBar?: boolean;
+  contentClassName?: string;
+  bottomSlot?: React.ReactNode;
+}
+
+/** Phone-first mobile shell with optional top bar + bottom tab nav. */
+export function AppShell({
+  children,
+  title,
+  backTo,
+  rightSlot,
+  showTabs = true,
+  showTopBar = true,
+  contentClassName,
+  bottomSlot,
+}: AppShellProps) {
+  return (
+    <div className="app-shell">
+      <OfflineBanner />
+      {showTopBar && title && <TopBar title={title} backTo={backTo} rightSlot={rightSlot} />}
+      <main
+        className={cn(
+          "min-h-[calc(100dvh-3.5rem-env(safe-area-inset-top,0px))]",
+          !showTopBar && "pt-[env(safe-area-inset-top,0px)]",
+          showTabs && "pb-[calc(88px+env(safe-area-inset-bottom,0px))]",
+          contentClassName,
+        )}
+      >
+        <PageTransition>{children}</PageTransition>
+      </main>
+      {bottomSlot}
+      {showTabs && <BottomTabBar />}
+    </div>
+  );
+}

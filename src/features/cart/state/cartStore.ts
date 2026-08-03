@@ -1,0 +1,184 @@
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import type { AppliedPromo, CartLine, CartStatus } from "@/features/cart/models";
+
+interface CartState {
+  // Persisted
+  storeId: string | null;
+  lines: CartLine[];
+  promo: AppliedPromo | null;
+
+  // Runtime
+  status: CartStatus;
+  error: string | null;
+  /** Future sync placeholder — flips to true when a mutation happens offline. */
+  syncPending: boolean;
+
+  // Mutations
+  addLine: (line: CartLine) => void;
+  removeLine: (lineId: string) => void;
+  updateQuantity: (lineId: string, quantity: number) => void;
+  updateNotes: (lineId: string, notes: string) => void;
+  clear: () => void;
+
+  setPromo: (promo: AppliedPromo | null) => void;
+  setStatus: (status: CartStatus) => void;
+  setError: (message: string | null) => void;
+  setSyncPending: (v: boolean) => void;
+  /** Replace all lines. Used when a store switch confirms a wipe. */
+  reset: (storeId?: string | null) => void;
+}
+
+const initialStatus = (lines: CartLine[]): CartStatus => (lines.length ? "ready" : "empty");
+
+export const useCartStore = create<CartState>()(
+  persist(
+    (set, get) => ({
+      storeId: null,
+      lines: [],
+      promo: null,
+
+      status: "empty",
+      error: null,
+      syncPending: false,
+
+      addLine: (line) =>
+        set((s) => {
+          if (s.storeId && s.storeId !== line.storeId) {
+            return { error: "Cart belongs to a different store." };
+          }
+          const key = signatureOf(line);
+          const existingIdx = s.lines.findIndex((l) => signatureOf(l) === key);
+          let lines: CartLine[];
+          if (existingIdx >= 0) {
+            lines = s.lines.map((l, i) =>
+              i === existingIdx ? { ...l, quantity: l.quantity + line.quantity } : l,
+            );
+          } else {
+            lines = [...s.lines, line];
+          }
+          return {
+            lines,
+            storeId: line.storeId,
+            status: "ready",
+            error: null,
+          };
+        }),
+
+      removeLine: (lineId) =>
+        set((s) => {
+          const lines = s.lines.filter((l) => l.lineId !== lineId);
+          return {
+            lines,
+            status: initialStatus(lines),
+            storeId: lines.length ? s.storeId : null,
+            promo: lines.length ? s.promo : null,
+          };
+        }),
+
+      updateQuantity: (lineId, quantity) => {
+        if (typeof quantity !== "number" || !Number.isFinite(quantity) || quantity <= 0) {
+          get().removeLine(lineId);
+          return;
+        }
+        const validQuantity = Math.max(1, Math.floor(quantity));
+        set((s) => ({
+          lines: s.lines.map((l) => (l.lineId === lineId ? { ...l, quantity: validQuantity } : l)),
+        }));
+      },
+
+      updateNotes: (lineId, notes) =>
+        set((s) => ({
+          lines: s.lines.map((l) =>
+            l.lineId === lineId ? { ...l, notes: notes || undefined } : l,
+          ),
+        })),
+
+      clear: () =>
+        set({
+          lines: [],
+          storeId: null,
+          promo: null,
+          status: "empty",
+          error: null,
+        }),
+
+      setPromo: (promo) => set({ promo }),
+      setStatus: (status) => set({ status }),
+      setError: (message) => set({ error: message }),
+      setSyncPending: (v) => set({ syncPending: v }),
+
+      reset: (storeId = null) =>
+        set({
+          lines: [],
+          storeId,
+          promo: null,
+          status: "empty",
+          error: null,
+        }),
+    }),
+    {
+      name: "burg.cart",
+      version: 3,
+      storage: createJSONStorage(() => {
+        if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+        const memoryStorage = new Map<string, string>();
+        return {
+          getItem: (key: string) => memoryStorage.get(key) ?? null,
+          setItem: (key: string, value: string) => {
+            memoryStorage.set(key, value);
+          },
+          removeItem: (key: string) => {
+            memoryStorage.delete(key);
+          },
+          clear: () => {
+            memoryStorage.clear();
+          },
+          length: memoryStorage.size,
+          key: (index: number) => Array.from(memoryStorage.keys())[index] ?? null,
+        } as Storage;
+      }),
+      skipHydration: true,
+      partialize: (s) => ({
+        storeId: s.storeId,
+        lines: s.lines,
+        promo: s.promo,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) state.status = initialStatus(state.lines);
+      },
+      // Fulfillment moved to storeStore in v3 — discard any prior shape.
+      migrate: (persisted, version) => {
+        if (!persisted || typeof persisted !== "object" || version < 3) {
+          const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
+          const lines = Array.isArray(anyPersisted.lines) ? (anyPersisted.lines as CartLine[]) : [];
+          return {
+            storeId: (anyPersisted.storeId as string | null) ?? null,
+            lines,
+            promo: (anyPersisted.promo as AppliedPromo | null) ?? null,
+          } as Partial<CartState>;
+        }
+        return persisted as Partial<CartState>;
+      },
+    },
+  ),
+);
+
+// -- Selectors ---------------------------------------------------------
+
+export const selectItemCount = (s: CartState): number =>
+  s.lines.reduce((sum, l) => sum + l.quantity, 0);
+
+export const selectHasItems = (s: CartState): boolean => s.lines.length > 0;
+
+export const selectCartStoreId = (s: CartState): string | null => s.storeId;
+
+// -- Helpers -----------------------------------------------------------
+
+function signatureOf(line: CartLine): string {
+  const mods = [...(line.modifiers ?? [])]
+    .map((m) => `${m.groupId}:${m.optionId}`)
+    .sort()
+    .join("|");
+  return `${line.productId}#${mods}#${(line.notes ?? "").trim()}`;
+}

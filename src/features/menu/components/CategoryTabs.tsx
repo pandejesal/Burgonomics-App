@@ -1,0 +1,79 @@
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import type { MenuCategoryModel } from "@/features/menu/models";
+import { motion } from "motion/react";
+
+interface Props {
+  categories: MenuCategoryModel[];
+  activeId?: string;
+  onSelect: (id: string) => void;
+  className?: string;
+}
+
+/**
+ * Sticky, horizontally scrollable category tab bar. Supports an
+ * unlimited number of dynamic categories from the repository.
+ */
+export function CategoryTabs({ categories, activeId, onSelect, className }: Props) {
+  const listRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!activeId || !listRef.current) return;
+    const container = listRef.current;
+    const el = container.querySelector<HTMLButtonElement>(
+      `[data-cat-id="${CSS.escape(activeId)}"]`,
+    );
+    if (!el) return;
+    const targetLeft = el.offsetLeft - container.offsetWidth / 2 + el.offsetWidth / 2;
+    container.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
+  }, [activeId]);
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Menu categories"
+      ref={listRef}
+      className={cn(
+        "flex gap-2 overflow-x-auto no-scrollbar px-4 py-2",
+        "border-b border-divider bg-surface",
+        className,
+      )}
+    >
+      {categories.map((c) => {
+        const active = c.id === activeId;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            data-cat-id={c.id}
+            onClick={() => onSelect(c.id)}
+            className={cn(
+              "group relative flex-none whitespace-nowrap rounded-full px-4 py-2 type-label-large transition-colors",
+              "min-h-[40px] border overflow-hidden",
+              active
+                ? "text-primary-foreground border-primary"
+                : "bg-transparent text-text-primary border-divider hover:border-primary/40",
+            )}
+          >
+            {active && (
+              <motion.div
+                layoutId="activeCategoryBg"
+                className="absolute inset-0 bg-primary"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                style={{ zIndex: 0 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center">
+              {c.name}
+              {typeof c.itemCount === "number" && c.itemCount > 0 && (
+                <span className={cn("ml-1.5 type-caption opacity-70")}>({c.itemCount})</span>
+              )}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

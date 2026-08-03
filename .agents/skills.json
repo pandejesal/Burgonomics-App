@@ -1,0 +1,17 @@
+{
+  "entries": [
+    { "path": "vendor/capgo-skills/skills" },
+    { "path": "vendor/callstack-skills/skills" },
+    { "path": "vendor/vercel-skills/skills" },
+    { "path": "vendor/ts-skill" },
+    { "path": "vendor/Tailwind-Agent-Skills/skills" },
+    { "path": "vendor/tanstack-agent-skills/skills" },
+    { "path": "vendor/antfu-skills/skills" },
+    { "path": "vendor/TerminalSkills/skills" },
+    { "path": "vendor/microsoft-skills/.github/skills" },
+    { "path": "vendor/lucide-animated-skill/skills" },
+    { "path": "vendor/mobile-app-ui-design" },
+    { "path": "vendor/swift-ios" },
+    { "path": "vendor/debug-skill" }
+  ]
+}

@@ -1,0 +1,441 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * BURGONOMICS Design System.
+ * Palette: Primary Green #023020, Secondary Green #004225, Accent Orange #EF6124.
+ * Typography: Poppins across the board. All component styling references tokens.
+ */
+
+@theme inline {
+  /* Radius scale */
+  --radius-none: 0px;
+  --radius-small: 6px;
+  --radius-medium: 12px;
+  --radius-large: 20px;
+  --radius-xlarge: 28px;
+  --radius-pill: 9999px;
+  --radius: var(--radius-large);
+  --radius-sm: var(--radius-small);
+  --radius-md: var(--radius-medium);
+  --radius-lg: var(--radius-large);
+  --radius-xl: var(--radius-xlarge);
+
+  /* Spacing scale */
+  --spacing-xxxs: 8px;
+  --spacing-xxs: 12px;
+  --spacing-xs: 16px;
+  --spacing-sm: 20px;
+  --spacing-md: 24px;
+  --spacing-lg: 32px;
+  --spacing-xl: 40px;
+  --spacing-xxl: 56px;
+
+  /* Semantic color tokens */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-bg-secondary: var(--bg-secondary);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-inverse: var(--text-inverse);
+  --color-text-disabled: var(--text-disabled);
+
+  --color-divider: var(--divider);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-destructive: var(--error);
+  --color-destructive-foreground: var(--error-foreground);
+  --color-disabled: var(--disabled);
+
+  --color-veg: var(--veg);
+  --color-nonveg: var(--nonveg);
+
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text-primary);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text-primary);
+  --color-muted: var(--bg-secondary);
+  --color-muted-foreground: var(--text-secondary);
+
+  /* Elevation */
+  --shadow-flat: none;
+  --shadow-low: 0 4px 12px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+  --shadow-medium: 0 10px 24px -4px rgba(0, 0, 0, 0.05), 0 4px 10px -2px rgba(0, 0, 0, 0.02);
+  --shadow-high: 0 20px 48px -8px rgba(0, 0, 0, 0.08), 0 8px 18px -4px rgba(0, 0, 0, 0.04);
+  --shadow-brand: 0 12px 28px -8px rgba(14, 72, 37, 0.2);
+
+  /* Typography families — Montserrat and MonstroSolid */
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "MonstroSolid", "Lilita One", "Montserrat", sans-serif;
+
+  /* Motion */
+  --ease-out-quad: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Brand gradients */
+  --gradient-brand: linear-gradient(135deg, #0e4825 0%, #175e33 100%);
+  --gradient-brand-radial: radial-gradient(120% 80% at 50% 0%, #1b5934 0%, #0e4825 100%);
+  --gradient-orange: linear-gradient(135deg, #ff802b 0%, #ff6600 60%, #e05900 100%);
+}
+
+@font-face {
+  font-family: "MonstroSolid";
+  src: local("MonstroSolid"), local("Monstro Solid");
+}
+
+:root {
+  /* Default = 60% White / Light Theme for Swiggy-like clean mobile-first ordering experience. */
+  --background: #f8faf9; /* Soft premium off-white */
+  --foreground: #0e4825; /* Primary Green */
+  --surface: #ffffff; /* Pure White Card */
+  --surface-elevated: #ffffff;
+  --bg-secondary: #f1f5f3;
+
+  --primary: #0e4825; /* Primary Green */
+  --primary-foreground: #ffffff;
+  --secondary: #ffffff;
+  --secondary-foreground: #0e4825;
+  --accent: #ff6600; /* Accent Orange */
+  --accent-foreground: #ffffff;
+  --brand: #0e4825;
+  --brand-foreground: #ffffff;
+
+  --text-primary: #1a2f22; /* High-contrast deep dark forest charcoal */
+  --text-secondary: #586b60; /* Muted green-grey */
+  --text-inverse: #ffffff;
+  --text-disabled: #9ca3af;
+
+  --divider: #e5ebf7;
+  --border: #e5ebf7;
+  --input: #f1f5f3;
+  --ring: #ff6600;
+
+  --success: #10b981;
+  --success-foreground: #ffffff;
+  --warning: #ff6600;
+  --warning-foreground: #ffffff;
+  --error: #ef4444;
+  --error-foreground: #ffffff;
+  --disabled: #e5e7eb;
+
+  --veg: #10b981;
+  --nonveg: #ef4444;
+
+  --chart-1: #0e4825;
+  --chart-2: #ff6600;
+  --chart-3: #10b981;
+  --chart-4: #ffb020;
+  --chart-5: #586b60;
+
+  --sidebar: #0e4825;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ff6600;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #175e33;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1b5934;
+  --sidebar-ring: #ff6600;
+}
+
+.dark {
+  /* Dark class keeps identical values — the brand IS dark. */
+  --background: oklch(0.19 0.04 155);
+  --foreground: oklch(0.98 0.005 100);
+  --surface: oklch(0.25 0.045 155);
+  --surface-elevated: oklch(0.3 0.045 155);
+  --bg-secondary: oklch(0.22 0.045 155);
+  --text-primary: oklch(0.95 0.01 155);
+  --text-secondary: oklch(0.75 0.02 155);
+  --border: oklch(0.28 0.04 155);
+  --divider: oklch(0.28 0.04 155);
+  --input: oklch(0.22 0.04 155);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  a,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    /* Prevent Android WebView / iOS Safari from auto-inflating text sizes,
+       which was making the mobile app look enlarged. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+    touch-action: manipulation;
+  }
+
+  html,
+  body {
+    height: 100%;
+    /* Avoid horizontal scrolling from stray overflow at any breakpoint. */
+    overflow-x: hidden;
+    /* Disable web text selection globally for native app experience */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    /* Hide native scrollbars on desktop for an immersive app experience */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 10+ */
+  }
+
+  /* Re-enable selection for inputs, textareas, editable fields, and explicitly selectable elements */
+  input,
+  textarea,
+  [contenteditable="true"],
+  [role="textbox"],
+  .selectable {
+    -webkit-user-select: auto;
+    user-select: auto;
+  }
+
+  /* Prevent image dragging in native WebViews */
+  img,
+  svg {
+    -webkit-user-drag: none;
+    user-drag: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+
+  body {
+    background: var(--color-background);
+    background-attachment: fixed;
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Respect notches / status bar on native shells. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Prevent iOS rubber-band from exposing the page behind. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Keyboard-open: drop bottom safe-area padding so inputs stay visible. */
+  html.kb-open body {
+    padding-bottom: 0;
+  }
+
+  /* Ensure form inputs are at least 16px so iOS doesn't zoom on focus. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Typography utilities — Montserrat and MonstroSolid */
+.type-hero {
+  font-family: var(--font-display);
+  font-size: 36px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.type-display {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.type-title-large {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.type-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.type-body-large {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.type-body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.type-body-sm {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+.type-caption {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+.type-caption-sm {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+.type-button {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.type-button-sm {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* Phone-first app shell */
+.app-shell {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 480px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: transparent;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    max-width: 100%;
+  }
+}
+
+.platform-ios .app-shell,
+.platform-android .app-shell {
+  max-width: 100%;
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-secondary) 0%,
+    color-mix(in oklab, var(--color-surface) 80%, transparent) 50%,
+    var(--color-bg-secondary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-medium);
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Brand gradient utilities */
+.bg-gradient-brand {
+  background: var(--gradient-brand);
+}
+.bg-gradient-orange {
+  background: var(--gradient-orange);
+}
+
+/* Mascot floaty animation for splash / empty states */
+@keyframes mascot-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(2deg);
+  }
+}
+.animate-float {
+  animation: mascot-float 3.6s ease-in-out infinite;
+}
+
+/* Scrollbar utility to hide scrollbars on specific containers */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+  &::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pb-tabs-safe {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+.pb-safe-140 {
+  padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+}
+.pb-safe-160 {
+  padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+}
+.bottom-safe {
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+.bottom-tabs-safe {
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+.top-safe-offset {
+  top: calc(3.5rem + env(safe-area-inset-top, 0px));
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.min-h-safe {
+  min-height: calc(100vh - 3.5rem - env(safe-area-inset-top, 0px));
+  min-height: calc(100dvh - 3.5rem - env(safe-area-inset-top, 0px));
+}

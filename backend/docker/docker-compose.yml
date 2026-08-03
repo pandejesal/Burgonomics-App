@@ -1,0 +1,11 @@
+# Convenience alias for local development.
+services:
+  postgres:
+    extends:
+      file: docker-compose.dev.yml
+      service: postgres
+
+  redis:
+    extends:
+      file: docker-compose.dev.yml
+      service: redis

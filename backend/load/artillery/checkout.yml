@@ -1,0 +1,43 @@
+config:
+  target: "{{ $processEnvironment.BASE_URL || 'http://localhost:3000' }}"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: warmup
+    - duration: 300
+      arrivalRate: 20
+      rampTo: 80
+      name: ramp
+    - duration: 600
+      arrivalRate: 80
+      name: sustained
+  defaults:
+    headers:
+      content-type: application/json
+      authorization: 'Bearer {{ $processEnvironment.TEST_JWT }}'
+  ensure:
+    thresholds:
+      - http.response_time.p95: 800
+      - http.response_time.p99: 1500
+      - vusers.failed: 0
+
+scenarios:
+  - name: browse-and-add-to-cart
+    weight: 8
+    flow:
+      - get: { url: /api/v1/menu }
+      - get: { url: /api/v1/offers }
+      - think: 2
+      - post:
+          url: /api/v1/cart/items
+          json: { productId: '{{ $randomString() }}', quantity: 1 }
+          expect: [{ statusCode: [200, 201, 401, 404] }]
+
+  - name: checkout-quote
+    weight: 2
+    flow:
+      - get: { url: /api/v1/cart }
+      - post:
+          url: /api/v1/checkout/quote
+          json: { fulfillmentType: DELIVERY }
+          expect: [{ statusCode: [200, 400, 401] }]

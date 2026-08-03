@@ -1,0 +1,61 @@
+name: Build iOS Application (Capacitor)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build & Export iOS Package
+    runs-on: macos-14
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install Node Dependencies
+        run: npm ci
+
+      - name: ⚡ Build Web Bundle & Sync Capacitor iOS
+        run: |
+          npm run build:mobile
+          npx cap sync ios
+
+      - name: 🛠️ Setup Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+
+      - name: 🍏 Install CocoaPods (if podfile exists)
+        run: |
+          if [ -f "ios/App/Podfile" ]; then
+            cd ios/App
+            pod install || pod install --repo-update
+            cd ../..
+          fi
+
+      - name: 🏗️ Compile Xcode Archive
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace \
+                     -scheme App \
+                     -configuration Release \
+                     -sdk iphoneos \
+                     -archivePath ../../build/Burgonomics.xcarchive \
+                     CODE_SIGNING_ALLOWED=NO \
+                     CODE_SIGNING_REQUIRED=NO \
+                     clean archive
+
+      - name: 📤 Upload iOS Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Burgonomics-iOS-Archive
+          path: build/Burgonomics.xcarchive
+          retention-days: 14

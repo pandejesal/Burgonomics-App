@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      App theme colors — must match the brand palette used in the web app
+      and the Capacitor SplashScreen (see capacitor.config.ts backgroundColor).
+
+      colorPrimary      = #023020  (dark teal — splash background)
+      colorPrimaryDark  = #012313  (darker variant for status bar)
+      colorAccent       = #FF6600  (orange accent — matches color-accent in Tailwind)
+    -->
+    <color name="colorPrimary">#023020</color>
+    <color name="colorPrimaryDark">#012313</color>
+    <color name="colorAccent">#FF6600</color>
+</resources>
