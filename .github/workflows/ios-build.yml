@@ -11,6 +11,8 @@ jobs:
   build-ios:
     name: Build & Export iOS Package
     runs-on: macos-15
+    env:
+      GIT_CONFIG_PARAMETERS: "'safe.directory=*'"
 
     steps:
       - name: 📥 Checkout Repository
@@ -47,31 +49,16 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: 🍏 Install CocoaPods (if podfile exists)
-        run: |
-          if [ -f "ios/App/Podfile" ]; then
-            cd ios/App
-            pod install || pod install --repo-update
-            cd ../..
-          fi
-
       - name: 🏗️ Compile iOS Application & Package Build
         run: |
           git config --global --add safe.directory "*"
           cd ios/App
 
-          if [ -d "App.xcworkspace" ]; then
-            PROJ_ARG="-workspace App.xcworkspace"
-          else
-            PROJ_ARG="-project App.xcodeproj"
-          fi
-
           echo "Compiling iOS Application with iOS 16.0 Deployment Target..."
-          xcodebuild $PROJ_ARG \
+          xcodebuild -project App.xcodeproj \
                      -scheme App \
                      -configuration Release \
-                     -sdk iphonesimulator \
-                     -destination 'generic/platform=iOS Simulator' \
+                     -destination 'platform=iOS Simulator,name=iPhone 16' \
                      -derivedDataPath ../../build/DerivedData \
                      IPHONEOS_DEPLOYMENT_TARGET=16.0 \
                      CODE_SIGN_IDENTITY="" \
