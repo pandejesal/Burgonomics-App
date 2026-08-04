@@ -20,8 +20,10 @@ jobs:
 
       - name: 🛠️ Configure Git Safe Directories
         run: |
-          git config --global --add safe.directory "*"
           sudo git config --system --add safe.directory "*" || true
+          sudo git config --system http.sslVerify false || true
+          sudo git config --system credential.helper "" || true
+          git config --global --add safe.directory "*"
           git config --global http.sslVerify false
 
       - name: 🟢 Setup Node.js (v22)
@@ -50,8 +52,11 @@ jobs:
 
       - name: 🏗️ Compile iOS Application & Package Build
         run: |
-          git config --global --add safe.directory "*"
           sudo git config --system --add safe.directory "*" || true
+          sudo git config --system http.sslVerify false || true
+          sudo git config --system credential.helper "" || true
+          git config --global --add safe.directory "*"
+          git config --global http.sslVerify false
           cd ios/App
 
           echo "Resolving Swift Package Dependencies into derived data..."
