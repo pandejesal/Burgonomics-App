@@ -80,8 +80,9 @@ jobs:
           set -e
 
           if [ $XCODE_EXIT -ne 0 ]; then
-            echo "❌ xcodebuild failed with exit code $XCODE_EXIT. Printing full build log:"
-            cat xcodebuild.log
+            echo "❌ xcodebuild failed with exit code $XCODE_EXIT. Emitting error annotations:"
+            grep -i "error:" xcodebuild.log | head -n 20 | while read -r line; do echo "::error::$line"; done
+            tail -n 100 xcodebuild.log
             exit $XCODE_EXIT
           fi
 
@@ -93,8 +94,17 @@ jobs:
             echo "✅ SUCCESS: Zip archive created successfully at Burgonomics-iOS-Simulator-App.zip"
           fi
 
+      - name: 📤 Upload Build Log Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Xcode-Build-Log
+          path: ios/App/xcodebuild.log
+          retention-days: 7
+
       - name: 📤 Upload iOS Application Build Artifacts
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: Burgonomics-iOS-Simulator-App
           path: Burgonomics-iOS-Simulator-App.zip
