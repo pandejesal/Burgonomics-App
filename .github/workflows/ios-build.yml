@@ -50,6 +50,12 @@ jobs:
           fi
           xcodebuild -version
 
+      - name: 🍏 Install CocoaPods Dependencies
+        run: |
+          cd ios/App
+          pod install || pod install --repo-update
+          cd ../..
+
       - name: 🏗️ Compile iOS Application & Package Build
         run: |
           git config --global --add safe.directory "*"
@@ -64,7 +70,13 @@ jobs:
           fi
           echo "Selected Destination: $DEST_ARG"
 
-          xcodebuild -project App.xcodeproj \
+          if [ -d "App.xcworkspace" ]; then
+            TARGET_ARG="-workspace App.xcworkspace"
+          else
+            TARGET_ARG="-project App.xcodeproj"
+          fi
+
+          xcodebuild $TARGET_ARG \
                      -scheme App \
                      -configuration Release \
                      $DEST_ARG \
