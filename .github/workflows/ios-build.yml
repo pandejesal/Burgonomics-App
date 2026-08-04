@@ -34,7 +34,7 @@ jobs:
         run: |
           npm run build:mobile
           npx cap sync ios
-          node -e "const fs = require('fs'); const file = 'ios/App/CapApp-SPM/Package.swift'; if (fs.existsSync(file)) { fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/')); }"
+          node -e "const fs = require('fs'); const file = 'ios/App/CapApp-SPM/Package.swift'; if (fs.existsSync(file)) { let c = fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/').replace(/\.v15/g, '.v16'); fs.writeFileSync(file, c); }"
 
       - name: 🛠️ Setup Xcode Version
         run: |
@@ -66,13 +66,14 @@ jobs:
             PROJ_ARG="-project App.xcodeproj"
           fi
 
-          echo "Compiling iOS Application..."
+          echo "Compiling iOS Application with iOS 16.0 Deployment Target..."
           xcodebuild $PROJ_ARG \
                      -scheme App \
                      -configuration Release \
                      -sdk iphonesimulator \
                      -destination 'generic/platform=iOS Simulator' \
                      -derivedDataPath ../../build/DerivedData \
+                     IPHONEOS_DEPLOYMENT_TARGET=16.0 \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO \
