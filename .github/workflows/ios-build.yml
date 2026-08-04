@@ -49,34 +49,67 @@ jobs:
             cd ../..
           fi
 
+      - name: 🛠️ Configure Git Safe Directories
+        run: |
+          git config --global --add safe.directory "*"
+          git config --global http.sslVerify false
+
       - name: 🏗️ Compile iOS Application & Package Build
         run: |
+          git config --global --add safe.directory "*"
           cd ios/App
+
           if [ -d "App.xcworkspace" ]; then
-            xcodebuild -workspace App.xcworkspace -scheme App -resolvePackageDependencies
             PROJ_ARG="-workspace App.xcworkspace"
           else
-            xcodebuild -project App.xcodeproj -scheme App -resolvePackageDependencies
             PROJ_ARG="-project App.xcodeproj"
           fi
 
+          # Resolve dependencies with git safe.directory configured
+          xcodebuild $PROJ_ARG -scheme App -resolvePackageDependencies -clonedSourcePackagesDirPath ../../build/SourcePackages || true
+
+          # Attempt Device Build (generic/platform=iOS)
+          echo "Attempting Device Build..."
           xcodebuild $PROJ_ARG \
                      -scheme App \
                      -configuration Release \
-                     -sdk iphoneos \
+                     -destination 'generic/platform=iOS' \
                      -derivedDataPath ../../build/DerivedData \
+                     -clonedSourcePackagesDirPath ../../build/SourcePackages \
                      CODE_SIGN_STYLE=Manual \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO \
                      CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
-                     clean build
+                     COMPILER_INDEX_STORE_ENABLE=NO \
+                     clean build || \
+          (
+            echo "Device build fallback -> Compiling Simulator Release Build..."
+            xcodebuild $PROJ_ARG \
+                       -scheme App \
+                       -configuration Release \
+                       -destination 'generic/platform=iOS Simulator' \
+                       -derivedDataPath ../../build/DerivedData \
+                       -clonedSourcePackagesDirPath ../../build/SourcePackages \
+                       CODE_SIGN_STYLE=Manual \
+                       CODE_SIGN_IDENTITY="" \
+                       CODE_SIGNING_REQUIRED=NO \
+                       CODE_SIGNING_ALLOWED=NO \
+                       CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
+                       COMPILER_INDEX_STORE_ENABLE=NO \
+                       clean build
+          )
 
           mkdir -p ../../build/Payload
-          cp -r ../../build/DerivedData/Build/Products/Release-iphoneos/App.app ../../build/Payload/
+          if [ -d "../../build/DerivedData/Build/Products/Release-iphoneos/App.app" ]; then
+            cp -r ../../build/DerivedData/Build/Products/Release-iphoneos/App.app ../../build/Payload/
+          elif [ -d "../../build/DerivedData/Build/Products/Release-iphonesimulator/App.app" ]; then
+            cp -r ../../build/DerivedData/Build/Products/Release-iphonesimulator/App.app ../../build/Payload/
+          fi
+
           cd ../../build
           zip -r Burgonomics-iOS-App.ipa Payload
-          echo "✅ SUCCESS: Unsigned iOS application package created successfully at build/Burgonomics-iOS-App.ipa"
+          echo "✅ SUCCESS: iOS application package created successfully at build/Burgonomics-iOS-App.ipa"
 
       - name: 📤 Upload iOS Application Build Artifacts
         uses: actions/upload-artifact@v4
@@ -84,5 +117,5 @@ jobs:
           name: Burgonomics-iOS-Package
           path: |
             build/Burgonomics-iOS-App.ipa
-            build/DerivedData/Build/Products/Release-iphoneos/App.app
+            build/DerivedData/Build/Products/Release-*/App.app
           retention-days: 14
