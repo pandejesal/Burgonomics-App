@@ -31,7 +31,9 @@ jobs:
           npx cap sync ios
 
       - name: 🛠️ Setup Xcode Version
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
 
       - name: 🍏 Install CocoaPods (if podfile exists)
         run: |
