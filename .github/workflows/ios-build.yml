@@ -73,17 +73,17 @@ jobs:
                      build
 
           mkdir -p ../../build/Payload
-          APP_PATH=$(find ../../build/DerivedData /Users/runner/Library/Developer/Xcode/DerivedData -name "App.app" -type d 2>/dev/null | head -n 1)
-          echo "Found compiled app at: '$APP_PATH'"
+          APP_PATH=$(find ../../build/DerivedData /Users/runner/Library/Developer/Xcode/DerivedData -path "*/Products/*" -name "App.app" -type d 2>/dev/null | head -n 1)
+          echo "Found compiled app product at: '$APP_PATH'"
 
           if [ -n "$APP_PATH" ]; then
-            cp -R "$APP_PATH" ../../build/Payload/
-            echo "✅ SUCCESS: App.app copied to Payload directory successfully!"
+            cp -RL "$APP_PATH" ../../build/Payload/ 2>/dev/null || cp -R "$APP_PATH" ../../build/Payload/ 2>/dev/null || true
+            echo "✅ SUCCESS: App.app product copied to Payload directory successfully!"
           else
-            echo "Searching fallback root for App.app..."
-            APP_PATH=$(find /Users/runner/work -name "App.app" -type d 2>/dev/null | head -n 1)
+            echo "Searching fallback root Products folder..."
+            APP_PATH=$(find /Users/runner/work -path "*/Products/*" -name "App.app" -type d 2>/dev/null | head -n 1)
             if [ -n "$APP_PATH" ]; then
-              cp -R "$APP_PATH" ../../build/Payload/
+              cp -R "$APP_PATH" ../../build/Payload/ 2>/dev/null || true
             fi
           fi
 
