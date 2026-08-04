@@ -37,7 +37,7 @@ jobs:
         run: |
           npm run build:mobile
           npx cap sync ios
-          node -e "const fs = require('fs'); const file = 'ios/App/CapApp-SPM/Package.swift'; if (fs.existsSync(file)) { let c = fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/'); fs.writeFileSync(file, c); }"
+          node -e "const fs = require('fs'); const file = 'ios/App/CapApp-SPM/Package.swift'; if (fs.existsSync(file)) { let c = fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/'); if (!c.includes('keychain-swift')) { c = c.replace('.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),', '.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),\n        .package(url: \"https://github.com/evgenyneu/keychain-swift.git\", exact: \"21.0.0\"),'); c = c.replace('.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),', '.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),\n                .product(name: \"KeychainSwift\", package: \"keychain-swift\"),'); } fs.writeFileSync(file, c); }"
 
       - name: 🛠️ Setup Xcode Version
         run: |
