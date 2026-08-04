@@ -47,22 +47,28 @@ jobs:
         run: |
           cd ios/App
           if [ -d "App.xcworkspace" ]; then
+            xcodebuild -workspace App.xcworkspace -scheme App -resolvePackageDependencies
             xcodebuild -workspace App.xcworkspace \
                        -scheme App \
                        -configuration Release \
-                       -sdk iphoneos \
+                       -destination 'generic/platform=iOS' \
                        -archivePath ../../build/Burgonomics.xcarchive \
                        CODE_SIGNING_ALLOWED=NO \
                        CODE_SIGNING_REQUIRED=NO \
+                       CODE_SIGN_IDENTITY="" \
+                       CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
                        clean archive
           else
+            xcodebuild -project App.xcodeproj -scheme App -resolvePackageDependencies
             xcodebuild -project App.xcodeproj \
                        -scheme App \
                        -configuration Release \
-                       -sdk iphoneos \
+                       -destination 'generic/platform=iOS' \
                        -archivePath ../../build/Burgonomics.xcarchive \
                        CODE_SIGNING_ALLOWED=NO \
                        CODE_SIGNING_REQUIRED=NO \
+                       CODE_SIGN_IDENTITY="" \
+                       CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
                        clean archive
           fi
 
