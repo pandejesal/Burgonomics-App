@@ -54,6 +54,12 @@ jobs:
           sudo git config --system --add safe.directory "*" || true
           cd ios/App
 
+          echo "Resolving Swift Package Dependencies..."
+          xcodebuild -project App.xcodeproj \
+                     -scheme App \
+                     -resolvePackageDependencies \
+                     -clonedSourcePackagesDirPath ../../build/SourcePackages || true
+
           echo "Compiling iOS Application..."
           xcodebuild -project App.xcodeproj \
                      -scheme App \
@@ -61,6 +67,7 @@ jobs:
                      -sdk iphonesimulator \
                      -destination 'generic/platform=iOS Simulator' \
                      -derivedDataPath ../../build/DerivedData \
+                     -clonedSourcePackagesDirPath ../../build/SourcePackages \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO \
