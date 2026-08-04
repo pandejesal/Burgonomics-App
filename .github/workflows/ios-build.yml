@@ -29,6 +29,7 @@ jobs:
         run: |
           npm run build:mobile
           npx cap sync ios
+          sed -i '' 's/\\/\//g' ios/App/CapApp-SPM/Package.swift
 
       - name: 🛠️ Setup Xcode Version
         run: |
