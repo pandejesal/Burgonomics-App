@@ -75,9 +75,8 @@ jobs:
           cp -r ../../build/DerivedData/Build/Products/Release-iphonesimulator/App.app ../../build/Payload/ 2>/dev/null || true
 
           cd ../../build
-          zip -r Burgonomics-iOS-App.ipa Payload || true
-          zip -r Burgonomics-iOS-Simulator-App.zip DerivedData/Build/Products/Release-iphonesimulator/App.app || true
-          echo "✅ SUCCESS: iOS application packages created successfully!"
+          zip -r Burgonomics-iOS-App.ipa Payload
+          echo "✅ SUCCESS: iOS application package created successfully at build/Burgonomics-iOS-App.ipa"
 
       - name: 📤 Upload iOS Application Build Artifacts
         uses: actions/upload-artifact@v4
@@ -85,6 +84,5 @@ jobs:
           name: Burgonomics-iOS-Package
           path: |
             build/Burgonomics-iOS-App.ipa
-            build/Burgonomics-iOS-Simulator-App.zip
             build/DerivedData/Build/Products/Release-iphonesimulator/App.app
           retention-days: 14
