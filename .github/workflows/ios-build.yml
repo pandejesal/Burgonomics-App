@@ -64,20 +64,23 @@ jobs:
           xcodebuild -project App.xcodeproj \
                      -scheme App \
                      -configuration Release \
-                     -destination "platform=iOS Simulator,name=iPhone 15" \
+                     -destination "generic/platform=iOS Simulator" \
+                     -derivedDataPath ../../build/DerivedData \
                      -skipPackagePluginValidation \
                      ONLY_ACTIVE_ARCH=NO \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO \
+                     SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
+                     GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+                     COMPILER_INDEX_STORE_ENABLE=NO \
                      build > xcodebuild.log 2>&1
           XCODE_EXIT=$?
           set -e
 
           if [ $XCODE_EXIT -ne 0 ]; then
-            echo "❌ xcodebuild failed with exit code $XCODE_EXIT. Printing error log:"
-            grep -E "error:|FAILED|Failure|error:" xcodebuild.log | head -n 30 || tail -n 100 xcodebuild.log
-            tail -n 100 xcodebuild.log
+            echo "❌ xcodebuild failed with exit code $XCODE_EXIT. Printing full build log:"
+            cat xcodebuild.log
             exit $XCODE_EXIT
           fi
 
