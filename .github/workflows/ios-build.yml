@@ -79,7 +79,7 @@ jobs:
           fi
 
           cd ../../build
-          zip -r -y Burgonomics-iOS-App.ipa Payload
+          ditto -c -k --sequesterRsrc Payload Burgonomics-iOS-App.ipa
           echo "✅ SUCCESS: iOS application package created successfully at build/Burgonomics-iOS-App.ipa"
 
       - name: 📤 Upload iOS Application Build Artifacts
