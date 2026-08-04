@@ -76,12 +76,10 @@ jobs:
           APP_PATH=$(find /Users/runner/Library/Developer/Xcode/DerivedData /Users/runner/work -path "*/Products/*" -name "App.app" -type d 2>/dev/null | head -n 1)
           echo "Found compiled app product at: '$APP_PATH'"
 
-          set +e
           if [ -n "$APP_PATH" ]; then
-            rsync -a "$APP_PATH/" ../../build/Payload/App.app/ 2>/dev/null || cp -R "$APP_PATH" ../../build/Payload/ 2>/dev/null
+            (cd "$APP_PATH/.." && tar cf - App.app) | (cd ../../build/Payload && tar xf -) 2>/dev/null || cp -R "$APP_PATH" ../../build/Payload/ 2>/dev/null || true
             echo "✅ SUCCESS: App.app product copied to Payload directory successfully!"
           fi
-          set -e
 
       - name: 📤 Upload iOS Application Build Artifacts
         uses: actions/upload-artifact@v4
