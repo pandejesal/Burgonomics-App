@@ -21,6 +21,7 @@ jobs:
       - name: 🛠️ Configure Git Safe Directories
         run: |
           git config --global --add safe.directory "*"
+          sudo git config --system --add safe.directory "*" || true
           git config --global http.sslVerify false
 
       - name: 🟢 Setup Node.js (v22)
@@ -52,13 +53,21 @@ jobs:
       - name: 🏗️ Compile iOS Application & Package Build
         run: |
           git config --global --add safe.directory "*"
+          sudo git config --system --add safe.directory "*" || true
           cd ios/App
 
-          echo "Compiling iOS Application with iOS 16.0 Deployment Target..."
+          SIM_UUID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' || echo "")
+          if [ -n "$SIM_UUID" ]; then
+            DEST_ARG="-destination id=$SIM_UUID"
+          else
+            DEST_ARG="-destination generic/platform=iOS Simulator"
+          fi
+          echo "Selected Destination: $DEST_ARG"
+
           xcodebuild -project App.xcodeproj \
                      -scheme App \
                      -configuration Release \
-                     -destination 'platform=iOS Simulator,name=iPhone 16' \
+                     $DEST_ARG \
                      -derivedDataPath ../../build/DerivedData \
                      IPHONEOS_DEPLOYMENT_TARGET=16.0 \
                      CODE_SIGN_IDENTITY="" \
