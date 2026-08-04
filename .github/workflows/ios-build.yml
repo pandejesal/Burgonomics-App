@@ -49,38 +49,39 @@ jobs:
             cd ../..
           fi
 
-      - name: 🏗️ Compile Xcode Archive
+      - name: 🏗️ Compile iOS Application & Package Build
         run: |
           cd ios/App
           if [ -d "App.xcworkspace" ]; then
             xcodebuild -workspace App.xcworkspace -scheme App -resolvePackageDependencies
-            xcodebuild -workspace App.xcworkspace \
-                       -scheme App \
-                       -configuration Release \
-                       -destination 'generic/platform=iOS' \
-                       -archivePath ../../build/Burgonomics.xcarchive \
-                       CODE_SIGNING_ALLOWED=NO \
-                       CODE_SIGNING_REQUIRED=NO \
-                       CODE_SIGN_IDENTITY="" \
-                       CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
-                       clean archive
+            PROJ_ARG="-workspace App.xcworkspace"
           else
             xcodebuild -project App.xcodeproj -scheme App -resolvePackageDependencies
-            xcodebuild -project App.xcodeproj \
-                       -scheme App \
-                       -configuration Release \
-                       -destination 'generic/platform=iOS' \
-                       -archivePath ../../build/Burgonomics.xcarchive \
-                       CODE_SIGNING_ALLOWED=NO \
-                       CODE_SIGNING_REQUIRED=NO \
-                       CODE_SIGN_IDENTITY="" \
-                       CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
-                       clean archive
+            PROJ_ARG="-project App.xcodeproj"
           fi
 
-      - name: 📤 Upload iOS Build Artifact
+          xcodebuild $PROJ_ARG \
+                     -scheme App \
+                     -configuration Release \
+                     -sdk iphoneos \
+                     -derivedDataPath ../../build/DerivedData \
+                     CODE_SIGN_STYLE=Manual \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO \
+                     CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
+                     clean build
+
+          mkdir -p ../../build/Payload
+          cp -r ../../build/DerivedData/Build/Products/Release-iphoneos/App.app ../../build/Payload/
+          cd ../../build
+          zip -r Burgonomics-iOS-App.ipa Payload
+
+      - name: 📤 Upload iOS Application Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Burgonomics-iOS-Archive
-          path: build/Burgonomics.xcarchive
+          name: Burgonomics-iOS-Package
+          path: |
+            build/Burgonomics-iOS-App.ipa
+            build/DerivedData/Build/Products/Release-iphoneos/App.app
           retention-days: 14
