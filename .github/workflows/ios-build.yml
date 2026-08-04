@@ -68,37 +68,30 @@ jobs:
           # Resolve dependencies with git safe.directory configured
           xcodebuild $PROJ_ARG -scheme App -resolvePackageDependencies -clonedSourcePackagesDirPath ../../build/SourcePackages || true
 
-          # Attempt Device Build (generic/platform=iOS)
-          echo "Attempting Device Build..."
+          # Compile Release Build with Ad-Hoc Signing (Xcode 16 standard)
+          echo "Building iOS Application with Ad-Hoc Signature..."
           xcodebuild $PROJ_ARG \
                      -scheme App \
                      -configuration Release \
                      -destination 'generic/platform=iOS' \
                      -derivedDataPath ../../build/DerivedData \
-                     -clonedSourcePackagesDirPath ../../build/SourcePackages \
-                     CODE_SIGN_STYLE=Manual \
-                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGN_IDENTITY="-" \
                      CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO \
-                     CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
+                     CODE_SIGNING_ALLOWED=YES \
+                     CODE_SIGN_STYLE=Manual \
                      COMPILER_INDEX_STORE_ENABLE=NO \
-                     clean build || \
-          (
-            echo "Device build fallback -> Compiling Simulator Release Build..."
-            xcodebuild $PROJ_ARG \
-                       -scheme App \
-                       -configuration Release \
-                       -destination 'generic/platform=iOS Simulator' \
-                       -derivedDataPath ../../build/DerivedData \
-                       -clonedSourcePackagesDirPath ../../build/SourcePackages \
-                       CODE_SIGN_STYLE=Manual \
-                       CODE_SIGN_IDENTITY="" \
-                       CODE_SIGNING_REQUIRED=NO \
-                       CODE_SIGNING_ALLOWED=NO \
-                       CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
-                       COMPILER_INDEX_STORE_ENABLE=NO \
-                       clean build
-          )
+                     build || \
+          xcodebuild $PROJ_ARG \
+                     -scheme App \
+                     -configuration Release \
+                     -destination 'generic/platform=iOS Simulator' \
+                     -derivedDataPath ../../build/DerivedData \
+                     CODE_SIGN_IDENTITY="-" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=YES \
+                     CODE_SIGN_STYLE=Manual \
+                     COMPILER_INDEX_STORE_ENABLE=NO \
+                     build
 
           mkdir -p ../../build/Payload
           if [ -d "../../build/DerivedData/Build/Products/Release-iphoneos/App.app" ]; then
