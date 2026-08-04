@@ -57,6 +57,10 @@ jobs:
           sudo git config --system credential.helper "" || true
           git config --global --add safe.directory "*"
           git config --global http.sslVerify false
+
+          echo "Resolving Swift Packages via Swift CLI..."
+          (cd ios/App/CapApp-SPM && swift package resolve) || true
+
           cd ios/App
 
           echo "Resolving Swift Package Dependencies into derived data..."
