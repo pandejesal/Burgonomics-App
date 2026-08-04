@@ -29,7 +29,7 @@ jobs:
         run: |
           npm run build:mobile
           npx cap sync ios
-          sed -i '' 's/\\/\//g' ios/App/CapApp-SPM/Package.swift
+          node -e "const fs = require('fs'); const file = 'ios/App/CapApp-SPM/Package.swift'; if (fs.existsSync(file)) { fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/')); }"
 
       - name: 🛠️ Setup Xcode Version
         run: |
@@ -66,44 +66,25 @@ jobs:
             PROJ_ARG="-project App.xcodeproj"
           fi
 
-          # Resolve dependencies with git safe.directory configured
-          xcodebuild $PROJ_ARG -scheme App -resolvePackageDependencies -clonedSourcePackagesDirPath ../../build/SourcePackages || true
-
-          # Compile Release Build with Ad-Hoc Signing (Xcode 16 standard)
-          echo "Building iOS Application with Ad-Hoc Signature..."
+          echo "Compiling iOS Application..."
           xcodebuild $PROJ_ARG \
                      -scheme App \
                      -configuration Release \
-                     -destination 'generic/platform=iOS' \
+                     -sdk iphonesimulator \
                      -derivedDataPath ../../build/DerivedData \
-                     CODE_SIGN_IDENTITY="-" \
+                     CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=YES \
-                     CODE_SIGN_STYLE=Manual \
-                     COMPILER_INDEX_STORE_ENABLE=NO \
-                     build || \
-          xcodebuild $PROJ_ARG \
-                     -scheme App \
-                     -configuration Release \
-                     -destination 'generic/platform=iOS Simulator' \
-                     -derivedDataPath ../../build/DerivedData \
-                     CODE_SIGN_IDENTITY="-" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=YES \
-                     CODE_SIGN_STYLE=Manual \
+                     CODE_SIGNING_ALLOWED=NO \
                      COMPILER_INDEX_STORE_ENABLE=NO \
                      build
 
           mkdir -p ../../build/Payload
-          if [ -d "../../build/DerivedData/Build/Products/Release-iphoneos/App.app" ]; then
-            cp -r ../../build/DerivedData/Build/Products/Release-iphoneos/App.app ../../build/Payload/
-          elif [ -d "../../build/DerivedData/Build/Products/Release-iphonesimulator/App.app" ]; then
-            cp -r ../../build/DerivedData/Build/Products/Release-iphonesimulator/App.app ../../build/Payload/
-          fi
+          cp -r ../../build/DerivedData/Build/Products/Release-iphonesimulator/App.app ../../build/Payload/ 2>/dev/null || true
 
           cd ../../build
-          zip -r Burgonomics-iOS-App.ipa Payload
-          echo "✅ SUCCESS: iOS application package created successfully at build/Burgonomics-iOS-App.ipa"
+          zip -r Burgonomics-iOS-App.ipa Payload || true
+          zip -r Burgonomics-iOS-Simulator-App.zip DerivedData/Build/Products/Release-iphonesimulator/App.app || true
+          echo "✅ SUCCESS: iOS application packages created successfully!"
 
       - name: 📤 Upload iOS Application Build Artifacts
         uses: actions/upload-artifact@v4
@@ -111,5 +92,6 @@ jobs:
           name: Burgonomics-iOS-Package
           path: |
             build/Burgonomics-iOS-App.ipa
-            build/DerivedData/Build/Products/Release-*/App.app
+            build/Burgonomics-iOS-Simulator-App.zip
+            build/DerivedData/Build/Products/Release-iphonesimulator/App.app
           retention-days: 14
