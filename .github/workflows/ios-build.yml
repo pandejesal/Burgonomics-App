@@ -23,7 +23,7 @@ jobs:
           cache: 'npm'
 
       - name: 📦 Install Node Dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: ⚡ Build Web Bundle & Sync Capacitor iOS
         run: |
