@@ -62,32 +62,33 @@ jobs:
           sudo git config --system --add safe.directory "*" || true
           cd ios/App
 
-          SIM_UUID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' || echo "")
-          if [ -n "$SIM_UUID" ]; then
-            DEST_ARG="-destination id=$SIM_UUID"
-          else
-            DEST_ARG="-destination generic/platform=iOS Simulator"
-          fi
-          echo "Selected Destination: $DEST_ARG"
-
           if [ -d "App.xcworkspace" ]; then
-            TARGET_ARG="-workspace App.xcworkspace"
+            xcodebuild -workspace App.xcworkspace \
+                       -scheme App \
+                       -configuration Release \
+                       -sdk iphonesimulator \
+                       -derivedDataPath ../../build/DerivedData \
+                       IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+                       CODE_SIGN_IDENTITY="-" \
+                       CODE_SIGNING_REQUIRED=NO \
+                       CODE_SIGNING_ALLOWED=YES \
+                       CODE_SIGN_STYLE=Manual \
+                       COMPILER_INDEX_STORE_ENABLE=NO \
+                       build
           else
-            TARGET_ARG="-project App.xcodeproj"
+            xcodebuild -project App.xcodeproj \
+                       -scheme App \
+                       -configuration Release \
+                       -sdk iphonesimulator \
+                       -derivedDataPath ../../build/DerivedData \
+                       IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+                       CODE_SIGN_IDENTITY="-" \
+                       CODE_SIGNING_REQUIRED=NO \
+                       CODE_SIGNING_ALLOWED=YES \
+                       CODE_SIGN_STYLE=Manual \
+                       COMPILER_INDEX_STORE_ENABLE=NO \
+                       build
           fi
-
-          xcodebuild $TARGET_ARG \
-                     -scheme App \
-                     -configuration Release \
-                     $DEST_ARG \
-                     -derivedDataPath ../../build/DerivedData \
-                     IPHONEOS_DEPLOYMENT_TARGET=16.0 \
-                     CODE_SIGN_IDENTITY="-" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=YES \
-                     CODE_SIGN_STYLE=Manual \
-                     COMPILER_INDEX_STORE_ENABLE=NO \
-                     build
 
           mkdir -p ../../build/Payload
           cp -r ../../build/DerivedData/Build/Products/Release-iphonesimulator/App.app ../../build/Payload/ 2>/dev/null || true
