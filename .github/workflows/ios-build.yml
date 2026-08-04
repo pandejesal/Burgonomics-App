@@ -16,6 +16,11 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
+      - name: 🛠️ Configure Git Safe Directories
+        run: |
+          git config --global --add safe.directory "*"
+          git config --global http.sslVerify false
+
       - name: 🟢 Setup Node.js (v22)
         uses: actions/setup-node@v4
         with:
@@ -50,11 +55,6 @@ jobs:
             cd ../..
           fi
 
-      - name: 🛠️ Configure Git Safe Directories
-        run: |
-          git config --global --add safe.directory "*"
-          git config --global http.sslVerify false
-
       - name: 🏗️ Compile iOS Application & Package Build
         run: |
           git config --global --add safe.directory "*"
@@ -71,6 +71,7 @@ jobs:
                      -scheme App \
                      -configuration Release \
                      -sdk iphonesimulator \
+                     -destination 'generic/platform=iOS Simulator' \
                      -derivedDataPath ../../build/DerivedData \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
