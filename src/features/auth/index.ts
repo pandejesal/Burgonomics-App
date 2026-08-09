@@ -5,4 +5,6 @@ export * from "./components/ProtectedRoute";
 export * from "./hooks/useCountdown";
 export * from "./utils/validators";
 export * from "./utils/mockJwt";
-export { MOCK_OTP_CODE } from "./services/authService";
+export {
+  authService,
+} from "./services/authService";

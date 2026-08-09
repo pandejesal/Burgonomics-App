@@ -41,8 +41,8 @@ export function StoreHeaderCard({ store, fulfillment, className }: Props) {
           <MapPin className="h-5 w-5" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Text variant="caption" tone="secondary" className="uppercase tracking-wide">
+          <div className="flex flex-wrap items-center gap-2">
+            <Text variant="caption" tone="secondary" className="uppercase tracking-wide shrink-0">
               {label}
             </Text>
             <AppBadge tone={store.isOpen ? "success" : "error"}>

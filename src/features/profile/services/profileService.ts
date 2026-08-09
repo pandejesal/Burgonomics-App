@@ -21,10 +21,31 @@ function validate(patch: ProfileInput): string | null {
 
 export const profileService = {
   async update(patch: ProfileInput): Promise<ApiResult<ProfileInput>> {
-    await delay(180);
     const err = validate(patch);
     if (err) return fail("INVALID_PROFILE", err);
-    return ok(patch);
+
+    try {
+      const { db, auth } = await import("@/core/config/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (!user) return fail("UNAUTHORIZED", "Not logged in");
+
+      const userRef = doc(db, "users", user.uid);
+      
+      // Firestore does not support undefined values, so we filter them out.
+      const cleanPatch = Object.fromEntries(
+        Object.entries(patch).filter(([_, v]) => v !== undefined)
+      );
+      
+      await setDoc(userRef, {
+        ...cleanPatch,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      return ok(patch);
+    } catch (error: any) {
+      console.error("Firestore profile update error:", error);
+      return fail("SERVER_ERROR", `Failed to update profile in database: ${error?.message || error}`);
+    }
   },
 
   async requestPhoneChange(_phone: string): Promise<ApiResult<{ challengeId: string }>> {
@@ -39,9 +60,22 @@ export const profileService = {
   },
 
   async me(): Promise<ApiResult<UserProfile | null>> {
-    await delay(120);
-    // Backend returns the persisted server-side profile. Placeholder returns null
-    // so the store keeps the client-cached copy.
-    return ok(null);
+    try {
+      const { db, auth } = await import("@/core/config/firebase");
+      const { doc, getDoc } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (!user) return ok(null);
+
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        return ok(data as UserProfile);
+      }
+      return ok(null);
+    } catch (error) {
+      console.error("Firestore profile fetch error:", error);
+      return ok(null);
+    }
   },
 };

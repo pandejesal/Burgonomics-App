@@ -10,10 +10,8 @@ import { useGuestOnly } from "@/features/auth/hooks/useAuthGuard";
 import { useCountdown } from "@/features/auth/hooks/useCountdown";
 import { OTP_LENGTH, validateOtp, COUNTRY_CODE } from "@/features/auth/utils/validators";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
-import { MOCK_OTP_CODE } from "@/features/auth/services/authService";
+import { authService } from "@/features/auth/services/authService";
 import { APP } from "@/core/constants/app";
-import { isDev } from "@/core/config/env";
-import { AlertCircle, MessageCircle, Smartphone } from "lucide-react";
 
 /**
  * SCR-003 OTP Verification.
@@ -66,6 +64,14 @@ function OtpScreen() {
     }
   }, [challenge, status, navigate, search.redirect]);
 
+  // Setup reCAPTCHA for Resend / Fallback actions
+  useEffect(() => {
+    authService.initRecaptcha("recaptcha-container");
+    return () => {
+      authService.clearRecaptcha();
+    };
+  }, []);
+
   // Auto-submit once 6 digits entered.
   useEffect(() => {
     if (code.length === OTP_LENGTH && !isVerifying) {
@@ -95,18 +101,7 @@ function OtpScreen() {
     if (res.ok) {
       reset();
       setCode("");
-      const newChallenge = useAuthStore.getState().challenge;
-
       toast.success("New code sent");
-      if (newChallenge?.code) {
-        toast(
-          `💬 ${newChallenge.deliveryMethod?.toUpperCase() || "SMS"} from BURGONOMICS (Simulated)`,
-          {
-            description: `Your OTP verification code is ${newChallenge.code}. It is valid for 5 minutes.`,
-            duration: 10000,
-          },
-        );
-      }
     } else {
       toast.error(res.error ?? "Couldn't resend. Try again.");
     }
@@ -124,15 +119,7 @@ function OtpScreen() {
     if (res.ok) {
       reset();
       setCode("");
-      const newChallenge = useAuthStore.getState().challenge;
       toast.success(`Requested delivery via ${fallbackMethod === "whatsapp" ? "WhatsApp" : "SMS"}`);
-
-      if (newChallenge?.code) {
-        toast(`💬 ${fallbackMethod.toUpperCase()} from BURGONOMICS (Simulated)`, {
-          description: `Your OTP verification code is ${newChallenge.code}. It is valid for 5 minutes.`,
-          duration: 10000,
-        });
-      }
     } else {
       toast.error(
         res.error ??
@@ -195,62 +182,6 @@ function OtpScreen() {
           </div>
         )}
 
-        {challenge.code && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex flex-col gap-1.5 shadow-[var(--shadow-low)]">
-            <div className="flex items-center gap-2 text-primary">
-              <span className="text-base animate-pulse">💬</span>
-              <span className="type-label-large font-bold">
-                Simulated {challenge.deliveryMethod?.toUpperCase() || "SMS"} Delivery
-              </span>
-            </div>
-            <Text variant="bodySmall" tone="secondary">
-              Your verification code is{" "}
-              <span className="font-mono font-bold text-text-primary text-base bg-surface px-2 py-0.5 rounded border border-divider">
-                {challenge.code}
-              </span>
-              .
-            </Text>
-          </div>
-        )}
-
-        {/* Fallback channel switcher card */}
-        <div className="rounded-2xl border border-divider bg-surface/50 p-4 flex flex-col gap-3">
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 mt-0.5">
-              <AlertCircle className="h-4 w-4" />
-            </div>
-            <div className="flex-1">
-              <Text variant="bodySmall" className="font-semibold text-text-primary">
-                Having trouble receiving the code?
-              </Text>
-              <Text variant="caption" tone="secondary">
-                You are currently sending via{" "}
-                <span className="capitalize">{challenge.deliveryMethod || "SMS"}</span>
-              </Text>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleFallbackSwitch()}
-            disabled={isFallbackSwitching}
-            className="flex items-center justify-center gap-2 rounded-xl bg-primary/5 py-2.5 px-4 text-xs font-bold text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            {isFallbackSwitching ? (
-              <span className="animate-spin">🔄</span>
-            ) : challenge.deliveryMethod === "whatsapp" ? (
-              <>
-                <Smartphone className="h-3.5 w-3.5" />
-                Deliver via SMS instead
-              </>
-            ) : (
-              <>
-                <MessageCircle className="h-3.5 w-3.5" />
-                Deliver via WhatsApp instead
-              </>
-            )}
-          </button>
-        </div>
-
         <AppButton
           fullWidth
           size="lg"
@@ -276,6 +207,9 @@ function OtpScreen() {
             </Text>
           )}
         </div>
+        
+        {/* Invisible reCAPTCHA container required for Firebase Phone Auth resend */}
+        <div id="recaptcha-container" />
       </div>
     </AppShell>
   );

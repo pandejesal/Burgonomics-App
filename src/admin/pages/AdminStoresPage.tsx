@@ -58,6 +58,7 @@ import {
   WeeklySchedule,
 } from "./storesData";
 import { useAdminAuthStore } from "@/admin/store/adminAuthStore";
+import { adminStoresService } from "../services/adminStoresService";
 
 type ViewTab = "list" | "grid" | "radar";
 type RoleType = "Developer" | "Operations" | "Store Manager" | "Finance";
@@ -67,19 +68,36 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
   isCreate: initialIsCreate,
 }) => {
   // Persistence state
-  const [stores, setStores] = useState<RichStore[]>(() => {
-    const cached = localStorage.getItem("burgonomics_rich_stores_directory");
-    return cached ? JSON.parse(cached) : INITIAL_RICH_STORES;
-  });
+  const [stores, setStores] = useState<RichStore[]>([]);
+  const [isLoadingStores, setIsLoadingStores] = useState(true);
 
-  const saveStores = (updated: RichStore[]) => {
+  useEffect(() => {
+    async function loadStores() {
+      setIsLoadingStores(true);
+      const res = await adminStoresService.listStores();
+      if (res.success && res.data.length > 0) {
+        setStores(res.data);
+      } else {
+        setStores([]);
+      }
+      setIsLoadingStores(false);
+    }
+    void loadStores();
+  }, []);
+
+  const saveStores = async (updated: RichStore[]) => {
     setStores(updated);
-    localStorage.setItem("burgonomics_rich_stores_directory", JSON.stringify(updated));
+    // In a real app we'd update specific stores, but for this prototype we'll bulk update
+    // or we can just update the ones that changed. Let's do bulk for now since it mirrors the localstorage behavior
+    await adminStoresService.bulkUpsert(updated);
   };
 
-  // RBAC Role Simulation for testing
-  const [selectedRole, setSelectedRole] = useState<RoleType>("Developer");
-  const [managerAssignedStoreId, setManagerAssignedStoreId] = useState<string>("str_001");
+  // Use real Admin Auth Role
+  const { admin } = useAdminAuthStore();
+  const selectedRole = (admin?.role?.name as RoleType) || "Developer";
+  
+  // Real apps might store the assigned store in the user profile/claims
+  const managerAssignedStoreId = admin?.assignedStoreId || "str_001";
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -237,7 +255,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
       }
       return s;
     });
-    saveStores(updated);
+    void saveStores(updated);
     toast.success(
       `Store "${confirmToggleStore.name}" is now ${!confirmToggleStore.isOpen ? "OPEN" : "CLOSED"}`,
     );
@@ -259,7 +277,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
       }
       return s;
     });
-    saveStores(updated);
+    void saveStores(updated);
     const target = updated.find((s) => s.id === storeId);
     if (target) {
       toast.success(
@@ -292,7 +310,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
         }
         return s;
       });
-      saveStores(updated);
+      void saveStores(updated);
       setSyncingStoreId(null);
       toast.dismiss();
       toast.success("Petpooja Menu synced successfully!");
@@ -320,7 +338,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
         }
         return s;
       });
-      saveStores(updated);
+      void saveStores(updated);
       setIsSyncingAll(false);
       toast.dismiss();
       toast.success(`Batch synchronization completed for ${filteredStores.length} stores.`);
@@ -431,7 +449,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
     };
 
     const updated = [newStore, ...stores];
-    saveStores(updated);
+    void saveStores(updated);
     setIsCreating(false);
     setActiveStoreId(newId);
     toast.success(`Store "${newStoreName}" successfully registered on Petpooja mapping!`);
@@ -472,7 +490,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
       return s;
     });
 
-    saveStores(updated);
+    void saveStores(updated);
     setShowAddStaffModal(false);
     setNewStaffName("");
     setNewStaffPhone("");
@@ -491,7 +509,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
       }
       return s;
     });
-    saveStores(updated);
+    void saveStores(updated);
     toast.success("Staff member unassigned from store roster.");
   };
 
@@ -543,28 +561,6 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
 
   return (
     <div className="space-y-6 font-sans">
-      {/* Simulation Header with Role Toggles */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-orange-200 bg-orange-50/50 p-4 dark:border-orange-950/20 dark:bg-orange-950/5">
-        <div className="flex items-center gap-2 text-sm text-orange-800 dark:text-orange-400 font-bold">
-          <ShieldAlert size={18} className="animate-pulse" />
-          <span>RBAC LOGISTICS ROLE SWITCHER (SIMULATION):</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {(["Developer", "Operations", "Store Manager", "Finance"] as RoleType[]).map((role) => (
-            <button
-              key={role}
-              onClick={() => setSelectedRole(role)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-black transition-all ${
-                selectedRole === role
-                  ? "bg-[#FF6600] text-white shadow-sm"
-                  : "bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
-              }`}
-            >
-              {role.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <PageHeader
         title="Burgonomics Enterprise Outlets"
@@ -580,8 +576,14 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
             exit={{ opacity: 0, y: -10 }}
             className="space-y-6"
           >
-            {/* KPI STATS ROW */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {isLoadingStores ? (
+              <div className="flex h-64 items-center justify-center">
+                <RotateCw className="animate-spin text-orange-500" size={32} />
+              </div>
+            ) : (
+              <>
+                {/* KPI STATS ROW */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 title="Active Directory Locations"
                 value={`${stats.open} / ${stats.total}`}
@@ -1190,6 +1192,8 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
                   </div>
                 )}
               </div>
+            )}
+              </>
             )}
           </motion.div>
         ) : isCreating ? (

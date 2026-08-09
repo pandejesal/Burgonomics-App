@@ -182,7 +182,7 @@ ${details.technicalDetails || "None provided"}`;
           <h1 className="type-headline-medium mt-4 font-bold text-text-primary">{displayTitle}</h1>
 
           {/* Description */}
-          <p className="type-body-medium mt-2 text-text-secondary leading-relaxed max-w-md">
+          <p className="type-body-medium mt-2 text-text-secondary leading-relaxed w-full max-w-md">
             {displayDescription}
           </p>
 

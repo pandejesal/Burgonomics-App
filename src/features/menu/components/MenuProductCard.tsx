@@ -231,7 +231,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
             aria-label={`Add ${name} to cart`}
             className={cn(
               "min-h-[36px] rounded-full border border-primary px-4 type-label-large text-primary bg-surface",
-              "hover:bg-primary/5 active:scale-[0.95] transition duration-150 disabled:opacity-40",
+              "hover:bg-primary/5 active:scale-[0.95] transition duration-150 disabled:opacity-40 whitespace-nowrap shrink-0",
             )}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}

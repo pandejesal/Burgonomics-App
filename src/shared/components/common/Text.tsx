@@ -22,8 +22,8 @@ const map: Record<Level, string> = {
   titleLarge: "type-title-large",
   titleMedium: "type-title-medium",
   bodyLarge: "type-body-large",
-  bodyMedium: "type-body-medium",
-  bodySmall: "type-body-small",
+  bodyMedium: "type-body",
+  bodySmall: "type-body-sm",
   labelLarge: "type-label-large",
   caption: "type-caption",
 };

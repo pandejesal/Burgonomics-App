@@ -16,7 +16,7 @@ export function AppBadge({ tone = "primary", className, ...rest }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 type-caption",
+        "inline-flex items-center justify-center rounded-full px-2 py-0.5 type-caption whitespace-nowrap shrink-0",
         tones,
         className,
       )}

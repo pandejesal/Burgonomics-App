@@ -28,7 +28,6 @@ import { profileRepository } from "@/features/profile/repositories/ProfileReposi
 import { APP } from "@/core/constants/app";
 import { logger } from "@/core/logging/logger";
 import { BrandMascot } from "@/shared/components/common/BrandMascot";
-import { DebugPanel } from "@/features/demo";
 import { appConfig, isProd } from "@/core/config/env";
 import { GlobalErrorBoundary, GlobalErrorFallback } from "@/shared/components/error";
 import { getPlatform } from "@/shared/platform/platform";
@@ -223,7 +222,7 @@ function RootComponent() {
       <QueryClientProvider client={queryClient}>
         <Outlet />
         <AppToaster />
-        <DebugPanel />
+        <div id="recaptcha-container"></div>
       </QueryClientProvider>
     </GlobalErrorBoundary>
   );

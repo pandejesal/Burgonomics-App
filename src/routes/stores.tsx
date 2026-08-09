@@ -115,27 +115,6 @@ function StoreSelectionPage() {
     }
   };
 
-  const SIMULATION_PRESETS = useMemo(
-    () => [
-      { name: "Navrangpura (Ahmd)", coords: { lat: 23.0372, lng: 72.5619 } },
-      { name: "Mansi Circle (Ahmd)", coords: { lat: 23.0221, lng: 72.5282 } },
-      { name: "Science City (Ahmd)", coords: { lat: 23.0728, lng: 72.5028 } },
-      { name: "Nikol (Ahmd)", coords: { lat: 23.0454, lng: 72.6718 } },
-      { name: "South Bopal (Ahmd)", coords: { lat: 23.0116, lng: 72.4822 } },
-      { name: "Vadodara Nizampura", coords: { lat: 22.3332, lng: 73.1818 } },
-      { name: "Surat Pal Road", coords: { lat: 21.1817, lng: 72.7824 } },
-      { name: "Lucknow Food Valley", coords: { lat: 26.8488, lng: 80.9765 } },
-    ],
-    [],
-  );
-
-  const handleSimulate = async (preset: { name: string; coords: { lat: number; lng: number } }) => {
-    permission.simulateLocation(preset.coords);
-    await loadNearby(preset.coords);
-    toast.success(`Location simulated: ${preset.name}`, {
-      description: `GPS coordinates updated to ${preset.coords.lat.toFixed(4)}, ${preset.coords.lng.toFixed(4)}`,
-    });
-  };
 
   // Initial load — try location first; fall back to a coord-less list.
   useEffect(() => {
@@ -423,64 +402,8 @@ function StoreSelectionPage() {
               <div className="flex items-center justify-between">
                 <Text variant="caption" tone="secondary" className="flex items-center gap-1">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Showing stores near you {permission.isMock && "(Simulated)"}.
+                  Showing stores near you.
                 </Text>
-                {permission.isMock && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void onUseLocation();
-                    }}
-                    className="text-[11px] font-semibold text-primary hover:underline"
-                  >
-                    Use Device GPS
-                  </button>
-                )}
-              </div>
-
-              {/* Simulation Preset Selector */}
-              <div className="space-y-1.5 rounded-xl bg-primary/5 p-3 border border-primary/10">
-                <div className="flex items-center justify-between">
-                  <Text variant="caption" className="font-semibold text-primary block">
-                    Simulate Location / Test Distances
-                  </Text>
-                  {coords && (
-                    <span className="text-[9px] font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">
-                      {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
-                    </span>
-                  )}
-                </div>
-                <Text
-                  variant="caption"
-                  tone="secondary"
-                  className="text-[11px] block leading-normal mb-2"
-                >
-                  Select a preset area to calculate exact store-to-user distances and sorting
-                  instantly.
-                </Text>
-                <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-3 px-3 scrollbar-none snap-x">
-                  {SIMULATION_PRESETS.map((p) => {
-                    const isSelected =
-                      coords &&
-                      Math.abs(coords.lat - p.coords.lat) < 0.001 &&
-                      Math.abs(coords.lng - p.coords.lng) < 0.001;
-
-                    return (
-                      <button
-                        key={p.name}
-                        type="button"
-                        onClick={() => void handleSimulate(p)}
-                        className={`snap-center shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-all duration-150 ${
-                          isSelected
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "bg-surface text-text-secondary border border-divider hover:border-primary/30 hover:text-text"
-                        }`}
-                      >
-                        {p.name}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
             </div>
           )}

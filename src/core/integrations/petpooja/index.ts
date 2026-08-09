@@ -111,6 +111,17 @@ export const petpoojaAdapter: PetpoojaAdapter = {
       };
     }
 
+    try {
+      const { db } = await import("@/core/config/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      await setDoc(doc(db, "petpooja_orders", orderId), {
+        ...payload,
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn("Failed to sync order to Firebase:", e);
+    }
+
     return {
       acknowledged: true,
       kotNumber,

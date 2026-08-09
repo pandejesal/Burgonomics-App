@@ -11,7 +11,7 @@
  * validation + latency simulation so the swap to HTTP is a body-only
  * change per method.
  */
-import { delay, fail, ok, type ApiResult } from "@/core/network/http";
+import { fail, ok, type ApiResult } from "@/core/network/http";
 import type { Address, AddressInput } from "@/features/addresses/models";
 
 function validate(input: AddressInput): string | null {
@@ -25,42 +25,90 @@ let counter = 0;
 const nextId = () => `addr_${Date.now().toString(36)}_${(++counter).toString(36)}`;
 
 export const addressService = {
+  async list(): Promise<ApiResult<Address[]>> {
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { collection, getDocs } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (!user) return ok([]);
+      
+      const snap = await getDocs(collection(db, `users/${user.uid}/addresses`));
+      const addresses: Address[] = [];
+      snap.forEach(doc => {
+        addresses.push(doc.data() as Address);
+      });
+      return ok(addresses);
+    } catch (error: any) {
+      console.warn("Firestore address list error:", error);
+      return ok([]);
+    }
+  },
+
   async create(input: AddressInput): Promise<ApiResult<Address>> {
-    await delay(150);
     const err = validate(input);
     if (err) return fail("INVALID_ADDRESS", err);
+    
     const created: Address = {
       id: nextId(),
       isDefault: input.isDefault ?? false,
       ...input,
     };
+
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (user) {
+        await setDoc(doc(db, `users/${user.uid}/addresses`, created.id), created);
+      }
+    } catch (error: any) {
+      console.warn("Firestore address create error:", error);
+    }
+    
     return ok(created);
   },
 
   async update(id: string, patch: Partial<AddressInput>): Promise<ApiResult<Partial<Address>>> {
-    await delay(150);
     if (patch.contactPhone && !/^\d{10}$/.test(patch.contactPhone)) {
       return fail("INVALID_PHONE", "Enter a valid 10-digit phone.");
     }
     if (patch.pincode && !/^\d{6}$/.test(patch.pincode)) {
       return fail("INVALID_PINCODE", "Enter a valid 6-digit pincode.");
     }
+
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { doc, updateDoc } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (user) {
+        await updateDoc(doc(db, `users/${user.uid}/addresses`, id), patch);
+      }
+    } catch (error: any) {
+      console.warn("Firestore address update error:", error);
+    }
+
     return ok({ id, ...patch });
   },
 
   async remove(id: string): Promise<ApiResult<{ id: string }>> {
-    await delay(120);
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { doc, deleteDoc } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (user) {
+        await deleteDoc(doc(db, `users/${user.uid}/addresses`, id));
+      }
+    } catch (error: any) {
+      console.warn("Firestore address delete error:", error);
+    }
     return ok({ id });
   },
 
   async setDefault(id: string): Promise<ApiResult<{ id: string }>> {
-    await delay(100);
     return ok({ id });
   },
 
-  /** Repo-driven prompts for the "Delivery instructions" quick-picks. */
   async listDeliveryInstructionPresets(): Promise<ApiResult<string[]>> {
-    await delay(50);
     return ok([
       "Ring the bell",
       "Call on arrival",

@@ -8,6 +8,9 @@ import { AppButton } from "../common/AppButton";
 import { useDemoStore } from "@/features/demo/state/demoStore";
 import { useMenuStore } from "@/features/menu/state/menuStore";
 import { toast } from "sonner";
+import { db } from "@/core/config/firebase";
+import { collection, writeBatch, doc } from "firebase/firestore";
+import { SAMPLE_CATEGORIES, SAMPLE_PRODUCTS } from "@/features/menu/data/petpoojaSampleData";
 
 interface PetpoojaSyncPlaceholderProps {
   storeId?: string;
@@ -27,24 +30,42 @@ export function PetpoojaSyncPlaceholder({
 
   const handleSimulateSync = async () => {
     setIsSyncing(true);
-    toast.info("Connecting to Petpooja POS server...", { duration: 1500 });
+    toast.info("Exporting mock menu to Firebase (Petpooja Webhook)...", { duration: 1500 });
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1800));
+    try {
+      const batch = writeBatch(db);
+      
+      // Upload Categories
+      const categoriesRef = collection(db, "petpooja_categories");
+      for (const cat of SAMPLE_CATEGORIES) {
+        batch.set(doc(categoriesRef, cat.id), cat);
+      }
+      
+      // Upload Products
+      const productsRef = collection(db, "petpooja_products");
+      for (const prod of SAMPLE_PRODUCTS) {
+        batch.set(doc(productsRef, prod.id), prod);
+      }
 
-    setSimulationMode(true);
-    if (storeId) {
-      await loadMenu(storeId, { refresh: true });
-    }
+      await batch.commit();
 
-    setIsSyncing(false);
-    toast.success("Petpooja menu sync complete!", {
-      description: "Successfully synced categories, products, and addons.",
-      duration: 3000,
-    });
+      setSimulationMode(true);
+      if (storeId) {
+        await loadMenu(storeId, { refresh: true });
+      }
 
-    if (onSyncComplete) {
-      onSyncComplete();
+      toast.success("Petpooja menu exported to Firebase!", {
+        description: "Successfully synced categories, products, and addons to cloud.",
+        duration: 3000,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Firebase Sync Failed", { description: "Ensure Firestore is enabled and rules allow writes." });
+    } finally {
+      setIsSyncing(false);
+      if (onSyncComplete) {
+        onSyncComplete();
+      }
     }
   };
 
@@ -64,7 +85,7 @@ export function PetpoojaSyncPlaceholder({
 
   return (
     <div
-      className={`flex flex-col items-center justify-center px-6 py-12 text-center max-w-lg mx-auto ${className || ""}`}
+      className={`flex flex-col items-center justify-center px-6 py-12 text-center w-full max-w-lg mx-auto ${className || ""}`}
     >
       {/* Visual Container */}
       <div className="relative mb-8">

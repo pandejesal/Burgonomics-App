@@ -31,7 +31,8 @@ import { PageHeader } from "../components/Headers";
 import { AdminCard } from "../components/Cards";
 import { AdminButton } from "../components/Buttons";
 import { StatusBadge } from "../components/Badges";
-import { paymentStorage, PaymentTransaction } from "./paymentsData";
+import { paymentStorage, PaymentTransaction, TransactionDetails } from "./paymentsData";
+import { adminPaymentsService } from "../services/adminPaymentsService";
 import { useAdmin } from "../hooks/useAdmin";
 import { toast } from "sonner";
 
@@ -40,11 +41,17 @@ export const AdminPaymentsPage: React.FC = () => {
   const { role, isDeveloper } = useAdmin();
 
   // Real-time state subscription
-  const [txns, setTxns] = useState<PaymentTransaction[]>(paymentStorage.getTransactions());
+  const [txns, setTxns] = useState<TransactionDetails[]>([]);
   useEffect(() => {
-    return paymentStorage.subscribe(() => {
-      setTxns([...paymentStorage.getTransactions()]);
-    });
+    const unsubscribe = adminPaymentsService.listenLiveTransactions(
+      (data) => setTxns(data),
+      (err) => {
+        console.error("Live transaction listener error:", err);
+        toast.error("Failed to connect to live payment stream.");
+      },
+      200
+    );
+    return () => unsubscribe();
   }, []);
 
   // Search & Filters state
@@ -56,9 +63,8 @@ export const AdminPaymentsPage: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState("all");
   const [amountRange, setAmountRange] = useState("all");
 
-  // Live Auto Refresh state
+  // Live Auto Refresh state (UI only, data is real-time now)
   const [isLiveActive, setIsLiveActive] = useState(true);
-  const [countdown, setCountdown] = useState(15);
   const [pulseLive, setPulseLive] = useState(false);
 
   // Filter Store Managers to only see their store
@@ -72,39 +78,7 @@ export const AdminPaymentsPage: React.FC = () => {
     }
   }, [isStoreManager]);
 
-  // Live Auto Refresh logic (simulation of incoming webhooks)
-  useEffect(() => {
-    if (!isLiveActive) return;
-
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          // Trigger mock auto-refresh effect
-          setPulseLive(true);
-          setTimeout(() => setPulseLive(false), 800);
-
-          // Randomly simulate a webhook alert or transaction update
-          const chance = Math.random();
-          if (chance < 0.25) {
-            toast.info("Live payment handshake completed via Razorpay webhook loop.", {
-              description: "Checked transaction cache keys.",
-            });
-          } else if (chance < 0.35) {
-            toast.error("Alert: Potential payment timeout signature detected on checkout loop.", {
-              description: "Trace logs updated on Redis cluster.",
-            });
-          }
-
-          return 15;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isLiveActive]);
-
-  // Handle Manual Force Sync
+  // Handle Manual Force Sync (Mocked for UI feel, but actual sync is automatic)
   const handleForceSync = () => {
     toast.loading("Initiating handshake sync with Razorpay clusters...");
     setTimeout(() => {
@@ -282,18 +256,24 @@ export const AdminPaymentsPage: React.FC = () => {
 
         {/* Real-time Indicator Panel */}
         <div className="flex flex-wrap items-center gap-3 self-start md:self-center">
-          <div className="flex items-center gap-2 rounded-2xl bg-white dark:bg-[#1A1A1A] border border-gray-100 dark:border-gray-800/80 px-4 py-2 text-xs font-bold shadow-sm">
-            <span className="relative flex h-2 w-2">
+          <div
+            className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all ${
+              isLiveActive
+                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900/30 dark:bg-green-900/20 dark:text-green-400"
+                : "border-gray-200 bg-gray-50 text-gray-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400"
+            }`}
+          >
+            <div className="relative flex h-2 w-2">
+              {isLiveActive && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+              )}
               <span
-                className={`absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 ${isLiveActive ? "animate-ping" : ""}`}
+                className={`relative inline-flex h-2 w-2 rounded-full ${isLiveActive ? "bg-green-500" : "bg-gray-400"}`}
               ></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-gray-400 font-medium">LIVE REFRESH:</span>
             <span
               className={`font-mono transition-all ${pulseLive ? "text-[#FF6600] scale-110 font-black" : "text-gray-900 dark:text-white"}`}
             >
-              {countdown}s
+              Live
             </span>
             <button
               onClick={() => setIsLiveActive(!isLiveActive)}

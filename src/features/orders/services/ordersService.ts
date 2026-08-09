@@ -186,7 +186,6 @@ function shortCode(id: string): string {
 
 export const ordersService = {
   async createOrder(input: CreateOrderInput): Promise<ApiResult<Order>> {
-    await delay(180);
     // Demo-only simulated failure paths — see DebugPanel > Errors.
     const { shouldSimulate, useDemoStore } = await import("@/features/demo/state/demoStore");
     if (shouldSimulate("stock_unavailable")) {
@@ -254,15 +253,60 @@ export const ordersService = {
       console.warn("ordersService: Petpooja push failed silently:", err);
     }
 
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (user) {
+        await setDoc(doc(db, "orders", id), {
+          ...order,
+          userId: user.uid
+        });
+      }
+    } catch (err) {
+      console.warn("ordersService: Firestore sync failed:", err);
+    }
+
     orders.set(id, order);
     progression.set(id, { PLACED: nowIso });
     return ok(order);
   },
 
   async listOrders(query: OrderListQuery = {}): Promise<ApiResult<OrderListResult>> {
-    await delay(200);
+    let all: Order[] = [];
+
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { collection, getDocs, query: fsQuery, where } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      
+      if (user) {
+        const ordersRef = collection(db, "orders");
+        const q = fsQuery(ordersRef, where("userId", "==", user.uid));
+        const snapshot = await getDocs(q);
+        
+        const fsOrders: Order[] = [];
+        snapshot.forEach(doc => {
+          const data = doc.data() as any;
+          // Ensure we don't accidentally leak userId in the frontend Order model
+          const { userId, ...orderData } = data;
+          fsOrders.push(orderData as Order);
+        });
+
+        // Merge with memory map for the demo (to allow tickOrder progress)
+        for (const order of fsOrders) {
+          if (!orders.has(order.id)) {
+            orders.set(order.id, order);
+            progression.set(order.id, { PLACED: order.placedAt });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("ordersService: Firestore read failed, falling back to memory:", err);
+    }
+
     // Advance every order's status before returning.
-    const all = Array.from(orders.values()).map(tickOrder);
+    all = Array.from(orders.values()).map(tickOrder);
 
     let filtered = all;
     if (query.bucket) {
@@ -307,14 +351,31 @@ export const ordersService = {
   },
 
   async getOrder(id: string): Promise<ApiResult<Order | null>> {
-    await delay(150);
+    // If not in memory, try fetching from Firestore
+    if (!orders.has(id)) {
+      try {
+        const { db } = await import("@/core/config/firebase");
+        const { doc, getDoc } = await import("firebase/firestore");
+        const snap = await getDoc(doc(db, "orders", id));
+        if (snap.exists()) {
+          const data = snap.data();
+          const { userId, ...orderData } = data;
+          orders.set(id, orderData as Order);
+          progression.set(id, { PLACED: orderData.placedAt });
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
     const existing = orders.get(id);
     if (!existing) return ok(null);
     return ok(tickOrder(existing));
   },
 
   async getTracking(id: string): Promise<ApiResult<OrderTrackingSnapshot | null>> {
-    await delay(120);
+    if (!orders.has(id)) {
+      await this.getOrder(id); // load to memory if exists in FS
+    }
     const existing = orders.get(id);
     if (!existing) return ok(null);
     const order = tickOrder(existing);

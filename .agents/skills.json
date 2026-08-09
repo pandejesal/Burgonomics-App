@@ -12,6 +12,7 @@
     { "path": "vendor/lucide-animated-skill/skills" },
     { "path": "vendor/mobile-app-ui-design" },
     { "path": "vendor/swift-ios" },
-    { "path": "vendor/debug-skill" }
+    { "path": "vendor/debug-skill" },
+    { "path": "vendor/firestore-native/skills" }
   ]
 }

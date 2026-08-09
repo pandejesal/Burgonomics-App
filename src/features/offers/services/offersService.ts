@@ -1,37 +1,10 @@
-/**
- * OffersService — mock transport layer for offer discovery, coupon
- * validation, and application.
- *
- * Every method mirrors a future REST endpoint:
- *   GET  /v1/offers?storeId=&fulfillment=       → list
- *   GET  /v1/offers/:offerId                    → get
- *   POST /v1/offers/validate                    → validateCoupon
- *   POST /v1/cart/offers                        → apply
- *   DELETE /v1/cart/offers                      → remove
- *
- * All returned data is BACKEND-SHAPED — no discount calculation
- * happens here. Swap the mock bodies for real HTTP calls without any
- * UI or state change.
- */
-import { delay, fail, ok, type ApiResult } from "@/core/network/http";
+import { fail, ok, type ApiResult } from "@/core/network/http";
+import { db } from "@/core/config/firebase";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import type { AppliedOffer, Offer, OfferBundle } from "@/features/offers/models";
 import type { Fulfillment } from "@/features/stores/models/Store";
-import { SAMPLE_OFFERS } from "@/features/offers/data/sampleOffers";
-import { useDemoStore, shouldSimulate } from "@/features/demo/state/demoStore";
 
-/**
- * Refresh cadence promised by the backend (PETPOOJA sync every ~5m).
- * Consumers use this to expire the client cache.
- */
 const REFRESH_INTERVAL_SECONDS = 300;
-
-/**
- * Offer catalogue. In demo/simulation mode this returns the PETPOOJA-
- * shaped sample offers so the checkout flow can be exercised end to
- * end. In production the array is empty until the real
- * `GET /v1/offers` endpoint replaces this service.
- */
-const catalogue = (): Offer[] => SAMPLE_OFFERS;
 
 export interface ListOffersInput {
   storeId?: string;
@@ -46,7 +19,20 @@ export interface ApplyOfferInput {
   subtotal: number;
 }
 
-/** Simple deterministic mock discount computation for placeholder demo. */
+async function fetchOffersFromFirebase(): Promise<Offer[]> {
+  try {
+    const snap = await getDocs(collection(db, "petpooja_offers"));
+    const offers: Offer[] = [];
+    snap.forEach((docSnap) => {
+      offers.push(docSnap.data() as Offer);
+    });
+    return offers;
+  } catch (error) {
+    console.error("Failed to fetch offers from Firebase:", error);
+    return [];
+  }
+}
+
 function mockComputeDiscount(offer: Offer, subtotal: number): number {
   const d = offer.discount;
   if (d.mode === "percent" && typeof d.value === "number") {
@@ -60,7 +46,7 @@ function mockComputeDiscount(offer: Offer, subtotal: number): number {
 }
 
 function matchesContext(offer: Offer, input: ListOffersInput): boolean {
-  const { applicableFulfillments, applicableStoreIds } = offer.eligibility;
+  const { applicableFulfillments, applicableStoreIds } = offer.eligibility || {};
   if (
     applicableFulfillments &&
     input.fulfillment &&
@@ -76,10 +62,11 @@ function matchesContext(offer: Offer, input: ListOffersInput): boolean {
 
 export const offersService = {
   async list(input: ListOffersInput = {}): Promise<ApiResult<OfferBundle>> {
-    await delay(220);
-    const offers = catalogue()
+    const allOffers = await fetchOffersFromFirebase();
+    const offers = allOffers
       .filter((o) => matchesContext(o, input))
       .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+
     return ok({
       offers,
       fetchedAt: new Date().toISOString(),
@@ -88,30 +75,32 @@ export const offersService = {
   },
 
   async get(offerId: string): Promise<ApiResult<Offer>> {
-    await delay(120);
-    const offer = catalogue().find((o) => o.id === offerId);
-    if (!offer) return fail("OFFER_NOT_FOUND", "Offer no longer available.");
-    return ok(offer);
+    try {
+      const snap = await getDoc(doc(db, "petpooja_offers", offerId));
+      if (!snap.exists()) return fail("OFFER_NOT_FOUND", "Offer no longer available.");
+      return ok(snap.data() as Offer);
+    } catch (e) {
+      return fail("OFFER_ERROR", "Failed to fetch offer details.");
+    }
   },
 
   async validateCoupon(
     code: string,
     input: Omit<ApplyOfferInput, "code" | "offerId">,
   ): Promise<ApiResult<Offer>> {
-    await delay(280);
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) return fail("INVALID_CODE", "Enter a coupon code.");
-    if (shouldSimulate("coupon_invalid")) {
-      return fail("COUPON_INVALID_SIM", "Simulated: this coupon is invalid.", false);
-    }
-    const offer = catalogue().find((o) => (o.code ?? "").toUpperCase() === trimmed);
+
+    const allOffers = await fetchOffersFromFirebase();
+    const offer = allOffers.find((o) => (o.code ?? "").toUpperCase() === trimmed);
+
     if (!offer) {
       return fail("COUPON_NOT_FOUND", `"${trimmed}" isn't a valid coupon.`, false);
     }
     if (offer.status !== "active") {
       return fail("COUPON_INACTIVE", "This coupon is no longer active.", false);
     }
-    if (offer.eligibility.minOrderValue && input.subtotal < offer.eligibility.minOrderValue) {
+    if (offer.eligibility?.minOrderValue && input.subtotal < offer.eligibility.minOrderValue) {
       return fail(
         "MIN_ORDER_NOT_MET",
         `Add items worth ₹${offer.eligibility.minOrderValue - input.subtotal} more to unlock this offer.`,
@@ -129,16 +118,18 @@ export const offersService = {
   },
 
   async apply(input: ApplyOfferInput): Promise<ApiResult<AppliedOffer>> {
-    await delay(260);
     let offer: Offer | undefined;
+    const allOffers = await fetchOffersFromFirebase();
+
     if (input.offerId) {
-      offer = catalogue().find((o) => o.id === input.offerId);
+      offer = allOffers.find((o) => o.id === input.offerId);
     } else if (input.code) {
       const trimmed = input.code.trim().toUpperCase();
-      offer = catalogue().find((o) => (o.code ?? "").toUpperCase() === trimmed);
+      offer = allOffers.find((o) => (o.code ?? "").toUpperCase() === trimmed);
     }
+
     if (!offer) return fail("OFFER_NOT_FOUND", "Offer not found.");
-    if (offer.eligibility.minOrderValue && input.subtotal < offer.eligibility.minOrderValue) {
+    if (offer.eligibility?.minOrderValue && input.subtotal < offer.eligibility.minOrderValue) {
       return fail(
         "MIN_ORDER_NOT_MET",
         `Minimum order of ₹${offer.eligibility.minOrderValue} required.`,
@@ -147,19 +138,19 @@ export const offersService = {
     if (!matchesContext(offer, input)) {
       return fail("OFFER_INELIGIBLE", "This offer isn't available right now.");
     }
-    const discount = mockComputeDiscount(offer, input.subtotal);
+
+    const discountAmount = mockComputeDiscount(offer, input.subtotal);
     return ok({
       offerId: offer.id,
       code: offer.code ?? offer.id,
       title: offer.title,
-      discount,
-      savingsLabel: discount > 0 ? `You saved ₹${discount}` : offer.discount.label,
+      discount: discountAmount,
+      savingsLabel: discountAmount > 0 ? `You saved ₹${discountAmount}` : (offer.discount?.label ?? ""),
       type: offer.type,
     });
   },
 
   async remove(_offerId: string): Promise<ApiResult<null>> {
-    await delay(120);
     return ok(null);
   },
 };

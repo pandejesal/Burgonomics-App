@@ -55,7 +55,7 @@ export class GlobalErrorBoundary extends React.Component<Props, State> {
           role="alert"
           className="flex min-h-[100dvh] w-full flex-col items-center justify-center bg-background px-6 py-12 text-center"
         >
-          <div className="mx-auto flex max-w-sm flex-col items-center gap-6">
+          <div className="mx-auto flex w-full max-w-sm flex-col items-center gap-6">
             <div className="grid h-16 w-16 place-items-center rounded-2xl bg-error/10 text-error">
               <AlertTriangle className="h-8 w-8" />
             </div>

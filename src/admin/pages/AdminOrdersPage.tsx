@@ -40,6 +40,8 @@ import { AdminButton } from "../components/Buttons";
 import { ConfirmDialog } from "../components/Utilities";
 import { motion, AnimatePresence } from "motion/react";
 import { INITIAL_RICH_ORDERS, RichOrder, getThermalReceiptText } from "./ordersData";
+import { adminOrdersService } from "../services/adminOrdersService";
+import { useAdminAuthStore } from "@/admin/store/adminAuthStore";
 
 interface AdminOrdersPageProps {
   defaultTab?: "live" | "history";
@@ -87,20 +89,55 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
   defaultTab = "live",
   defaultOrderId,
 }) => {
+  // Use real Admin Auth Role
+  const { admin } = useAdminAuthStore();
+  const selectedRole = (admin?.role?.name as "Developer" | "Operations" | "Store Manager" | "Finance") || "Developer";
+  
+  // Real apps might store the assigned store in the user profile/claims
+  const managerAssignedStoreId = admin?.assignedStoreId || "st_cp_delhi";
+  
   // Main states
-  const [orders, setOrders] = useState<RichOrder[]>(INITIAL_RICH_ORDERS);
+  const [orders, setOrders] = useState<RichOrder[]>([]);
   const [viewMode, setViewMode] = useState<"live" | "history">(defaultTab);
   const [selectedOrder, setSelectedOrder] = useState<RichOrder | null>(null);
 
   // Audio & Simulation controllers
   const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(true);
-  const [isSimulatorEnabled, setIsSimulatorEnabled] = useState<boolean>(false);
   const [newOrderAlert, setNewOrderAlert] = useState<boolean>(false);
 
   // Filters
   const [filterStore, setFilterStore] = useState<string>("all");
   const [filterFulfillment, setFilterFulfillment] = useState<string>("all");
   const [filterPayment, setFilterPayment] = useState<string>("all");
+
+  // Fetch Live Orders
+  useEffect(() => {
+    if (viewMode !== "live") return;
+    
+    // If user is Store Manager, restrict to their store. Otherwise, follow the filterStore UI selection.
+    const effectiveStoreFilter = selectedRole === "Store Manager" 
+      ? managerAssignedStoreId 
+      : (filterStore === "all" ? null : filterStore);
+
+    const unsubscribe = adminOrdersService.listenLiveOrders(
+      effectiveStoreFilter,
+      (liveOrders) => setOrders(liveOrders),
+      (err) => console.error("Error listening to live orders:", err)
+    );
+
+    return () => unsubscribe();
+  }, [viewMode, filterStore, selectedRole, managerAssignedStoreId]);
+
+  // Fetch Historical Orders
+  useEffect(() => {
+    if (viewMode !== "history") return;
+    
+    const effectiveStoreFilter = selectedRole === "Store Manager" 
+      ? managerAssignedStoreId 
+      : (filterStore === "all" ? null : filterStore);
+
+    adminOrdersService.getHistory(effectiveStoreFilter, 50).then(setOrders);
+  }, [viewMode, filterStore, selectedRole, managerAssignedStoreId]);
 
   // Confirm actions
   const [confirmAction, setConfirmAction] = useState<{
@@ -164,291 +201,36 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
     return { fresh, preps, completedToday, activeRevenue };
   }, [orders]);
 
-  // Real-Time Simulator Engine
-  useEffect(() => {
-    if (!isSimulatorEnabled) return;
 
-    const interval = setInterval(() => {
-      // 1. Spawning a new random order with 30% probability
-      if (Math.random() > 0.6) {
-        const randomNames = [
-          "Arjun Rao",
-          "Meera Nair",
-          "Siddharth Sen",
-          "Kriti Kapoor",
-          "Devendra Jha",
-        ];
-        const randomEmails = [
-          "arjun.rao@gmail.com",
-          "meera.nair@hotmail.com",
-          "siddharth@yahoo.com",
-          "kriti@gmail.com",
-          "dev@outlook.com",
-        ];
-        const nameSelected = randomNames[Math.floor(Math.random() * randomNames.length)];
-        const emailSelected = randomEmails[Math.floor(Math.random() * randomEmails.length)];
-        const orderIdNum = Math.floor(1000 + Math.random() * 9000);
-        const orderId = `BUR-${orderIdNum}`;
-        const isDelivery = Math.random() > 0.4;
 
-        const newOrder: RichOrder = {
-          id: orderId,
-          shortCode: `BG-${orderIdNum}`,
-          fulfillment: isDelivery ? "delivery" : Math.random() > 0.5 ? "takeaway" : "dinein",
-          placedAt: new Date().toISOString(),
-          customerEmail: emailSelected,
-          customerCohort: "Dine-In Regular",
-          orderStatus: "New",
-          paymentStatus: "Paid",
-          petpoojaStatus: "Pending",
-          notes: Math.random() > 0.5 ? "Add extra tissue papers and hot sauce." : undefined,
-          store: {
-            id: "st_cp_delhi",
-            name: "Connaught Place, Delhi",
-            address: "G-24, Connaught Circle, New Delhi",
-            area: "Connaught Place",
-            city: "Delhi",
-            phone: "+91 11 4356 7890",
-          },
-          address: isDelivery
-            ? {
-                label: "Home",
-                contactName: nameSelected,
-                contactPhone: "+91 99912 34567",
-                line1: "House 56, Sector 15",
-                city: "New Delhi",
-                state: "Delhi",
-                pincode: "110001",
-              }
-            : undefined,
-          items: [
-            {
-              lineId: "it_veg_cheese",
-              id: "it_veg_cheese",
-              productId: "it_veg_cheese",
-              storeId: "st_cp_delhi",
-              unitPrice: 180,
-              modifiers: [],
-              availability: "available",
-              name: "Classic Veg Cheese Burger",
-              price: 180,
-              quantity: 1,
-              customizations: [{ name: "Extra Cheese Slice", price: 25 }],
-            },
-          ],
-          totals: {
-            subtotal: 205,
-            itemDiscount: 0,
-            promoDiscount: 0,
-            taxes: 11,
-            deliveryFee: isDelivery ? 40 : 0,
-            packingFee: 15,
-            currency: "INR",
-            deliveryCharge: isDelivery ? 40 : 0,
-            packagingCharge: 15,
-            tax: 11,
-            discount: 0,
-            grandTotal: isDelivery ? 271 : 231,
-          },
-          payment: {
-            method: "upi",
-            label: "UPI · Instant Pay",
-            status: "paid",
-            transactionId: `pay_Rzp${generateSecureId(8)}`,
-            paidAt: new Date().toISOString(),
-          },
-          timeline: [
-            {
-              title: "Order Placed",
-              timestamp: new Date().toLocaleTimeString(),
-              actor: "Customer",
-              description: "Created through Simulated Client API",
-            },
-          ],
-        };
-
-        setOrders((prev) => [newOrder, ...prev]);
-        if (isSoundEnabled) playIncomingChime();
-      }
-
-      // 2. Advancing existing orders through their state lifecycle automatically
-      setOrders((prev) =>
-        prev.map((order) => {
-          // New -> Accepted (Auto)
-          if (order.orderStatus === "New" && Math.random() > 0.7) {
-            return {
-              ...order,
-              orderStatus: "Accepted",
-              timeline: [
-                ...order.timeline,
-                {
-                  title: "Order Accepted (Simulated)",
-                  timestamp: new Date().toLocaleTimeString(),
-                  actor: "Store Manager (Automated)",
-                  description: "Acknowledged and queued",
-                },
-              ],
-            };
-          }
-          // Accepted -> Preparing
-          if (order.orderStatus === "Accepted" && Math.random() > 0.7) {
-            return {
-              ...order,
-              orderStatus: "Preparing",
-              petpoojaStatus: "Synced",
-              petpoojaDetails: {
-                kotId: `KOT-${Math.floor(100000 + Math.random() * 900000)}`,
-                posOrderId: `PP-SIM-${order.id}`,
-                lastAttemptAt: new Date().toLocaleTimeString(),
-              },
-              timeline: [
-                ...order.timeline,
-                {
-                  title: "Preparation Started",
-                  timestamp: new Date().toLocaleTimeString(),
-                  actor: "Chef Sanjay",
-                  description: "KOT printed on Kitchen Printer 1",
-                },
-              ],
-            };
-          }
-          // Preparing -> Ready
-          if (order.orderStatus === "Preparing" && Math.random() > 0.8) {
-            return {
-              ...order,
-              orderStatus: "Ready",
-              timeline: [
-                ...order.timeline,
-                {
-                  title: "Dispatched to Counter",
-                  timestamp: new Date().toLocaleTimeString(),
-                  actor: "Kitchen Runner",
-                  description: "Hot order packed and scanned ready",
-                },
-              ],
-            };
-          }
-          // Ready -> Out for Delivery (if Delivery)
-          if (
-            order.orderStatus === "Ready" &&
-            order.fulfillment === "delivery" &&
-            Math.random() > 0.8
-          ) {
-            return {
-              ...order,
-              orderStatus: "Out for Delivery",
-              timeline: [
-                ...order.timeline,
-                {
-                  title: "Out for Delivery",
-                  timestamp: new Date().toLocaleTimeString(),
-                  actor: "Rider Ramesh",
-                  description: "Rider picked up order and headed out",
-                },
-              ],
-            };
-          }
-          // Ready -> Completed (if Takeaway/Dinein)
-          if (
-            order.orderStatus === "Ready" &&
-            order.fulfillment !== "delivery" &&
-            Math.random() > 0.8
-          ) {
-            return {
-              ...order,
-              orderStatus: "Completed",
-              timeline: [
-                ...order.timeline,
-                {
-                  title: "Handed Over to Customer",
-                  timestamp: new Date().toLocaleTimeString(),
-                  actor: "Cashier",
-                  description: "Order handed over. Receipt signed.",
-                },
-              ],
-            };
-          }
-          // Out for Delivery -> Completed
-          if (order.orderStatus === "Out for Delivery" && Math.random() > 0.8) {
-            return {
-              ...order,
-              orderStatus: "Completed",
-              timeline: [
-                ...order.timeline,
-                {
-                  title: "Delivered",
-                  timestamp: new Date().toLocaleTimeString(),
-                  actor: "Rider Ramesh",
-                  description: "Delivered to customer address",
-                },
-              ],
-            };
-          }
-
-          return order;
-        }),
-      );
-    }, 18000);
-
-    return () => clearInterval(interval);
-  }, [isSimulatorEnabled, isSoundEnabled]);
-
-  // Synchronous state updating function + audit logging write
-  const handleUpdateStatus = (
+  // Asynchronous state updating function + audit logging write
+  const handleUpdateStatus = async (
     orderId: string,
     nextStatus: RichOrder["orderStatus"],
     actor: string = "Store Manager",
     descOverride?: string,
   ) => {
-    let petStatusVal: RichOrder["petpoojaStatus"] = "Pending";
-    let petDetailsVal = {};
-
-    if (nextStatus === "Accepted") {
-      petStatusVal = "Synced";
-      petDetailsVal = {
-        kotId: `KOT-${Math.floor(100000 + Math.random() * 900000)}`,
-        posOrderId: `PP-MNG-${orderId}`,
-        lastAttemptAt: new Date().toLocaleTimeString(),
-      };
+    try {
+      await adminOrdersService.updateOrderStatus(orderId, nextStatus, {
+        title: `Order status: ${nextStatus}`,
+        actor,
+        description: descOverride || `Transitioned status to ${nextStatus}`,
+      });
+      
+      // The local state (orders array) will automatically update via the onSnapshot listener if we are in "live" mode.
+      // If we are in "history" mode, we might need a manual refresh, but history mode shouldn't typically be used for real-time status transitions.
+      
+      // Update selected order view if it is open
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder((prev) => prev ? { ...prev, orderStatus: nextStatus } : prev);
+      }
+      
+      console.log(
+        `[AUDIT LOG] ${actor} modified order ${orderId} status to ${nextStatus} at ${new Date().toLocaleTimeString()}`,
+      );
+    } catch (error) {
+      console.error("Failed to update status", error);
     }
-
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id === orderId) {
-          const nextOrder: RichOrder = {
-            ...o,
-            orderStatus: nextStatus,
-            petpoojaStatus: nextStatus === "Accepted" ? petStatusVal : o.petpoojaStatus,
-            petpoojaDetails:
-              nextStatus === "Accepted"
-                ? { ...o.petpoojaDetails, ...petDetailsVal }
-                : o.petpoojaDetails,
-            timeline: [
-              ...o.timeline,
-              {
-                title: `Order status: ${nextStatus}`,
-                timestamp: new Date().toLocaleTimeString(),
-                actor,
-                description: descOverride || `Transitioned status to ${nextStatus}`,
-              },
-            ],
-          };
-
-          // Write console telemetry representing real audit logger entries
-          console.log(
-            `[AUDIT LOG] ${actor} modified order ${orderId} status to ${nextStatus} at ${new Date().toLocaleTimeString()}`,
-          );
-
-          // Update selected order details on-the-fly
-          if (selectedOrder && selectedOrder.id === orderId) {
-            setSelectedOrder(nextOrder);
-          }
-
-          return nextOrder;
-        }
-        return o;
-      }),
-    );
   };
 
   // Filter implementation

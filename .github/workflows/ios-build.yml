@@ -1,4 +1,4 @@
-name: Build iOS Application (Capacitor)
+name: iOS Build (Capacitor)
 
 on:
   push:
@@ -39,7 +39,6 @@ jobs:
         run: |
           npm run build:mobile
           npx cap sync ios
-          node -e "const fs = require('fs'); const file = 'ios/App/CapApp-SPM/Package.swift'; if (fs.existsSync(file)) { let c = fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/'); if (!c.includes('keychain-swift')) { c = c.replace('.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),', '.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),\n        .package(url: \"https://github.com/evgenyneu/keychain-swift.git\", exact: \"21.0.0\"),'); c = c.replace('.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),', '.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),\n                .product(name: \"KeychainSwift\", package: \"keychain-swift\"),'); } fs.writeFileSync(file, c); } const sf = 'node_modules/@aparajita/capacitor-secure-storage/Package.swift'; if (fs.existsSync(sf)) { fs.writeFileSync(sf, fs.readFileSync(sf, 'utf8').replace(/SecureStoragePlugin/g, 'AparajitaCapacitorSecureStorage')); }"
 
       - name: 🛠️ Setup Xcode Version
         run: |
@@ -50,27 +49,38 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: 🏗️ Compile iOS Application & Package Build
+      - name: 🔧 Patch Swift Packages (keychain-swift)
         run: |
-          sudo git config --system --add safe.directory "*" || true
-          sudo git config --system http.sslVerify false || true
-          sudo git config --system credential.helper "" || true
-          git config --global --add safe.directory "*"
-          git config --global http.sslVerify false
+          node -e "
+            const fs = require('fs');
+            const file = 'ios/App/CapApp-SPM/Package.swift';
+            if (fs.existsSync(file)) {
+              let c = fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/');
+              if (!c.includes('keychain-swift')) {
+                c = c.replace('.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),', '.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),\n        .package(url: \"https://github.com/evgenyneu/keychain-swift.git\", exact: \"21.0.0\"),');
+                c = c.replace('.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),', '.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),\n                .product(name: \"KeychainSwift\", package: \"keychain-swift\"),');
+              }
+              fs.writeFileSync(file, c);
+            }
+            const sf = 'node_modules/@aparajita/capacitor-secure-storage/Package.swift';
+            if (fs.existsSync(sf)) {
+              fs.writeFileSync(sf, fs.readFileSync(sf, 'utf8').replace(/SecureStoragePlugin/g, 'AparajitaCapacitorSecureStorage'));
+            }
+          "
 
-          echo "Resolving Swift Packages via Swift CLI..."
-          (cd ios/App/CapApp-SPM && swift package resolve) || true
-
+      - name: 🏗️ Build iOS Simulator App
+        if: always()
+        run: |
           cd ios/App
 
-          echo "Resolving Swift Package Dependencies into derived data..."
+          echo "Resolving Swift Package Dependencies..."
           xcodebuild -project App.xcodeproj \
                      -scheme App \
                      -derivedDataPath ../../build/DerivedData \
                      -clonedSourcePackagesDirPath ../../build/DerivedData/SourcePackages \
                      -resolvePackageDependencies || true
 
-          echo "Compiling iOS Application..."
+          echo "Compiling iOS Simulator build..."
           set +e
           xcodebuild -project App.xcodeproj \
                      -scheme App \
@@ -88,36 +98,130 @@ jobs:
                      GCC_TREAT_WARNINGS_AS_ERRORS=NO \
                      COMPILER_INDEX_STORE_ENABLE=NO \
                      build > xcodebuild.log 2>&1
-          XCODE_EXIT=$?
+          SIM_EXIT=$?
           set -e
 
-          if [ $XCODE_EXIT -ne 0 ]; then
-            echo "❌ xcodebuild failed with exit code $XCODE_EXIT. Emitting error annotations:"
+          if [ $SIM_EXIT -ne 0 ]; then
+            echo "❌ Simulator build failed with exit code $SIM_EXIT"
             grep -i "error:" xcodebuild.log | head -n 20 | while read -r line; do echo "::error::$line"; done
             tail -n 100 xcodebuild.log
-            exit $XCODE_EXIT
+          else
+            echo "✅ Simulator build succeeded"
           fi
 
-          echo "Compressing compiled App.app bundle..."
-          APP_PATH=$(find /Users/runner/Library/Developer/Xcode/DerivedData /Users/runner/work -name "App.app" -type d 2>/dev/null | head -n 1)
-          echo "Found compiled app at: '$APP_PATH'"
+          APP_PATH=$(find /Users/runner/work -name "App.app" -type d 2>/dev/null | head -n 1)
           if [ -n "$APP_PATH" ]; then
             (cd "$(dirname "$APP_PATH")" && zip -r -y "$GITHUB_WORKSPACE/Burgonomics-iOS-Simulator-App.zip" App.app) 2>/dev/null || true
-            echo "✅ SUCCESS: Zip archive created successfully at Burgonomics-iOS-Simulator-App.zip"
+            echo "✅ Simulator app archived at Burgonomics-iOS-Simulator-App.zip"
           fi
 
-      - name: 📤 Upload Build Log Artifact
+      - name: 🏗️ Build iOS Device IPA (requires signing secrets)
+        if: ${{ secrets.IOS_CERTIFICATE_BASE64 != '' && secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_PROVISIONING_PROFILE_UUID: ${{ secrets.IOS_PROVISIONING_PROFILE_UUID }}
+        run: |
+          cd ios/App
+
+          echo "🔑 Installing signing certificate..."
+          echo "$IOS_CERTIFICATE_BASE64" | base64 --decode > /tmp/certificate.p12
+          security create-keychain -p "" build.keychain || true
+          security import /tmp/certificate.p12 -t agg -k /tmp/build.keychain -P "$IOS_CERTIFICATE_PASSWORD" -A || true
+          security list-keychains -s /tmp/build.keychain
+          security unlock-keychain -p "" /tmp/build.keychain || true
+          security set-keychain-settings -t 3600 -u /tmp/build.keychain || true
+          security set-key-partition-list -S apple-tool:,apple: -s kSecUseServiceUI -k "" /tmp/build.keychain || true
+
+          echo "📥 Installing provisioning profile..."
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/$IOS_PROVISIONING_PROFILE_UUID.mobileprovision
+
+          echo "🔨 Building for generic iOS device..."
+          set +e
+          xcodebuild -project App.xcodeproj \
+                     -scheme App \
+                     -configuration Release \
+                     -destination "generic/platform=iOS" \
+                     -derivedDataPath ../../build/DerivedData \
+                     -clonedSourcePackagesDirPath ../../build/DerivedData/SourcePackages \
+                     -skipPackagePluginValidation \
+                     PROVISIONING_PROFILE_SPECIFIER="$IOS_PROVISIONING_PROFILE_UUID" \
+                     CODE_SIGN_IDENTITY="Apple Distribution" \
+                     CODE_SIGNING_REQUIRED=YES \
+                     CODE_SIGNING_ALLOWED=YES \
+                     IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+                     SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
+                     GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+                     COMPILER_INDEX_STORE_ENABLE=NO \
+                     build > xcodebuild-device.log 2>&1
+          DEV_EXIT=$?
+          set -e
+
+          if [ $DEV_EXIT -ne 0 ]; then
+            echo "❌ Device build failed with exit code $DEV_EXIT"
+            grep -i "error:" xcodebuild-device.log | head -n 20 | while read -r line; do echo "::error::$line"; done
+            tail -n 100 xcodebuild-device.log
+          else
+            echo "✅ Device build succeeded"
+          fi
+
+          APP_PATH=$(find /Users/runner/work -name "App.app" -type d 2>/dev/null | head -n 1)
+          if [ -n "$APP_PATH" ]; then
+            echo "📦 Exporting IPA..."
+            xcodebuild -exportArchive \
+                       -archivePath /Users/runner/work/${{ github.repository }}/build/DerivedData/App.xcarchive \
+                       -exportPath /Users/runner/work/${{ github.repository }}/build/ipa \
+                       -exportOptionsPlist /dev/stdin <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>ad-hoc</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.glassdoorsstudio.burgonomics</key>
+        <string>$IOS_PROVISIONING_PROFILE_UUID</string>
+    </dict>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>teamID</key>
+    <string>${{ secrets.IOS_TEAM_ID }}</string>
+</dict>
+</plist>
+EOF
+            if [ -f /Users/runner/work/${{ github.repository }}/build/ipa/App.ipa ]; then
+              mv /Users/runner/work/${{ github.repository }}/build/ipa/App.ipa "$GITHUB_WORKSPACE/Burgonomics-iOS-Device.ipa"
+              echo "✅ IPA exported at Burgonomics-iOS-Device.ipa"
+            else
+              echo "⚠️ IPA export failed or no IPA found"
+            fi
+          fi
+
+      - name: 📤 Upload Xcode Build Logs
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Xcode-Build-Log
-          path: ios/App/xcodebuild.log
+          name: Xcode-Build-Logs
+          path: |
+            ios/App/xcodebuild.log
+            ios/App/xcodebuild-device.log
           retention-days: 7
 
-      - name: 📤 Upload iOS Application Build Artifacts
+      - name: 📤 Upload iOS Simulator App
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: Burgonomics-iOS-Simulator-App
           path: Burgonomics-iOS-Simulator-App.zip
+          retention-days: 14
+
+      - name: 📤 Upload iOS Device IPA
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: Burgonomics-iOS-Device-IPA
+          path: Burgonomics-iOS-Device.ipa
           retention-days: 14

@@ -24,7 +24,8 @@ import { AdminCard } from "../components/Cards";
 import { AdminButton } from "../components/Buttons";
 import { StatusBadge } from "../components/Badges";
 import { ConfirmDialog } from "../components/Utilities";
-import { paymentStorage, RefundTransaction } from "./paymentsData";
+import { RefundDetails } from "./paymentsData";
+import { adminPaymentsService } from "../services/adminPaymentsService";
 import { useAdmin } from "../hooks/useAdmin";
 import { toast } from "sonner";
 
@@ -32,11 +33,17 @@ export const AdminRefundsPage: React.FC = () => {
   const { role, isDeveloper } = useAdmin();
 
   // Real-time state subscription
-  const [refunds, setRefunds] = useState<RefundTransaction[]>(paymentStorage.getRefunds());
+  const [refunds, setRefunds] = useState<RefundDetails[]>([]);
   useEffect(() => {
-    return paymentStorage.subscribe(() => {
-      setRefunds([...paymentStorage.getRefunds()]);
-    });
+    const unsubscribe = adminPaymentsService.listenLiveRefunds(
+      (data) => setRefunds(data),
+      (err) => {
+        console.error("Live refund listener error:", err);
+        toast.error("Failed to connect to live refund stream.");
+      },
+      100
+    );
+    return () => unsubscribe();
   }, []);
 
   // UI state
@@ -44,8 +51,8 @@ export const AdminRefundsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"ALL" | "PENDING" | "COMPLETED" | "FAILED">("ALL");
 
   // Modal states
-  const [approvingRefund, setApprovingRefund] = useState<RefundTransaction | null>(null);
-  const [rejectingRefund, setRejectingRefund] = useState<RefundTransaction | null>(null);
+  const [approvingRefund, setApprovingRefund] = useState<RefundDetails | null>(null);
+  const [rejectingRefund, setRejectingRefund] = useState<RefundDetails | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
 

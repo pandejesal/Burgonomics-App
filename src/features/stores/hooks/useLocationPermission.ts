@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from "react";
-import { MOCK_USER_COORDS } from "@/features/stores/data/mockStores";
+
 import { isNative } from "@/shared/platform/platform";
 
 /**
@@ -7,8 +7,7 @@ import { isNative } from "@/shared/platform/platform";
  *
  * On native (Capacitor Android/iOS) uses `@capacitor/geolocation` for a real
  * OS permission prompt and coordinates. On web, falls back to the browser
- * Geolocation API. The mock override (localStorage) still works for QA on
- * both surfaces. Public API is unchanged.
+ * Geolocation API.
  */
 
 export type PermissionStatus =
@@ -17,18 +16,6 @@ export type PermissionStatus =
 export interface Coords {
   lat: number;
   lng: number;
-}
-
-// Check if we are running in Dev / Debug mode
-const IS_DEV = import.meta.env?.DEV && process.env.NODE_ENV !== "production";
-
-// Force a specific outcome via localStorage for QA / demos:
-//   localStorage.setItem("burg.mock.locationPermission", "denied" | "blocked" | "granted" | "unavailable")
-function readOverride(): PermissionStatus | null {
-  if (typeof window === "undefined") return null;
-  const v = window.localStorage.getItem("burg.mock.locationPermission");
-  if (v === "granted" || v === "denied" || v === "blocked" || v === "unavailable") return v;
-  return null;
 }
 
 async function requestNative(): Promise<{
@@ -135,7 +122,6 @@ export function useLocationPermission() {
 
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isMock, setIsMock] = useState(false);
 
   // Background continuous watching when permission is granted
   useEffect(() => {
@@ -216,27 +202,6 @@ export function useLocationPermission() {
     setStatus("prompting");
     setIsLoading(true);
     setError(null);
-    setIsMock(false);
-
-    const override = readOverride();
-    if (override) {
-      setIsLoading(false);
-      setIsMock(true);
-      if (override === "granted") {
-        setStatus("granted");
-        setCoords(MOCK_USER_COORDS);
-        return { status: "granted", coords: MOCK_USER_COORDS };
-      }
-      setStatus(override);
-      const errMessage =
-        override === "denied"
-          ? "Location permission was denied."
-          : override === "blocked"
-            ? "Location access is blocked in system settings."
-            : "GPS signal is currently unavailable.";
-      setError(errMessage);
-      return { status: override, error: errMessage };
-    }
 
     // Try real GPS first
     const result = isNative() ? await requestNative() : await requestBrowser();
@@ -255,13 +220,5 @@ export function useLocationPermission() {
     return result;
   }, []);
 
-  const simulateLocation = useCallback((customCoords: Coords) => {
-    setStatus("granted");
-    setCoords(customCoords);
-    setIsMock(true);
-    window.localStorage.setItem("burg.cached_coords", JSON.stringify(customCoords));
-    setError(null);
-  }, []);
-
-  return { status, coords, error, isLoading, isMock, request, simulateLocation };
+  return { status, coords, error, isLoading, request };
 }
