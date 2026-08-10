@@ -1,9 +1,0 @@
-{
-  "taskId": "1.7",
-  "required_gates": [
-    "reviewer",
-    "test_engineer"
-  ],
-  "test_engineer_exempt": false,
-  "gates": {}
-}

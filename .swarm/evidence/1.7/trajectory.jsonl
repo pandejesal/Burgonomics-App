@@ -1,1 +1,0 @@
-{"step":1,"agent":"coder","action":"read","target":"C:\\Users\\DELL\\Desktop\\Burgonomics\\burgonomics-foundation-core\\capacitor.config.ts","intent":"","timestamp":"2026-08-10T05:49:34.139Z","result":"success","tool":"read","args_summary":"filePath:\"C:\\Users\\DELL\\Desktop\\Burgonomics\\burgonomics-foun...\"","verdict":"success","elapsed_ms":0}
