@@ -29,6 +29,7 @@ import { StoreHeaderCard } from "@/features/home/components/StoreHeaderCard";
 import { PullToRefresh } from "@/features/home/components/PullToRefresh";
 import { HomeSkeleton } from "@/features/home/components/HomeSkeleton";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
+import { useGsapReveal } from "@/shared/hooks/useGsapReveal";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { isNative } from "@/shared/platform/platform";
@@ -59,6 +60,8 @@ function HomePage() {
   const online = useAppConfig((s) => s.isOnline);
   const store = useStoreSelection((s) => s.activeStore);
   const isHydrated = useStoreSelection((s) => s.isHydrated);
+
+  const sectionsRef = useGsapReveal({ yOffset: 30, duration: 0.8, stagger: 0.15 });
 
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const user = useAuthStore((s) => s.user);
@@ -251,7 +254,7 @@ function HomePage() {
               />
             )
           ) : (
-            <div className="mt-5 space-y-7 pb-6">
+            <div ref={sectionsRef} className="mt-5 space-y-7 pb-6">
               {/* Banners */}
               {bundle.banners.length > 0 && <BannerCarousel banners={bundle.banners} />}
 

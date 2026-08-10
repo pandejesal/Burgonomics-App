@@ -168,7 +168,7 @@ export function OrderTimeline({ steps, cancelled, className }: Props) {
 
               {/* Content */}
               <div className="min-w-0 flex-1 pb-1">
-                <div className="flex items-baseline justify-between gap-2">
+                <div className="flex items-baseline justify-between gap-2 min-w-0">
                   <Text
                     variant="titleMedium"
                     tone={cancelled ? "secondary" : state === "future" ? "secondary" : "primary"}

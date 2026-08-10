@@ -33,6 +33,11 @@ export const envSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
+
+  // Admin tokens: REQUIRED (no defaults — a hardcoded fallback would let
+  // anyone forge admin JWTs). Boot fails hard when missing.
+  ADMIN_JWT_ACCESS_SECRET: z.string().min(32),
+  ADMIN_JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
   JWT_ISSUER: z.string().default('burgonomics'),

@@ -3,6 +3,7 @@ import { authRepository } from "@/features/auth/repositories/AuthRepository";
 import { isJwtExpired } from "@/features/auth/utils/mockJwt";
 import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
 import { useProfileStore } from "@/features/profile/state/profileStore";
+import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { isDev } from "@/core/config/env";
 
 export type AuthStatus =
@@ -105,6 +106,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (!isJwtExpired(accessToken)) {
         useProfileStore.getState().hydrateFromAuth(user);
+        profileRepository.refresh().catch(console.error);
         set({
           status: "authenticated",
           user,
@@ -120,6 +122,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (refreshed.success) {
         await persistSession(user, refreshed.data.accessToken, refreshed.data.refreshToken);
         useProfileStore.getState().hydrateFromAuth(user);
+        profileRepository.refresh().catch(console.error);
         set({
           status: "authenticated",
           user,
@@ -176,6 +179,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     await persistSession(res.data.user, res.data.accessToken, res.data.refreshToken);
     useProfileStore.getState().hydrateFromAuth(res.data.user);
+    profileRepository.refresh().catch(console.error);
     set({
       status: "authenticated",
       user: res.data.user,
@@ -205,6 +209,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { refreshToken } = get();
     await authRepository.logout(refreshToken);
     await clearPersistedSession();
+    profileRepository.clearCache();
     set({
       status: "guest",
       user: null,

@@ -29,7 +29,7 @@ export function ReviewItemsList({ lines }: Props) {
               {line.quantity}×
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
                 {typeof line.veg === "boolean" && <VegIndicator veg={line.veg} />}
                 <Text variant="titleMedium" className="truncate">
                   {line.name}

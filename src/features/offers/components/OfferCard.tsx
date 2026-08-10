@@ -69,7 +69,7 @@ export function OfferCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             <Text variant="titleMedium" className="truncate">
               {offer.title}
             </Text>

@@ -63,8 +63,25 @@ export const profileService = {
     try {
       const { db, auth } = await import("@/core/config/firebase");
       const { doc, getDoc } = await import("firebase/firestore");
-      const user = auth.currentUser;
-      if (!user) return ok(null);
+      let user = auth.currentUser;
+      
+      if (!user) {
+        user = await new Promise((resolve) => {
+          const unsubscribe = auth.onAuthStateChanged((u) => {
+            unsubscribe();
+            resolve(u);
+          });
+          setTimeout(() => {
+            unsubscribe();
+            resolve(null);
+          }, 3000);
+        });
+      }
+      
+      if (!user) {
+        console.warn("profileService.me(): No active firebase session.");
+        return ok(null);
+      }
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);

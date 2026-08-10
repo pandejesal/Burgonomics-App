@@ -10,14 +10,22 @@ export interface AdminJwtPayload {
   permissions: string[];
 }
 
+function requireAdminAccessSecret(): string {
+  const secret = process.env.ADMIN_JWT_ACCESS_SECRET;
+  if (!secret) {
+    // Never fall back to a hardcoded secret — forgeable admin tokens.
+    throw new Error('ADMIN_JWT_ACCESS_SECRET must be configured (see env.validation.ts)');
+  }
+  return secret;
+}
+
 @Injectable()
 export class AdminJwtStrategy extends PassportStrategy(Strategy, 'admin-jwt') {
   constructor(private readonly prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey:
-        process.env.ADMIN_JWT_ACCESS_SECRET || 'burgonomics-admin-access-secret-key-2026!',
+      secretOrKey: requireAdminAccessSecret(),
     });
   }
 

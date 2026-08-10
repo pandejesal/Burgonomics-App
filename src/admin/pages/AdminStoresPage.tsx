@@ -112,6 +112,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
 
   // Edit store settings form state
   const [isEditMode, setIsEditMode] = useState(false);
+  const [editingPetpoojaId, setEditingPetpoojaId] = useState<string>("");
 
   // Active sync states
   const [isSyncingAll, setIsSyncingAll] = useState(false);
@@ -142,6 +143,14 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
   useEffect(() => {
     if (defaultStoreId) setActiveStoreId(defaultStoreId);
   }, [defaultStoreId]);
+
+  // Sync editing ID with active store
+  useEffect(() => {
+    if (activeStoreId) {
+      const store = stores.find((s) => s.id === activeStoreId);
+      if (store) setEditingPetpoojaId(store.petpoojaRestId || "");
+    }
+  }, [activeStoreId, stores]);
 
   // Handle RBAC View Filtering
   const isReadOnly = selectedRole === "Finance";
@@ -1683,11 +1692,26 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
                       <div className="space-y-2 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/30">
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">POS Rest ID:</span>
-                          <span className="font-mono font-black">
-                            {activeStore.petpoojaRestId || "Not Linked"}
-                          </span>
+                        <div className="flex flex-col justify-between">
+                          <span className="text-gray-400 mb-1">POS Rest ID:</span>
+                          <input
+                            type="text"
+                            value={editingPetpoojaId}
+                            onChange={(e) => setEditingPetpoojaId(e.target.value)}
+                            onBlur={() => {
+                              if (editingPetpoojaId !== activeStore.petpoojaRestId) {
+                                const updated = stores.map((s) => {
+                                  if (s.id === activeStore.id) return { ...s, petpoojaRestId: editingPetpoojaId };
+                                  return s;
+                                });
+                                void saveStores(updated);
+                                toast.success("Petpooja Rest ID updated!");
+                              }
+                            }}
+                            disabled={isReadOnly}
+                            placeholder="Not Linked"
+                            className="w-full bg-transparent font-mono font-black border-b border-dashed border-gray-300 dark:border-gray-700 focus:border-[#0E4825] outline-none px-0 py-0.5 text-gray-900 dark:text-white focus:ring-0"
+                          />
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-400">Circuit Breaker:</span>

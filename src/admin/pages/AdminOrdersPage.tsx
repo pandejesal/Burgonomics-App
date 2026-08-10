@@ -98,6 +98,7 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
   
   // Main states
   const [orders, setOrders] = useState<RichOrder[]>([]);
+  const [isSimulatorEnabled, setIsSimulatorEnabled] = useState(false);
   const [viewMode, setViewMode] = useState<"live" | "history">(defaultTab);
   const [selectedOrder, setSelectedOrder] = useState<RichOrder | null>(null);
 

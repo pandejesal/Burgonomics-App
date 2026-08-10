@@ -35,7 +35,7 @@ export function AppCard({
 
   const shadow = shadowClasses[elevation];
   const cardClassName = cn(
-    "bg-surface rounded-[var(--radius-large)] border border-divider",
+    "bg-surface/90 backdrop-blur-md rounded-[var(--radius-large)] border border-divider/50",
     shadow,
     padded && "p-4",
     className,

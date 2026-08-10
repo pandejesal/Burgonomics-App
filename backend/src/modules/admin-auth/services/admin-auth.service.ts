@@ -507,10 +507,13 @@ export class AdminAuthService {
       permissions: admin.role.permissions.map((p: any) => p.permission.key),
     };
 
-    const accessSecret =
-      process.env.ADMIN_JWT_ACCESS_SECRET || 'burgonomics-admin-access-secret-key-2026!';
-    const refreshSecret =
-      process.env.ADMIN_JWT_REFRESH_SECRET || 'burgonomics-admin-refresh-secret-key-2026!';
+    // Fail closed: no hardcoded fallback — a fallback secret would let anyone
+    // forge admin JWTs. These are validated as REQUIRED in env.validation.ts.
+    const accessSecret = process.env.ADMIN_JWT_ACCESS_SECRET;
+    const refreshSecret = process.env.ADMIN_JWT_REFRESH_SECRET;
+    if (!accessSecret || !refreshSecret) {
+      throw new Error('ADMIN_JWT_ACCESS_SECRET / ADMIN_JWT_REFRESH_SECRET must be configured (env.validation.ts)');
+    }
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(payload, {

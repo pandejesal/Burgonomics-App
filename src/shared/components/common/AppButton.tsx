@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
+import { AudioService } from "@/core/services/audio";
 import { isIOS } from "@/shared/platform/platform";
 
 /**
@@ -73,6 +74,7 @@ export const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (!isDisabled) {
         HapticService.impact(variant === "primary" ? "medium" : "light");
+        AudioService.playClick();
       }
       onClick?.(e);
 
@@ -95,8 +97,8 @@ export const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
         disabled={isDisabled}
         onClick={handleClick}
         className={cn(
-          "inline-flex items-center justify-center gap-2 rounded-full font-semibold relative overflow-hidden touch-manipulation select-none cursor-pointer",
-          "transition-all duration-150",
+          "inline-flex items-center justify-center gap-2 rounded-full font-semibold relative overflow-hidden touch-manipulation select-none cursor-pointer active:scale-[0.98]",
+          "transition-all duration-200 ease-out",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "disabled:opacity-40 disabled:pointer-events-none",
           !isDisabled && !hasReducedMotion && !ios && "active:scale-95",

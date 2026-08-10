@@ -3,7 +3,46 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.storeStatus = exports.pushMenu = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 const db = admin.firestore();
+/**
+ * Authenticates an incoming Petpooja webhook using an HMAC-SHA256 signature
+ * over the raw request body. Fail-closed: any missing/invalid input returns
+ * { ok: false, reason } and the caller must reject the request.
+ */
+function isAuthorizedPetpoojaWebhook(req) {
+    var _a;
+    const secret = process.env.PETPOOJA_WEBHOOK_SECRET || ((_a = functions.config().petpooja) === null || _a === void 0 ? void 0 : _a.webhook_secret);
+    if (!secret) {
+        return { ok: false, reason: "Webhook secret not configured" };
+    }
+    const signature = req.headers["x-petpooja-signature"];
+    if (!signature) {
+        return { ok: false, reason: "Missing x-petpooja-signature" };
+    }
+    if (!req.rawBody) {
+        return { ok: false, reason: "Missing raw body" };
+    }
+    const timestampHeader = req.headers["x-petpooja-timestamp"];
+    if (timestampHeader !== undefined) {
+        const ts = parseInt(String(timestampHeader), 10);
+        if (isNaN(ts) || Math.abs(Date.now() - ts) > 300000) {
+            return { ok: false, reason: "Stale or invalid timestamp" };
+        }
+    }
+    const expected = crypto.createHmac("sha256", secret).update(req.rawBody).digest();
+    let provided;
+    try {
+        provided = Buffer.from(signature, "hex");
+    }
+    catch (_b) {
+        return { ok: false, reason: "Malformed signature" };
+    }
+    if (provided.length !== expected.length || !crypto.timingSafeEqual(expected, provided)) {
+        return { ok: false, reason: "Invalid signature" };
+    }
+    return { ok: true };
+}
 /**
  * HTTP Webhook for Petpooja Menu Push
  * Petpooja sends a POST request with the entire menu catalog (categories, items, modifiers)
@@ -15,10 +54,14 @@ exports.pushMenu = functions.https.onRequest(async (req, res) => {
         res.status(405).send("Method Not Allowed");
         return;
     }
+    const auth = isAuthorizedPetpoojaWebhook(req);
+    if (!auth.ok) {
+        functions.logger.warn(`Rejected unauthenticated Petpooja menu push: ${auth.reason}`);
+        res.status(401).send({ status: "error", message: auth.reason });
+        return;
+    }
     try {
         const payload = req.body;
-        // Authenticate the request based on app_key and app_secret (assuming these are passed by Petpooja)
-        // Note: Petpooja standard push menu has its own signature or token. We'll use a basic check for this implementation.
         const { restaurants, success } = payload;
         if (success !== "1" && success !== 1 && success !== true) {
             functions.logger.warn("Received failed menu push payload from Petpooja", payload);
@@ -120,6 +163,12 @@ exports.pushMenu = functions.https.onRequest(async (req, res) => {
 exports.storeStatus = functions.https.onRequest(async (req, res) => {
     if (req.method !== "POST") {
         res.status(405).send("Method Not Allowed");
+        return;
+    }
+    const auth = isAuthorizedPetpoojaWebhook(req);
+    if (!auth.ok) {
+        functions.logger.warn(`Rejected unauthenticated Petpooja store status push: ${auth.reason}`);
+        res.status(401).send({ status: "error", message: auth.reason });
         return;
     }
     try {

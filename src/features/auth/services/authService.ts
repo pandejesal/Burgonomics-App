@@ -100,23 +100,38 @@ export const authService = {
         const userRef = doc(db, "users", uid);
         const userSnap = await getDoc(userRef);
         
+        let userData: any = {
+          id: uid,
+          phone: session.phone,
+          createdAt: new Date().toISOString()
+        };
+
         if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            id: uid,
-            phone: session.phone,
-            createdAt: new Date().toISOString()
-          });
+          await setDoc(userRef, userData);
+        } else {
+          userData = userSnap.data();
         }
       } catch (dbError) {
         console.error("Firestore user sync failed:", dbError);
       }
+
+      let returnedUser: any = { id: uid, phone: session.phone };
+      try {
+        const { getDoc, doc } = await import("firebase/firestore");
+        const { db } = await import("@/core/config/firebase");
+        const snap = await getDoc(doc(db, "users", uid));
+        if (snap.exists()) {
+            returnedUser.name = snap.data().fullName;
+            returnedUser.email = snap.data().email;
+        }
+      } catch (e) {}
 
       otpSessions.delete(otpToken);
 
       return ok({
         accessToken,
         refreshToken,
-        user: { id: uid, phone: session.phone },
+        user: returnedUser,
       });
     } catch (error: any) {
       console.error("Firebase verifyOtp error:", error);

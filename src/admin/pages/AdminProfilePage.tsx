@@ -13,10 +13,13 @@ import {
   User,
 } from "lucide-react";
 import { useAdminAuthStore } from "../store/adminAuthStore";
+import { db } from "@/core/config/firebase";
+import { collection, onSnapshot, query, orderBy, doc, updateDoc } from "firebase/firestore";
 import { PageHeader } from "../components/Headers";
 import { StatCard, AdminCard } from "../components/Cards";
 import { AdminButton } from "../components/Buttons";
 import { AdminAvatar } from "../components/Utilities";
+import { secureStorage } from "@/core/storage/secureStorage";
 
 export const AdminProfilePage: React.FC = () => {
   const { admin, setup2Fa, verifySetup2Fa, disable2Fa } = useAdminAuthStore();
@@ -36,28 +39,37 @@ export const AdminProfilePage: React.FC = () => {
     null,
   );
 
-  const [sessions, setSessions] = useState<any[]>([
-    {
-      id: 1,
-      device: "Desktop Workspace",
-      browser: "Chrome",
-      os: "macOS",
-      ip: "127.0.0.1",
-      country: "India",
-      active: true,
-      lastSeen: "Just Now",
-    },
-    {
-      id: 2,
-      device: "Mobile Application",
-      browser: "Safari",
-      os: "iOS",
-      ip: "103.115.22.41",
-      country: "India",
-      active: false,
-      lastSeen: "2 hours ago",
-    },
-  ]);
+  const [sessions, setSessions] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!admin?.id) return;
+    const q = query(
+      collection(db, "admins", admin.id, "sessions"),
+      orderBy("lastSeen", "desc")
+    );
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const activeSessionId = await secureStorage.get("admin_session_id");
+      const loaded = snapshot.docs
+        .filter(doc => doc.data().active === true)
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            device: data.device || "Unknown Device",
+            browser: data.browser || "Unknown Browser",
+            os: data.os || "Unknown OS",
+            ip: data.ip || "Unknown",
+            country: data.country || "Unknown",
+            active: doc.id === activeSessionId,
+            lastSeen: doc.id === activeSessionId ? "Just Now" : new Date(data.lastSeen).toLocaleString(),
+          };
+        });
+      // Sort so active session is first
+      loaded.sort((a, b) => (a.active === b.active ? 0 : a.active ? -1 : 1));
+      setSessions(loaded);
+    });
+    return () => unsubscribe();
+  }, [admin?.id]);
 
   const permissions = admin?.role?.permissions || [];
   const roleName = admin?.role?.name || "Administrator";
@@ -405,7 +417,11 @@ export const AdminProfilePage: React.FC = () => {
                   </div>
                   {!sess.active && (
                     <button
-                      onClick={() => setSessions((prev) => prev.filter((s) => s.id !== sess.id))}
+                      onClick={() => {
+                        if (admin?.id) {
+                           updateDoc(doc(db, "admins", admin.id, "sessions", sess.id), { active: false });
+                        }
+                      }}
                       className="flex h-8 w-8 items-center justify-center rounded-xl text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-950/15 transition-colors"
                       title="Terminate Session"
                     >

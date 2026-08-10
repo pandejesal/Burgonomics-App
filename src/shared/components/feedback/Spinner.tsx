@@ -1,6 +1,5 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import mascotAsset from "@/assets/burgonomics-logo.png.asset.json";
 
 /**
  * Branded spinner — animated BURGONOMICS mascot inside a rotating
@@ -27,7 +26,7 @@ export function Spinner({
         className="absolute inset-0 rounded-full border-[3px] border-primary/20 border-t-primary animate-spin"
       />
       <img
-        src={mascotAsset.url}
+        src="/burgonomics-logo.png"
         alt=""
         aria-hidden
         className="animate-mascot-float object-contain"

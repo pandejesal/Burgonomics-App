@@ -111,16 +111,8 @@ export const petpoojaAdapter: PetpoojaAdapter = {
       };
     }
 
-    try {
-      const { db } = await import("@/core/config/firebase");
-      const { doc, setDoc } = await import("firebase/firestore");
-      await setDoc(doc(db, "petpooja_orders", orderId), {
-        ...payload,
-        createdAt: new Date().toISOString()
-      });
-    } catch (e) {
-      console.warn("Failed to sync order to Firebase:", e);
-    }
+    // We no longer write to petpooja_orders directly from the client.
+    // The backend Cloud Function automatically pushes to Petpooja when the order is Paid.
 
     return {
       acknowledged: true,

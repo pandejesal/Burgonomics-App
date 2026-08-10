@@ -270,6 +270,7 @@ export const AdminPaymentsPage: React.FC = () => {
               <span
                 className={`relative inline-flex h-2 w-2 rounded-full ${isLiveActive ? "bg-green-500" : "bg-gray-400"}`}
               ></span>
+            </div>
             <span
               className={`font-mono transition-all ${pulseLive ? "text-[#FF6600] scale-110 font-black" : "text-gray-900 dark:text-white"}`}
             >

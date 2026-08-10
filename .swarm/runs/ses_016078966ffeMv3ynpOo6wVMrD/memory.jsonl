@@ -1,0 +1,4 @@
+{"event":"prompt_injection_skipped","runId":"ses_016078966ffeMv3ynpOo6wVMrD","agentRole":"critic","agentId":"critic","rejectionReason":"disabled","metadata":{"reason":"disabled"},"timestamp":"2026-08-10T04:40:06.357Z"}
+{"event":"prompt_injection_skipped","runId":"ses_016078966ffeMv3ynpOo6wVMrD","agentRole":"critic","agentId":"critic","rejectionReason":"disabled","metadata":{"reason":"disabled"},"timestamp":"2026-08-10T04:40:30.485Z"}
+{"event":"prompt_injection_skipped","runId":"ses_016078966ffeMv3ynpOo6wVMrD","agentRole":"critic","agentId":"critic","rejectionReason":"disabled","metadata":{"reason":"disabled"},"timestamp":"2026-08-10T04:41:48.666Z"}
+{"event":"prompt_injection_skipped","runId":"ses_016078966ffeMv3ynpOo6wVMrD","agentRole":"critic","agentId":"critic","rejectionReason":"disabled","metadata":{"reason":"disabled"},"timestamp":"2026-08-10T04:42:17.790Z"}

@@ -16,6 +16,7 @@ import type { Product } from "@/features/menu/models";
 import { useCartStore } from "@/features/cart/state/cartStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { HapticService } from "@/core/services/haptics";
+import { AudioService } from "@/core/services/audio";
 
 interface Props {
   product: Product;
@@ -94,6 +95,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
     if (disabled) return;
 
     HapticService.impact("medium");
+    AudioService.playClick();
     setIsFlashActive(true);
     setTimeout(() => setIsFlashActive(false), 800);
 
@@ -118,6 +120,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
     if (disabled) return;
 
     HapticService.impact("light");
+    AudioService.playClick();
 
     const line = useCartStore
       .getState()
@@ -282,8 +285,8 @@ export const MenuProductCard = React.memo(function MenuProductCard({
           )}
         >
           {image}
-          <div className="flex flex-1 flex-col gap-1 p-3">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-1 flex-col min-w-0 gap-1 p-3">
+            <div className="flex items-center gap-2 min-w-0">
               <VegIndicator veg={veg} />
               <Text variant="titleMedium" className="truncate">
                 {highlightText(name, searchQuery)}
@@ -327,7 +330,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
       >
         {image}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <VegIndicator veg={veg} />
             <Text variant="titleMedium" className="truncate">
               {highlightText(name, searchQuery)}

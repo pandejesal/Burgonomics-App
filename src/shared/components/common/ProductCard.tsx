@@ -73,8 +73,8 @@ export function ProductCard({
           </div>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 p-4 bg-surface">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-1 flex-col min-w-0 gap-1.5 p-4 bg-surface">
+        <div className="flex items-center gap-2 min-w-0">
           {typeof veg === "boolean" && <VegIndicator veg={veg} />}
           <Text variant="titleMedium" className="truncate font-bold text-primary">
             {name}

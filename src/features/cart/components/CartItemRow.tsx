@@ -10,6 +10,7 @@ import { formatINR } from "@/core/utils/format";
 import type { CartLine } from "@/features/cart/models";
 import { computeLineTotal, computeLineUnitPrice } from "@/features/cart/services/cartService";
 import { HapticService } from "@/core/services/haptics";
+import { AudioService } from "@/core/services/audio";
 
 interface Props {
   line: CartLine;
@@ -23,7 +24,12 @@ interface Props {
  * modifier list all render from repository fields.
  * Upgraded with premium hardware-accelerated odometer transitions and physical haptics.
  */
-export function CartItemRow({ line, onQuantityChange, onRemove, onNotesChange }: Props) {
+export const CartItemRow = React.memo(function CartItemRow({
+  line,
+  onQuantityChange,
+  onRemove,
+  onNotesChange,
+}: Props) {
   const [notesOpen, setNotesOpen] = React.useState(!!line.notes);
   const unavailable = line.availability === "unavailable";
   const unitPrice = computeLineUnitPrice(line);
@@ -31,16 +37,19 @@ export function CartItemRow({ line, onQuantityChange, onRemove, onNotesChange }:
 
   const handleDecrement = () => {
     HapticService.impact("light");
+    AudioService.playClick();
     onQuantityChange(line.quantity - 1);
   };
 
   const handleIncrement = () => {
     HapticService.impact("medium");
+    AudioService.playClick();
     onQuantityChange(line.quantity + 1);
   };
 
   const handleRemoveClick = () => {
     HapticService.impact("medium");
+    AudioService.playClick();
     onRemove();
   };
 
@@ -78,7 +87,7 @@ export function CartItemRow({ line, onQuantityChange, onRemove, onNotesChange }:
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
                 {typeof line.veg === "boolean" && <VegIndicator veg={line.veg} />}
                 <Text variant="titleMedium" className="truncate">
                   {line.name}
@@ -208,4 +217,4 @@ export function CartItemRow({ line, onQuantityChange, onRemove, onNotesChange }:
       </div>
     </motion.article>
   );
-}
+});

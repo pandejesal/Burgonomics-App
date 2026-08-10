@@ -50,7 +50,7 @@ export function StoreHeaderCard({ store, fulfillment, className }: Props) {
             </AppBadge>
             <AppBadge tone="success">100% Pure Veg</AppBadge>
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5">
+          <div className="mt-0.5 flex items-center gap-1.5 min-w-0">
             <Text variant="titleMedium" className="truncate">
               {store.name}
             </Text>

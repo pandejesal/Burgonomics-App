@@ -12,7 +12,7 @@ export const Route = createFileRoute("/admin")({
 function AdminLayoutRouteComponent() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { accessToken, bootstrap, isLoading } = useAdminAuthStore();
+  const { admin, bootstrap, isLoading } = useAdminAuthStore();
   const [isReady, setIsReady] = useState(false);
 
   const isLoginPage = location.pathname === "/admin/login";
@@ -23,21 +23,14 @@ function AdminLayoutRouteComponent() {
       return;
     }
 
-    const token = localStorage.getItem("burgonomics_admin_refresh_token");
-    if (!token && !accessToken) {
-      void navigate({ to: "/admin/login" });
-      setIsReady(true);
-      return;
-    }
-
-    // Attempt to bootstrap admin session from persisted refresh token
+    // Attempt to bootstrap admin session using Firebase Auth state
     bootstrap().then((loggedIn) => {
-      if (!loggedIn && !accessToken) {
+      if (!loggedIn && !admin) {
         void navigate({ to: "/admin/login" });
       }
       setIsReady(true);
     });
-  }, [bootstrap, navigate, accessToken, isLoginPage]);
+  }, [bootstrap, navigate, isLoginPage]);
 
   if (isLoginPage) {
     return <Outlet />;
@@ -59,7 +52,7 @@ function AdminLayoutRouteComponent() {
     );
   }
 
-  if (!accessToken) {
+  if (!admin) {
     return null;
   }
 

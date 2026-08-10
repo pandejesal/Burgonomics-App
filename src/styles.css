@@ -80,12 +80,12 @@
   --color-muted: var(--bg-secondary);
   --color-muted-foreground: var(--text-secondary);
 
-  /* Elevation */
+  /* Elevation - Antigravity Spatial Depth */
   --shadow-flat: none;
-  --shadow-low: 0 4px 12px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 0 rgba(0, 0, 0, 0.02);
-  --shadow-medium: 0 10px 24px -4px rgba(0, 0, 0, 0.05), 0 4px 10px -2px rgba(0, 0, 0, 0.02);
-  --shadow-high: 0 20px 48px -8px rgba(0, 0, 0, 0.08), 0 8px 18px -4px rgba(0, 0, 0, 0.04);
-  --shadow-brand: 0 12px 28px -8px rgba(14, 72, 37, 0.2);
+  --shadow-low: 0 8px 24px -4px rgba(14, 72, 37, 0.04), 0 2px 8px -2px rgba(14, 72, 37, 0.02);
+  --shadow-medium: 0 20px 40px -4px rgba(14, 72, 37, 0.08), 0 8px 16px -4px rgba(14, 72, 37, 0.04);
+  --shadow-high: 0 32px 64px -12px rgba(14, 72, 37, 0.12), 0 16px 32px -8px rgba(14, 72, 37, 0.06);
+  --shadow-brand: 0 16px 32px -8px rgba(255, 102, 0, 0.24);
 
   /* Typography families — Montserrat and MonstroSolid */
   --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -162,7 +162,7 @@
 }
 
 .dark {
-  /* Dark class keeps identical values — the brand IS dark. */
+  /* Dark class adjustments for contrast */
   --background: oklch(0.19 0.04 155);
   --foreground: oklch(0.98 0.005 100);
   --surface: oklch(0.25 0.045 155);
@@ -173,12 +173,22 @@
   --border: oklch(0.28 0.04 155);
   --divider: oklch(0.28 0.04 155);
   --input: oklch(0.22 0.04 155);
+  --primary: #10b981; /* Lighter emerald for contrast on dark background */
+  --primary-foreground: #022c1e; /* Dark text for contrast on light emerald */
+  --brand: #10b981;
+  --brand-foreground: #022c1e;
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Global focus-visible ring for keyboard accessibility, overriding any outline-none utilities */
+  *:focus-visible {
+    outline: 2px solid var(--color-ring) !important;
+    outline-offset: 2px !important;
   }
 
   button,
@@ -438,4 +448,8 @@
 .min-h-safe {
   min-height: calc(100vh - 3.5rem - env(safe-area-inset-top, 0px));
   min-height: calc(100dvh - 3.5rem - env(safe-area-inset-top, 0px));
+}
+
+@utility perspective-1000 {
+  perspective: 1000px;
 }

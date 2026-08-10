@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0.0",
+  "title": "Security hardening remediation",
+  "swarm": "burgonomics",
+  "current_phase": 1,
+  "phases": [
+    {
+      "id": 1,
+      "name": "Security hardening remediation",
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "1.1",
+          "phase": 1,
+          "status": "pending",
+          "size": "small",
+          "description": "VERIFY (already implemented): Razorpay webhook guardian — constant-time HMAC signature validation over raw body; fail closed when webhook secret missing (FR-001, FR-010)",
+          "depends": [],
+          "acceptance": "Verification: razorpay webhooks.ts contains timingSafeEqual signature validation, fail-closed 500 when RAZORPAY_WEBHOOK_SECRET unset, 400 on missing rawBody, and no MOCK_SECRET_FOR_DEV fallback.",
+          "files_touched": [],
+          "fr_refs": [
+            "FR-001",
+            "FR-010"
+          ]
+        },
+        {
+          "id": "1.2",
+          "phase": 1,
+          "status": "pending",
+          "size": "small",
+          "description": "VERIFY (already implemented): Petpooja webhook authentication — HMAC-SHA256 shared-secret verify with timestamp replay window on pushMenu and storeStatus (FR-002, FR-010)",
+          "depends": [],
+          "acceptance": "Verification: petpooja webhooks.ts authenticates pushMenu and storeStatus via HMAC-SHA256 over raw body with timingSafeEqual and optional timestamp replay window; unauthenticated requests get 401.",
+          "files_touched": [],
+          "fr_refs": [
+            "FR-002",
+            "FR-010"
+          ]
+        },
+        {
+          "id": "1.3",
+          "phase": 1,
+          "status": "pending",
+          "size": "small",
+          "description": "VERIFY (already implemented): Petpooja credentials not in Firestore — credentials sourced from functions config/env only, with fail-closed sync error (FR-003)",
+          "depends": [],
+          "acceptance": "Verification: petpooja orders.ts reads app_key/app_secret/access_token only from functions config/env; never from order documents; fail-closed sync error when missing.",
+          "files_touched": [],
+          "fr_refs": [
+            "FR-003"
+          ]
+        },
+        {
+          "id": "1.4",
+          "phase": 1,
+          "status": "pending",
+          "size": "small",
+          "description": "VERIFY (already implemented): Firestore rules lockdown — users self-only, orders owner-only, menu public-read, internal collections denied to clients (FR-004)",
+          "depends": [],
+          "acceptance": "Verification: firestore.rules denies client access to petpooja_orders, payments, refunds, payment_discrepancies, admin_*; users/addresses/orders scoped to owner.",
+          "files_touched": [],
+          "fr_refs": [
+            "FR-004"
+          ]
+        },
+        {
+          "id": "1.5",
+          "phase": 1,
+          "status": "pending",
+          "size": "small",
+          "description": "VERIFY (already implemented): Admin JWT secrets from env only — required in env.validation.ts, no fallback strings in service/strategy (FR-005)",
+          "depends": [],
+          "acceptance": "Verification: env.validation.ts requires ADMIN_JWT_ACCESS_SECRET and ADMIN_JWT_REFRESH_SECRET (min 32, no defaults); no hardcoded fallback secrets remain in admin-auth service or strategy.",
+          "files_touched": [],
+          "fr_refs": [
+            "FR-005"
+          ]
+        },
+        {
+          "id": "1.6",
+          "phase": 1,
+          "status": "pending",
+          "size": "small",
+          "description": "VERIFY (already implemented): Environment files untracked — .gitignore .env.* patterns, git rm --cached performed for the three tracked env files (FR-006)",
+          "depends": [],
+          "acceptance": "Verification: backend/.gitignore contains .env.* and !.env.example; git ls-files shows no backend/.env.development/.env.staging/.env.production entries.",
+          "files_touched": [],
+          "fr_refs": [
+            "FR-006"
+          ]
+        },
+        {
+          "id": "1.7",
+          "phase": 1,
+          "status": "pending",
+          "size": "small",
+          "description": "Mobile platform hardening: gate android webContentsDebuggingEnabled on NODE_ENV (never in production), StatusBar style DARK to LIGHT with comments; Keyboard style DARK unchanged (FR-014 partial — full FR-014 scope declared in spec.md Phase Scope Appendix)",
+          "depends": [],
+          "acceptance": "capacitor.config.ts android block contains webContentsDebuggingEnabled: process.env.NODE_ENV !== \"production\" with comment; StatusBar block has style: \"LIGHT\" with comment; Keyboard block still has style: \"DARK\"; no other files modified.",
+          "files_touched": [],
+          "fr_refs": [
+            "FR-014"
+          ]
+        }
+      ]
+    }
+  ],
+  "migration_status": "native",
+  "specMtime": "2026-08-10T04:46:50.558Z",
+  "specHash": "3eb7f568a4a9bd5eadd4af04bf6b2ef8bc900a3caaeb5dc60a77b8bd36ccccba",
+  "execution_profile": {
+    "parallelization_enabled": true,
+    "max_concurrent_tasks": 10,
+    "council_parallel": true,
+    "locked": false,
+    "auto_proceed": false
+  }
+}

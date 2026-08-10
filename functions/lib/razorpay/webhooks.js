@@ -9,17 +9,23 @@ const db = admin.firestore();
  * Validates the Razorpay signature to ensure the webhook payload is authentic.
  */
 function validateRazorpaySignature(body, signature, secret) {
-    const expectedSignature = crypto
-        .createHmac("sha256", secret)
-        .update(body)
-        .digest("hex");
-    return expectedSignature === signature;
+    // Constant-time comparison — avoid leaking timing information via a
+    // plain hex-string equality check.
+    const expected = crypto.createHmac("sha256", secret).update(body).digest();
+    let provided;
+    try {
+        provided = Buffer.from(signature, "hex");
+    }
+    catch (_a) {
+        return false;
+    }
+    return provided.length === expected.length && crypto.timingSafeEqual(expected, provided);
 }
 /**
  * HTTP Webhook for Razorpay Events (payment.captured, payment.failed, refund.processed, etc.)
  */
 exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     if (req.method !== "POST") {
         res.status(405).send("Method Not Allowed");
         return;
@@ -31,14 +37,22 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
         res.status(400).send("Missing signature");
         return;
     }
-    // Ensure RAZORPAY_WEBHOOK_SECRET is set in functions config or environment variables
-    // We'll fallback to a mock one if undefined, but warn aggressively
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || ((_a = functions.config().razorpay) === null || _a === void 0 ? void 0 : _a.webhook_secret) || "MOCK_SECRET_FOR_DEV";
-    if (webhookSecret === "MOCK_SECRET_FOR_DEV") {
-        functions.logger.warn("Using MOCK_SECRET_FOR_DEV for Razorpay webhook validation. Set RAZORPAY_WEBHOOK_SECRET in env.");
+    // Fail closed: the webhook secret MUST be configured in env/functions config.
+    // Never fall back to a mock secret — that would allow forging signatures.
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || ((_a = functions.config().razorpay) === null || _a === void 0 ? void 0 : _a.webhook_secret);
+    if (!webhookSecret) {
+        functions.logger.error("Razorpay webhook secret is not configured; rejecting request");
+        res.status(500).send({ status: "error", message: "Webhook not configured" });
+        return;
     }
-    // req.rawBody is provided by Firebase functions (raw buffer of request)
-    const isValid = validateRazorpaySignature(req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body), signature, webhookSecret);
+    // Fail closed: require the raw request body; JSON.stringify(req.body) can
+    // produce a payload that differs from what Razorpay signed.
+    if (!req.rawBody) {
+        functions.logger.error("Razorpay webhook missing rawBody; rejecting request");
+        res.status(400).send({ status: "error", message: "Missing raw body" });
+        return;
+    }
+    const isValid = validateRazorpaySignature(req.rawBody.toString(), signature, webhookSecret);
     if (!isValid) {
         functions.logger.error("Invalid Razorpay Webhook Signature");
         res.status(400).send("Invalid signature");
@@ -90,13 +104,27 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
             if (orderId) {
                 const orderQuery = await db.collectionGroup("orders").where("id", "==", orderId).limit(1).get();
                 if (!orderQuery.empty) {
-                    await orderQuery.docs[0].ref.update({
-                        paymentStatus: "Paid",
-                        "payment.status": "paid",
-                        "payment.transactionId": paymentId,
-                        "payment.paidAt": admin.firestore.FieldValue.serverTimestamp()
-                    });
-                    functions.logger.info(`Updated Order ${orderId} to Paid`);
+                    const orderDoc = orderQuery.docs[0];
+                    const orderData = orderDoc.data();
+                    const expectedAmountPaise = Math.round((((_e = orderData.totals) === null || _e === void 0 ? void 0 : _e.grandTotal) || 0) * 100);
+                    if (paymentEntity.amount < expectedAmountPaise) {
+                        functions.logger.error(`Amount mismatch for order ${orderId}. Expected ${expectedAmountPaise} paise, got ${paymentEntity.amount} paise.`);
+                        await orderDoc.ref.update({
+                            paymentStatus: "Fraud_PartialPayment",
+                            "payment.status": "failed",
+                            "payment.transactionId": paymentId,
+                        });
+                        // We still respond with success to Razorpay to prevent webhook retries, but we marked the order as fraudulent.
+                    }
+                    else {
+                        await orderDoc.ref.update({
+                            paymentStatus: "Paid",
+                            "payment.status": "paid",
+                            "payment.transactionId": paymentId,
+                            "payment.paidAt": admin.firestore.FieldValue.serverTimestamp()
+                        });
+                        functions.logger.info(`Updated Order ${orderId} to Paid`);
+                    }
                 }
             }
         }
@@ -120,7 +148,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
             }
         }
         else if (event === "refund.processed") {
-            const refundEntity = (_f = (_e = payload.payload) === null || _e === void 0 ? void 0 : _e.refund) === null || _f === void 0 ? void 0 : _f.entity;
+            const refundEntity = (_g = (_f = payload.payload) === null || _f === void 0 ? void 0 : _f.refund) === null || _g === void 0 ? void 0 : _g.entity;
             if (refundEntity) {
                 await paymentsRef.set({
                     status: "REFUNDED",

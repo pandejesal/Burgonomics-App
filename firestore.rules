@@ -2,27 +2,78 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
-    
-    // User profile: User can read and write their own document
+    // Users: each user may only access their own document and subcollections.
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /addresses/{addressId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /orders/{orderId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow update, delete: if false;
+      }
     }
-    
-    // Petpooja Data: Anyone can read, only admin can write (we don't have admin role yet, so only read for now)
+
+    // Top-level orders: only the owner (userId field) may read/create/update;
+    // deletion is never allowed from clients.
+    match /orders/{orderId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Menu data: public read; writes only via Cloud Functions (admin SDK).
+    match /stores/{storeId} {
+      allow read: if true;
+      allow write: if false;
+    }
     match /petpooja_categories/{docId} {
       allow read: if true;
+      allow write: if false;
     }
     match /petpooja_products/{docId} {
       allow read: if true;
+      allow write: if false;
     }
     match /petpooja_offers/{docId} {
       allow read: if true;
+      allow write: if false;
     }
+
+    // Integration bridge docs: ONLY Cloud Functions (admin SDK) may read/write.
     match /petpooja_orders/{docId} {
-      allow read, write: if true; // In production, restrict this to authenticated users or admin
+      allow read, write: if false;
+    }
+
+    // Admin/internal collections: NO client access (NestJS backend + Cloud
+    // Functions use the admin SDK, which bypasses these rules). If the admin
+    // dashboard ever needs direct Firestore access, gate it via custom claims
+    // or a functions proxy — never open these to authenticated users.
+    match /admin_stores/{docId} {
+      allow read, write: if false;
+    }
+    match /payments/{docId} {
+      allow read, write: if false;
+    }
+    match /refunds/{docId} {
+      allow read, write: if false;
+    }
+    match /payment_discrepancies/{docId} {
+      allow read, write: if false;
+    }
+    match /admin_{docId=**} {
+      allow read, write: if false;
+    }
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false; // Only Admin SDK/Cloud Functions can write
+      match /sessions/{sessionId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
     }
   }
 }

@@ -20,7 +20,8 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: true,
+    // Never enable the WebView debug bridge in production (USB hosts could inspect tokens via chrome://inspect).
+    webContentsDebuggingEnabled: process.env.NODE_ENV !== "production",
   },
   plugins: {
     SplashScreen: {
@@ -34,7 +35,8 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     StatusBar: {
-      style: "DARK",
+      // LIGHT icons on the deep-green (#023020) toolbar — DARK icons were invisible.
+      style: "LIGHT",
       backgroundColor: "#023020",
       overlaysWebView: false,
     },

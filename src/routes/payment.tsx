@@ -13,6 +13,13 @@ import {
   Notebook,
   Coins,
   CreditCard,
+  Banknote,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  RefreshCcw,
+  Loader2,
+  ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -21,6 +28,7 @@ import { AppButton } from "@/shared/components/common/AppButton";
 import { AppBadge } from "@/shared/components/common/AppBadge";
 import { Text } from "@/shared/components/common/Text";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { AudioService } from "@/core/services/audio";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { Spinner } from "@/shared/components/feedback/Spinner";
 import { useHydrated } from "@/shared/hooks/useHydrated";
@@ -175,6 +183,7 @@ function PaymentPage() {
         }
 
         setStatus("success");
+        AudioService.playSuccess();
         void cartRepository.clear();
         void navigate({
           to: "/order-confirmation/$orderId",
@@ -265,6 +274,7 @@ function PaymentPage() {
         transactionId: result.paymentId,
       });
       setStatus("success");
+      AudioService.playSuccess();
       void cartRepository.clear();
       const orderId = created.success ? created.data.id : verify.data.confirmedOrderId;
       void navigate({

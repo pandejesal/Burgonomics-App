@@ -27,7 +27,13 @@ export class ProfileRepository {
   }
 
   async refresh(): Promise<ApiResult<UserProfile | null>> {
-    return profileService.me();
+    useProfileStore.getState().setStatus("refreshing");
+    const res = await profileService.me();
+    if (res.success && res.data) {
+      useProfileStore.getState().applyPatch(res.data);
+    }
+    useProfileStore.getState().setStatus("idle");
+    return res;
   }
 
   async update(patch: ProfileInput): Promise<ApiResult<UserProfile>> {

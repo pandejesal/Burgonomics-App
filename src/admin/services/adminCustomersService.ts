@@ -7,7 +7,7 @@ import {
   getDocs,
   onSnapshot,
 } from "firebase/firestore";
-import { CustomerProfile, LoyaltyTier } from "../pages/customersData";
+import { CustomerProfile } from "../pages/customersData";
 
 export const adminCustomersService = {
   /**
@@ -33,24 +33,36 @@ export const adminCustomersService = {
           // Map Firebase Auth/Firestore fields to CustomerProfile
           liveCustomers.push({
             id: docSnap.id,
-            name: data.name || data.displayName || "Unknown",
+            fullName: data.name || data.displayName || "Unknown",
             email: data.email || "",
             phone: data.phone || data.phoneNumber || "",
             avatar: data.avatar || data.photoURL || `https://i.pravatar.cc/150?u=${docSnap.id}`,
-            joinDate: data.createdAt ? new Date(data.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
-            lastActiveAt: data.lastActiveAt ? new Date(data.lastActiveAt.seconds * 1000).toISOString() : new Date().toISOString(),
-            tags: data.tags || [],
+            city: data.city || "Unknown",
+            preferredStore: data.preferredStore || "Main",
+            ordersCount: data.ordersCount || 0,
+            totalSpent: data.totalSpent || 0,
+            loyaltyTier: data.loyaltyTier || "Bronze",
+            lastOrderDate: data.lastActiveAt ? new Date(data.lastActiveAt.seconds * 1000).toISOString() : new Date().toISOString(),
+            status: data.status || "Active",
+            joinedAt: data.createdAt ? new Date(data.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
+            gender: data.gender || "Prefer not to say",
+            birthday: data.birthday || "",
+            preferredLanguage: data.preferredLanguage || "English",
+            notes: data.notes || "",
+            addresses: data.addresses || [],
             loyalty: data.loyalty || {
-              tier: "Bronze",
-              points: 0,
-              lifetimeValuePaise: 0,
-              totalOrders: 0,
-              nextTierPoints: 1000
+              currentPoints: 0,
+              lifetimePoints: 0,
+              pointsExpiring: 0,
+              expiringDate: "",
+              tierProgress: 0,
+              history: []
             },
-            addressCount: data.addressCount || 1,
-            segment: data.segment || "New",
-            notes: data.notes || ""
-          });
+            coupons: data.coupons || [],
+            notifications: data.notifications || [],
+            supportHistory: data.supportHistory || [],
+            auditLogs: data.auditLogs || []
+          } as CustomerProfile);
         });
         onUpdate(liveCustomers);
       },

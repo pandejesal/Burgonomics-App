@@ -1,6 +1,5 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import mascotAsset from "@/assets/burgonomics-logo.png.asset.json";
 
 interface BrandMascotProps {
   size?: number;
@@ -21,7 +20,7 @@ export function BrandMascot({
 }: BrandMascotProps) {
   return (
     <img
-      src={mascotAsset.url}
+      src="/burgonomics-logo.png"
       alt={alt}
       width={size}
       height={size}

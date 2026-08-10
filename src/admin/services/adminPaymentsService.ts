@@ -9,6 +9,7 @@ import {
   onSnapshot,
   doc,
   updateDoc,
+  setDoc,
 } from "firebase/firestore";
 import { TransactionDetails, RefundDetails, DiscrepancyDetails } from "../pages/paymentsData";
 
@@ -131,7 +132,7 @@ export const adminPaymentsService = {
       // For now, we mock the local state creation of a pending refund record
       // to demonstrate the UI flow correctly connecting to Firestore
       const newRefundRef = doc(collection(db, "refunds"));
-      await newRefundRef.set({
+      await setDoc(newRefundRef, {
         id: newRefundRef.id,
         paymentId,
         amountPaise,
