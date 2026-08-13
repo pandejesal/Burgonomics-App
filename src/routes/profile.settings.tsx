@@ -39,7 +39,11 @@ function Body() {
   const requestDelete = async () => {
     const res = await profileRepository.requestAccountDeletion();
     if (res.success) {
-      toast.success("Deletion request submitted. Our team will reach out shortly.");
+      toast.success("Account deletion scheduled under DPDP. Signing out...");
+      setTimeout(async () => {
+        const { useAuthStore } = await import("@/features/auth/state/authStore");
+        await useAuthStore.getState().logout();
+      }, 1000);
     } else {
       toast.error(res.error.message);
     }

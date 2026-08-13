@@ -38,16 +38,15 @@ export const razorpayWebhook = functions.https.onRequest(async (req: any, res: a
   }
 
   // Fail closed: the webhook secret MUST be configured in env/functions config.
-  // Never fall back to a mock secret — that would allow forging signatures.
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || functions.config().razorpay?.webhook_secret;
+  const webhookSecret =
+    process.env.RAZORPAY_WEBHOOK_SECRET || functions.config().razorpay?.webhook_secret;
   if (!webhookSecret) {
     functions.logger.error("Razorpay webhook secret is not configured; rejecting request");
     res.status(500).send({ status: "error", message: "Webhook not configured" });
     return;
   }
 
-  // Fail closed: require the raw request body; JSON.stringify(req.body) can
-  // produce a payload that differs from what Razorpay signed.
+  // Fail closed: require raw request body
   if (!req.rawBody) {
     functions.logger.error("Razorpay webhook missing rawBody; rejecting request");
     res.status(400).send({ status: "error", message: "Missing raw body" });
@@ -65,125 +64,228 @@ export const razorpayWebhook = functions.https.onRequest(async (req: any, res: a
   try {
     const payload = req.body;
     const event = payload.event;
-    
+
     functions.logger.info(`Processing Razorpay Webhook Event: ${event}`);
 
-    // Extract core payment entity from the payload
+    // Extract core payment entity from payload
     const paymentEntity = payload.payload?.payment?.entity;
-    
+
     if (!paymentEntity) {
       functions.logger.warn("Missing payment entity in Razorpay payload");
       res.status(400).send("Missing payment entity");
       return;
     }
 
-    // Extract the orderId from the receipt or notes (standard practice to pass internal order ID in notes)
-    const orderId = paymentEntity.notes?.orderId || paymentEntity.receipt;
+    // Extract orderId from notes or receipt or payment entity
+    const orderId =
+      paymentEntity.notes?.orderId ||
+      paymentEntity.notes?.confirmedOrderId ||
+      paymentEntity.receipt ||
+      paymentEntity.order_id;
     const paymentId = paymentEntity.id;
-    // The status is available on paymentEntity.status if needed
 
-    // We store webhook events in the 'payments' collection
     const paymentsRef = db.collection("payments").doc(paymentId);
-    
-    // Save the raw webhook event to a subcollection for audit logs
+
+    // Save raw webhook event to audit subcollection
     await paymentsRef.collection("webhook_events").add({
       event: event,
       status: "DELIVERED",
       time: admin.firestore.FieldValue.serverTimestamp(),
-      payload: JSON.stringify(payload)
+      payload: JSON.stringify(payload),
     });
 
     if (event === "payment.captured") {
-      await paymentsRef.set({
-        id: paymentId,
-        orderId: orderId,
-        amountPaise: paymentEntity.amount,
-        currency: paymentEntity.currency,
-        gateway: "razorpay",
-        gatewayPaymentId: paymentId,
-        status: "CAPTURED",
-        verificationStatus: "VERIFIED",
-        capturedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        // Partial fallback fields in case it wasn't pre-created
-        customer: {
-          email: paymentEntity.email || "",
-          phone: paymentEntity.contact || "",
-        }
-      }, { merge: true });
+      await paymentsRef.set(
+        {
+          id: paymentId,
+          orderId: orderId || null,
+          amountPaise: paymentEntity.amount,
+          currency: paymentEntity.currency,
+          gateway: "razorpay",
+          gatewayPaymentId: paymentId,
+          status: "CAPTURED",
+          verificationStatus: "VERIFIED",
+          capturedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          customer: {
+            email: paymentEntity.email || "",
+            phone: paymentEntity.contact || "",
+          },
+        },
+        { merge: true },
+      );
 
-      // Update the user's order payment status if orderId is available
+      // Reconcile or Rescue the Order Document in Firestore
       if (orderId) {
-        const orderQuery = await db.collectionGroup("orders").where("id", "==", orderId).limit(1).get();
-        if (!orderQuery.empty) {
-           const orderDoc = orderQuery.docs[0];
-           const orderData = orderDoc.data();
-           const expectedAmountPaise = Math.round((orderData.totals?.grandTotal || 0) * 100);
+        let orderRef = db.collection("orders").doc(orderId);
+        let orderSnap = await orderRef.get();
 
-           if (paymentEntity.amount < expectedAmountPaise) {
-             functions.logger.error(`Amount mismatch for order ${orderId}. Expected ${expectedAmountPaise} paise, got ${paymentEntity.amount} paise.`);
-             await orderDoc.ref.update({
-                paymentStatus: "Fraud_PartialPayment",
-                "payment.status": "failed",
-                "payment.transactionId": paymentId,
-             });
-             // We still respond with success to Razorpay to prevent webhook retries, but we marked the order as fraudulent.
-           } else {
-             await orderDoc.ref.update({
-                paymentStatus: "Paid",
-                "payment.status": "paid",
-                "payment.transactionId": paymentId,
-                "payment.paidAt": admin.firestore.FieldValue.serverTimestamp()
-             });
-             functions.logger.info(`Updated Order ${orderId} to Paid`);
-           }
+        if (!orderSnap.exists) {
+          // Check collectionGroup fallback in case placed under a subcollection
+          const orderQuery = await db
+            .collectionGroup("orders")
+            .where("id", "==", orderId)
+            .limit(1)
+            .get();
+          if (!orderQuery.empty) {
+            orderRef = orderQuery.docs[0].ref;
+            orderSnap = orderQuery.docs[0];
+          }
+        }
+
+        // Server-Authoritative Amount Verification (PAY-2 / PAY-3 Fix)
+        const paymentOrderSnap = await db.collection("payment_orders").doc(orderId).get();
+        let expectedAmountPaise = 0;
+        if (paymentOrderSnap.exists) {
+          expectedAmountPaise = paymentOrderSnap.data()?.amountInPaise || 0;
+        }
+
+        if (orderSnap.exists) {
+          const orderData = orderSnap.data() as any;
+          if (!expectedAmountPaise) {
+            expectedAmountPaise = Math.round((orderData.totals?.grandTotal || 0) * 100);
+          }
+
+          if (paymentEntity.amount < expectedAmountPaise) {
+            functions.logger.error(
+              `Amount mismatch for order ${orderId}. Expected ${expectedAmountPaise} paise (server authoritative), got ${paymentEntity.amount} paise.`,
+            );
+            await orderRef.update({
+              paymentStatus: "Fraud_PartialPayment",
+              "payment.status": "failed",
+              "payment.transactionId": paymentId,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          } else {
+            await orderRef.update({
+              paymentStatus: "Paid",
+              "payment.status": "paid",
+              "payment.transactionId": paymentId,
+              "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            functions.logger.info(`Updated Order ${orderId} to Paid`);
+          }
+        } else {
+          // DROPOUT RECOVERY: Client paid in Razorpay but crashed / disconnected before creating the Order document.
+          // Retrieve the pre-saved checkout snapshot from payment_orders/{orderId}
+          const paymentOrderSnap = await db.collection("payment_orders").doc(orderId).get();
+
+          if (paymentOrderSnap.exists) {
+            const snapData = paymentOrderSnap.data() || {};
+            const snapshot = snapData.snapshot || {};
+            const placedAt = new Date().toISOString();
+            const etaMs = snapshot.fulfillment === "delivery" ? 35 * 60_000 : 20 * 60_000;
+
+            const recoveredOrder = {
+              id: orderId,
+              shortCode: orderId.slice(-6).toUpperCase(),
+              status: {
+                code: "PLACED",
+                label: "Order placed",
+                kind: "upcoming",
+                terminal: false,
+              },
+              fulfillment: snapshot.fulfillment || snapData.fulfillment || "delivery",
+              store: snapshot.store || {
+                id: snapData.storeId || "unknown",
+                name: "Burgonomics",
+              },
+              address: snapshot.address || null,
+              items: snapshot.items || snapshot.lines || [],
+              totals: snapshot.totals || {
+                grandTotal: snapData.amount || paymentEntity.amount / 100,
+              },
+              promo: snapshot.promo || null,
+              notes: snapshot.notes || "",
+              fulfillmentInstructions: snapshot.fulfillmentInstructions || "",
+              payment: {
+                method: "online",
+                label: "Paid Online (Razorpay)",
+                status: "paid",
+                transactionId: paymentId,
+                paidAt: placedAt,
+              },
+              paymentStatus: "Paid",
+              petpoojaStatus: "Pending",
+              placedAt,
+              estimatedAt: new Date(Date.now() + etaMs).toISOString(),
+              userId: snapshot.userId || "guest_recovered",
+              recoveredFromDropout: true,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+
+            await db.collection("orders").doc(orderId).set(recoveredOrder);
+            await paymentOrderSnap.ref.update({
+              status: "CONVERTED",
+              convertedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            functions.logger.info(
+              `Rescued and created orphan order ${orderId} from checkout snapshot`,
+            );
+          } else {
+            functions.logger.warn(
+              `Payment ${paymentId} captured for unknown orderId ${orderId} without snapshot. Flagged as ORPHAN_CAPTURED.`,
+            );
+            await paymentsRef.update({
+              status: "ORPHAN_CAPTURED",
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
         }
       }
-    } 
-    else if (event === "payment.failed") {
-      await paymentsRef.set({
-        id: paymentId,
-        orderId: orderId,
-        status: "FAILED",
-        verificationStatus: "FAILED",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+    } else if (event === "payment.failed") {
+      await paymentsRef.set(
+        {
+          id: paymentId,
+          orderId: orderId || null,
+          status: "FAILED",
+          verificationStatus: "FAILED",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
 
       if (orderId) {
-        const orderQuery = await db.collectionGroup("orders").where("id", "==", orderId).limit(1).get();
-        if (!orderQuery.empty) {
-           await orderQuery.docs[0].ref.update({
-              paymentStatus: "Failed",
-              "payment.status": "failed"
-           });
-           functions.logger.info(`Updated Order ${orderId} to Failed`);
+        const orderRef = db.collection("orders").doc(orderId);
+        const orderSnap = await orderRef.get();
+        if (orderSnap.exists) {
+          await orderRef.update({
+            paymentStatus: "Failed",
+            "payment.status": "failed",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          functions.logger.info(`Updated Order ${orderId} to Failed`);
         }
       }
-    }
-    else if (event === "refund.processed") {
+    } else if (event === "refund.processed") {
       const refundEntity = payload.payload?.refund?.entity;
       if (refundEntity) {
-        await paymentsRef.set({
-          status: "REFUNDED",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        
+        await paymentsRef.set(
+          {
+            status: "REFUNDED",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+
         const refundsRef = db.collection("refunds").doc(refundEntity.id);
         await refundsRef.set({
           id: refundEntity.id,
           paymentId: paymentId,
-          orderId: orderId,
+          orderId: orderId || null,
           amountPaise: refundEntity.amount,
           status: "COMPLETED",
           completedAt: admin.firestore.FieldValue.serverTimestamp(),
           gatewayStatus: refundEntity.status,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
       }
     }
 
     res.status(200).send({ status: "success" });
-
   } catch (error: any) {
     functions.logger.error("Error processing Razorpay Webhook", error);
     res.status(500).send({ status: "error", message: "Internal server error" });

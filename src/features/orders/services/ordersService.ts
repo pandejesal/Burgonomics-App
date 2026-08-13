@@ -237,6 +237,7 @@ export const ordersService = {
       notes: input.notes,
       fulfillmentInstructions: input.fulfillmentInstructions,
       payment: input.payment,
+      petpoojaStatus: "Pending",
       placedAt: nowIso,
       estimatedAt: new Date(Date.now() + etaMs).toISOString(),
     };
@@ -260,7 +261,8 @@ export const ordersService = {
       if (user) {
         await setDoc(doc(db, "orders", id), {
           ...order,
-          userId: user.uid
+          userId: user.uid,
+          petpoojaStatus: "Pending",
         });
       }
     } catch (err) {

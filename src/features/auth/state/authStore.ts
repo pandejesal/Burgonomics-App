@@ -79,6 +79,8 @@ async function clearPersistedSession() {
   ]);
 }
 
+import { notificationsService } from "@/features/notifications/services/notificationsService";
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "idle",
   user: null,
@@ -107,6 +109,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!isJwtExpired(accessToken)) {
         useProfileStore.getState().hydrateFromAuth(user);
         profileRepository.refresh().catch(console.error);
+        void notificationsService.linkUserToDeviceToken(user.id);
         set({
           status: "authenticated",
           user,
@@ -180,6 +183,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await persistSession(res.data.user, res.data.accessToken, res.data.refreshToken);
     useProfileStore.getState().hydrateFromAuth(res.data.user);
     profileRepository.refresh().catch(console.error);
+    void notificationsService.linkUserToDeviceToken(res.data.user.id);
     set({
       status: "authenticated",
       user: res.data.user,
@@ -207,6 +211,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   async logout() {
     const { refreshToken } = get();
+    void notificationsService.unlinkUserFromDeviceToken();
     await authRepository.logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();

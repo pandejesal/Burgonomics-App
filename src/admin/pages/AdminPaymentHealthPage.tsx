@@ -385,7 +385,7 @@ export const AdminPaymentHealthPage: React.FC = () => {
                 <div className="font-mono text-gray-400 text-[9px] space-y-0.5 mt-1">
                   <div>SSL Expiry: 142 days remaining</div>
                   <div>IP Access list: 12 administrative proxies whitelisted</div>
-                  <div>2FA Protocol: Google Authenticator TOTP active</div>
+                  <div>Auth Protocol: Firebase Identity Token (RSA-256) Verified</div>
                 </div>
               </div>
             </div>

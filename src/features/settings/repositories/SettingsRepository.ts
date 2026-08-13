@@ -9,6 +9,9 @@ import { settingsService } from "@/features/settings/services/settingsService";
 import { useSettingsStore } from "@/features/settings/state/settingsStore";
 import type { AppSettings } from "@/features/settings/models";
 
+import { notificationsService } from "@/features/notifications/services/notificationsService";
+import { requestPushPermissions } from "@/shared/platform/pushNotifications";
+
 export class SettingsRepository {
   readonly name = "SettingsRepository";
 
@@ -34,6 +37,19 @@ export class SettingsRepository {
     patch: Partial<AppSettings["notifications"]>,
   ): Promise<ApiResult<void>> {
     useSettingsStore.getState().updateNotifications(patch);
+
+    // If enabling any notification, ensure native permissions are requested
+    if (patch.orderUpdates || patch.offers || patch.announcements) {
+      void requestPushPermissions();
+    }
+
+    // Sync to device token in Firestore
+    void notificationsService.updateNotificationPreferences({
+      orders: patch.orderUpdates,
+      offers: patch.offers,
+      announcements: patch.announcements,
+    });
+
     const res = await settingsService.update({
       notifications: { ...useSettingsStore.getState().notifications, ...patch },
     });

@@ -9,6 +9,7 @@ import {
   Share2,
   FileText,
   Home,
+  Bell,
 } from "lucide-react";
 
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -16,6 +17,7 @@ import { AppButton } from "@/shared/components/common/AppButton";
 import { Text } from "@/shared/components/common/Text";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { toast } from "@/shared/components/feedback/AppToaster";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { BrandMascot } from "@/shared/components/common/BrandMascot";
 
@@ -198,6 +200,9 @@ function OrderConfirmationPage() {
           <OrderPriceSummary totals={order.totals} promo={order.promo} />
         </section>
 
+        {/* Contextual Push Notification Soft-Prompt */}
+        <NotificationPromptCard />
+
         {/* Actions */}
         <div className="mt-6 flex flex-col gap-3">
           <AppButton
@@ -260,6 +265,72 @@ function MetaRow({
         <Text variant="titleMedium" as="div">
           {children}
         </Text>
+      </div>
+    </div>
+  );
+}
+
+function NotificationPromptCard() {
+  const [dismissed, setDismissed] = React.useState(() => {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem("burg.push_prompted") === "true";
+    }
+    return false;
+  });
+  const [busy, setBusy] = React.useState(false);
+
+  if (dismissed) return null;
+
+  const onEnable = async () => {
+    setBusy(true);
+    try {
+      const { requestPushPermissions } = await import("@/shared/platform/pushNotifications");
+      const granted = await requestPushPermissions();
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem("burg.push_prompted", "true");
+      }
+      setDismissed(true);
+      if (granted) {
+        toast.success("Live order tracking notifications enabled!");
+      }
+    } catch {
+      setDismissed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-[var(--radius-large)] border border-primary/20 bg-primary/5 p-4">
+      <div className="flex items-start gap-3">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+          <Bell className="h-5 w-5" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <Text variant="titleMedium" className="font-semibold text-text-primary">
+            Get live status alerts
+          </Text>
+          <Text variant="bodySmall" tone="secondary" className="mt-0.5">
+            Never miss an update when your burger is cooking or out for delivery.
+          </Text>
+          <div className="mt-3 flex items-center gap-2">
+            <AppButton size="sm" variant="cta" onClick={() => void onEnable()} loading={busy}>
+              Enable alerts
+            </AppButton>
+            <AppButton
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDismissed(true);
+                if (typeof window !== "undefined" && window.localStorage) {
+                  window.localStorage.setItem("burg.push_prompted", "true");
+                }
+              }}
+            >
+              Maybe later
+            </AppButton>
+          </div>
+        </div>
       </div>
     </div>
   );

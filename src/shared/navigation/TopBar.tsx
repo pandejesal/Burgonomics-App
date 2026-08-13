@@ -25,7 +25,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
   return (
     <header
       className={cn(
-        "sticky top-0 z-30 flex min-h-[calc(3.5rem_+_env(safe-area-inset-top,0px))] items-center gap-2 border-b border-primary/20 bg-primary text-white px-2 pt-[env(safe-area-inset-top,0px)] shadow-[0_2px_10px_rgba(14,72,37,0.3)]",
+        "sticky top-0 z-30 flex min-h-[calc(3.5rem_+_env(safe-area-inset-top,0px))] items-center gap-2 border-b border-white/10 bg-primary/95 backdrop-blur-md text-white px-2 pt-[env(safe-area-inset-top,0px)] shadow-lg shadow-primary/20",
         ios && "justify-between",
         className,
       )}

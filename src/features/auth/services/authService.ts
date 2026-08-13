@@ -121,8 +121,8 @@ export const authService = {
         const { db } = await import("@/core/config/firebase");
         const snap = await getDoc(doc(db, "users", uid));
         if (snap.exists()) {
-            returnedUser.name = snap.data().fullName;
-            returnedUser.email = snap.data().email;
+            returnedUser.name = snap.data()?.fullName;
+            returnedUser.email = snap.data()?.email;
         }
       } catch (e) {}
 
@@ -146,6 +146,7 @@ export const authService = {
     refreshToken: string,
   ): Promise<ApiResult<{ accessToken: string; refreshToken: string }>> {
     try {
+      await auth.authStateReady();
       const user = auth.currentUser;
       if (!user) {
         return fail("AUTH_REFRESH_FAILED", "No active firebase session.");

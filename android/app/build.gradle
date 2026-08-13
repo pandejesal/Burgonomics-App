@@ -29,8 +29,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv("RELEASE_STORE_FILE") ?: "../release.keystore"
+            def keystoreFile = file(keystorePath)
+            if (keystoreFile.exists()) {
+                def storePass = System.getenv("RELEASE_STORE_PASSWORD")
+                def keyAliasName = System.getenv("RELEASE_KEY_ALIAS") ?: "burgonomics"
+                def keyPass = System.getenv("RELEASE_KEY_PASSWORD")
+                if (!storePass || !keyPass) {
+                    throw new GradleException("RELEASE_STORE_PASSWORD and RELEASE_KEY_PASSWORD environment variables are required to sign release builds.")
+                }
+                storeFile keystoreFile
+                storePassword storePass
+                keyAlias keyAliasName
+                keyPassword keyPass
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

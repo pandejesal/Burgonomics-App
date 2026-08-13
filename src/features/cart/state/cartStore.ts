@@ -52,7 +52,7 @@ export const useCartStore = create<CartState>()(
           let lines: CartLine[];
           if (existingIdx >= 0) {
             lines = s.lines.map((l, i) =>
-              i === existingIdx ? { ...l, quantity: l.quantity + line.quantity } : l,
+              i === existingIdx ? { ...l, quantity: Math.min(99, l.quantity + line.quantity) } : l,
             );
           } else {
             lines = [...s.lines, line];
@@ -81,7 +81,7 @@ export const useCartStore = create<CartState>()(
           get().removeLine(lineId);
           return;
         }
-        const validQuantity = Math.max(1, Math.floor(quantity));
+        const validQuantity = Math.min(99, Math.max(1, Math.floor(quantity)));
         set((s) => ({
           lines: s.lines.map((l) => (l.lineId === lineId ? { ...l, quantity: validQuantity } : l)),
         }));

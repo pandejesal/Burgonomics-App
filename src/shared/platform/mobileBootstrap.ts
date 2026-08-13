@@ -6,12 +6,16 @@
  * in. Every call is a no-op when running in a browser (`isNative() === false`).
  */
 import { isNative, getPlatform } from "./platform";
+import { initPushNotifications } from "./pushNotifications";
 
 export async function bootstrapNativePlatform(): Promise<void> {
   if (!isNative()) return;
 
   const platform = getPlatform();
   document.documentElement.classList.add(`platform-${platform}`);
+
+  // Initialize push notification listeners
+  void initPushNotifications();
 
   try {
     const [{ SplashScreen }, { StatusBar, Style }, { Keyboard }, { App }] = await Promise.all([

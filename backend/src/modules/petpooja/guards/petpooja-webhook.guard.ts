@@ -41,13 +41,8 @@ export class PetpoojaWebhookGuard implements CanActivate {
     const nodeEnv = process.env.NODE_ENV ?? 'development';
 
     if (!secret) {
-      if (nodeEnv === 'production') {
-        throw new UnauthorizedError('PETPOOJA_WEBHOOK_SECRET is required in production');
-      }
-      this.logger.warn(
-        'PETPOOJA_WEBHOOK_SECRET is not set — accepting webhook in non-production mode (INSECURE).',
-      );
-      return true;
+      this.logger.error('PETPOOJA_WEBHOOK_SECRET is not configured');
+      throw new UnauthorizedError('PETPOOJA_WEBHOOK_SECRET must be configured');
     }
 
     const headers = req.headers as Record<string, string | string[] | undefined>;

@@ -155,6 +155,7 @@ function LoginScreen() {
             type="submit"
             fullWidth
             size="lg"
+            variant="cta"
             loading={isBusy}
             disabled={!validation.valid}
           >

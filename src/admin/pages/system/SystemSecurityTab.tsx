@@ -147,6 +147,7 @@ export const SystemSecurityTab: React.FC = () => {
   };
 
   const handleToggleMaintenance = () => {
+    const requiredPin = import.meta.env.VITE_ADMIN_MAINTENANCE_PIN || "2026";
     if (isMaintenanceMode) {
       setIsMaintenanceMode(false);
       setMaintenancePin("");
@@ -154,7 +155,7 @@ export const SystemSecurityTab: React.FC = () => {
         "Burgonomics customer-facing API cluster is BACK ONLINE. Store networks are responsive.",
       );
     } else {
-      if (maintenancePin !== "9909") {
+      if (!maintenancePin || maintenancePin !== requiredPin) {
         alert("CRITICAL AUTHORIZATION FAILED. Incorrect safety confirmation PIN.");
         return;
       }
@@ -281,7 +282,7 @@ export const SystemSecurityTab: React.FC = () => {
               </div>
               <p>
                 Toggling maintenance blocks all checkout routes and returns HTTP 503 across customer
-                platforms. Requires authorization confirmation PIN (9909) to confirm emergency
+                platforms. Requires authorization confirmation PIN to confirm emergency
                 protocol.
               </p>
 
@@ -289,7 +290,7 @@ export const SystemSecurityTab: React.FC = () => {
                 <div className="pt-2">
                   <input
                     type="password"
-                    placeholder="Enter Safety PIN (9909)..."
+                    placeholder="Enter Administrator Safety PIN..."
                     value={maintenancePin}
                     onChange={(e) => setMaintenancePin(e.target.value)}
                     className="w-full bg-black border border-gray-900 rounded-lg p-2 text-white font-mono placeholder-gray-800 outline-none text-center tracking-widest"

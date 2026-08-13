@@ -16,11 +16,6 @@ interface AdminAuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   bootstrap: () => Promise<boolean>;
-  
-  // Dummy methods to avoid breaking existing components during migration
-  setup2Fa: () => Promise<any>;
-  verifySetup2Fa: (code: string) => Promise<boolean>;
-  disable2Fa: (code: string) => Promise<boolean>;
 }
 
 export const useAdminAuthStore = create<AdminAuthState>((set, get) => ({
@@ -76,9 +71,4 @@ export const useAdminAuthStore = create<AdminAuthState>((set, get) => ({
       });
     });
   },
-
-  // Dummy methods
-  setup2Fa: async () => ({ secret: "", qrCodeUrl: "" }),
-  verifySetup2Fa: async () => true,
-  disable2Fa: async () => true,
 }));

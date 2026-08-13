@@ -400,10 +400,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             {/* Command Palette */}
             <CommandPalette />
 
-            {/* 2FA Shield badge */}
+            {/* Auth Session Shield badge */}
             <div className="flex items-center gap-1.5 rounded-xl bg-[#0E4825]/5 dark:bg-[#0E4825]/10 px-3.5 py-2 text-xs font-bold text-[#0E4825] dark:text-emerald-400 border border-[#0E4825]/10 dark:border-emerald-900/30 shadow-sm">
               <ShieldCheck size={14} />
-              <span className="hidden xs:inline">2FA LOCKED</span>
+              <span className="hidden xs:inline">SECURE AUTH</span>
             </div>
 
             {/* Role indicator */}

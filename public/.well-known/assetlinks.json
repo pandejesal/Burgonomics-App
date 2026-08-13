@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.glassdoorsstudio.burgonomics",
+      "sha256_cert_fingerprints": [
+        "C8:70:5A:38:DA:BA:C8:A6:2A:AF:0B:89:6A:EF:7E:DB:8A:A8:AA:E9:33:E7:4F:48:A4:24:5E:EA:44:93:6D:70"
+      ]
+    }
+  }
+]

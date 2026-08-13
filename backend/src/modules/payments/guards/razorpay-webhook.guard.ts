@@ -27,13 +27,8 @@ export class RazorpayWebhookGuard implements CanActivate {
     const nodeEnv = process.env.NODE_ENV ?? 'development';
 
     if (!secretConfigured) {
-      if (nodeEnv === 'production') {
-        throw new UnauthorizedError('RAZORPAY_WEBHOOK_SECRET is required in production');
-      }
-      this.logger.warn(
-        'RAZORPAY_WEBHOOK_SECRET missing — accepting webhook in non-production (INSECURE)',
-      );
-      return true;
+      this.logger.error('RAZORPAY_WEBHOOK_SECRET is not configured');
+      throw new UnauthorizedError('RAZORPAY_WEBHOOK_SECRET must be configured');
     }
 
     const signature = (req.headers['x-razorpay-signature'] as string | undefined) ?? '';

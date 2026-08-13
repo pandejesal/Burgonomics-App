@@ -36,7 +36,7 @@ export function BottomTabBar() {
   return (
     <div
       aria-hidden={false}
-      className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] md:max-w-[480px] max-md:max-w-full bg-white/95 backdrop-blur-xl border-t border-divider/60 shadow-[0_-4px_16px_rgba(0,0,0,0.02)] pb-[env(safe-area-inset-bottom,0px)]"
+      className="glass-panel fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] md:max-w-[480px] max-md:max-w-full shadow-high pb-[env(safe-area-inset-bottom,0px)]"
     >
       <nav aria-label="Primary" className="w-full">
         <ul className="grid grid-cols-5 py-2.5 px-1">

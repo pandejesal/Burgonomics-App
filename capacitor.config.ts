@@ -20,8 +20,9 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: false,
     captureInput: true,
-    // Never enable the WebView debug bridge in production (USB hosts could inspect tokens via chrome://inspect).
-    webContentsDebuggingEnabled: process.env.NODE_ENV !== "production",
+    // Never enable the WebView debug bridge in production/release (resolves PLAT-4)
+    webContentsDebuggingEnabled:
+      process.env.NODE_ENV !== "production" && process.env.CAPACITOR_DEBUG === "true",
   },
   plugins: {
     SplashScreen: {

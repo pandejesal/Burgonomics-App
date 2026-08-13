@@ -87,7 +87,7 @@ export function OtpInput({
             onKeyDown={onKeyDown(idx)}
             onPaste={onPaste}
             className={cn(
-              "h-14 w-12 rounded-[var(--radius-medium)] border-[1.5px] bg-surface text-center",
+              "h-14 w-12 rounded-[var(--radius-medium)] border-[1.5px] bg-surface text-center shadow-low float-interactive",
               "type-display-medium text-text-primary outline-none focus:border-primary",
               border,
             )}

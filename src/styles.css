@@ -82,10 +82,10 @@
 
   /* Elevation - Antigravity Spatial Depth */
   --shadow-flat: none;
-  --shadow-low: 0 8px 24px -4px rgba(14, 72, 37, 0.04), 0 2px 8px -2px rgba(14, 72, 37, 0.02);
-  --shadow-medium: 0 20px 40px -4px rgba(14, 72, 37, 0.08), 0 8px 16px -4px rgba(14, 72, 37, 0.04);
-  --shadow-high: 0 32px 64px -12px rgba(14, 72, 37, 0.12), 0 16px 32px -8px rgba(14, 72, 37, 0.06);
-  --shadow-brand: 0 16px 32px -8px rgba(255, 102, 0, 0.24);
+  --shadow-low: 0 4px 12px -2px rgba(14, 72, 37, 0.05), 0 2px 4px -2px rgba(14, 72, 37, 0.03);
+  --shadow-medium: 0 16px 32px -4px rgba(14, 72, 37, 0.1), 0 8px 16px -4px rgba(14, 72, 37, 0.05);
+  --shadow-high: 0 32px 64px -12px rgba(14, 72, 37, 0.15), 0 16px 32px -8px rgba(14, 72, 37, 0.08);
+  --shadow-brand: 0 16px 32px -8px rgba(255, 102, 0, 0.3);
 
   /* Typography families — Montserrat and MonstroSolid */
   --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -452,4 +452,33 @@
 
 @utility perspective-1000 {
   perspective: 1000px;
+}
+
+/* Antigravity Glassmorphism */
+@utility glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.dark @utility glass-panel {
+  background: rgba(40, 45, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Base interactive hover scale for floating cards */
+@utility float-interactive {
+  transition: transform 0.4s var(--ease-out-back), box-shadow 0.4s var(--ease-out-back);
+  will-change: transform, box-shadow;
+
+  &:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: var(--shadow-medium);
+  }
+
+  &:active {
+    transform: translateY(2px) scale(0.98);
+    box-shadow: var(--shadow-low);
+  }
 }

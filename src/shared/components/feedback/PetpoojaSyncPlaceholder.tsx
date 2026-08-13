@@ -9,7 +9,7 @@ import { useDemoStore } from "@/features/demo/state/demoStore";
 import { useMenuStore } from "@/features/menu/state/menuStore";
 import { toast } from "sonner";
 import { db } from "@/core/config/firebase";
-import { collection, writeBatch, doc } from "firebase/firestore";
+import { collection, writeBatch, doc, addDoc, serverTimestamp } from "firebase/firestore";
 import { SAMPLE_CATEGORIES, SAMPLE_PRODUCTS } from "@/features/menu/data/petpoojaSampleData";
 
 interface PetpoojaSyncPlaceholderProps {
@@ -48,6 +48,27 @@ export function PetpoojaSyncPlaceholder({
       }
 
       await batch.commit();
+
+      // Inject a mock Webhook Log into Firestore to demonstrate the Admin Dashboard listener
+      try {
+        await addDoc(collection(db, "petpooja_webhook_logs"), {
+          type: "menu.sync",
+          status: "SUCCESS",
+          executionTimeMs: 142,
+          storeId: storeId || "unknown",
+          storeName: storeId ? `Store ${storeId}` : "Navrangpura Mock",
+          timestamp: serverTimestamp(),
+          payload: {
+            restaurant_id: storeId || "mock_rest_id",
+            event_fired: "menu.sync",
+            simulated: true,
+            records_upserted: SAMPLE_CATEGORIES.length + SAMPLE_PRODUCTS.length,
+            message: "This is a simulated payload from the frontend Petpooja mock button.",
+          }
+        });
+      } catch (err) {
+        console.warn("Could not insert mock webhook log, maybe rules?", err);
+      }
 
       setSimulationMode(true);
       if (storeId) {

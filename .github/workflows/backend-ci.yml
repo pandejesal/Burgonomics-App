@@ -1,0 +1,46 @@
+name: Backend CI (NestJS)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Backend Build & Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js (v22)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: 📦 Install Backend Dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: 🛠️ Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: ⚡ Compile Backend (NestJS)
+        working-directory: backend
+        run: npm run build
+
+      - name: 🧪 Run Backend Unit Tests
+        working-directory: backend
+        run: npm test -- --passWithNoTests

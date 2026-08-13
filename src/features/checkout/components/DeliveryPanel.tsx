@@ -16,7 +16,7 @@ import type { Store } from "@/features/stores/models/Store";
 
 interface Props {
   store: Store | null;
-  deliveryFee: number;
+  deliveryFee?: number;
   onAddressChange?: () => void;
 }
 
@@ -99,7 +99,7 @@ export function DeliveryPanel({ store, deliveryFee, onAddressChange }: Props) {
             </div>
           </div>
           <Text variant="titleMedium" className="tabular-nums">
-            {deliveryFee > 0 ? formatINR(deliveryFee) : "Free"}
+            {deliveryFee === undefined ? "Calculating..." : deliveryFee > 0 ? formatINR(deliveryFee) : "Free"}
           </Text>
         </div>
         {store && (

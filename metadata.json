@@ -2,5 +2,5 @@
   "name": "Burgonomics",
   "description": "Premium burgers and fries locator and ordering application.",
   "requestFramePermissions": ["geolocation"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

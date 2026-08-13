@@ -4,6 +4,29 @@ import * as crypto from "crypto";
 
 const db = admin.firestore();
 
+async function logWebhook(
+  type: "menu.sync" | "store.status" | "order.save",
+  status: "SUCCESS" | "FAILED" | "IGNORED",
+  payload: any,
+  execTimeMs: number,
+  storeId: string = "unknown",
+  storeName: string = "Unknown Store"
+) {
+  try {
+    await db.collection("petpooja_webhook_logs").add({
+      type,
+      status,
+      payload,
+      executionTimeMs: execTimeMs,
+      storeId,
+      storeName,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    functions.logger.error("Failed to log webhook to Firestore", e);
+  }
+}
+
 /**
  * Authenticates an incoming Petpooja webhook using an HMAC-SHA256 signature
  * over the raw request body. Fail-closed: any missing/invalid input returns
@@ -66,6 +89,7 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
     return;
   }
 
+  const startTime = Date.now();
   try {
     const payload = req.body;
     
@@ -79,8 +103,12 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
 
     if (!restaurants || !Array.isArray(restaurants)) {
       res.status(400).send("No restaurants data found");
+      await logWebhook("menu.sync", "FAILED", payload, Date.now() - startTime);
       return;
     }
+
+    let overallRestId = "unknown";
+    let overallRestName = "Unknown Store";
 
     // Process each restaurant's menu
     for (const rest of restaurants) {
@@ -160,13 +188,17 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
         await batch.commit();
       }
       
+      overallRestId = restId;
+      overallRestName = `Store ${restId}`;
       functions.logger.info(`Successfully processed menu for restaurant ${restId}`);
     }
 
+    await logWebhook("menu.sync", "SUCCESS", payload, Date.now() - startTime, overallRestId, overallRestName);
     res.status(200).send({ status: "success", message: "Menu synced successfully" });
 
   } catch (error: any) {
     functions.logger.error("Error processing Petpooja Menu push", error);
+    await logWebhook("menu.sync", "FAILED", req.body, Date.now() - startTime);
     res.status(500).send({ status: "error", message: "Internal server error" });
   }
 });
@@ -187,12 +219,14 @@ export const storeStatus = functions.https.onRequest(async (req: any, res: any) 
     return;
   }
 
+  const startTime = Date.now();
   try {
     const payload = req.body;
     const { restID, status } = payload;
     
     if (!restID || !status) {
       res.status(400).send("Missing restID or status");
+      await logWebhook("store.status", "FAILED", payload, Date.now() - startTime);
       return;
     }
     
@@ -200,8 +234,10 @@ export const storeStatus = functions.https.onRequest(async (req: any, res: any) 
     const storesRef = db.collection("admin_stores");
     const snapshot = await storesRef.where("petpoojaRestId", "==", restID.toString()).limit(1).get();
     
+    let storeName = "Unknown Store";
     if (!snapshot.empty) {
       const storeDoc = snapshot.docs[0];
+      storeName = storeDoc.data()?.name || "Unknown Store";
       await storeDoc.ref.update({
         isOpen: status === "1" || status === "active" || status === 1,
         lastSyncTime: admin.firestore.FieldValue.serverTimestamp(),
@@ -212,9 +248,11 @@ export const storeStatus = functions.https.onRequest(async (req: any, res: any) 
       functions.logger.warn(`Received status for unknown petpoojaRestId: ${restID}`);
     }
 
+    await logWebhook("store.status", "SUCCESS", payload, Date.now() - startTime, restID.toString(), storeName);
     res.status(200).send({ status: "success" });
   } catch (error: any) {
     functions.logger.error("Error processing Store Status push", error);
+    await logWebhook("store.status", "FAILED", req.body, Date.now() - startTime);
     res.status(500).send({ status: "error", message: "Internal server error" });
   }
 });

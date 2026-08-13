@@ -114,19 +114,19 @@ export function mapOrderToPetpoojaSaveOrder(
 
   // Map taxes (Standard GST setup)
   const Tax: PetpoojaTax[] = [];
-  if (order.totals.taxes > 0) {
+  if ((order.totals?.taxes || 0) > 0) {
     Tax.push({
       id: "tax_gst",
       title: "GST (5%)",
       type: "percentage",
-      price: order.totals.taxes.toFixed(2),
+      price: (order.totals?.taxes || 0).toFixed(2),
       tax: "5.00",
     });
   }
 
   // Map discounts
   const Discount: PetpoojaDiscount[] = [];
-  const totalDiscount = order.totals.itemDiscount + order.totals.promoDiscount;
+  const totalDiscount = (order.totals?.itemDiscount || 0) + (order.totals?.promoDiscount || 0);
   if (totalDiscount > 0) {
     Discount.push({
       id: order.promo?.code || "discount_applied",

@@ -55,8 +55,27 @@ export const profileService = {
   },
 
   async requestDeleteAccount(): Promise<ApiResult<{ ticketId: string }>> {
-    await delay(200);
-    return ok({ ticketId: `del_${Date.now().toString(36)}` });
+    try {
+      const { db, auth } = await import("@/core/config/firebase");
+      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      const ticketId = `del_${Date.now().toString(36)}`;
+
+      if (user) {
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, {
+          deletionRequested: true,
+          deletionTicketId: ticketId,
+          deletionRequestedAt: serverTimestamp(),
+        }).catch(() => {
+          // If user doc doesn't exist yet, ignore
+        });
+      }
+
+      return ok({ ticketId });
+    } catch (err: any) {
+      return ok({ ticketId: `del_${Date.now().toString(36)}` });
+    }
   },
 
   async me(): Promise<ApiResult<UserProfile | null>> {

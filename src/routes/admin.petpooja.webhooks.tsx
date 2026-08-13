@@ -21,6 +21,9 @@ import {
   PlusCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
+import { db } from "@/core/config/firebase";
+import { appConfig } from "@/core/config/env";
 
 export const Route = createFileRoute("/admin/petpooja/webhooks")({
   component: PetpoojaWebhooksPage,
@@ -38,166 +41,56 @@ interface WebhookRecord {
   previousPayload?: Record<string, any>; // for highlighting diffs
 }
 
-const MOCK_WEBHOOKS: WebhookRecord[] = [
-  {
-    id: "wh_001",
-    timestamp: "2026-07-19 09:12:45",
-    storeName: "Burgonomics Navrangpura",
-    storeId: "str_001",
-    type: "order.save",
-    status: "SUCCESS",
-    executionTimeMs: 42,
-    payload: {
-      restaurant_id: "rest_navrangpura",
-      order_id: "89224155",
-      total_amount: 549.0,
-      payment_type: "online",
-      items: [
-        { item_id: "itm_double_cheese", qty: 2, price: 210.0 },
-        { item_id: "itm_fries_large", qty: 1, price: 129.0 },
-      ],
-      customer: { name: "Aarav Sharma", phone: "9876543210" },
-    },
-    previousPayload: {
-      restaurant_id: "rest_navrangpura",
-      order_id: "89224155",
-      total_amount: 500.0, // shows a diff
-      payment_type: "online",
-      items: [{ item_id: "itm_double_cheese", qty: 2, price: 210.0 }],
-      customer: { name: "Aarav Sharma", phone: "9876543210" },
-    },
-  },
-  {
-    id: "wh_002",
-    timestamp: "2026-07-19 09:11:02",
-    storeName: "Burgonomics Nehrunagar",
-    storeId: "str_002",
-    type: "inventory.update",
-    status: "SUCCESS",
-    executionTimeMs: 18,
-    payload: {
-      restaurant_id: "rest_nehrunagar",
-      updated_at: "2026-07-19T09:11:02.000Z",
-      items: [
-        { item_id: "itm_classic_veg", stock_status: "in_stock" },
-        { item_id: "itm_nutella_shake", stock_status: "out_of_stock" },
-      ],
-    },
-  },
-  {
-    id: "wh_003",
-    timestamp: "2026-07-19 09:08:15",
-    storeName: "Burgonomics Gota",
-    storeId: "str_005",
-    type: "menu.sync",
-    status: "FAILED",
-    executionTimeMs: 350,
-    payload: {
-      restaurant_id: "rest_gota",
-      reason: "manual_push",
-      checksum: "sha256:0e4825ff6600",
-      menu_structure: {
-        categories_count: 8,
-        items_count: 142,
-      },
-    },
-    previousPayload: {
-      restaurant_id: "rest_gota",
-      reason: "manual_push",
-      checksum: "sha256:old_checksum",
-      menu_structure: {
-        categories_count: 8,
-        items_count: 140, // count diff
-      },
-    },
-  },
-  {
-    id: "wh_004",
-    timestamp: "2026-07-19 09:05:30",
-    storeName: "Burgonomics Mansi Circle",
-    storeId: "str_003",
-    type: "store.status",
-    status: "IGNORED",
-    executionTimeMs: 5,
-    payload: {
-      restaurant_id: "rest_mansi_circle",
-      status: "online",
-      reason: "periodic_keepalive",
-    },
-  },
-  {
-    id: "wh_005",
-    timestamp: "2026-07-19 08:59:12",
-    storeName: "Burgonomics Science City",
-    storeId: "str_004",
-    type: "order.save",
-    status: "RETRYING",
-    executionTimeMs: 120,
-    payload: {
-      restaurant_id: "rest_science_city",
-      order_id: "89224012",
-      total_amount: 320.0,
-      payment_type: "cod",
-      items: [{ item_id: "itm_peri_peri_burger", qty: 1, price: 180.0 }],
-      error_logs: "Connection failure to Burgonomics client API. Attempt 2 of 5.",
-    },
-  },
-];
+// MOCK_WEBHOOKS removed as we are reading real logs from Firestore
 
 function PetpoojaWebhooksPage() {
-  const [webhooks, setWebhooks] = useState<WebhookRecord[]>(MOCK_WEBHOOKS);
+  const [webhooks, setWebhooks] = useState<WebhookRecord[]>([]);
   const [isPlaying, setIsPlaying] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedWh, setSelectedWh] = useState<WebhookRecord | null>(MOCK_WEBHOOKS[0]);
+  const [selectedWh, setSelectedWh] = useState<WebhookRecord | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [jsonSearchQuery, setJsonSearchQuery] = useState("");
   const [showDiff, setShowDiff] = useState(false);
 
-  // Poll simulation: add a new webhook payload every 5 seconds to show dynamic movement
+  // Firestore real-time listener for Petpooja Webhooks
   useEffect(() => {
     if (!isPlaying) return;
 
-    const interval = setInterval(() => {
-      const types: Array<WebhookRecord["type"]> = [
-        "order.save",
-        "inventory.update",
-        "store.status",
-        "menu.sync",
-      ];
-      const statuses: Array<WebhookRecord["status"]> = ["SUCCESS", "IGNORED", "RETRYING", "FAILED"];
-      const chosenType = types[Math.floor(Math.random() * types.length)];
-      const chosenStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      const execTime = Math.floor(Math.random() * 80) + 5;
+    const logsQuery = query(
+      collection(db, "petpooja_webhook_logs"),
+      orderBy("timestamp", "desc"),
+      limit(50)
+    );
 
-      const randomWhId = Math.floor(Math.random() * 900000) + 100000;
+    const unsubscribe = onSnapshot(logsQuery, (snapshot) => {
+      const records: WebhookRecord[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        let timestampStr = "Unknown time";
+        if (data.timestamp?.toDate) {
+          timestampStr = data.timestamp.toDate().toISOString().replace("T", " ").substring(0, 19);
+        }
 
-      const newWh: WebhookRecord = {
-        id: `wh_${randomWhId}`,
-        timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-        storeName: "Burgonomics Navrangpura",
-        storeId: "str_001",
-        type: chosenType,
-        status: chosenStatus,
-        executionTimeMs: execTime,
-        payload: {
-          restaurant_id: "rest_navrangpura",
-          event_fired: chosenType,
-          live_status: chosenStatus,
-          timestamp_epoch: Date.now(),
-          node_meta: {
-            balancer: "cloud-run-ingress",
-            datacenter: "asia-south1",
-          },
-        },
-      };
-
-      setWebhooks((prev) => [newWh, ...prev.slice(0, 12)]);
-      toast.info(`New Webhook received: ${chosenType.toUpperCase()} for Navrangpura`, {
-        description: `Status: ${chosenStatus} (${execTime}ms)`,
+        records.push({
+          id: doc.id,
+          timestamp: timestampStr,
+          storeName: data.storeName || "Unknown Store",
+          storeId: data.storeId || "unknown",
+          type: data.type || "unknown",
+          status: data.status || "SUCCESS",
+          executionTimeMs: data.executionTimeMs || 0,
+          payload: data.payload || {},
+        });
       });
-    }, 5000);
+      setWebhooks(records);
+      
+      // Auto-select the first one if we don't have one selected yet
+      if (records.length > 0 && !selectedWh) {
+        setSelectedWh(records[0]);
+      }
+    });
 
-    return () => clearInterval(interval);
+    return () => unsubscribe();
   }, [isPlaying]);
 
   const handleCopy = (text: string) => {
@@ -234,8 +127,52 @@ function PetpoojaWebhooksPage() {
     );
   };
 
+  // Extract project ID from Firebase config to form the correct Cloud Functions URL
+  let firebaseProjectId = "your-project-id";
+  try {
+    const config = JSON.parse(appConfig.integrations.firebaseConfig || "{}");
+    if (config.projectId) {
+      firebaseProjectId = config.projectId;
+    }
+  } catch (e) {
+    // ignore
+  }
+  
+  const webhookUrlMenuPush = `https://us-central1-${firebaseProjectId}.cloudfunctions.net/pushMenu`;
+  const webhookUrlStoreStatus = `https://us-central1-${firebaseProjectId}.cloudfunctions.net/storeStatus`;
+
   return (
     <div className="space-y-6">
+      {/* Cloud Functions Deployment URLs */}
+      <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/50 rounded-[20px] p-5 shadow-sm">
+        <h3 className="text-sm font-bold text-emerald-800 dark:text-emerald-400 mb-3 flex items-center gap-2">
+          <Activity size={16} /> Live Webhook Endpoints
+        </h3>
+        <p className="text-xs text-emerald-700 dark:text-emerald-500/80 mb-4 max-w-2xl">
+          Enter these URLs into your Petpooja POS portal to receive real-time updates directly into your Firebase database.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-[#1A1A1A] p-3 rounded-xl border border-gray-100 dark:border-gray-800/80 flex items-center justify-between">
+            <div className="overflow-hidden mr-4">
+              <span className="block text-[10px] font-black uppercase text-gray-400 mb-1">Menu Push / Sync</span>
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate block">{webhookUrlMenuPush}</span>
+            </div>
+            <AdminButton variant="outline" size="sm" onClick={() => handleCopy(webhookUrlMenuPush)}>
+              <Copy size={12} />
+            </AdminButton>
+          </div>
+          <div className="bg-white dark:bg-[#1A1A1A] p-3 rounded-xl border border-gray-100 dark:border-gray-800/80 flex items-center justify-between">
+            <div className="overflow-hidden mr-4">
+              <span className="block text-[10px] font-black uppercase text-gray-400 mb-1">Store Open/Close Status</span>
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate block">{webhookUrlStoreStatus}</span>
+            </div>
+            <AdminButton variant="outline" size="sm" onClick={() => handleCopy(webhookUrlStoreStatus)}>
+              <Copy size={12} />
+            </AdminButton>
+          </div>
+        </div>
+      </div>
+
       {/* Live Stream Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white dark:bg-[#1A1A1A] border border-gray-100 dark:border-gray-800/80 rounded-[20px] p-4 shadow-sm">
         <div className="flex items-center gap-3 font-sans">

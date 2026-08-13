@@ -10,7 +10,7 @@ on:
 jobs:
   build-ios:
     name: Build & Export iOS Package
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       GIT_CONFIG_PARAMETERS: "'safe.directory=*'"
 
@@ -20,11 +20,8 @@ jobs:
 
       - name: 🛠️ Configure Git Safe Directories
         run: |
-          sudo git config --system --add safe.directory "*" || true
-          sudo git config --system http.sslVerify false || true
-          sudo git config --system credential.helper "" || true
+          sudo git config --system --add safe.directory "*"
           git config --global --add safe.directory "*"
-          git config --global http.sslVerify false
 
       - name: 🟢 Setup Node.js (v22)
         uses: actions/setup-node@v4
@@ -42,8 +39,8 @@ jobs:
 
       - name: 🛠️ Setup Xcode Version
         run: |
-          if [ -d "/Applications/Xcode_15.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
+          if ls -d /Applications/Xcode_16*.app >/dev/null 2>&1; then
+            sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | head -n 1)/Contents/Developer"
           else
             sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           fi
@@ -57,10 +54,14 @@ jobs:
             if (fs.existsSync(file)) {
               let c = fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/');
               if (!c.includes('keychain-swift')) {
-                c = c.replace('.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),', '.package(url: \"https://github.com/ionic-team/capacitor-swift-pm.git\", exact: \"8.4.2\"),\n        .package(url: \"https://github.com/evgenyneu/keychain-swift.git\", exact: \"21.0.0\"),');
+                c = c.replace(/(\.package\(url:\s*\"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git\",[^\)]+\),)/, '\$1\n        .package(url: \"https://github.com/evgenyneu/keychain-swift.git\", exact: \"21.0.0\"),');
                 c = c.replace('.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),', '.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),\n                .product(name: \"KeychainSwift\", package: \"keychain-swift\"),');
               }
               fs.writeFileSync(file, c);
+              if (!c.includes('KeychainSwift')) {
+                console.error('Failed to inject KeychainSwift dependency into CapApp-SPM/Package.swift');
+                process.exit(1);
+              }
             }
             const sf = 'node_modules/@aparajita/capacitor-secure-storage/Package.swift';
             if (fs.existsSync(sf)) {
@@ -69,7 +70,6 @@ jobs:
           "
 
       - name: 🏗️ Build iOS Simulator App
-        if: always()
         run: |
           cd ios/App
 
@@ -78,10 +78,9 @@ jobs:
                      -scheme App \
                      -derivedDataPath ../../build/DerivedData \
                      -clonedSourcePackagesDirPath ../../build/DerivedData/SourcePackages \
-                     -resolvePackageDependencies || true
+                     -resolvePackageDependencies
 
           echo "Compiling iOS Simulator build..."
-          set +e
           xcodebuild -project App.xcodeproj \
                      -scheme App \
                      -configuration Release \
@@ -97,17 +96,9 @@ jobs:
                      SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                      GCC_TREAT_WARNINGS_AS_ERRORS=NO \
                      COMPILER_INDEX_STORE_ENABLE=NO \
-                     build > xcodebuild.log 2>&1
-          SIM_EXIT=$?
-          set -e
+                     build
 
-          if [ $SIM_EXIT -ne 0 ]; then
-            echo "❌ Simulator build failed with exit code $SIM_EXIT"
-            grep -i "error:" xcodebuild.log | head -n 20 | while read -r line; do echo "::error::$line"; done
-            tail -n 100 xcodebuild.log
-          else
-            echo "✅ Simulator build succeeded"
-          fi
+          echo "✅ Simulator build succeeded"
 
           APP_PATH=$(find /Users/runner/work -name "App.app" -type d 2>/dev/null | head -n 1)
           if [ -n "$APP_PATH" ]; then
@@ -116,30 +107,34 @@ jobs:
           fi
 
       - name: 🏗️ Build iOS Device IPA (requires signing secrets)
-        if: ${{ secrets.IOS_CERTIFICATE_BASE64 != '' && secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
+        if: ${{ secrets.IOS_CERTIFICATE_BASE64 != '' || secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           IOS_PROVISIONING_PROFILE_UUID: ${{ secrets.IOS_PROVISIONING_PROFILE_UUID }}
         run: |
+          if [ -z "$IOS_CERTIFICATE_BASE64" ] || [ -z "$IOS_CERTIFICATE_PASSWORD" ] || [ -z "$IOS_PROVISIONING_PROFILE_BASE64" ] || [ -z "$IOS_PROVISIONING_PROFILE_UUID" ]; then
+            echo "::error::Partial iOS signing secrets detected. All 4 secrets (IOS_CERTIFICATE_BASE64, IOS_CERTIFICATE_PASSWORD, IOS_PROVISIONING_PROFILE_BASE64, IOS_PROVISIONING_PROFILE_UUID) must be configured."
+            exit 1
+          fi
+
           cd ios/App
 
           echo "🔑 Installing signing certificate..."
           echo "$IOS_CERTIFICATE_BASE64" | base64 --decode > /tmp/certificate.p12
           security create-keychain -p "" build.keychain || true
-          security import /tmp/certificate.p12 -t agg -k /tmp/build.keychain -P "$IOS_CERTIFICATE_PASSWORD" -A || true
+          security import /tmp/certificate.p12 -t agg -k /tmp/build.keychain -P "$IOS_CERTIFICATE_PASSWORD" -A
           security list-keychains -s /tmp/build.keychain
-          security unlock-keychain -p "" /tmp/build.keychain || true
-          security set-keychain-settings -t 3600 -u /tmp/build.keychain || true
-          security set-key-partition-list -S apple-tool:,apple: -s kSecUseServiceUI -k "" /tmp/build.keychain || true
+          security unlock-keychain -p "" /tmp/build.keychain
+          security set-keychain-settings -t 3600 -u /tmp/build.keychain
+          security set-key-partition-list -S apple-tool:,apple: -s kSecUseServiceUI -k "" /tmp/build.keychain
 
           echo "📥 Installing provisioning profile..."
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/$IOS_PROVISIONING_PROFILE_UUID.mobileprovision
 
           echo "🔨 Building for generic iOS device..."
-          set +e
           xcodebuild -project App.xcodeproj \
                      -scheme App \
                      -configuration Release \
@@ -155,7 +150,8 @@ jobs:
                      SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                      GCC_TREAT_WARNINGS_AS_ERRORS=NO \
                      COMPILER_INDEX_STORE_ENABLE=NO \
-                     build > xcodebuild-device.log 2>&1
+                     archive \
+                     -archivePath ../../build/DerivedData/App.xcarchive > xcodebuild-device.log 2>&1
           DEV_EXIT=$?
           set -e
 
@@ -179,7 +175,7 @@ jobs:
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>ad-hoc</string>
+    <string>app-store</string>
     <key>provisioningProfiles</key>
     <dict>
         <key>com.glassdoorsstudio.burgonomics</key>

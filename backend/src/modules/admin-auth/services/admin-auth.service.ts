@@ -66,8 +66,7 @@ export class AdminAuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    // Default Developer password check: require change if it matches default BurgonomicsDev2026!
-    // Or if lastLoginAt is null, they should change password.
+    // Developer first login check: require password change if lastLoginAt is null.
     const requiresPasswordChange = admin.isDeveloper && admin.lastLoginAt === null;
 
     const challengeToken = crypto.randomBytes(32).toString('hex');

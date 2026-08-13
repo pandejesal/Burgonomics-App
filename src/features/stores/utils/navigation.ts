@@ -1,4 +1,4 @@
-import { isNative, getPlatform } from "@/shared/platform/platform";
+import { getPlatform } from "@/shared/platform/platform";
 
 /**
  * Checks if the current environment is development.
@@ -23,7 +23,9 @@ export function getPermanentMapUrl(lat: number, lng: number): string {
  *     https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>
  *
  * • iOS:
- *     http://maps.apple.com/?daddr=<lat>,<lng>
+ *     https://maps.apple.com/?daddr=<lat>,<lng>, opened in the system browser
+ *     (Capacitor routes window.open(..., "_blank") to SFSafariViewController,
+ *     which is not subject to limitsNavigationsToAppBoundDomains)
  *
  * • Browser (including mobile browser or non-native platforms):
  *     https://www.google.com/maps/dir/?api=1&destination=<lat>,<lng>
@@ -33,15 +35,11 @@ export function openDirections(storeName: string, lat: number, lng: number): voi
   const isIosDevice = getPlatform() === "ios" || /Mac|iPad|iPhone|iPod/i.test(userAgent);
 
   const finalUrl = isIosDevice
-    ? `http://maps.apple.com/?daddr=${lat},${lng}`
+    ? `https://maps.apple.com/?daddr=${lat},${lng}`
     : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
   try {
-    if (isNative()) {
-      window.location.href = finalUrl;
-    } else {
-      window.open(finalUrl, "_blank", "noopener,noreferrer");
-    }
+    window.open(finalUrl, "_blank", "noopener,noreferrer");
   } catch (e) {
     console.warn("Failed to open directions map:", e);
   }

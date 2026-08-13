@@ -26,8 +26,8 @@ export function BottomSheet({
   // Do not return null here, Vaul needs to manage the open state itself to run its cleanup
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} handleOnly>
-      <DrawerContent className="mx-auto max-w-[480px] md:max-w-[480px] max-md:max-w-full">
+    <Drawer open={open} onOpenChange={onOpenChange} handleOnly shouldScaleBackground>
+      <DrawerContent className="mx-auto max-w-[480px] md:max-w-[480px] max-md:max-w-full shadow-high border-t border-divider/60">
         {(title || description) && (
           <DrawerHeader className="text-left">
             {title && <DrawerTitle>{title}</DrawerTitle>}

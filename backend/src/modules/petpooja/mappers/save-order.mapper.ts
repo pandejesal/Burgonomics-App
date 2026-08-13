@@ -61,6 +61,7 @@ export function toSaveOrderRequest(input: SaveOrderMapperInput): SaveOrderReques
         address: formatAddress(address) || 'N/A',
       },
       Order: {
+        orderID: order.clientOrderId,
         clientorderID: order.clientOrderId,
         order_type: order.fulfillment === 'TAKEAWAY' ? 'PickUp' : order.fulfillment === 'DINE_IN' ? 'DineIn' : 'Delivery',
         payment_type: order.paymentReference ? 'Online' : 'Cash',

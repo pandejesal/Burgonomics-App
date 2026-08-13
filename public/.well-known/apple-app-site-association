@@ -1,0 +1,31 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "GLASSDOORS.com.glassdoorsstudio.burgonomics"
+        ],
+        "components": [
+          {
+            "/": "/orders/*",
+            "comment": "Matches order tracking deep links"
+          },
+          {
+            "/": "/menu/*",
+            "comment": "Matches menu item deep links"
+          },
+          {
+            "/": "/profile/*",
+            "comment": "Matches customer profile deep links"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "GLASSDOORS.com.glassdoorsstudio.burgonomics"
+    ]
+  }
+}

@@ -46,15 +46,6 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
   const handleOpenInMaps = (e: React.MouseEvent) => {
     e.stopPropagation();
     const url = getPermanentMapUrl(store.lat, store.lng);
-    const IS_DEV = import.meta.env?.DEV || process.env.NODE_ENV !== "production";
-    if (IS_DEV) {
-      console.log(`[Navigation Audit] Opening Store Location on Map:`, {
-        storeName: store.name,
-        lat: store.lat,
-        lng: store.lng,
-        finalUrl: url,
-      });
-    }
     window.open(url, "_blank");
   };
 
@@ -110,11 +101,10 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
   return (
     <div
       className={cn(
-        "w-full rounded-[var(--radius-large)] border bg-surface p-4 block",
-        "transition-[transform,border-color,box-shadow] duration-150",
+        "w-full rounded-[var(--radius-large)] border bg-surface p-4 block float-interactive",
         selected
-          ? "border-primary shadow-[var(--shadow-medium)] ring-1 ring-primary"
-          : "border-divider hover:border-primary/40 shadow-[var(--shadow-low)]",
+          ? "border-primary shadow-medium ring-1 ring-primary"
+          : "border-divider hover:border-primary/40 shadow-low",
         className,
       )}
     >

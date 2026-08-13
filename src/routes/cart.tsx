@@ -155,14 +155,14 @@ function CartPage() {
         </button>
       }
       bottomSlot={
-        <div className="fixed inset-x-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-30 border-t border-divider bg-surface backdrop-blur shadow-md">
+        <div className="fixed inset-x-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-30 border-t border-white/20 glass-panel shadow-high">
           <div className="mx-auto flex max-w-[480px] md:max-w-[480px] max-md:max-w-full items-center justify-between gap-3 px-4 py-3">
             <div>
               <p className="type-caption text-text-secondary">Grand total</p>
-              <p className="type-title-large tabular-nums">{formatINR(totals?.grandTotal ?? 0)}</p>
+              <p className="type-title-large tabular-nums text-text-primary">{formatINR(totals?.grandTotal ?? 0)}</p>
             </div>
             <AppButton
-              variant="primary"
+              variant="cta"
               size="md"
               onClick={() => void onCheckout()}
               loading={checkoutBusy}
@@ -180,7 +180,7 @@ function CartPage() {
           <Link
             to="/stores"
             aria-label={`Order from ${activeStore.name}. Tap to change store.`}
-            className="flex items-center gap-3 rounded-[var(--radius-large)] border border-divider bg-surface p-3 hover:border-primary/40"
+            className="flex items-center gap-3 rounded-[var(--radius-large)] border border-divider bg-surface p-3 hover:border-primary/40 shadow-low float-interactive"
           >
             <div className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary">
               <MapPin className="h-5 w-5" aria-hidden />
@@ -202,7 +202,7 @@ function CartPage() {
         {/* Fulfillment — display current selection; tap to change. */}
         <section
           aria-labelledby="fulfil-heading"
-          className="flex items-center justify-between gap-3 rounded-[var(--radius-large)] border border-divider bg-surface p-3"
+          className="flex items-center justify-between gap-3 rounded-[var(--radius-large)] border border-divider bg-surface p-3 shadow-low float-interactive"
         >
           <div className="min-w-0">
             <Text id="fulfil-heading" variant="caption" tone="secondary">

@@ -185,6 +185,7 @@ function OtpScreen() {
         <AppButton
           fullWidth
           size="lg"
+          variant="cta"
           loading={isVerifying}
           disabled={code.length !== OTP_LENGTH}
           onClick={() => void submit(code)}

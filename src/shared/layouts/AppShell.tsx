@@ -5,6 +5,8 @@ import { TopBar } from "@/shared/navigation/TopBar";
 import { OfflineBanner } from "./OfflineBanner";
 import { PageTransition } from "@/shared/components/common/PageTransition";
 
+import { ConsentBanner } from "@/shared/components/common/ConsentBanner";
+
 interface AppShellProps {
   children: React.ReactNode;
   title?: string;
@@ -28,8 +30,9 @@ export function AppShell({
   bottomSlot,
 }: AppShellProps) {
   return (
-    <div className="app-shell">
+    <div className="app-shell" vaul-drawer-wrapper="">
       <OfflineBanner />
+      <ConsentBanner />
       {showTopBar && title && <TopBar title={title} backTo={backTo} rightSlot={rightSlot} />}
       <main
         className={cn(

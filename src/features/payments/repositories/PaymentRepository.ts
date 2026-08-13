@@ -30,6 +30,9 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 
+import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
+import { toStoreSnapshot } from "@/features/orders/models";
+
 export class PaymentRepository {
   readonly name = "PaymentRepository";
 
@@ -101,6 +104,39 @@ export class PaymentRepository {
       return fail("MISSING_CONTEXT", "Store and fulfillment method are required.");
     }
 
+    const cart = useCartStore.getState();
+    const auth = useAuthStore.getState();
+    const address = selectSelectedAddress(useAddressStore.getState());
+    const checkout = useCheckoutStore.getState();
+
+    const checkoutSnapshot = {
+      store: toStoreSnapshot(sel.activeStore),
+      fulfillment: sel.fulfillment,
+      items: cart.lines,
+      totals: totalsRes.data,
+      promo: cart.promo,
+      address: address
+        ? {
+            label: address.label,
+            contactName: address.contactName || auth.user?.name || "",
+            contactPhone: address.contactPhone || auth.user?.phone || "",
+            line1: address.line1,
+            line2: address.line2,
+            city: address.city,
+            state: address.state || "",
+            pincode: address.pincode,
+          }
+        : null,
+      notes: checkout.orderNotes,
+      fulfillmentInstructions:
+        sel.fulfillment === "delivery"
+          ? checkout.deliveryInstructions
+          : sel.fulfillment === "takeaway"
+            ? checkout.pickupInstructions
+            : checkout.diningNotes,
+      userId: auth.user?.id,
+    };
+
     // The checkout token would normally come from the cart-prepare step
     // and be signed by the backend. Mock: request one.
     const prep = await cartRepository.prepareCheckout();
@@ -113,6 +149,7 @@ export class PaymentRepository {
       storeId: sel.activeStore.id,
       fulfillment: sel.fulfillment,
       checkoutToken,
+      checkoutSnapshot,
     });
   }
 

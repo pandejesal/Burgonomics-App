@@ -115,7 +115,9 @@ function DebugPanelInner() {
               <Toggle value={demo.petpoojaSimulateSuccess} onChange={demo.setPetpoojaSimulate} />
             </Row>
             <Section title="User">
-              {user ? `${user.name ?? "—"} · ${user.phone ?? "—"}` : "signed out"}
+              {user
+                ? `${user.name ?? "—"} · ${user.phone ? user.phone.slice(0, 2) + "******" + user.phone.slice(-2) : "—"}`
+                : "signed out"}
             </Section>
             <Section title="Store">
               {sel.activeStore
@@ -141,21 +143,13 @@ function DebugPanelInner() {
                 )}
               </pre>
             </Section>
-            <Section title="Payment / Order IDs">
+            <Section title="Recent IDs">
               <ul className="space-y-0.5">
-                <li>
-                  rzp_order:{" "}
-                  <code className="text-orange-300">{demo.lastRazorpayOrderId ?? "—"}</code>
-                </li>
                 <li>
                   payment: <code className="text-orange-300">{demo.lastPaymentId ?? "—"}</code>
                 </li>
                 <li>
                   backend: <code className="text-orange-300">{demo.lastBackendOrderId ?? "—"}</code>
-                </li>
-                <li>
-                  petpooja:{" "}
-                  <code className="text-orange-300">{demo.lastPetpoojaOrderId ?? "—"}</code>
                 </li>
               </ul>
             </Section>
@@ -169,7 +163,11 @@ function DebugPanelInner() {
                 </li>
                 <li>
                   Razorpay key:{" "}
-                  <code>{appConfig.integrations.razorpayKeyId || "(placeholder)"}</code>
+                  <code>
+                    {appConfig.integrations.razorpayKeyId
+                      ? appConfig.integrations.razorpayKeyId.slice(0, 8) + "..."
+                      : "(placeholder)"}
+                  </code>
                 </li>
                 <li>
                   PETPOOJA flag: <code>{String(appConfig.integrations.petpoojaEnabled)}</code>

@@ -22,14 +22,8 @@ import { AdminAvatar } from "../components/Utilities";
 import { secureStorage } from "@/core/storage/secureStorage";
 
 export const AdminProfilePage: React.FC = () => {
-  const { admin, setup2Fa, verifySetup2Fa, disable2Fa } = useAdminAuthStore();
+  const { admin } = useAdminAuthStore();
   const [activeTab, setActiveTab] = useState<"security" | "sessions" | "permissions">("security");
-
-  // 2FA state
-  const [setupData, setSetupData] = useState<{ secret: string; qrCodeUrl: string } | null>(null);
-  const [setupCode, setSetupCode] = useState("");
-  const [isSettingUp, setIsSettingUp] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   // Password fields
   const [currentPassword, setCurrentPassword] = useState("");
@@ -73,61 +67,6 @@ export const AdminProfilePage: React.FC = () => {
 
   const permissions = admin?.role?.permissions || [];
   const roleName = admin?.role?.name || "Administrator";
-
-  const handleStart2FA = async () => {
-    setMessage(null);
-    try {
-      const data = await setup2Fa();
-      setSetupData(data);
-      setIsSettingUp(true);
-    } catch (err: any) {
-      setMessage({ text: err.message || "Failed to start 2FA setup", type: "error" });
-    }
-  };
-
-  const handleVerify2FA = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage(null);
-    try {
-      const success = await verifySetup2Fa(setupCode);
-      if (success) {
-        setMessage({
-          text: "Two-factor authentication successfully activated on your account!",
-          type: "success",
-        });
-        setIsSettingUp(false);
-        setSetupData(null);
-        setSetupCode("");
-      } else {
-        setMessage({
-          text: "Invalid verification token. Verify your device clock synchronization.",
-          type: "error",
-        });
-      }
-    } catch (err: any) {
-      setMessage({ text: err.message || "Verification error", type: "error" });
-    }
-  };
-
-  const handleDisable2FA = async () => {
-    setMessage(null);
-    const code = prompt("Please enter your 6-digit TOTP code to disable 2FA:");
-    if (!code) return;
-
-    try {
-      const success = await disable2Fa(code);
-      if (success) {
-        setMessage({
-          text: "Two-factor authentication disabled on your profile.",
-          type: "success",
-        });
-      } else {
-        setMessage({ text: "Invalid authentication code. Could not disable 2FA.", type: "error" });
-      }
-    } catch (err: any) {
-      setMessage({ text: err.message || "Disable 2FA error", type: "error" });
-    }
-  };
 
   const handleChangePassword = (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,121 +139,31 @@ export const AdminProfilePage: React.FC = () => {
       <div className="space-y-6">
         {activeTab === "security" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* 2FA Card */}
+            {/* Authentication Protocols Card */}
             <AdminCard
-              title="Two-Factor Authentication (TOTP)"
-              subtitle="Enhance your administrative profile against password compromises"
+              title="Authentication & Security Protocols"
+              subtitle="Session state and credential management under Firebase Auth"
             >
               <div className="space-y-4">
-                {message && (
-                  <div
-                    className={`p-4 rounded-xl text-xs font-semibold border flex items-center gap-2 ${message.type === "success" ? "bg-green-50 border-green-100 text-[#0E4825]" : "bg-red-50 border-red-100 text-red-600"}`}
-                  >
-                    {message.type === "success" ? (
-                      <CheckCircle size={16} />
-                    ) : (
-                      <ShieldAlert size={16} />
-                    )}
-                    <span>{message.text}</span>
-                  </div>
-                )}
-
-                {!isSettingUp ? (
-                  <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 space-y-3">
+                  <div className="flex items-center justify-between">
                     <div>
                       <span className="block text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-                        TOTP Status
+                        Primary Auth Protocol
                       </span>
-                      <span className="text-[11px] text-gray-400 font-semibold block mt-0.5">
-                        Hardware 2FA protection active
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-0.5">
+                        Firebase Identity Tokens (RSA-256) Active
                       </span>
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                      <AdminButton onClick={handleStart2FA} variant="primary" size="sm">
-                        Configure Secret
-                      </AdminButton>
-                      <AdminButton
-                        onClick={handleDisable2FA}
-                        variant="ghost"
-                        className="text-red-500 hover:bg-red-50"
-                        size="sm"
-                      >
-                        Disable
-                      </AdminButton>
-                    </div>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1 rounded-full">
+                      <CheckCircle size={12} /> ENFORCED
+                    </span>
                   </div>
-                ) : (
-                  <form
-                    onSubmit={handleVerify2FA}
-                    className="p-4 rounded-2xl bg-[#0E4825]/5 dark:bg-[#0E4825]/10 border border-[#0E4825]/10 space-y-4 text-center"
-                  >
-                    <Smartphone
-                      size={28}
-                      className="mx-auto text-[#0E4825] dark:text-emerald-400"
-                    />
-                    <h4 className="text-xs font-bold uppercase text-gray-900 dark:text-white">
-                      Scan with Authenticator App
-                    </h4>
-                    <p className="text-xs text-gray-400 leading-relaxed max-w-sm mx-auto">
-                      Scan the secret below with Google Authenticator or any RFC-6238 TOTP
-                      compatible application.
-                    </p>
 
-                    {setupData && (
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="h-32 w-32 bg-white rounded-xl border border-gray-100 p-2 shadow-sm flex items-center justify-center text-[10px] text-gray-400 font-mono text-center">
-                          [Scan QR Code]
-                          <br />
-                          {setupData.secret.substring(0, 10)}...
-                        </div>
-                        <div className="w-full">
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">
-                            Manual Key
-                          </span>
-                          <code className="text-xs bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 px-3 py-1.5 rounded-lg select-all font-mono inline-block font-bold tracking-widest text-[#0E4825] dark:text-emerald-400">
-                            {setupData.secret}
-                          </code>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-1.5 max-w-xs mx-auto">
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                        Verification Token
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={6}
-                        value={setupCode}
-                        onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, ""))}
-                        className="w-full text-center tracking-[6px] font-mono font-bold text-base rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1A1A1A] py-2 focus:border-[#0E4825] outline-none"
-                        placeholder="000000"
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <AdminButton
-                        type="button"
-                        onClick={() => setIsSettingUp(false)}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                      >
-                        Cancel
-                      </AdminButton>
-                      <AdminButton
-                        type="submit"
-                        disabled={setupCode.length !== 6}
-                        variant="primary"
-                        size="sm"
-                        className="flex-1"
-                      >
-                        Verify
-                      </AdminButton>
-                    </div>
-                  </form>
-                )}
+                  <div className="pt-2 border-t border-gray-200 dark:border-gray-800 text-[11px] text-gray-400 leading-relaxed">
+                    Administrative access is authorized via verified Firebase Auth JWT tokens and backed by strict Firestore security rules.
+                  </div>
+                </div>
               </div>
             </AdminCard>
 

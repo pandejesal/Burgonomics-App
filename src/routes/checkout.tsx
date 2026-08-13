@@ -201,14 +201,15 @@ function CheckoutPage() {
       showTopBar
       contentClassName="pb-[calc(140px+env(safe-area-inset-bottom,0px))]"
       bottomSlot={
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-divider bg-surface/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/20 glass-panel pb-[env(safe-area-inset-bottom,0px)] shadow-high">
           <div className="mx-auto flex max-w-[560px] md:max-w-[560px] max-md:max-w-full items-center justify-between gap-3 px-4 py-3">
             <div>
               <p className="type-caption text-text-secondary">Grand total</p>
-              <p className="type-title-large tabular-nums">{formatINR(grandTotal)}</p>
+              <p className="type-title-large tabular-nums text-text-primary">{formatINR(grandTotal)}</p>
             </div>
             <AppButton
               size="lg"
+              variant="cta"
               onClick={() => void onContinue()}
               loading={busy}
               iconLeft={!isAuthenticated ? <Lock className="h-4 w-4" aria-hidden /> : undefined}
@@ -241,7 +242,7 @@ function CheckoutPage() {
         {/* Store header + fulfillment method */}
         <section
           aria-label="Order context"
-          className="rounded-[var(--radius-large)] border border-divider bg-surface p-4"
+          className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-low float-interactive"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
@@ -297,7 +298,7 @@ function CheckoutPage() {
         {fulfillment === "delivery" && (
           <DeliveryPanel
             store={activeStore}
-            deliveryFee={deliveryFee}
+            deliveryFee={totals?.deliveryFee}
             onAddressChange={() => setValidationError(null)}
           />
         )}

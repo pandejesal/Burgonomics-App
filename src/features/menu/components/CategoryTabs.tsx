@@ -35,7 +35,6 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
       ref={listRef}
       className={cn(
         "flex gap-2 overflow-x-auto no-scrollbar px-4 py-2",
-        "border-b border-divider bg-surface",
         className,
       )}
     >
@@ -53,14 +52,14 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
               "group relative flex-none whitespace-nowrap rounded-full px-4 py-2 type-label-large transition-colors",
               "min-h-[40px] border overflow-hidden",
               active
-                ? "text-primary-foreground border-primary"
-                : "bg-transparent text-text-primary border-divider hover:border-primary/40",
+                ? "text-primary border-white"
+                : "bg-transparent text-white/90 border-white/20 hover:border-white/60",
             )}
           >
             {active && (
               <motion.div
                 layoutId="activeCategoryBg"
-                className="absolute inset-0 bg-primary"
+                className="absolute inset-0 bg-white shadow-low"
                 transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 style={{ zIndex: 0 }}
               />

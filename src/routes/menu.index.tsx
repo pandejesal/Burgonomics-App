@@ -178,14 +178,14 @@ function MenuPage() {
             )
           ) : (
             <>
-              <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 -mx-0 bg-surface shadow-xs border-b border-divider">
+              <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 -mx-0 bg-primary/95 backdrop-blur-md shadow-low border-b border-white/10">
                 <CategoryTabs
                   categories={categories}
                   activeId={activeCategoryId}
                   onSelect={setActiveCategory}
                 />
-                <div className="flex items-center justify-between border-b border-divider px-4 py-2">
-                  <Text variant="bodyMedium" tone="secondary">
+                <div className="flex items-center justify-between px-4 py-2">
+                  <Text variant="bodyMedium" className="text-white/80">
                     {bucket?.total ? `${bucket.total} items` : ""}
                   </Text>
                   <div className="flex items-center gap-1" role="group" aria-label="View mode">
@@ -196,7 +196,7 @@ function MenuPage() {
                       onClick={() => setViewMode("list")}
                       className={cn(
                         "grid h-9 w-9 place-items-center rounded-full",
-                        viewMode === "list" ? "bg-primary/10 text-primary" : "text-text-secondary",
+                        viewMode === "list" ? "bg-white/20 text-white" : "text-white/60 hover:text-white",
                       )}
                     >
                       <ListIcon className="h-4 w-4" />
@@ -208,7 +208,7 @@ function MenuPage() {
                       onClick={() => setViewMode("grid")}
                       className={cn(
                         "grid h-9 w-9 place-items-center rounded-full",
-                        viewMode === "grid" ? "bg-primary/10 text-primary" : "text-text-secondary",
+                        viewMode === "grid" ? "bg-white/20 text-white" : "text-white/60 hover:text-white",
                       )}
                     >
                       <LayoutGrid className="h-4 w-4" />

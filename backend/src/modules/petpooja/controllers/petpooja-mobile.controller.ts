@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { MenuCacheService } from '@modules/menu/services/menu-cache.service';
 import { OrdersService } from '@modules/orders/services/orders.service';
 import { PetpoojaAdapter } from '../services/petpooja-adapter.service';
@@ -28,8 +30,13 @@ export class PetpoojaMobileController {
   }
 
   @Post('order/create')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Validate cart, persist order, and dispatch to Petpooja POS' })
-  async createOrder(@Body() body: Record<string, unknown>) {
+  async createOrder(
+    @CurrentUser('id') userId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
     const clientOrderId = (body.clientOrderId as string) ?? `MOB_ORD_${Date.now()}`;
     const orderId = (body.orderId as string) ?? clientOrderId;
 
@@ -41,20 +48,35 @@ export class PetpoojaMobileController {
       message: 'Order created and submitted to Petpooja POS',
       clientOrderId,
       orderId,
+      userId,
     };
   }
 
   @Get('order/:id')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get live status tracking for an order' })
-  async getOrderStatus(@Param('id') id: string) {
+  async getOrderStatus(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
     const order = await this.orders.findById(id);
+    if (!order) {
+      throw new NotFoundException(`Order ${id} not found`);
+    }
+
+    // Enforce order ownership (SEC-5: prevent IDOR)
+    if (order.userId && order.userId !== userId) {
+      throw new ForbiddenException('You do not have permission to view this order');
+    }
+
     return {
       status: 'success',
       orderId: id,
-      clientOrderId: order?.clientOrderId ?? id,
-      state: order?.status ?? 'PENDING',
-      petpoojaOrderId: order?.petpoojaOrderId ?? null,
-      updatedAt: order?.updatedAt ?? new Date(),
+      clientOrderId: order.clientOrderId ?? id,
+      state: order.status ?? 'PENDING',
+      petpoojaOrderId: order.petpoojaOrderId ?? null,
+      updatedAt: order.updatedAt ?? new Date(),
     };
   }
 }

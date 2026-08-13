@@ -405,68 +405,42 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log('Seeding developer account...');
-  const devEmail = process.env.ADMIN_DEVELOPER_EMAIL || 'dev@burgonomics.com';
-  const devPassword = process.env.ADMIN_DEVELOPER_PASSWORD || 'BurgonomicsDev2026!';
-  const hashedPassword = await argon2.hash(devPassword);
+  const seedAdminEmail = process.env.SEED_ADMIN_EMAIL;
+  const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD;
 
-  const existingDev = await prisma.adminUser.findUnique({
-    where: { email: devEmail },
-  });
+  if (seedAdminEmail && seedAdminPassword) {
+    console.log(`Provisioning initial admin account for ${seedAdminEmail}...`);
+    const hashedPassword = await argon2.hash(seedAdminPassword);
+    const targetRoleId = dbRoles['Super Admin']?.id || dbRoles['Developer']?.id;
 
-  if (existingDev) {
-    await prisma.adminUser.update({
-      where: { id: existingDev.id },
-      data: {
-        passwordHash: hashedPassword,
-        fullName: 'System Developer',
-        roleId: dbRoles['Developer'].id,
-        isActive: true,
-      },
+    const existingAdmin = await prisma.adminUser.findUnique({
+      where: { email: seedAdminEmail },
     });
+
+    if (existingAdmin) {
+      await prisma.adminUser.update({
+        where: { id: existingAdmin.id },
+        data: {
+          passwordHash: hashedPassword,
+          fullName: 'System Administrator',
+          roleId: targetRoleId,
+          isActive: true,
+        },
+      });
+    } else {
+      await prisma.adminUser.create({
+        data: {
+          email: seedAdminEmail,
+          passwordHash: hashedPassword,
+          fullName: 'System Administrator',
+          roleId: targetRoleId,
+          isActive: true,
+          isDeveloper: true,
+        },
+      });
+    }
   } else {
-    await prisma.adminUser.create({
-      data: {
-        email: devEmail,
-        passwordHash: hashedPassword,
-        fullName: 'System Developer',
-        roleId: dbRoles['Developer'].id,
-        isActive: true,
-        isDeveloper: true,
-      },
-    });
-  }
-
-  console.log('Seeding glassdoors admin account...');
-  const glassdoorsEmail = 'glassdoors.studio@gmail.com';
-  const glassdoorsPassword = 'glassdoors@2008';
-  const hashedGlassdoorsPassword = await argon2.hash(glassdoorsPassword);
-
-  const existingGlassdoors = await prisma.adminUser.findUnique({
-    where: { email: glassdoorsEmail },
-  });
-
-  if (existingGlassdoors) {
-    await prisma.adminUser.update({
-      where: { id: existingGlassdoors.id },
-      data: {
-        passwordHash: hashedGlassdoorsPassword,
-        fullName: 'Glassdoors Studio Admin',
-        roleId: dbRoles['Developer'].id,
-        isActive: true,
-      },
-    });
-  } else {
-    await prisma.adminUser.create({
-      data: {
-        email: glassdoorsEmail,
-        passwordHash: hashedGlassdoorsPassword,
-        fullName: 'Glassdoors Studio Admin',
-        roleId: dbRoles['Developer'].id,
-        isActive: true,
-        isDeveloper: true,
-      },
-    });
+    console.log('Skipping initial admin user creation (SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD not set).');
   }
 
   console.log('All admin resources successfully seeded!');

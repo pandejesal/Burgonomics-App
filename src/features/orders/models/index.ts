@@ -141,6 +141,16 @@ export interface Order {
   /** Terminal timestamp (delivered / picked_up / completed / cancelled). */
   completedAt?: Iso8601;
 
+  /** Petpooja POS sync status and details */
+  petpoojaStatus?: "Pending" | "Processing" | "Synced" | "Failed" | "Bypassed";
+  petpoojaDetails?: {
+    kotId?: string | null;
+    posOrderId?: string | null;
+    syncedAt?: string;
+    syncError?: string;
+    lastAttemptAt?: string;
+  };
+
   /** For delivery orders — populated later by the partner integration. */
   deliveryPartner?: DeliveryPartnerInfo;
   /** Repository metadata pass-through (KOT number, POS refs, …). */

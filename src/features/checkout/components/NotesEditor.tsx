@@ -35,7 +35,7 @@ export function NotesEditor({
       .filter(Boolean);
     const has = parts.includes(preset);
     const next = has ? parts.filter((p) => p !== preset) : [...parts, preset];
-    onChange(next.join(". "));
+    onChange(next.join(". ").slice(0, maxLength));
   };
   return (
     <div className="space-y-2">

@@ -28,7 +28,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
         </label>
         <div
           className={cn(
-            "flex items-center gap-2 min-h-[56px] rounded-[var(--radius-medium)] border-[1.5px] bg-surface px-4 cursor-text",
+            "flex items-center gap-2 min-h-[56px] rounded-[var(--radius-medium)] border-[1.5px] bg-surface px-4 cursor-text shadow-low float-interactive",
             "transition-colors",
             borderColor,
           )}

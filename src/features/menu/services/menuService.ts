@@ -3,6 +3,7 @@ import { db } from "@/core/config/firebase";
 import { collection, getDocs, doc, getDoc, query, where, limit } from "firebase/firestore";
 import type {
   CustomizationGroup,
+  CustomizationOption,
   MenuCategoryModel,
   Product,
   ProductDetails,
@@ -13,7 +14,7 @@ import type {
 export type MenuCategory = MenuCategoryModel & { itemCount: number };
 export type MenuItem = Product;
 
-// Helper to paginate a local array (since full-text search and complex joins are limited in Firestore without Algolia)
+// Helper to paginate a local array
 function paginate<T>(items: T[], page: number, pageSize: number) {
   const start = (page - 1) * pageSize;
   return items.slice(start, start + pageSize);
@@ -30,15 +31,99 @@ function fuzzyMatch(text: string, query: string): boolean {
   return words.every((qw) => t.includes(qw));
 }
 
+function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((group) => {
+    const min = group.minSelections ?? group.minSelect ?? 0;
+    const max = group.maxSelections ?? group.maxSelect ?? 1;
+    const selection = max > 1 ? ("multi" as const) : ("single" as const);
+    const required = min > 0;
+    const options: CustomizationOption[] = (group.options || []).map((opt: any) => ({
+      id: opt.id?.toString() || opt.optionId || "",
+      name: opt.name || "",
+      priceDelta:
+        typeof opt.price === "number" ? opt.price : parseFloat(opt.price) || 0,
+      isDefault: Boolean(opt.isDefault),
+      outOfStock: opt.isAvailable === false || opt.outOfStock === true,
+    }));
+    return {
+      id: group.id?.toString() || group.addon_group_id || "",
+      name: group.name || group.addon_group_name || "Options",
+      selection,
+      required,
+      minSelect: min,
+      maxSelect: max,
+      options,
+    };
+  });
+}
+
+function mapProductDoc(data: any, docId: string): Product {
+  const veg =
+    data.veg !== undefined
+      ? Boolean(data.veg)
+      : data.dietaryTag === "veg" || data.item_attributeid === "1";
+
+  const customizations = mapToCustomizationGroups(data.customizations || []);
+
+  return {
+    id: docId,
+    categoryId: data.categoryId || "",
+    name: data.name || data.itemname || "Product",
+    description: data.description || data.itemdescription || "",
+    price: typeof data.price === "number" ? data.price : parseFloat(data.price) || 0,
+    compareAtPrice: data.compareAtPrice,
+    discountPercentage: data.discountPercentage,
+    veg,
+    imageUrl: data.imageUrl || data.itemimage_url || undefined,
+    imageUrls: data.imageUrls || (data.imageUrl ? [data.imageUrl] : []),
+    fallbackImageUrl: data.fallbackImageUrl,
+    inStock: data.isAvailable !== undefined ? Boolean(data.isAvailable) : data.inStock !== false,
+    customizable: customizations.length > 0 || Boolean(data.customizable),
+    prepTimeMinutes: data.prepTimeMinutes || 15,
+    badges: data.badges || [],
+    tags: data.tags || [],
+    unavailableReason: data.unavailableReason,
+  };
+}
+
 export const menuService = {
-  async listCategories(_storeId?: string): Promise<ApiResult<MenuCategory[]>> {
+  async listCategories(storeId?: string): Promise<ApiResult<MenuCategory[]>> {
     try {
-      const snap = await getDocs(collection(db, "petpooja_categories"));
+      let q = query(collection(db, "petpooja_categories"));
+      if (storeId) {
+        q = query(collection(db, "petpooja_categories"), where("restId", "==", storeId));
+      }
+      const snap = await getDocs(q);
       const categories: MenuCategory[] = [];
-      snap.forEach(doc => {
-        const data = doc.data() as MenuCategoryModel;
-        categories.push({ ...data, itemCount: 0 }); // Item count would ideally be aggregated
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        categories.push({
+          id: d.id,
+          name: data.name || data.categoryname || "Category",
+          slug: data.slug,
+          order: data.sortOrder ?? data.order ?? 0,
+          itemCount: data.itemCount || 0,
+          imageUrl: data.imageUrl || data.categoryimage_url || undefined,
+        });
       });
+
+      // If store-specific query returned 0, fallback to general categories
+      if (categories.length === 0 && storeId) {
+        const fallbackSnap = await getDocs(collection(db, "petpooja_categories"));
+        fallbackSnap.forEach((d) => {
+          const data = d.data() as any;
+          categories.push({
+            id: d.id,
+            name: data.name || data.categoryname || "Category",
+            slug: data.slug,
+            order: data.sortOrder ?? data.order ?? 0,
+            itemCount: data.itemCount || 0,
+            imageUrl: data.imageUrl || data.categoryimage_url || undefined,
+          });
+        });
+      }
+
       return ok(categories.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
     } catch (e: any) {
       console.error("Failed to list categories", e);
@@ -47,21 +132,42 @@ export const menuService = {
   },
 
   async listProducts(
-    _storeId: string | undefined,
+    storeId: string | undefined,
     categoryId: string | undefined,
     page = 1,
     pageSize = 20,
   ): Promise<ApiResult<ProductPage>> {
     try {
       let q = query(collection(db, "petpooja_products"));
-      if (categoryId) {
+      if (storeId && categoryId) {
+        q = query(
+          collection(db, "petpooja_products"),
+          where("restId", "==", storeId),
+          where("categoryId", "==", categoryId),
+        );
+      } else if (categoryId) {
         q = query(collection(db, "petpooja_products"), where("categoryId", "==", categoryId));
+      } else if (storeId) {
+        q = query(collection(db, "petpooja_products"), where("restId", "==", storeId));
       }
+
       const snap = await getDocs(q);
       const all: Product[] = [];
-      snap.forEach(doc => {
-        all.push(doc.data() as Product);
+      snap.forEach((d) => {
+        all.push(mapProductDoc(d.data(), d.id));
       });
+
+      // If store-filtered query returned 0, fallback to general products query
+      if (all.length === 0 && storeId) {
+        const fallbackQ = categoryId
+          ? query(collection(db, "petpooja_products"), where("categoryId", "==", categoryId))
+          : collection(db, "petpooja_products");
+        const fallbackSnap = await getDocs(fallbackQ);
+        fallbackSnap.forEach((d) => {
+          all.push(mapProductDoc(d.data(), d.id));
+        });
+      }
+
       return ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length });
     } catch (e: any) {
       console.error("Failed to list products", e);
@@ -73,13 +179,16 @@ export const menuService = {
     try {
       const snap = await getDoc(doc(db, "petpooja_products", id));
       if (!snap.exists()) return ok(null);
-      const data = snap.data() as Product;
-      
-      // In a real DB, customizations would be in a subcollection or array. 
-      // We mock empty customizations here if they aren't provided by Petpooja push.
+      const data = snap.data();
+      const baseProduct = mapProductDoc(data, snap.id);
+      const customizations = mapToCustomizationGroups(data.customizations || []);
+
       const details: ProductDetails = {
-        ...data,
-        customizations: [],
+        ...baseProduct,
+        customizations,
+        ingredients: data.ingredients || [],
+        nutrition: data.nutrition || [],
+        allowSpecialInstructions: data.allowSpecialInstructions ?? true,
       };
       return ok(details);
     } catch (e: any) {
@@ -89,24 +198,38 @@ export const menuService = {
   },
 
   async listCustomizations(productId: string): Promise<ApiResult<CustomizationGroup[]>> {
-    return ok([]); // Customizations not yet synced from Petpooja Webhook
+    try {
+      const detail = await this.getProduct(productId);
+      if (!detail.success || !detail.data) return ok([]);
+      return ok(detail.data.customizations || []);
+    } catch {
+      return ok([]);
+    }
   },
 
-  async listRelatedProducts(productId: string, _storeId?: string): Promise<ApiResult<Product[]>> {
+  async listRelatedProducts(productId: string, storeId?: string): Promise<ApiResult<Product[]>> {
     try {
       const snap = await getDoc(doc(db, "petpooja_products", productId));
       if (!snap.exists()) return ok([]);
       const categoryId = snap.data().categoryId;
 
-      const relQ = query(
-        collection(db, "petpooja_products"), 
+      let relQ = query(
+        collection(db, "petpooja_products"),
         where("categoryId", "==", categoryId),
-        limit(6)
+        limit(6),
       );
+      if (storeId) {
+        relQ = query(
+          collection(db, "petpooja_products"),
+          where("restId", "==", storeId),
+          where("categoryId", "==", categoryId),
+          limit(6),
+        );
+      }
       const relSnap = await getDocs(relQ);
       const related: Product[] = [];
-      relSnap.forEach(d => {
-        if (d.id !== productId) related.push(d.data() as Product);
+      relSnap.forEach((d) => {
+        if (d.id !== productId) related.push(mapProductDoc(d.data(), d.id));
       });
       return ok(related);
     } catch (e: any) {
@@ -114,24 +237,48 @@ export const menuService = {
     }
   },
 
-  async listPopular(_storeId?: string): Promise<ApiResult<Product[]>> {
+  async listPopular(storeId?: string): Promise<ApiResult<Product[]>> {
     try {
-      const q = query(collection(db, "petpooja_products"), where("tags", "array-contains", "popular"), limit(8));
+      let q = query(
+        collection(db, "petpooja_products"),
+        where("tags", "array-contains", "popular"),
+        limit(8),
+      );
+      if (storeId) {
+        q = query(
+          collection(db, "petpooja_products"),
+          where("restId", "==", storeId),
+          where("tags", "array-contains", "popular"),
+          limit(8),
+        );
+      }
       const snap = await getDocs(q);
       const products: Product[] = [];
-      snap.forEach(d => products.push(d.data() as Product));
+      snap.forEach((d) => products.push(mapProductDoc(d.data(), d.id)));
       return ok(products);
     } catch (e) {
       return ok([]);
     }
   },
 
-  async listFeatured(_storeId?: string): Promise<ApiResult<Product[]>> {
+  async listFeatured(storeId?: string): Promise<ApiResult<Product[]>> {
     try {
-      const q = query(collection(db, "petpooja_products"), where("tags", "array-contains", "featured"), limit(8));
+      let q = query(
+        collection(db, "petpooja_products"),
+        where("tags", "array-contains", "featured"),
+        limit(8),
+      );
+      if (storeId) {
+        q = query(
+          collection(db, "petpooja_products"),
+          where("restId", "==", storeId),
+          where("tags", "array-contains", "featured"),
+          limit(8),
+        );
+      }
       const snap = await getDocs(q);
       const products: Product[] = [];
-      snap.forEach(d => products.push(d.data() as Product));
+      snap.forEach((d) => products.push(mapProductDoc(d.data(), d.id)));
       return ok(products);
     } catch (e) {
       return ok([]);
@@ -139,7 +286,7 @@ export const menuService = {
   },
 
   async search(
-    _storeId: string | undefined,
+    storeId: string | undefined,
     searchQuery: string,
     page = 1,
     pageSize = 20,
@@ -148,11 +295,14 @@ export const menuService = {
       const term = searchQuery.trim().toLowerCase();
       if (!term) return ok({ items: [], page, pageSize, total: 0 });
 
-      // Client-side filtering because Firestore doesn't support full-text search out of the box
-      const snap = await getDocs(collection(db, "petpooja_products"));
+      let q = query(collection(db, "petpooja_products"));
+      if (storeId) {
+        q = query(collection(db, "petpooja_products"), where("restId", "==", storeId));
+      }
+      const snap = await getDocs(q);
       const hits: Product[] = [];
-      snap.forEach(doc => {
-        const p = doc.data() as Product;
+      snap.forEach((d) => {
+        const p = mapProductDoc(d.data(), d.id);
         const haystack = [p.name, p.description ?? "", ...(p.tags ?? [])].join(" ");
         if (fuzzyMatch(haystack, term)) {
           hits.push(p);
@@ -165,18 +315,18 @@ export const menuService = {
   },
 
   async suggest(
-    _storeId: string | undefined,
+    storeId: string | undefined,
     searchQuery: string,
   ): Promise<ApiResult<SearchSuggestion[]>> {
-    const page = await this.search(_storeId, searchQuery, 1, 6);
+    const page = await this.search(storeId, searchQuery, 1, 6);
     if (!page.success) return ok([]);
     return ok(
-      page.data.items.map(p => ({
+      page.data.items.map((p) => ({
         id: `sug_${p.id}`,
         label: p.name,
         kind: "product",
         targetId: p.id,
-      }))
+      })),
     );
   },
 
@@ -192,10 +342,9 @@ export const menuService = {
     const page = await this.listProducts(undefined, categoryId);
     return page.success ? ok(page.data.items) : page;
   },
-  
+
   async getItem(id: string): Promise<ApiResult<MenuItem | null>> {
     const detail = await this.getProduct(id);
     return detail.success ? ok(detail.data as MenuItem | null) : detail;
   },
 };
-

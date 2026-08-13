@@ -20,7 +20,7 @@ export function CheckoutSection({ title, action, children, className }: Props) {
     <section
       aria-labelledby={headingId}
       className={cn(
-        "rounded-[var(--radius-large)] border border-divider bg-surface p-4",
+        "rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-low float-interactive",
         "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1",
         className,
       )}

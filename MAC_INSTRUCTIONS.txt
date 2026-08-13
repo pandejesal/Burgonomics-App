@@ -1,0 +1,49 @@
+# Mac Compilation Guide for Burgonomics
+
+When you move this project folder to the borrowed Mac, follow these steps to compile the `.ipa` file:
+
+## Step 1: Open the Terminal
+1. Press `Cmd + Space` on the Mac to open Spotlight Search.
+2. Type `Terminal` and hit Enter.
+
+## Step 2: Run the Build Script
+In the terminal, you need to navigate to this project folder and run the automated script.
+
+1. Type `cd ` (with a space at the end).
+2. Drag and drop this project folder from Finder into the Terminal window, then press Enter.
+   *(This safely navigates the terminal into the project folder).*
+3. Make the script executable by running:
+   ```bash
+   chmod +x mac-build.sh
+   ```
+4. Run the script:
+   ```bash
+   ./mac-build.sh
+   ```
+
+The script will automatically check for Node.js, install NPM dependencies, build the web app, sync Capacitor, and open Xcode!
+
+## Step 3: Archive in Xcode
+Once the script finishes, Xcode will open automatically.
+
+1. **Select your Apple Developer Account**:
+   - In the left sidebar of Xcode, click on `App` (the one with the blue icon at the very top).
+   - In the main window area, select the `Signing & Capabilities` tab.
+   - Look for the `Team` dropdown. If your Apple ID isn't there, click `Add an Account...` and sign in.
+   - Select your Team. Ensure `Automatically manage signing` is checked.
+2. **Set the Target Device**:
+   - Look at the very top center menu bar in Xcode (where you might see `App > iPhone 15 Pro`).
+   - Click the device name, scroll to the top of the list, and select **Any iOS Device (arm64)**.
+3. **Archive the App**:
+   - In the top macOS menu bar, click **Product** > **Archive**.
+   - Xcode will begin compiling the app. This may take a few minutes.
+
+## Step 4: Export the IPA
+When the Archive finishes, the Xcode Organizer window will pop up.
+
+1. Click the **Distribute App** button on the right side.
+2. Choose your distribution method (e.g., App Store Connect, Ad Hoc, or Development).
+3. Click through the prompts, leaving default settings.
+4. Finally, click **Export** and choose where to save your `.ipa` file (e.g., the Desktop).
+
+You are done! You can now send the `.ipa` to your testers or upload it to TestFlight via the Transporter app.

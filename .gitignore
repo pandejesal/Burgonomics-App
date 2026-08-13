@@ -16,6 +16,26 @@ dist-ssr
 .nitro
 *.local
 
+# Environment & Secrets (OPS-1)
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.cer
+*.mobileprovision
+*.key
+google-services.json
+GoogleService-Info.plist
+
+# Internal Audit Reports & Agent Traces
+audit-report.md
+docs/audit-report.md
+docs/ios-audit.md
+.swarm/
+.antg/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
@@ -40,4 +60,3 @@ android/jdk*.zip
 build/
 ios/App/Pods
 ios/App/DerivedData
-

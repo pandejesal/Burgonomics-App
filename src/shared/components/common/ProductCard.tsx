@@ -43,7 +43,7 @@ export function ProductCard({
       interactive={true}
       onClick={() => onClickCard?.(id)}
       className={cn(
-        "group flex flex-col overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md",
+        "group flex flex-col overflow-hidden cursor-pointer float-interactive",
         className,
       )}
       aria-label={`${name}, ${formatINR(price)}`}
