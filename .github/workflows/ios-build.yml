@@ -10,7 +10,7 @@ on:
 jobs:
   build-ios:
     name: Build & Export iOS Package
-    runs-on: macos-15
+    runs-on: macos-14
     env:
       GIT_CONFIG_PARAMETERS: "'safe.directory=*'"
 
@@ -41,6 +41,8 @@ jobs:
         run: |
           if ls -d /Applications/Xcode_16*.app >/dev/null 2>&1; then
             sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | head -n 1)/Contents/Developer"
+          elif ls -d /Applications/Xcode_15*.app >/dev/null 2>&1; then
+            sudo xcode-select -s "$(ls -d /Applications/Xcode_15*.app | head -n 1)/Contents/Developer"
           else
             sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           fi
@@ -107,7 +109,7 @@ jobs:
           fi
 
       - name: 🏗️ Build iOS Device IPA (requires signing secrets)
-        if: ${{ secrets.IOS_CERTIFICATE_BASE64 != '' || secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
+        if: ${{ secrets.IOS_CERTIFICATE_BASE64 != '' }}
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
