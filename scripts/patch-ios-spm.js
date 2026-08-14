@@ -59,25 +59,376 @@ for (const baseDir of nodeModulesDirs) {
   }
 }
 
-// Shared helper code for UIColor and PluginConfig
-const swiftSPMExtensions = `
-import Capacitor
+// 3. Patch @capacitor/status-bar
+const statusBarColorSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/UIColor.swift');
+if (fs.existsSync(statusBarColorSwift)) {
+  const content = `import Capacitor
 import UIKit
 
-public extension CapacitorExtensionTypeWrapper where T: UIColor {
-    static func color(fromHex: String) -> UIColor? {
-        let hexString = fromHex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
+public extension UIColor {
+    static func fromHex(_ hex: String) -> UIColor? {
+        let hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
         var argb: UInt64 = 0
         guard Scanner(string: hexString).scanHexInt64(&argb) else { return nil }
         if hexString.count == 6 {
-            return T(
+            return UIColor(
                 red: CGFloat((argb & 0xFF0000) >> 16) / 255.0,
                 green: CGFloat((argb & 0x00FF00) >> 8) / 255.0,
                 blue: CGFloat(argb & 0x0000FF) / 255.0,
                 alpha: 1.0
             )
         } else if hexString.count == 8 {
-            return T(
+            return UIColor(
+                red: CGFloat((argb & 0xFF000000) >> 24) / 255.0,
+                green: CGFloat((argb & 0x00FF0000) >> 16) / 255.0,
+                blue: CGFloat((argb & 0x0000FF00) >> 8) / 255.0,
+                alpha: CGFloat(argb & 0x000000FF) / 255.0
+            )
+        }
+        return nil
+    }
+
+    func toHex() -> String? {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard self.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return nil }
+        if alpha == 1.0 {
+            return String(format: "#%02lX%02lX%02lX", Int(round(red * 255)), Int(round(green * 255)), Int(round(blue * 255)))
+        } else {
+            return String(format: "#%02lX%02lX%02lX%02lX", Int(round(red * 255)), Int(round(green * 255)), Int(round(blue * 255)), Int(round(alpha * 255)))
+        }
+    }
+}
+
+public extension CapacitorExtensionTypeWrapper where T: UIColor {
+    static func color(fromHex: String) -> UIColor? {
+        return UIColor.fromHex(fromHex)
+    }
+    static func hex(fromColor: UIColor) -> String? {
+        return fromColor.toHex()
+    }
+}
+`;
+  fs.writeFileSync(statusBarColorSwift, content, 'utf8');
+  console.log('✅ Overwritten StatusBarPlugin UIColor.swift');
+}
+
+const statusBarSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBar.swift');
+if (fs.existsSync(statusBarSwift)) {
+  const content = `import Foundation
+import Capacitor
+import UIKit
+import WebKit
+
+public class StatusBar {
+
+    private var bridge: CAPBridgeProtocol
+    private var isOverlayingWebview = true
+    private var backgroundColor = UIColor.black
+    private var backgroundView: UIView?
+    private var observers: [NSObjectProtocol] = []
+
+    private var webView: WKWebView? {
+        return (bridge as? NSObject)?.value(forKey: "webView") as? WKWebView
+    }
+
+    private var viewController: UIViewController? {
+        return (bridge as? NSObject)?.value(forKey: "viewController") as? UIViewController
+    }
+
+    init(bridge: CAPBridgeProtocol, config: StatusBarConfig) {
+        self.bridge = bridge
+        setupObservers(with: config)
+    }
+
+    deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+
+    private func setupObservers(with config: StatusBarConfig) {
+        observers.append(NotificationCenter.default.addObserver(forName: .capacitorViewDidAppear, object: .none, queue: .none) { [weak self] _ in
+            self?.handleViewDidAppear(config: config)
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: .capacitorStatusBarTapped, object: .none, queue: .none) { [weak self] _ in
+            self?.bridge.triggerJSEvent(eventName: "statusTap", target: "window")
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: .capacitorViewWillTransition, object: .none, queue: .none) { [weak self] _ in
+            self?.handleViewWillTransition()
+        })
+    }
+
+    private func handleViewDidAppear(config: StatusBarConfig) {
+        setStyle(config.style)
+        setBackgroundColor(config.backgroundColor)
+        setOverlaysWebView(config.overlaysWebView)
+    }
+
+    private func handleViewWillTransition() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.resizeStatusBarBackgroundView()
+            self?.resizeWebView()
+        }
+    }
+
+    func setStyle(_ style: UIStatusBarStyle) {
+        bridge.statusBarStyle = style
+    }
+
+    func setBackgroundColor(_ color: UIColor) {
+        backgroundColor = color
+        backgroundView?.backgroundColor = color
+    }
+
+    func setAnimation(_ animation: String) {
+        if animation == "SLIDE" {
+            bridge.statusBarAnimation = .slide
+        } else if animation == "NONE" {
+            bridge.statusBarAnimation = .none
+        } else {
+            bridge.statusBarAnimation = .fade
+        }
+    }
+
+    func hide(animation: String) {
+        setAnimation(animation)
+        if bridge.statusBarVisible {
+            bridge.statusBarVisible = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.resizeWebView()
+                self?.backgroundView?.removeFromSuperview()
+                self?.backgroundView?.isHidden = true
+            }
+        }
+    }
+
+    func show(animation: String) {
+        setAnimation(animation)
+        if !bridge.statusBarVisible {
+            bridge.statusBarVisible = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [self] in
+                resizeWebView()
+                if !isOverlayingWebview {
+                    resizeStatusBarBackgroundView()
+                    webView?.superview?.addSubview(backgroundView!)
+                }
+                backgroundView?.isHidden = false
+            }
+        }
+    }
+
+    func getInfo() -> StatusBarInfo {
+        let style: String
+        switch bridge.statusBarStyle {
+        case .default:
+            style = "DEFAULT"
+        case .lightContent:
+            style = "DARK"
+        case .darkContent:
+            style = "LIGHT"
+        @unknown default:
+            style = "DEFAULT"
+        }
+
+        return StatusBarInfo(
+            overlays: isOverlayingWebview,
+            visible: bridge.statusBarVisible,
+            style: style,
+            color: backgroundColor.toHex(),
+            height: getStatusBarFrame().size.height
+        )
+    }
+
+    func setOverlaysWebView(_ overlay: Bool) {
+        if overlay == isOverlayingWebview { return }
+        isOverlayingWebview = overlay
+        if overlay {
+            backgroundView?.removeFromSuperview()
+        } else {
+            initializeBackgroundViewIfNeeded()
+            webView?.superview?.addSubview(backgroundView!)
+        }
+        resizeWebView()
+    }
+
+    private func resizeWebView() {
+        let bounds: CGRect? = viewController?.view.window?.windowScene?.keyWindow?.bounds
+
+        guard
+            let webView = webView,
+            let bounds = bounds
+        else { return }
+        viewController?.view.frame = bounds
+        webView.frame = bounds
+        let statusBarHeight = getStatusBarFrame().size.height
+        var webViewFrame = webView.frame
+
+        if isOverlayingWebview {
+            let safeAreaTop = webView.safeAreaInsets.top
+            if statusBarHeight >= safeAreaTop && safeAreaTop > 0 {
+                webViewFrame.origin.y = safeAreaTop == 40 ? 20 : statusBarHeight - safeAreaTop
+            } else {
+                webViewFrame.origin.y = 0
+            }
+        } else {
+            webViewFrame.origin.y = statusBarHeight
+        }
+        webViewFrame.size.height -= webViewFrame.origin.y
+        webView.frame = webViewFrame
+    }
+
+    private func resizeStatusBarBackgroundView() {
+        backgroundView?.frame = getStatusBarFrame()
+    }
+
+    private func getStatusBarFrame() -> CGRect {
+        return viewController?.view.window?.windowScene?.statusBarManager?.statusBarFrame ?? .zero
+    }
+
+    private func initializeBackgroundViewIfNeeded() {
+        if backgroundView == nil {
+            backgroundView = UIView(frame: getStatusBarFrame())
+            backgroundView!.backgroundColor = backgroundColor
+            backgroundView!.autoresizingMask = [.flexibleWidth, .flexibleBottomMargin]
+            backgroundView!.isHidden = !bridge.statusBarVisible
+        }
+    }
+}
+`;
+  fs.writeFileSync(statusBarSwift, content, 'utf8');
+  console.log('✅ Overwritten StatusBar.swift');
+}
+
+const statusBarPluginSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBarPlugin.swift');
+if (fs.existsSync(statusBarPluginSwift)) {
+  const content = `import Foundation
+import Capacitor
+import UIKit
+
+@objc(StatusBarPlugin)
+public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "StatusBarPlugin"
+    public let jsName = "StatusBar"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setStyle", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBackgroundColor", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "show", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "hide", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setOverlaysWebView", returnType: CAPPluginReturnPromise)
+    ]
+    private var statusBar: StatusBar?
+
+    override public func load() {
+        guard let bridge = bridge else { return }
+        statusBar = StatusBar(bridge: bridge, config: statusBarConfig())
+    }
+
+    private func statusBarConfig() -> StatusBarConfig {
+        var config = StatusBarConfig()
+        let opts = getConfig().options
+        if let overlays = (opts["overlaysWebView"] as? NSNumber)?.boolValue ?? (opts["overlaysWebView"] as? Bool) {
+            config.overlaysWebView = overlays
+        }
+        if let colorConfig = opts["backgroundColor"] as? String, let color = UIColor.fromHex(colorConfig) {
+            config.backgroundColor = color
+        }
+        if let configStyle = opts["style"] as? String {
+            config.style = style(fromString: configStyle)
+        }
+        return config
+    }
+
+    private func style(fromString: String) -> UIStatusBarStyle {
+        switch fromString.lowercased() {
+        case "dark", "lightcontent":
+            return .lightContent
+        case "light", "darkcontent":
+            return .darkContent
+        case "default":
+            return .default
+        default:
+            return .default
+        }
+    }
+
+    @objc public func setStyle(_ call: CAPPluginCall) {
+        let style = call.getString("style") ?? "DEFAULT"
+        statusBar?.setStyle(self.style(fromString: style))
+        call.resolve()
+    }
+
+    @objc public func setBackgroundColor(_ call: CAPPluginCall) {
+        guard let color = call.getString("color"), let hexColor = UIColor.fromHex(color) else {
+            call.reject("Color is missing or invalid")
+            return
+        }
+        statusBar?.setBackgroundColor(hexColor)
+        call.resolve()
+    }
+
+    @objc public func hide(_ call: CAPPluginCall) {
+        let animation = call.getString("animation") ?? "FADE"
+        statusBar?.hide(animation: animation)
+        call.resolve()
+    }
+
+    @objc public func show(_ call: CAPPluginCall) {
+        let animation = call.getString("animation") ?? "FADE"
+        statusBar?.show(animation: animation)
+        call.resolve()
+    }
+
+    @objc public func getInfo(_ call: CAPPluginCall) {
+        if let info = statusBar?.getInfo() {
+            call.resolve([
+                "overlays": info.overlays,
+                "visible": info.visible,
+                "style": info.style,
+                "color": info.color ?? "",
+                "height": info.height
+            ])
+        } else {
+            call.reject("Status bar not initialized")
+        }
+    }
+
+    @objc public func setOverlaysWebView(_ call: CAPPluginCall) {
+        guard let overlay = (call.options["overlay"] as? NSNumber)?.boolValue ?? (call.options["overlay"] as? Bool) else {
+            call.reject("Overlay boolean parameter required")
+            return
+        }
+        statusBar?.setOverlaysWebView(overlay)
+        call.resolve()
+    }
+}
+`;
+  fs.writeFileSync(statusBarPluginSwift, content, 'utf8');
+  console.log('✅ Overwritten StatusBarPlugin.swift');
+}
+
+// 4. Patch @capacitor/splash-screen
+const splashScreenPluginSwift = path.resolve('node_modules/@capacitor/splash-screen/ios/Sources/SplashScreenPlugin/SplashScreenPlugin.swift');
+if (fs.existsSync(splashScreenPluginSwift)) {
+  const content = `import Foundation
+import Capacitor
+import UIKit
+
+public extension UIColor {
+    static func fromHex(_ hex: String) -> UIColor? {
+        let hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
+        var argb: UInt64 = 0
+        guard Scanner(string: hexString).scanHexInt64(&argb) else { return nil }
+        if hexString.count == 6 {
+            return UIColor(
+                red: CGFloat((argb & 0xFF0000) >> 16) / 255.0,
+                green: CGFloat((argb & 0x00FF00) >> 8) / 255.0,
+                blue: CGFloat(argb & 0x0000FF) / 255.0,
+                alpha: 1.0
+            )
+        } else if hexString.count == 8 {
+            return UIColor(
                 red: CGFloat((argb & 0xFF000000) >> 24) / 255.0,
                 green: CGFloat((argb & 0x00FF0000) >> 16) / 255.0,
                 blue: CGFloat((argb & 0x0000FF00) >> 8) / 255.0,
@@ -88,37 +439,103 @@ public extension CapacitorExtensionTypeWrapper where T: UIColor {
     }
 }
 
-extension PluginConfig {
-    public func getString(_ key: String, _ defaultValue: String? = nil) -> String? {
-        return (self.getValue(key) as? String) ?? defaultValue
+@objc(SplashScreenPlugin)
+public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "SplashScreenPlugin"
+    public let jsName = "SplashScreen"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "show", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "hide", returnType: CAPPluginReturnPromise)
+    ]
+    private var splashScreen: SplashScreen?
+
+    private var targetView: UIView? {
+        if let vc = (self.bridge as? NSObject)?.value(forKey: "viewController") as? UIViewController {
+            return vc.view
+        }
+        return (self.bridge as? NSObject)?.value(forKey: "webView") as? UIView
+    }
+
+    override public func load() {
+        if let view = targetView {
+            splashScreen = SplashScreen(parentView: view, config: splashScreenConfig())
+            splashScreen?.showOnLaunch()
+        }
+    }
+
+    // Show the splash screen
+    @objc public func show(_ call: CAPPluginCall) {
+        if let splash = splashScreen {
+            let settings = splashScreenSettings(from: call)
+            splash.show(settings: settings,
+                        completion: {
+                            call.resolve()
+                        })
+        } else {
+            call.unavailable("Unable to show Splash Screen")
+        }
+    }
+
+    // Hide the splash screen
+    @objc public func hide(_ call: CAPPluginCall) {
+        if let splash = splashScreen {
+            let settings = splashScreenSettings(from: call)
+            splash.hide(settings: settings)
+            call.resolve()
+        } else {
+            call.unavailable("Unable to hide Splash Screen")
+        }
+    }
+
+    private func splashScreenSettings(from call: CAPPluginCall) -> SplashScreenSettings {
+        var settings = SplashScreenSettings()
+
+        if let showDuration = (call.options["showDuration"] as? NSNumber)?.intValue {
+            settings.showDuration = showDuration
+        }
+        if let fadeInDuration = (call.options["fadeInDuration"] as? NSNumber)?.intValue {
+            settings.fadeInDuration = fadeInDuration
+        }
+        if let fadeOutDuration = (call.options["fadeOutDuration"] as? NSNumber)?.intValue {
+            settings.fadeOutDuration = fadeOutDuration
+        }
+        if let autoHide = (call.options["autoHide"] as? NSNumber)?.boolValue ?? (call.options["autoHide"] as? Bool) {
+            settings.autoHide = autoHide
+        }
+        return settings
+    }
+
+    private func splashScreenConfig() -> SplashScreenConfig {
+        var config = SplashScreenConfig()
+
+        let opts = getConfig().options
+        if let backgroundColor = (opts["backgroundColor"] as? String), let color = UIColor.fromHex(backgroundColor) {
+            config.backgroundColor = color
+        }
+        if let spinnerStyle = (opts["iosSpinnerStyle"] as? String) {
+            switch spinnerStyle.lowercased() {
+            case "small":
+                config.spinnerStyle = .medium
+            default:
+                config.spinnerStyle = .large
+            }
+        }
+        if let spinnerColor = (opts["spinnerColor"] as? String), let color = UIColor.fromHex(spinnerColor) {
+            config.spinnerColor = color
+        }
+        if let showSpinner = (opts["showSpinner"] as? NSNumber)?.boolValue ?? (opts["showSpinner"] as? Bool) {
+            config.showSpinner = showSpinner
+        }
+        if let launchShowDuration = (opts["launchShowDuration"] as? NSNumber)?.intValue {
+            config.launchShowDuration = launchShowDuration
+        }
+        if let launchAutoHide = (opts["launchAutoHide"] as? NSNumber)?.boolValue ?? (opts["launchAutoHide"] as? Bool) {
+            config.launchAutoHide = launchAutoHide
+        }
+        return config
     }
 }
 `;
-
-// 3. Patch @capacitor/status-bar
-const statusBarColorSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/UIColor.swift');
-if (fs.existsSync(statusBarColorSwift)) {
-  fs.writeFileSync(statusBarColorSwift, swiftSPMExtensions, 'utf8');
-  console.log('✅ Patched StatusBarPlugin UIColor.swift');
-}
-
-const statusBarSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBar.swift');
-if (fs.existsSync(statusBarSwift)) {
-  let c = fs.readFileSync(statusBarSwift, 'utf8');
-  c = c.replace(/bridge\.webView/g, '((bridge as AnyObject).webView as? WKWebView)');
-  c = c.replace(/bridge\.viewController/g, '((bridge as AnyObject).viewController as? UIViewController)');
-  fs.writeFileSync(statusBarSwift, c, 'utf8');
-  console.log('✅ Patched bridge access in StatusBar.swift');
-}
-
-// 4. Patch @capacitor/splash-screen
-const splashScreenPluginSwift = path.resolve('node_modules/@capacitor/splash-screen/ios/Sources/SplashScreenPlugin/SplashScreenPlugin.swift');
-if (fs.existsSync(splashScreenPluginSwift)) {
-  let c = fs.readFileSync(splashScreenPluginSwift, 'utf8');
-  c = c.replace(/bridge\?\.viewController\?\.view/g, '((bridge as AnyObject).viewController as? UIViewController)?.view');
-  if (!c.includes('color(fromHex:')) {
-    c += `\n${swiftSPMExtensions}\n`;
-  }
-  fs.writeFileSync(splashScreenPluginSwift, c, 'utf8');
-  console.log('✅ Patched SplashScreenPlugin.swift');
+  fs.writeFileSync(splashScreenPluginSwift, content, 'utf8');
+  console.log('✅ Overwritten SplashScreenPlugin.swift');
 }
