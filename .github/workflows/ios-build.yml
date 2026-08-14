@@ -63,6 +63,7 @@ jobs:
                      -resolvePackageDependencies
 
           echo "Compiling iOS Simulator build..."
+          set +e
           xcodebuild -project App.xcodeproj \
                      -scheme App \
                      -configuration Release \
@@ -78,7 +79,18 @@ jobs:
                      SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
                      GCC_TREAT_WARNINGS_AS_ERRORS=NO \
                      COMPILER_INDEX_STORE_ENABLE=NO \
-                     build
+                     build > xcodebuild.log 2>&1
+          XCODE_STATUS=$?
+          set -e
+
+          if [ $XCODE_STATUS -ne 0 ]; then
+            echo "::error::xcodebuild failed with status $XCODE_STATUS"
+            echo "--- XCODEBUILD ERRORS ---"
+            grep -E "error:|fatal:|BUILD FAILED" xcodebuild.log || true
+            echo "--- TAIL OF XCODEBUILD LOG ---"
+            tail -n 120 xcodebuild.log
+            exit $XCODE_STATUS
+          fi
 
           echo "✅ Simulator build succeeded"
 
