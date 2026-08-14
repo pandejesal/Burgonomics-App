@@ -58,7 +58,7 @@ jobs:
               -dname "CN=Burgonomics, OU=Mobile, O=GlassdoorsStudio, L=Ahmedabad, ST=Gujarat, C=IN"
           fi
 
-      - name: 🔨 Assemble Android Release APK
+      - name: 🔨 Assemble Android Release APK & AAB Bundle
         working-directory: android
         env:
           RELEASE_STORE_FILE: "../release.keystore"
@@ -67,12 +67,20 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'ci_build_keystore_pass' }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
+          ./gradlew assembleRelease bundleRelease --stacktrace
 
       - name: 📤 Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: burgonomics-android-release-apk
           path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 📤 Upload Release AAB Bundle Artifact (Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: burgonomics-android-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
