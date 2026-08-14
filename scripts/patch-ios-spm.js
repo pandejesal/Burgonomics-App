@@ -327,14 +327,11 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func statusBarConfig() -> StatusBarConfig {
         var config = StatusBarConfig()
-        let opts = getConfig().options
-        if let overlays = (opts["overlaysWebView"] as? NSNumber)?.boolValue ?? (opts["overlaysWebView"] as? Bool) {
-            config.overlaysWebView = overlays
-        }
-        if let colorConfig = opts["backgroundColor"] as? String, let color = UIColor.fromHex(colorConfig) {
+        config.overlaysWebView = getConfig().getBoolean("overlaysWebView", config.overlaysWebView)
+        if let colorConfig = getConfig().getString("backgroundColor", nil), let color = UIColor.fromHex(colorConfig) {
             config.backgroundColor = color
         }
-        if let configStyle = opts["style"] as? String {
+        if let configStyle = getConfig().getString("style", nil) {
             config.style = style(fromString: configStyle)
         }
         return config
@@ -354,14 +351,15 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc public func setStyle(_ call: CAPPluginCall) {
-        let style = call.getString("style") ?? "DEFAULT"
+        let style = call.getString("style", "DEFAULT")
         statusBar?.setStyle(self.style(fromString: style))
         call.resolve()
     }
 
     @objc public func setBackgroundColor(_ call: CAPPluginCall) {
-        guard let color = call.getString("color"), let hexColor = UIColor.fromHex(color) else {
-            call.reject("Color is missing or invalid")
+        let color = call.getString("color", "")
+        guard !color.isEmpty, let hexColor = UIColor.fromHex(color) else {
+            call.unavailable("Color is missing or invalid")
             return
         }
         statusBar?.setBackgroundColor(hexColor)
@@ -369,13 +367,13 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc public func hide(_ call: CAPPluginCall) {
-        let animation = call.getString("animation") ?? "FADE"
+        let animation = call.getString("animation", "FADE")
         statusBar?.hide(animation: animation)
         call.resolve()
     }
 
     @objc public func show(_ call: CAPPluginCall) {
-        let animation = call.getString("animation") ?? "FADE"
+        let animation = call.getString("animation", "FADE")
         statusBar?.show(animation: animation)
         call.resolve()
     }
@@ -390,15 +388,12 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
                 "height": info.height
             ])
         } else {
-            call.reject("Status bar not initialized")
+            call.unavailable("Status bar not initialized")
         }
     }
 
     @objc public func setOverlaysWebView(_ call: CAPPluginCall) {
-        guard let overlay = (call.options["overlay"] as? NSNumber)?.boolValue ?? (call.options["overlay"] as? Bool) else {
-            call.reject("Overlay boolean parameter required")
-            return
-        }
+        let overlay = call.getBool("overlay", false)
         statusBar?.setOverlaysWebView(overlay)
         call.resolve()
     }
@@ -490,29 +485,20 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
     private func splashScreenSettings(from call: CAPPluginCall) -> SplashScreenSettings {
         var settings = SplashScreenSettings()
 
-        if let showDuration = (call.options["showDuration"] as? NSNumber)?.intValue {
-            settings.showDuration = showDuration
-        }
-        if let fadeInDuration = (call.options["fadeInDuration"] as? NSNumber)?.intValue {
-            settings.fadeInDuration = fadeInDuration
-        }
-        if let fadeOutDuration = (call.options["fadeOutDuration"] as? NSNumber)?.intValue {
-            settings.fadeOutDuration = fadeOutDuration
-        }
-        if let autoHide = (call.options["autoHide"] as? NSNumber)?.boolValue ?? (call.options["autoHide"] as? Bool) {
-            settings.autoHide = autoHide
-        }
+        settings.showDuration = call.getInt("showDuration", settings.showDuration)
+        settings.fadeInDuration = call.getInt("fadeInDuration", settings.fadeInDuration)
+        settings.fadeOutDuration = call.getInt("fadeOutDuration", settings.fadeOutDuration)
+        settings.autoHide = call.getBool("autoHide", settings.autoHide)
         return settings
     }
 
     private func splashScreenConfig() -> SplashScreenConfig {
         var config = SplashScreenConfig()
 
-        let opts = getConfig().options
-        if let backgroundColor = (opts["backgroundColor"] as? String), let color = UIColor.fromHex(backgroundColor) {
+        if let backgroundColor = getConfig().getString("backgroundColor", nil), let color = UIColor.fromHex(backgroundColor) {
             config.backgroundColor = color
         }
-        if let spinnerStyle = (opts["iosSpinnerStyle"] as? String) {
+        if let spinnerStyle = getConfig().getString("iosSpinnerStyle", nil) {
             switch spinnerStyle.lowercased() {
             case "small":
                 config.spinnerStyle = .medium
@@ -520,18 +506,12 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
                 config.spinnerStyle = .large
             }
         }
-        if let spinnerColor = (opts["spinnerColor"] as? String), let color = UIColor.fromHex(spinnerColor) {
+        if let spinnerColor = getConfig().getString("spinnerColor", nil), let color = UIColor.fromHex(spinnerColor) {
             config.spinnerColor = color
         }
-        if let showSpinner = (opts["showSpinner"] as? NSNumber)?.boolValue ?? (opts["showSpinner"] as? Bool) {
-            config.showSpinner = showSpinner
-        }
-        if let launchShowDuration = (opts["launchShowDuration"] as? NSNumber)?.intValue {
-            config.launchShowDuration = launchShowDuration
-        }
-        if let launchAutoHide = (opts["launchAutoHide"] as? NSNumber)?.boolValue ?? (opts["launchAutoHide"] as? Bool) {
-            config.launchAutoHide = launchAutoHide
-        }
+        config.showSpinner = getConfig().getBoolean("showSpinner", config.showSpinner)
+        config.launchShowDuration = getConfig().getInt("launchShowDuration", config.launchShowDuration)
+        config.launchAutoHide = getConfig().getBoolean("launchAutoHide", config.launchAutoHide)
         return config
     }
 }
