@@ -48,24 +48,8 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: 🔧 Patch Swift Packages (keychain-swift & secure-storage)
-        run: |
-          node -e "
-            const fs = require('fs');
-            const file = 'ios/App/CapApp-SPM/Package.swift';
-            if (fs.existsSync(file)) {
-              let c = fs.readFileSync(file, 'utf8').replace(/\\\\/g, '/');
-              if (!c.includes('keychain-swift')) {
-                c = c.replace(/(\.package\(url:\s*\"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git\",[^\)]+\),)/, '\$1\n        .package(url: \"https://github.com/evgenyneu/keychain-swift.git\", exact: \"21.0.0\"),');
-                c = c.replace('.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),', '.product(name: \"Capacitor\", package: \"capacitor-swift-pm\"),\n                .product(name: \"KeychainSwift\", package: \"keychain-swift\"),');
-              }
-              fs.writeFileSync(file, c);
-              if (!c.includes('KeychainSwift')) {
-                console.error('Failed to inject KeychainSwift dependency into CapApp-SPM/Package.swift');
-                process.exit(1);
-              }
-            }
-          "
+      - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
+        run: node scripts/patch-ios-spm.js
 
       - name: 🏗️ Build iOS Simulator App
         run: |
