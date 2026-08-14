@@ -93,6 +93,14 @@ service cloud.firestore {
     match /payment_discrepancies/{docId} {
       allow read, write: if false;
     }
+    match /otp_codes/{docId} {
+      allow read, write: if false;
+    }
+    match /otp_rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+
 
     // Webhook logs: Admin read-only monitoring; client writes denied — SEC-7
     match /petpooja_webhook_logs/{docId} {

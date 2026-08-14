@@ -1,11 +1,9 @@
-import { delay, fail, ok, type ApiResult } from "@/core/network/http";
+import { fail, ok, type ApiResult } from "@/core/network/http";
 import { auth } from "@/core/config/firebase";
 import { 
-  signInWithPhoneNumber,
-  RecaptchaVerifier,
-  type ConfirmationResult
+  signInWithCustomToken,
 } from "firebase/auth";
-import { isNative } from "@/shared/platform/platform";
+import { appConfig } from "@/core/config/env";
 
 export interface RequestOtpResponse {
   otpToken: string;
@@ -19,114 +17,143 @@ export interface RequestOtpResponse {
 export interface VerifyOtpResponse {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; phone: string };
+  user: { id: string; phone: string; name?: string; email?: string };
   payload?: any;
 }
 
-// In-memory store for real OTP flows (ConfirmationResult)
-const otpSessions = new Map<string, { confirmationResult: ConfirmationResult; phone: string }>();
+const getAuthBaseUrl = (): string => {
+  if (appConfig.integrations.paymentsApiBaseUrl) {
+    const root = appConfig.integrations.paymentsApiBaseUrl.replace(/\/payments\/?$/, "").replace(/\/$/, "");
+    return `${root}/auth`;
+  }
+  return "https://us-central1-burgonomics-7faa8.cloudfunctions.net/auth";
+};
 
 export const authService = {
-  initRecaptcha(containerId: string) {
-    if (typeof window === "undefined") return;
-    if (!window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-        size: "invisible",
-      });
-    }
+  /**
+   * Safe no-op helpers for backwards compatibility with existing UI hooks.
+   */
+  initRecaptcha(_containerId: string) {
+    // Custom SMS provider architecture operates without reCAPTCHA friction.
   },
 
   clearRecaptcha() {
-    if (typeof window !== "undefined" && window.recaptchaVerifier) {
-      window.recaptchaVerifier.clear();
-      window.recaptchaVerifier = undefined;
-    }
+    // No-op
   },
 
   async requestOtp(
     phone: string,
     deliveryMethod: "whatsapp" | "sms" = "sms",
-    otpToken?: string,
+    _otpToken?: string,
   ): Promise<ApiResult<RequestOtpResponse>> {
     try {
-      const appVerifier = window.recaptchaVerifier;
-      if (!appVerifier) {
-        return fail("AUTH_OTP_REQUEST_FAILED", "Security check not initialized. Please refresh the page.");
-      }
+      const baseUrl = getAuthBaseUrl();
+      const targetUrl = baseUrl.endsWith("/auth") 
+        ? `${baseUrl}/request-otp` 
+        : `${baseUrl}/auth/request-otp`;
 
-      const fullPhone = `+91${phone}`;
-      const confirmationResult = await signInWithPhoneNumber(auth, fullPhone, appVerifier);
-      
-      const token = `otp_${Date.now()}`;
-      otpSessions.set(token, { confirmationResult, phone });
+      const response = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          phone,
+          deliveryMethod,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        return fail(
+          data.error || "AUTH_OTP_REQUEST_FAILED",
+          data.message || "Failed to request OTP. Please try again."
+        );
+      }
 
       return ok({
-        otpToken: token,
-        expiresInSec: 300,
-        resendAfterSec: 30,
-        deliveryMethod,
-        simulated: false,
+        otpToken: data.otpToken || phone,
+        expiresInSec: data.expiresInSec || 300,
+        resendAfterSec: data.resendAfterSec || 60,
+        deliveryMethod: data.deliveryMethod || deliveryMethod,
+        code: data.code,
+        simulated: data.simulated || false,
       });
     } catch (error: any) {
-      console.error("Auth requestOtp error:", error);
-      // Reset reCAPTCHA if it fails so the user can try again
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.render().then((widgetId: number) => {
-          window.grecaptcha.reset(widgetId);
-        }).catch(() => {});
-      }
-      return fail("AUTH_OTP_REQUEST_FAILED", error.message || "Failed to request OTP. Please try again.");
+      console.error("Auth requestOtp transport error:", error);
+      return fail("AUTH_OTP_REQUEST_FAILED", error.message || "Failed to connect to authentication service.");
     }
   },
 
   async verifyOtp(otpToken: string, code: string): Promise<ApiResult<VerifyOtpResponse>> {
     try {
-      const session = otpSessions.get(otpToken);
-      if (!session) {
-        return fail("AUTH_OTP_VERIFY_FAILED", "Session expired. Please request OTP again.");
+      const baseUrl = getAuthBaseUrl();
+      const targetUrl = baseUrl.endsWith("/auth") 
+        ? `${baseUrl}/verify-otp` 
+        : `${baseUrl}/auth/verify-otp`;
+
+      const response = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          phone: otpToken,
+          otpToken,
+          code: code.trim(),
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        return fail(
+          data.error || "AUTH_OTP_VERIFY_FAILED",
+          data.message || "Invalid verification code. Please try again."
+        );
       }
 
-      const credential = await session.confirmationResult.confirm(code);
-      const user = credential.user;
+      if (!data.accessToken) {
+        return fail("AUTH_OTP_VERIFY_FAILED", "Authentication token missing from server response.");
+      }
+
+      // Exchange Custom Token for Firebase ID Token & Session
+      const userCredential = await signInWithCustomToken(auth, data.accessToken);
+      const user = userCredential.user;
 
       const accessToken = await user.getIdToken();
       const refreshToken = user.refreshToken;
       const uid = user.uid;
 
-      // Firestore sync
+      // Firestore user profile sync
+      let returnedUser: { id: string; phone: string; name?: string; email?: string } = {
+        id: uid,
+        phone: data.user?.phone || user.phoneNumber || otpToken,
+      };
+
       try {
         const { db } = await import("@/core/config/firebase");
         const { doc, getDoc, setDoc } = await import("firebase/firestore");
         const userRef = doc(db, "users", uid);
         const userSnap = await getDoc(userRef);
         
-        let userData: any = {
-          id: uid,
-          phone: session.phone,
-          createdAt: new Date().toISOString()
-        };
-
         if (!userSnap.exists()) {
-          await setDoc(userRef, userData);
+          await setDoc(userRef, {
+            id: uid,
+            phone: returnedUser.phone,
+            createdAt: new Date().toISOString(),
+          });
         } else {
-          userData = userSnap.data();
+          const profile = userSnap.data();
+          returnedUser.name = profile?.fullName || profile?.name;
+          returnedUser.email = profile?.email;
         }
       } catch (dbError) {
-        console.error("Firestore user sync failed:", dbError);
+        console.warn("Firestore user sync warning:", dbError);
       }
-
-      let returnedUser: any = { id: uid, phone: session.phone };
-      try {
-        const { getDoc, doc } = await import("firebase/firestore");
-        const { db } = await import("@/core/config/firebase");
-        const snap = await getDoc(doc(db, "users", uid));
-        if (snap.exists()) {
-            returnedUser.name = snap.data()?.fullName;
-            returnedUser.email = snap.data()?.email;
-        }
-      } catch (e) {}
-
-      otpSessions.delete(otpToken);
 
       return ok({
         accessToken,
@@ -134,11 +161,8 @@ export const authService = {
         user: returnedUser,
       });
     } catch (error: any) {
-      console.error("Firebase verifyOtp error:", error);
-      if (error.code === "auth/invalid-verification-code") {
-        return fail("AUTH_OTP_VERIFY_FAILED", "Incorrect verification code. Please try again.");
-      }
-      return fail("AUTH_OTP_VERIFY_FAILED", "Authentication failed. Please try again.");
+      console.error("Firebase custom token verification error:", error);
+      return fail("AUTH_OTP_VERIFY_FAILED", error.message || "Authentication failed. Please try again.");
     }
   },
 
@@ -161,11 +185,11 @@ export const authService = {
     }
   },
 
-  async logout(refreshToken: string | null): Promise<ApiResult<null>> {
+  async logout(_refreshToken: string | null): Promise<ApiResult<null>> {
     try {
       await auth.signOut();
       return ok(null);
-    } catch (error) {
+    } catch (_error) {
       return ok(null);
     }
   },
@@ -175,8 +199,7 @@ export type AuthService = typeof authService;
 
 declare global {
   interface Window {
-    recaptchaVerifier: RecaptchaVerifier | undefined;
-    grecaptcha: any;
+    recaptchaVerifier?: any;
+    grecaptcha?: any;
   }
 }
-
