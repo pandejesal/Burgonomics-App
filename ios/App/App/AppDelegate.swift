@@ -46,7 +46,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else {
             return false
         }
-        ApplicationDelegateProxy.shared.lastURL = url
         NotificationCenter.default.post(name: .capacitorOpenUniversalLink, object: [
             "url": url
         ])
