@@ -32,6 +32,7 @@ export interface AppConfig {
     offlineMode: boolean;
     orderTracking: boolean;
     referrals: boolean;
+    adminOps: boolean;
   };
   analytics: {
     enabled: boolean;
@@ -75,6 +76,7 @@ export const appConfig: AppConfig = {
     offlineMode: readEnv("VITE_FF_OFFLINE_MODE", "true") === "true",
     orderTracking: readEnv("VITE_FF_ORDER_TRACKING", "true") === "true",
     referrals: readEnv("VITE_FF_REFERRALS", "false") === "true",
+    adminOps: readEnv("VITE_FF_ADMIN_OPS", "false") === "true",
   },
   analytics: {
     enabled: readEnv("VITE_ANALYTICS_ENABLED", "false") === "true",

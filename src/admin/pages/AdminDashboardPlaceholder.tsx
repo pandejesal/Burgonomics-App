@@ -9,10 +9,9 @@ import { PetpoojaStatus } from "../dashboard/components/widgets/PetpoojaStatus";
 import { PaymentOverview } from "../dashboard/components/widgets/PaymentOverview";
 import { CustomerInsights } from "../dashboard/components/widgets/CustomerInsights";
 import { MenuInsights } from "../dashboard/components/widgets/MenuInsights";
-import { RecentActivity } from "../dashboard/components/widgets/RecentActivity";
-import { GlobalAlerts } from "../dashboard/components/widgets/GlobalAlerts";
 import { DashboardCharts } from "../dashboard/components/charts/DashboardCharts";
 import { Store, MapPin, RefreshCw, Download, CheckCircle, Info } from "lucide-react";
+
 import { INITIAL_RICH_STORES, RichStore } from "./storesData";
 
 export const AdminDashboardPlaceholder: React.FC = () => {
@@ -158,9 +157,6 @@ export const AdminDashboardPlaceholder: React.FC = () => {
         breadcrumbs={[]}
         badge={<RoleChip role={role} />}
       />
-
-      {/* Global Alerts Feed */}
-      <GlobalAlerts />
 
       {/* Main Filter Toolbar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-[20px] border border-gray-100 dark:border-gray-800 bg-white dark:bg-[#1A1A1A] shadow-[0_4px_16px_rgba(0,0,0,0.01)] shrink-0">
@@ -354,9 +350,7 @@ export const AdminDashboardPlaceholder: React.FC = () => {
           <MenuInsights dateRange={dateRange} />
         </div>
       </div>
-
-      {/* Immutable audit logging timeline trail */}
-      <RecentActivity />
     </div>
   );
 };
+

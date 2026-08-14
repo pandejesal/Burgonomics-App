@@ -1,17 +1,12 @@
 import React from "react";
 import { useSyncHealth, useSyncHistory, useSyncMutations } from "../../hooks/useDashboardData";
-import { dashboardService } from "../../services/dashboardService";
+import { toast } from "sonner";
 import {
-  Radio,
   AlertTriangle,
   RefreshCw,
-  Layers,
-  CheckCircle2,
-  XCircle,
-  ArrowRight,
-  Activity,
   Zap,
   Play,
+  Activity,
 } from "lucide-react";
 
 export const PetpoojaStatus: React.FC = () => {
@@ -36,36 +31,44 @@ export const PetpoojaStatus: React.FC = () => {
     isReplayingWebhook,
   } = useSyncMutations();
 
+  const isConnected = health?.connected === true;
+
   const handleManualSync = async () => {
+    if (!isConnected) {
+      toast.info("Petpooja integration is awaiting live merchant POS credentials.");
+      return;
+    }
     try {
       await triggerPetpoojaSync(undefined);
-      alert("Petpooja manual menu sync enqueued successfully on BullMQ queue!");
+      toast.success("Menu sync enqueued.");
     } catch (err: any) {
-      alert(`Manual sync failed to enqueue: ${err.message}`);
+      toast.error(`Sync error: ${err.message}`);
     }
   };
 
   const handleRefreshCache = async () => {
+    if (!isConnected) {
+      toast.info("Available after Petpooja credentials are wired.");
+      return;
+    }
     try {
       await refreshCache(undefined);
-      alert("Menu Redis cache invalidated successfully across all edge clusters!");
+      toast.success("Catalog cache refreshed.");
     } catch (err: any) {
-      alert(`Cache refresh failed: ${err.message}`);
+      toast.error(`Cache refresh error: ${err.message}`);
     }
   };
 
   const handleReplayWebhook = async () => {
+    if (!isConnected) {
+      toast.info("No active webhook gateway sessions to replay.");
+      return;
+    }
     try {
-      const hooks = await dashboardService.getWebhooks("petpooja").catch(() => []);
-      if (hooks && hooks.length > 0) {
-        const latestHook = hooks[0];
-        await replayWebhook({ gateway: "petpooja", id: latestHook.id });
-        alert(`Successfully replayed latest webhook ID: ${latestHook.id}`);
-      } else {
-        alert("No recent Petpooja webhooks found in log history to replay.");
-      }
+      await replayWebhook({ gateway: "petpooja", id: "latest" });
+      toast.success("Webhook replayed.");
     } catch (err: any) {
-      alert(`Failed to replay webhook: ${err.message}`);
+      toast.error(`Webhook error: ${err.message}`);
     }
   };
 
@@ -95,7 +98,7 @@ export const PetpoojaStatus: React.FC = () => {
           <AlertTriangle size={18} className="text-red-500" />
         </div>
         <p className="text-xs font-semibold text-gray-400">
-          Failed to probe Petpooja POS connectivity and sync pipeline status.
+          Failed to probe Petpooja POS connectivity status.
         </p>
         <button
           onClick={() => {
@@ -111,25 +114,31 @@ export const PetpoojaStatus: React.FC = () => {
   }
 
   // Extract from real health API:
-  const apiStatus = health?.api === "up" || health?.status === "ok" ? "UP" : "DOWN";
-  const webhookStatus = health?.webhooks === "up" || health?.status === "ok" ? "ACTIVE" : "DOWN";
-  const circuitBreaker = health?.circuitBreaker === "OPEN" ? "OPEN (TRIPPED)" : "CLOSED (SECURE)";
+  const apiStatus = isConnected
+    ? health?.api === "up" ? "UP" : "DOWN"
+    : "NOT CONNECTED";
+  const webhookStatus = isConnected
+    ? health?.webhooks === "up" ? "ACTIVE" : "DOWN"
+    : "AWAITING CREDENTIALS";
+  const circuitBreaker = isConnected
+    ? health?.circuitBreaker === "OPEN" ? "OPEN (TRIPPED)" : "CLOSED (SECURE)"
+    : "STANDBY";
 
   // Extract stats from sync history
   const latestSync = history && history.length > 0 ? history[0] : null;
   const latestCompletedSync = history?.find((h) => h.status === "COMPLETED");
   const latestFailedSync = history?.find((h) => h.status === "FAILED");
 
-  const currentMenuVersion = latestCompletedSync?.version || "v1.4.2";
+  const currentMenuVersion = latestCompletedSync?.version || "—";
 
-  let lastSyncTime = "Never";
+  let lastSyncTime = "—";
   if (latestSync?.startedAt) {
     const diff = Date.now() - new Date(latestSync.startedAt).getTime();
     const minutes = Math.floor(diff / 60000);
     lastSyncTime = minutes < 1 ? "Just now" : `${minutes} min ago`;
   }
 
-  let syncDuration = "12.4s";
+  let syncDuration = "—";
   if (latestCompletedSync?.startedAt && latestCompletedSync?.finishedAt) {
     const duration =
       new Date(latestCompletedSync.finishedAt).getTime() -
@@ -162,7 +171,11 @@ export const PetpoojaStatus: React.FC = () => {
               API Status
             </span>
             <span
-              className={`block font-black text-xs font-mono mt-1 ${apiStatus === "UP" ? "text-[#16A34A]" : "text-[#DC2626]"}`}
+              className={`block font-black text-xs font-mono mt-1 ${
+                isConnected
+                  ? apiStatus === "UP" ? "text-[#16A34A]" : "text-[#DC2626]"
+                  : "text-amber-500"
+              }`}
             >
               ● {apiStatus}
             </span>
@@ -173,7 +186,11 @@ export const PetpoojaStatus: React.FC = () => {
               Webhook link
             </span>
             <span
-              className={`block font-black text-xs font-mono mt-1 ${webhookStatus === "ACTIVE" ? "text-[#16A34A]" : "text-[#DC2626]"}`}
+              className={`block font-black text-xs font-mono mt-1 ${
+                isConnected
+                  ? webhookStatus === "ACTIVE" ? "text-[#16A34A]" : "text-[#DC2626]"
+                  : "text-amber-500"
+              }`}
             >
               ● {webhookStatus}
             </span>
@@ -184,7 +201,11 @@ export const PetpoojaStatus: React.FC = () => {
               Circuit Breaker
             </span>
             <span
-              className={`block font-black text-xs font-mono mt-1 ${circuitBreaker.includes("CLOSED") ? "text-[#16A34A]" : "text-orange-500"}`}
+              className={`block font-black text-xs font-mono mt-1 ${
+                isConnected
+                  ? circuitBreaker.includes("CLOSED") ? "text-[#16A34A]" : "text-orange-500"
+                  : "text-amber-500/80"
+              }`}
             >
               {circuitBreaker}
             </span>
@@ -194,7 +215,7 @@ export const PetpoojaStatus: React.FC = () => {
             <span className="block text-[8px] font-bold text-gray-400 uppercase tracking-wider">
               Menu Version
             </span>
-            <span className="block font-black text-xs font-mono text-[#0E4825] dark:text-emerald-400 mt-1">
+            <span className="block font-black text-xs font-mono text-gray-400 dark:text-gray-500 mt-1">
               {currentMenuVersion}
             </span>
           </div>
@@ -226,41 +247,64 @@ export const PetpoojaStatus: React.FC = () => {
       </div>
 
       {/* Buttons actions */}
-      <div className="grid grid-cols-2 gap-3 shrink-0">
-        <button
-          onClick={handleManualSync}
-          disabled={isTriggeringPetpooja}
-          className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#0E4825] hover:bg-[#0E4825]/90 text-white font-bold text-xs shadow-sm cursor-pointer disabled:opacity-50 transition-all"
-        >
-          {isTriggeringPetpooja ? (
-            <RefreshCw size={13} className="animate-spin" />
-          ) : (
-            <Play size={13} />
-          )}
-          <span>Run Menu Sync</span>
-        </button>
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-3 shrink-0">
+          <button
+            onClick={handleManualSync}
+            disabled={!isConnected || isTriggeringPetpooja}
+            title={!isConnected ? "Available after Petpooja credentials are wired" : undefined}
+            className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all ${
+              !isConnected
+                ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60"
+                : "bg-[#0E4825] hover:bg-[#0E4825]/90 text-white cursor-pointer"
+            }`}
+          >
+            {isTriggeringPetpooja ? (
+              <RefreshCw size={13} className="animate-spin" />
+            ) : (
+              <Play size={13} />
+            )}
+            <span>Run Menu Sync</span>
+          </button>
 
-        <button
-          onClick={handleRefreshCache}
-          disabled={isRefreshingCache}
-          className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#FF6600] font-bold text-xs border border-orange-200/50 cursor-pointer disabled:opacity-50 transition-all"
-        >
-          {isRefreshingCache ? (
-            <RefreshCw size={13} className="animate-spin" />
-          ) : (
-            <RefreshCw size={13} />
-          )}
-          <span>Refresh Cache</span>
-        </button>
+          <button
+            onClick={handleRefreshCache}
+            disabled={!isConnected || isRefreshingCache}
+            title={!isConnected ? "Available after Petpooja credentials are wired" : undefined}
+            className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-xs border transition-all ${
+              !isConnected
+                ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border-transparent cursor-not-allowed opacity-60"
+                : "bg-orange-50 hover:bg-orange-100 text-[#FF6600] border-orange-200/50 cursor-pointer"
+            }`}
+          >
+            {isRefreshingCache ? (
+              <RefreshCw size={13} className="animate-spin" />
+            ) : (
+              <RefreshCw size={13} />
+            )}
+            <span>Refresh Cache</span>
+          </button>
 
-        <button
-          onClick={handleReplayWebhook}
-          disabled={isReplayingWebhook}
-          className="col-span-2 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-gray-200 text-gray-600 dark:text-gray-300 font-bold text-xs bg-gray-50/40 dark:bg-gray-900/20 cursor-pointer transition-all"
-        >
-          <Activity size={13} />
-          <span>Replay Last Webhook</span>
-        </button>
+          <button
+            onClick={handleReplayWebhook}
+            disabled={!isConnected || isReplayingWebhook}
+            title={!isConnected ? "Available after Petpooja credentials are wired" : undefined}
+            className={`col-span-2 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-bold text-xs transition-all ${
+              !isConnected
+                ? "bg-gray-100/50 dark:bg-gray-800/40 text-gray-400 dark:text-gray-500 border-transparent cursor-not-allowed opacity-60"
+                : "border-gray-100 dark:border-gray-800 hover:border-gray-200 text-gray-600 dark:text-gray-300 bg-gray-50/40 dark:bg-gray-900/20 cursor-pointer"
+            }`}
+          >
+            <Activity size={13} />
+            <span>Replay Last Webhook</span>
+          </button>
+        </div>
+
+        {!isConnected && (
+          <p className="text-[10px] text-center text-amber-500/90 font-semibold tracking-wide">
+            Available after Petpooja credentials are wired
+          </p>
+        )}
       </div>
     </div>
   );

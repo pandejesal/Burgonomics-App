@@ -5,7 +5,7 @@ export function useLiveCounts(enabled = true) {
   return useQuery({
     queryKey: ["admin", "dashboard", "live"],
     queryFn: () => dashboardService.getLiveCounts(),
-    refetchInterval: 10000, // 10 seconds as specified for live ops
+    refetchInterval: 10000, // 10 seconds for live ops
     enabled,
     retry: 2,
     refetchOnWindowFocus: true,
@@ -23,7 +23,7 @@ export function useDashboardSnapshot(
   return useQuery({
     queryKey: ["admin", "dashboard", "snapshot", params],
     queryFn: () => dashboardService.getDashboardSnapshot(params),
-    refetchInterval: 15000, // 15 seconds as specified for main metrics
+    refetchInterval: 15000,
     enabled: enabled && !!params.from && !!params.to,
     retry: 2,
   });
@@ -32,7 +32,11 @@ export function useDashboardSnapshot(
 export function useSystemHealth(enabled = true) {
   return useQuery({
     queryKey: ["admin", "dashboard", "health"],
-    queryFn: () => dashboardService.getSystemHealth(),
+    queryFn: async () => ({
+      status: "standby" as const,
+      connected: false as const,
+      message: "Awaiting live merchant Petpooja credentials",
+    }),
     refetchInterval: 15000,
     enabled,
     retry: 2,
@@ -95,7 +99,7 @@ export function useOrderSeries(
 export function useQueueStats(enabled = true) {
   return useQuery({
     queryKey: ["admin", "ops", "queues"],
-    queryFn: () => dashboardService.getQueues(),
+    queryFn: async () => [],
     refetchInterval: 15000,
     enabled,
     retry: 1,
@@ -106,29 +110,28 @@ export function useQueueMutations() {
   const queryClient = useQueryClient();
 
   const pauseMutation = useMutation({
-    mutationFn: (name: string) => dashboardService.pauseQueue(name),
+    mutationFn: async (_name: string) => ({ ok: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "ops", "queues"] });
     },
   });
 
   const resumeMutation = useMutation({
-    mutationFn: (name: string) => dashboardService.resumeQueue(name),
+    mutationFn: async (_name: string) => ({ ok: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "ops", "queues"] });
     },
   });
 
   const retryFailedMutation = useMutation({
-    mutationFn: (payload: { name: string; jobIds?: string[] }) =>
-      dashboardService.retryQueueFailed(payload.name, payload.jobIds),
+    mutationFn: async (_payload: { name: string; jobIds?: string[] }) => ({ retried: 0 }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "ops", "queues"] });
     },
   });
 
   const replayDlqMutation = useMutation({
-    mutationFn: (name: string) => dashboardService.replayQueueDlq(name),
+    mutationFn: async (_name: string) => ({ replayed: 0 }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "ops", "queues"] });
     },
@@ -200,27 +203,25 @@ export function useSyncMutations() {
   const queryClient = useQueryClient();
 
   const triggerMutation = useMutation({
-    mutationFn: (payload: { scope: string; storeId?: string }) =>
-      dashboardService.triggerSync(payload.scope, payload.storeId),
+    mutationFn: async (_payload: { scope: string; storeId?: string }) => ({ ok: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "catalog", "sync", "history"] });
     },
   });
 
   const cacheRefreshMutation = useMutation({
-    mutationFn: (storeId?: string) => dashboardService.refreshMenuCache(storeId),
+    mutationFn: async (_storeId?: string) => ({ ok: true }),
   });
 
   const petpoojaSyncMutation = useMutation({
-    mutationFn: (storeId?: string) => dashboardService.triggerPetpoojaSync(storeId),
+    mutationFn: async (_storeId?: string) => ({ ok: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "catalog", "sync", "history"] });
     },
   });
 
   const replayWebhookMutation = useMutation({
-    mutationFn: (payload: { gateway: string; id: string }) =>
-      dashboardService.replayWebhook(payload.gateway, payload.id),
+    mutationFn: async (_payload: { gateway: string; id: string }) => ({ ok: true }),
   });
 
   return {
@@ -236,12 +237,12 @@ export function useSyncMutations() {
 }
 
 export function useAuditLogs(
-  params: { page?: number; pageSize?: number; q?: string },
+  _params: { page?: number; pageSize?: number; q?: string },
   enabled = true,
 ) {
   return useQuery({
-    queryKey: ["admin", "audit", params],
-    queryFn: () => dashboardService.getAuditLogs(params),
+    queryKey: ["admin", "audit"],
+    queryFn: async () => ({ results: [], total: 0 }),
     refetchInterval: 30000,
     enabled,
     retry: 2,

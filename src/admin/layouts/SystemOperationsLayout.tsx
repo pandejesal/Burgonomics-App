@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { useAdminAuthStore } from "../store/adminAuthStore";
 
+import { appConfig } from "@/core/config/env";
+
 interface SystemOperationsLayoutProps {
   children: React.ReactNode;
 }
@@ -94,21 +96,26 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
     }
   };
 
-  const systemTabs = [
+  const allSystemTabs = [
     { label: "Dashboard", to: "/admin/system", icon: LayoutDashboard },
     { label: "Live Health", to: "/admin/system/health", icon: Activity },
     { label: "Metrics & Charts", to: "/admin/system/metrics", icon: BarChart3 },
-    { label: "Queue Manager", to: "/admin/system/queues", icon: Boxes },
-    { label: "Redis Explorer", to: "/admin/system/redis", icon: Database },
-    { label: "Database Core", to: "/admin/system/database", icon: Server },
-    { label: "API Explorer", to: "/admin/system/apis", icon: Network },
-    { label: "Realtime Logs", to: "/admin/system/logs", icon: Terminal },
-    { label: "Audits & Events", to: "/admin/system/audit", icon: ShieldAlert },
-    { label: "Feature Flags", to: "/admin/system/feature-flags", icon: ToggleLeft },
-    { label: "Cron Jobs", to: "/admin/system/jobs", icon: Clock },
+    { label: "Queue Manager", to: "/admin/system/queues", icon: Boxes, requiresOps: true },
+    { label: "Redis Explorer", to: "/admin/system/redis", icon: Database, requiresOps: true },
+    { label: "Database Core", to: "/admin/system/database", icon: Server, requiresOps: true },
+    { label: "API Explorer", to: "/admin/system/apis", icon: Network, requiresOps: true },
+    { label: "Realtime Logs", to: "/admin/system/logs", icon: Terminal, requiresOps: true },
+    { label: "Audits & Events", to: "/admin/system/audit", icon: ShieldAlert, requiresOps: true },
+    { label: "Feature Flags", to: "/admin/system/feature-flags", icon: ToggleLeft, requiresOps: true },
+    { label: "Cron Jobs", to: "/admin/system/jobs", icon: Clock, requiresOps: true },
     { label: "Security Center", to: "/admin/system/security", icon: Shield },
     { label: "System Config", to: "/admin/system/settings", icon: Settings },
   ];
+
+  const systemTabs = allSystemTabs.filter(
+    (tab) => !tab.requiresOps || appConfig.featureFlags.adminOps,
+  );
+
 
   const currentTab = systemTabs.find((t) => location.pathname === t.to) || systemTabs[0];
 

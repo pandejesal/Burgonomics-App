@@ -13,6 +13,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { appConfig } from "@/core/config/env";
+
 interface AlertMessage {
   id: string;
   type: "warning" | "error" | "info";
@@ -48,7 +50,7 @@ export const PetpoojaOperationsLayout: React.FC<{ children: React.ReactNode }> =
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const tabs = [
+  const allTabs = [
     {
       label: "Overview",
       to: "/admin/petpooja",
@@ -74,6 +76,7 @@ export const PetpoojaOperationsLayout: React.FC<{ children: React.ReactNode }> =
       label: "Queue Dashboard",
       to: "/admin/petpooja/queues",
       icon: Boxes,
+      requiresOps: true,
     },
     {
       label: "Health & Cache",
@@ -81,6 +84,11 @@ export const PetpoojaOperationsLayout: React.FC<{ children: React.ReactNode }> =
       icon: HeartPulse,
     },
   ];
+
+  const tabs = allTabs.filter(
+    (tab) => !tab.requiresOps || appConfig.featureFlags.adminOps,
+  );
+
 
   return (
     <div className="space-y-6">

@@ -1,94 +1,19 @@
 import * as React from "react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { RefreshCw, Radio, Terminal, CheckCircle2, ChevronRight, Sparkles } from "lucide-react";
+import { Radio, Terminal, ChevronRight } from "lucide-react";
 import { BrandMascot } from "../common/BrandMascot";
 import { Text } from "../common/Text";
-import { AppButton } from "../common/AppButton";
-import { useDemoStore } from "@/features/demo/state/demoStore";
-import { useMenuStore } from "@/features/menu/state/menuStore";
-import { toast } from "sonner";
-import { db } from "@/core/config/firebase";
-import { collection, writeBatch, doc, addDoc, serverTimestamp } from "firebase/firestore";
-import { SAMPLE_CATEGORIES, SAMPLE_PRODUCTS } from "@/features/menu/data/petpoojaSampleData";
 
 interface PetpoojaSyncPlaceholderProps {
   storeId?: string;
-  onSyncComplete?: () => void;
   className?: string;
 }
 
 export function PetpoojaSyncPlaceholder({
-  storeId,
-  onSyncComplete,
   className,
 }: PetpoojaSyncPlaceholderProps) {
-  const [isSyncing, setIsSyncing] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const setSimulationMode = useDemoStore((s) => s.setSimulationMode);
-  const loadMenu = useMenuStore((s) => s.load);
-
-  const handleSimulateSync = async () => {
-    setIsSyncing(true);
-    toast.info("Exporting mock menu to Firebase (Petpooja Webhook)...", { duration: 1500 });
-
-    try {
-      const batch = writeBatch(db);
-      
-      // Upload Categories
-      const categoriesRef = collection(db, "petpooja_categories");
-      for (const cat of SAMPLE_CATEGORIES) {
-        batch.set(doc(categoriesRef, cat.id), cat);
-      }
-      
-      // Upload Products
-      const productsRef = collection(db, "petpooja_products");
-      for (const prod of SAMPLE_PRODUCTS) {
-        batch.set(doc(productsRef, prod.id), prod);
-      }
-
-      await batch.commit();
-
-      // Inject a mock Webhook Log into Firestore to demonstrate the Admin Dashboard listener
-      try {
-        await addDoc(collection(db, "petpooja_webhook_logs"), {
-          type: "menu.sync",
-          status: "SUCCESS",
-          executionTimeMs: 142,
-          storeId: storeId || "unknown",
-          storeName: storeId ? `Store ${storeId}` : "Navrangpura Mock",
-          timestamp: serverTimestamp(),
-          payload: {
-            restaurant_id: storeId || "mock_rest_id",
-            event_fired: "menu.sync",
-            simulated: true,
-            records_upserted: SAMPLE_CATEGORIES.length + SAMPLE_PRODUCTS.length,
-            message: "This is a simulated payload from the frontend Petpooja mock button.",
-          }
-        });
-      } catch (err) {
-        console.warn("Could not insert mock webhook log, maybe rules?", err);
-      }
-
-      setSimulationMode(true);
-      if (storeId) {
-        await loadMenu(storeId, { refresh: true });
-      }
-
-      toast.success("Petpooja menu exported to Firebase!", {
-        description: "Successfully synced categories, products, and addons to cloud.",
-        duration: 3000,
-      });
-    } catch (err) {
-      console.error(err);
-      toast.error("Firebase Sync Failed", { description: "Ensure Firestore is enabled and rules allow writes." });
-    } finally {
-      setIsSyncing(false);
-      if (onSyncComplete) {
-        onSyncComplete();
-      }
-    }
-  };
 
   const mockWebhookLogs = [
     { time: "10:42:01", event: "Webhook listening on /api/petpooja/menu_push...", type: "system" },
@@ -99,7 +24,7 @@ export function PetpoojaSyncPlaceholder({
     },
     {
       time: "10:42:05",
-      event: "Tip: Click 'Enable Mock Simulation' below to push simulated POS dataset.",
+      event: "Menu changes made on the Petpooja POS billing machine automatically sync here.",
       type: "tip",
     },
   ];
@@ -163,53 +88,21 @@ export function PetpoojaSyncPlaceholder({
       </Text>
 
       <p className="mt-2 text-xs text-text-secondary max-w-[22rem] italic">
-        When a manager taps "Push Menu" on the billing machine, this screen instantly updates with
+        When a manager updates the menu on the billing machine, this screen automatically updates with
         fresh burgers, prices, and stock indicators.
       </p>
 
-      {/* Controller Controls (Highly functional and delightfully explains mock environment) */}
+      {/* Sync Status / Logs */}
       <div className="mt-8 w-full rounded-2xl border border-divider bg-surface p-4 shadow-sm">
-        <div className="flex items-center justify-between border-b border-divider pb-3 mb-3 text-left">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1">
-              <Sparkles className="h-3.5 w-3.5" />
-              Demo Environment Actions
-            </p>
-            <p className="text-[11px] text-text-secondary mt-0.5">
-              Simulate menu synchronization from a mock POS terminal
-            </p>
-          </div>
-        </div>
-
         <div className="space-y-3">
-          <AppButton
-            variant="primary"
-            size="md"
-            className="w-full justify-center gap-2 relative overflow-hidden"
-            onClick={handleSimulateSync}
-            disabled={isSyncing}
-          >
-            {isSyncing ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Syncing POS Catalogue...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-4 w-4" />
-                Trigger Petpooja POS Mock Sync
-              </>
-            )}
-          </AppButton>
-
           <button
             type="button"
-            className="w-full flex items-center justify-between text-left px-3 py-2 rounded-lg bg-bg-secondary hover:bg-divider transition-colors"
+            className="w-full flex items-center justify-between text-left px-3 py-2 rounded-lg bg-bg-secondary hover:bg-divider transition-colors cursor-pointer"
             onClick={() => setShowLogs(!showLogs)}
           >
             <span className="text-xs font-mono text-text-secondary flex items-center gap-1.5">
               <Terminal className="h-3.5 w-3.5" />
-              View Sync Endpoints / Live Webhook Logs
+              View Sync Telemetry / Webhook Status
             </span>
             <ChevronRight
               className={`h-4 w-4 text-text-secondary transition-transform duration-200 ${showLogs ? "rotate-90" : ""}`}
@@ -241,12 +134,6 @@ export function PetpoojaSyncPlaceholder({
                       </span>
                     </div>
                   ))}
-                  {isSyncing && (
-                    <div className="flex gap-2 text-emerald-400 animate-pulse mt-1">
-                      <span>•</span>
-                      <span>Receiving menu push payload chunk... (100% processed)</span>
-                    </div>
-                  )}
                 </div>
               </motion.div>
             )}

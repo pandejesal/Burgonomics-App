@@ -47,7 +47,7 @@ function PetpoojaOverviewPage() {
     refetch: refetchHealth,
   } = useQuery({
     queryKey: ["petpooja-system-health"],
-    queryFn: () => dashboardService.getSystemHealth().catch(() => null),
+    queryFn: () => dashboardService.getSyncHealth().catch(() => null),
     refetchInterval: refreshInterval * 1000,
   });
 
