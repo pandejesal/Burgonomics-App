@@ -1524,3 +1524,24 @@ if (fs.existsSync(geolocationPluginSwift)) {
   fs.writeFileSync(geolocationPluginSwift, content, 'utf8');
   console.log('✅ Overwritten GeolocationPlugin.swift');
 }
+
+// 10. Ensure AppDelegate.swift uses direct universal link handling
+const appDelegatePath = path.resolve('ios/App/App/AppDelegate.swift');
+if (fs.existsSync(appDelegatePath)) {
+  let content = fs.readFileSync(appDelegatePath, 'utf8');
+  if (content.includes('return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)')) {
+    content = content.replace(
+      'return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)',
+      `guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else {
+            return false
+        }
+        ApplicationDelegateProxy.shared.lastURL = url
+        NotificationCenter.default.post(name: .capacitorOpenUniversalLink, object: [
+            "url": url
+        ])
+        return true`
+    );
+    fs.writeFileSync(appDelegatePath, content, 'utf8');
+    console.log('✅ Patched AppDelegate.swift universal links handling');
+  }
+}
