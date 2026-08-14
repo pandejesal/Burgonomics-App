@@ -3,24 +3,8 @@ name: iOS Build (Capacitor)
 on:
   push:
     branches: [ main, master ]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'ios/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'capacitor.config.ts'
-      - '.github/workflows/ios-build.yml'
   pull_request:
     branches: [ main, master ]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'ios/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'capacitor.config.ts'
-      - '.github/workflows/ios-build.yml'
   workflow_dispatch:
 
 jobs:
@@ -80,10 +64,6 @@ jobs:
                 console.error('Failed to inject KeychainSwift dependency into CapApp-SPM/Package.swift');
                 process.exit(1);
               }
-            }
-            const sf = 'node_modules/@aparajita/capacitor-secure-storage/Package.swift';
-            if (fs.existsSync(sf)) {
-              fs.writeFileSync(sf, fs.readFileSync(sf, 'utf8').replace(/SecureStoragePlugin/g, 'AparajitaCapacitorSecureStorage'));
             }
           "
 

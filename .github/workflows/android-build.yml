@@ -3,24 +3,8 @@ name: Android Build (Capacitor)
 on:
   push:
     branches: [ main, master ]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'android/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'capacitor.config.ts'
-      - '.github/workflows/android-build.yml'
   pull_request:
     branches: [ main, master ]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'android/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'capacitor.config.ts'
-      - '.github/workflows/android-build.yml'
   workflow_dispatch:
 
 jobs:
