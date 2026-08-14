@@ -1,12 +1,14 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
+import * as express from "express";
+import { razorpayWebhook } from "./webhooks";
 const Razorpay = require("razorpay");
 
 const db = admin.firestore();
 
 function getRazorpayInstance() {
-  const keyId = process.env.RAZORPAY_KEY_ID || functions.config().razorpay?.key_id || "rzp_test_51PLACEHOLDER";
+  const keyId = process.env.RAZORPAY_KEY_ID || functions.config().razorpay?.key_id || "rzp_test_TDmKPAQdJfbv6Z";
   const keySecret = process.env.RAZORPAY_KEY_SECRET || functions.config().razorpay?.key_secret || "rzp_test_secret_placeholder";
 
   return new Razorpay({
@@ -18,7 +20,7 @@ function getRazorpayInstance() {
 /**
  * Validates the caller's Firebase Auth token.
  */
-async function authenticateRequest(req: functions.https.Request): Promise<admin.auth.DecodedIdToken | null> {
+async function authenticateRequest(req: functions.https.Request | express.Request): Promise<admin.auth.DecodedIdToken | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return null;
@@ -77,9 +79,9 @@ async function computeServerPrice(
 }
 
 /**
- * SEC-3 / PAY-4: Creates a Razorpay order from the backend with server-authoritative pricing.
+ * Handler for creating a Razorpay order from the backend with server-authoritative pricing.
  */
-export const createPaymentOrder = functions.https.onRequest(async (req, res) => {
+export async function handleCreatePaymentOrder(req: any, res: any) {
   // Enable CORS
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -170,12 +172,12 @@ export const createPaymentOrder = functions.https.onRequest(async (req, res) => 
     functions.logger.error("Error creating Razorpay order", err);
     res.status(500).send({ status: "error", message: err.message || "Failed to create payment order" });
   }
-});
+}
 
 /**
- * Verifies a Razorpay payment signature and updates payment state server-side.
+ * Handler for verifying a Razorpay payment signature and updating payment state server-side.
  */
-export const verifyPayment = functions.https.onRequest(async (req, res) => {
+export async function handleVerifyPayment(req: any, res: any) {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -317,4 +319,33 @@ export const verifyPayment = functions.https.onRequest(async (req, res) => {
     functions.logger.error("Error finalizing verified payment", err);
     res.status(500).send({ status: "error", message: err.message || "Failed to finalize payment." });
   }
+}
+
+// 1. Direct Cloud Function Exports
+export const createPaymentOrder = functions.https.onRequest(handleCreatePaymentOrder);
+export const verifyPayment = functions.https.onRequest(handleVerifyPayment);
+
+// 2. Express application mounted at /payments
+const app = express();
+
+app.use((req, res, next) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-razorpay-signature");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  next();
 });
+
+app.use(express.json());
+
+// Routes supporting both relative and mounted /payments prefixes
+app.post(["/createPaymentOrder", "/payments/createPaymentOrder"], handleCreatePaymentOrder);
+app.post(["/verifyPayment", "/payments/verifyPayment"], handleVerifyPayment);
+app.post(["/razorpayWebhook", "/payments/razorpayWebhook"], async (req, res) => {
+  await (razorpayWebhook as any)(req, res);
+});
+
+export const payments = functions.https.onRequest(app);

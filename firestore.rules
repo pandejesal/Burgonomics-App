@@ -105,9 +105,6 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
-    match /admin_{docId=**} {
-      allow read, write: if false;
-    }
     match /admins/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow write: if false; // Only Admin SDK/Cloud Functions can write
