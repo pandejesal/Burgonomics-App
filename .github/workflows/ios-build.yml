@@ -85,10 +85,10 @@ jobs:
 
           if [ $XCODE_STATUS -ne 0 ]; then
             echo "::error::xcodebuild failed with status $XCODE_STATUS"
-            echo "--- XCODEBUILD ERRORS ---"
-            grep -E "error:|fatal:|BUILD FAILED" xcodebuild.log || true
-            echo "--- TAIL OF XCODEBUILD LOG ---"
-            tail -n 120 xcodebuild.log
+            echo "=== XCODEBUILD ERROR LINES ==="
+            grep -n -C 3 -i "error:" xcodebuild.log || true
+            echo "=== LAST 150 LINES OF XCODEBUILD LOG ==="
+            tail -n 150 xcodebuild.log
             exit $XCODE_STATUS
           fi
 
@@ -107,8 +107,17 @@ jobs:
             exit 1
           fi
 
+      - name: 📤 Upload Build Log on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: xcodebuild-log
+          path: ios/App/xcodebuild.log
+          retention-days: 7
+
       - name: 📤 Upload iOS Simulator App
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: Burgonomics-iOS-Simulator-App
           path: Burgonomics-iOS-Simulator-App.zip
