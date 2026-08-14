@@ -327,11 +327,14 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func statusBarConfig() -> StatusBarConfig {
         var config = StatusBarConfig()
-        config.overlaysWebView = getConfig().getBoolean("overlaysWebView", config.overlaysWebView)
-        if let colorConfig = getConfig().getString("backgroundColor"), let color = UIColor.fromHex(colorConfig) {
+        let rawConfig = (getConfig().value(forKey: "config") as? [String: Any]) ?? [:]
+        if let overlays = rawConfig["overlaysWebView"] as? Bool {
+            config.overlaysWebView = overlays
+        }
+        if let colorConfig = rawConfig["backgroundColor"] as? String, let color = UIColor.fromHex(colorConfig) {
             config.backgroundColor = color
         }
-        if let configStyle = getConfig().getString("style") {
+        if let configStyle = rawConfig["style"] as? String {
             config.style = style(fromString: configStyle)
         }
         return config
@@ -494,11 +497,12 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func splashScreenConfig() -> SplashScreenConfig {
         var config = SplashScreenConfig()
+        let rawConfig = (getConfig().value(forKey: "config") as? [String: Any]) ?? [:]
 
-        if let backgroundColor = getConfig().getString("backgroundColor"), let color = UIColor.fromHex(backgroundColor) {
+        if let backgroundColor = rawConfig["backgroundColor"] as? String, let color = UIColor.fromHex(backgroundColor) {
             config.backgroundColor = color
         }
-        if let spinnerStyle = getConfig().getString("iosSpinnerStyle") {
+        if let spinnerStyle = rawConfig["iosSpinnerStyle"] as? String {
             switch spinnerStyle.lowercased() {
             case "small":
                 config.spinnerStyle = .medium
@@ -506,12 +510,18 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
                 config.spinnerStyle = .large
             }
         }
-        if let spinnerColor = getConfig().getString("spinnerColor"), let color = UIColor.fromHex(spinnerColor) {
+        if let spinnerColor = rawConfig["spinnerColor"] as? String, let color = UIColor.fromHex(spinnerColor) {
             config.spinnerColor = color
         }
-        config.showSpinner = getConfig().getBoolean("showSpinner", config.showSpinner)
-        config.launchShowDuration = getConfig().getInt("launchShowDuration", config.launchShowDuration)
-        config.launchAutoHide = getConfig().getBoolean("launchAutoHide", config.launchAutoHide)
+        if let showSpinner = rawConfig["showSpinner"] as? Bool {
+            config.showSpinner = showSpinner
+        }
+        if let launchShowDuration = (rawConfig["launchShowDuration"] as? NSNumber)?.intValue {
+            config.launchShowDuration = launchShowDuration
+        }
+        if let launchAutoHide = rawConfig["launchAutoHide"] as? Bool {
+            config.launchAutoHide = launchAutoHide
+        }
         return config
     }
 }
