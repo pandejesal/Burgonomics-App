@@ -328,10 +328,10 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     private func statusBarConfig() -> StatusBarConfig {
         var config = StatusBarConfig()
         config.overlaysWebView = getConfig().getBoolean("overlaysWebView", config.overlaysWebView)
-        if let colorConfig = getConfig().getString("backgroundColor", nil), let color = UIColor.fromHex(colorConfig) {
+        if let colorConfig = getConfig().getString("backgroundColor"), let color = UIColor.fromHex(colorConfig) {
             config.backgroundColor = color
         }
-        if let configStyle = getConfig().getString("style", nil) {
+        if let configStyle = getConfig().getString("style") {
             config.style = style(fromString: configStyle)
         }
         return config
@@ -495,10 +495,10 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
     private func splashScreenConfig() -> SplashScreenConfig {
         var config = SplashScreenConfig()
 
-        if let backgroundColor = getConfig().getString("backgroundColor", nil), let color = UIColor.fromHex(backgroundColor) {
+        if let backgroundColor = getConfig().getString("backgroundColor"), let color = UIColor.fromHex(backgroundColor) {
             config.backgroundColor = color
         }
-        if let spinnerStyle = getConfig().getString("iosSpinnerStyle", nil) {
+        if let spinnerStyle = getConfig().getString("iosSpinnerStyle") {
             switch spinnerStyle.lowercased() {
             case "small":
                 config.spinnerStyle = .medium
@@ -506,7 +506,7 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
                 config.spinnerStyle = .large
             }
         }
-        if let spinnerColor = getConfig().getString("spinnerColor", nil), let color = UIColor.fromHex(spinnerColor) {
+        if let spinnerColor = getConfig().getString("spinnerColor"), let color = UIColor.fromHex(spinnerColor) {
             config.spinnerColor = color
         }
         config.showSpinner = getConfig().getBoolean("showSpinner", config.showSpinner)
