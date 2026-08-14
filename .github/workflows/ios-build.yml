@@ -109,7 +109,7 @@ jobs:
           fi
 
       - name: 🏗️ Build iOS Device IPA (requires signing secrets)
-        if: ${{ secrets.IOS_CERTIFICATE_BASE64 != '' }}
+        if: secrets.IOS_CERTIFICATE_BASE64 != ''
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
