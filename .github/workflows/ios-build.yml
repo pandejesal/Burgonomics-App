@@ -39,8 +39,8 @@ jobs:
 
       - name: 🛠️ Setup Xcode Version
         run: |
-          if ls -d /Applications/Xcode_16*.app >/dev/null 2>&1; then
-            sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | head -n 1)/Contents/Developer"
+          if [ -d "/Applications/Xcode_15.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
           elif ls -d /Applications/Xcode_15*.app >/dev/null 2>&1; then
             sudo xcode-select -s "$(ls -d /Applications/Xcode_15*.app | head -n 1)/Contents/Developer"
           else
