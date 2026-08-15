@@ -61,3 +61,4 @@ android/jdk*.zip
 build/
 ios/App/Pods
 ios/App/DerivedData
+.agents/
