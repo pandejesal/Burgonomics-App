@@ -3,6 +3,9 @@
   command = "npm run build"
   functions = "netlify/functions"
 
+[[plugins]]
+  package = "@netlify/plugin-functions-install-core"
+
 [[redirects]]
   from = "/api/payments/*"
   to = "/.netlify/functions/payments/:splat"
