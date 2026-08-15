@@ -18,7 +18,7 @@ Legend: **DONE** = verified in live code/deploy · **THIS PASS** = fixed in this
 | Mobile/CI | Release signing env-driven; GitHub Actions CI; deep-link verification files; no WebView debug in prod | **THIS PASS** | `app/build.gradle` signing now gated to release variants only (debug builds need no secrets); `.github/workflows/ci.yml` added; `public/.well-known/` files added (fingerprints pending release keystore); WebView debugging never enabled — Capacitor disables it in release by default. |
 | iOS | SPM pinning, Xcode configs, App Store assets | **DEFERRED** | Windows-only machine; iOS build environment unavailable. Apple App Site Association file published now for later. |
 | Admin hygiene | Admin UI isolated from customer bundle; no hardcoded creds; `.gitignore` hygiene | **DONE** | Admin routes lazy-loaded (`admin.*` chunks separate in build output); `seed.ts` has no plaintext credentials; `.gitignore` covers `.env*`, `.swarm/`, `dist`, `*.keystore`. |
-| Android signing | Env-driven `signingConfigs` | **THIS PASS** | Already env-driven (`RELEASE_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD`); the config-time throw for missing passwords was blocking *debug* builds — now scoped to release task names. Keystore must be created before Play Store submission. |
+| Android signing | Env-driven `signingConfigs` | **THIS PASS** | Already env-driven (`RELEASE_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD`); release keystore exists on dev machine (fingerprint published in `assetlinks.json`); the config-time throw for missing passwords was blocking *debug* builds — now scoped to release task names. Passwords are only needed for release builds / CI. |
 
 ## Phases
 
