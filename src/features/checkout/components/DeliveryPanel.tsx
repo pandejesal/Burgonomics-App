@@ -1,12 +1,11 @@
 import * as React from "react";
-import { Link } from "@tanstack/react-router";
-import { MapPin, ChevronRight, Clock, Truck } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { MapPin, ChevronRight, Clock, Truck, Pencil } from "lucide-react";
 import { CheckoutSection } from "./CheckoutSection";
 import { NotesEditor } from "./NotesEditor";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { Text } from "@/shared/components/common/Text";
 import { AddressCard } from "@/features/addresses/components/AddressCard";
-import { AddressSelectorSheet } from "@/features/addresses/components/AddressSelectorSheet";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses/state/addressStore";
 import { addressRepository } from "@/features/addresses/repositories/AddressRepository";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
@@ -21,9 +20,9 @@ interface Props {
 }
 
 export function DeliveryPanel({ store, deliveryFee, onAddressChange }: Props) {
+  const navigate = useNavigate();
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const selected = useAddressStore(selectSelectedAddress);
-  const [open, setOpen] = React.useState(false);
   const [presets, setPresets] = React.useState<string[]>([]);
   const instructions = useCheckoutStore((s) => s.deliveryInstructions);
   const setInstructions = useCheckoutStore((s) => s.setDeliveryInstructions);
@@ -38,6 +37,16 @@ export function DeliveryPanel({ store, deliveryFee, onAddressChange }: Props) {
     };
   }, []);
 
+  const handleOpenAddressPage = (editId?: string) => {
+    void navigate({
+      to: "/addresses/create",
+      search: {
+        editId,
+        returnTo: "/checkout",
+      },
+    });
+  };
+
   return (
     <>
       <CheckoutSection
@@ -46,16 +55,18 @@ export function DeliveryPanel({ store, deliveryFee, onAddressChange }: Props) {
           selected && (
             <button
               type="button"
-              onClick={() => setOpen(true)}
-              className="type-label-large text-primary hover:underline"
+              onClick={() => handleOpenAddressPage(selected.id)}
+              className="type-label-large text-primary hover:underline cursor-pointer flex items-center gap-0.5"
             >
-              Change
+              <Pencil className="h-3 w-3" /> Change
             </button>
           )
         }
       >
         {selected ? (
-          <AddressCard address={selected} />
+          <div onClick={() => handleOpenAddressPage(selected.id)} className="cursor-pointer">
+            <AddressCard address={selected} />
+          </div>
         ) : (
           <div className="flex flex-col items-start gap-3">
             <div className="flex items-start gap-2">
@@ -70,7 +81,7 @@ export function DeliveryPanel({ store, deliveryFee, onAddressChange }: Props) {
               <AppButton
                 variant="outlined"
                 size="sm"
-                onClick={() => setOpen(true)}
+                onClick={() => handleOpenAddressPage()}
                 iconRight={<ChevronRight className="h-4 w-4" aria-hidden />}
               >
                 Add address
@@ -123,12 +134,6 @@ export function DeliveryPanel({ store, deliveryFee, onAddressChange }: Props) {
           helperText="Shared with the delivery partner."
         />
       </CheckoutSection>
-
-      <AddressSelectorSheet
-        open={open}
-        onOpenChange={setOpen}
-        onConfirm={() => onAddressChange?.()}
-      />
     </>
   );
 }

@@ -9,6 +9,7 @@ import { addressRepository } from "@/features/addresses/repositories/AddressRepo
 import type { Address, AddressLabel } from "@/features/addresses/models";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { useLocationPermission } from "@/features/stores/hooks/useLocationPermission";
+import { HapticService } from "@/core/services/haptics";
 
 // Leaflet imports
 import "leaflet/dist/leaflet.css";
@@ -52,7 +53,7 @@ const LABELS: Array<{ value: AddressLabel; label: string; Icon: typeof Home }> =
   { value: "other", label: "Other", Icon: MapPin },
 ];
 
-const DEFAULT_CENTER = { lat: 19.076, lng: 72.877 }; // Default Mumbai
+const DEFAULT_CENTER = { lat: 23.0225, lng: 72.5714 }; // Default Ahmedabad, Gujarat
 
 // Helper component to center map when coordinates change programmatically
 function MapController({ center }: { center: { lat: number; lng: number } }) {
@@ -78,6 +79,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   const [line2, setLine2] = useState(initial?.line2 ?? "");
   const [landmark, setLandmark] = useState(initial?.landmark ?? "");
   const [city, setCity] = useState(initial?.city ?? "");
+  const [state, setState] = useState(initial?.state ?? "Gujarat");
   const [pincode, setPincode] = useState(initial?.pincode ?? "");
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
   const [error, setError] = useState<string | null>(null);
@@ -98,11 +100,12 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       const data = await response.json();
 
       if (data && data.address) {
-        const { road, house_number, city: fetchedCity, town, village, postcode } = data.address;
+        const { road, house_number, city: fetchedCity, town, village, postcode, state: fetchedState } = data.address;
 
         const bestCity = fetchedCity || town || village;
         if (bestCity) setCity(bestCity);
         if (postcode) setPincode(postcode);
+        if (fetchedState) setState(fetchedState);
 
         let streetLine = "";
         if (house_number) streetLine += `${house_number} `;
@@ -141,9 +144,25 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     }
   }, [reverseGeocode]);
 
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Dismiss keyboard on submit
+    if (typeof window !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    try {
+      const { Keyboard } = await import("@capacitor/keyboard");
+      await Keyboard.hide();
+    } catch {
+      // Keyboard plugin not active
+    }
+
     setBusy(true);
 
     const payload = {
@@ -155,7 +174,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       line2: line2.trim() || undefined,
       landmark: landmark.trim() || undefined,
       city: city.trim(),
-      state: "Maharashtra", // Hardcoded default state
+      state: state.trim() || "Gujarat",
       pincode: pincode.replace(/\D/g, "").slice(0, 6),
       lat: mapCenter.lat,
       lng: mapCenter.lng,
@@ -171,11 +190,12 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       setError(res.error.message);
       return;
     }
+    void HapticService.notification("success");
     onSaved(initial ? { id: initial.id } : (res.data as Address));
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28">
       {/* 60-30-10 Brand Header */}
       <div className="text-center space-y-1">
         <h2 className="type-headline-large text-primary">WHERE'S THE FOOD GOING?</h2>
@@ -184,6 +204,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         </p>
       </div>
 
+      {/* Map Section */}
       <div
         className="overflow-hidden rounded-[var(--radius-large)] border-[3px] border-primary/10 shadow-brand relative"
         style={{ height: "260px", zIndex: 0 }}
@@ -204,19 +225,17 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         </MapContainer>
 
         <div className="absolute top-3 right-3" style={{ zIndex: 1000 }}>
-          {/* Orange Accent Button (10%) */}
           <button
             type="button"
             onClick={() => requestLocation()}
             disabled={isLocating}
-            className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 shadow-lg shadow-accent/40 hover:bg-accent/90 text-white transition-all type-label-large border-2 border-white"
+            className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 shadow-lg shadow-accent/40 hover:bg-accent/90 text-white transition-all type-label-large border-2 border-white cursor-pointer"
           >
             <Navigation className={cn("h-4 w-4", isLocating && "animate-spin")} />
             {isLocating ? "Locating..." : "Locate Me"}
           </button>
         </div>
 
-        {/* Green Primary Info Bar (30%) */}
         <div
           className="absolute bottom-0 w-full bg-primary/95 backdrop-blur-sm p-2.5 text-center text-white"
           style={{ zIndex: 1000 }}
@@ -227,7 +246,8 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         </div>
       </div>
 
-      <form onSubmit={submit} className="space-y-5 bg-surface rounded-[var(--radius-large)]">
+      {/* Form Fields */}
+      <form id="address-entry-form" onSubmit={submit} className="space-y-5 bg-surface rounded-[var(--radius-large)] p-1">
         <fieldset>
           <legend className="type-label-large uppercase text-primary mb-3 tracking-wide">
             Save as
@@ -240,10 +260,13 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setLabel(opt.value)}
+                  onClick={() => {
+                    void HapticService.impact("light");
+                    setLabel(opt.value);
+                  }}
                   aria-pressed={active}
                   className={cn(
-                    "flex-1 inline-flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] border-2 py-3 transition-all",
+                    "flex-1 inline-flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] border-2 py-3 transition-all cursor-pointer",
                     active
                       ? "border-accent bg-accent/10 text-accent shadow-sm"
                       : "border-divider bg-bg-secondary text-text-secondary hover:border-accent/40",
@@ -262,6 +285,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
             label="Nickname"
             placeholder="e.g. Parents' place"
             value={customLabel}
+            onFocus={handleInputFocus}
             onChange={(e) => setCustomLabel(e.target.value.slice(0, 30))}
           />
         )}
@@ -270,6 +294,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
           <TextField
             label="Flat / house / building"
             value={line1}
+            onFocus={handleInputFocus}
             onChange={(e) => setLine1(e.target.value)}
             autoComplete="address-line1"
             required
@@ -277,12 +302,14 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
           <TextField
             label="Area / street (optional)"
             value={line2}
+            onFocus={handleInputFocus}
             onChange={(e) => setLine2(e.target.value)}
             autoComplete="address-line2"
           />
           <TextField
             label="Landmark (optional)"
             value={landmark}
+            onFocus={handleInputFocus}
             onChange={(e) => setLandmark(e.target.value)}
             placeholder="Near…"
           />
@@ -290,24 +317,34 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
             <TextField
               label="City"
               value={city}
+              onFocus={handleInputFocus}
               onChange={(e) => setCity(e.target.value)}
               autoComplete="address-level2"
               required
             />
             <TextField
-              label="Pincode"
-              type="tel"
-              inputMode="numeric"
-              maxLength={6}
-              value={pincode}
-              onChange={(e) => setPincode(e.target.value.replace(/\D/g, ""))}
-              autoComplete="postal-code"
+              label="State"
+              value={state}
+              onFocus={handleInputFocus}
+              onChange={(e) => setState(e.target.value)}
+              autoComplete="address-level1"
               required
             />
           </div>
+          <TextField
+            label="Pincode"
+            type="tel"
+            inputMode="numeric"
+            maxLength={6}
+            value={pincode}
+            onFocus={handleInputFocus}
+            onChange={(e) => setPincode(e.target.value.replace(/\D/g, ""))}
+            autoComplete="postal-code"
+            required
+          />
         </div>
 
-        <label className="flex items-center gap-3 p-3 mt-2 rounded-[var(--radius-small)] bg-bg-secondary border border-divider">
+        <label className="flex items-center gap-3 p-3 mt-2 rounded-[var(--radius-small)] bg-bg-secondary border border-divider cursor-pointer">
           <input
             type="checkbox"
             checked={isDefault}
@@ -329,27 +366,31 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
             </Text>
           </div>
         )}
+      </form>
 
-        <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row">
+      {/* Sticky Save Bar pinned to bottom sitting above keyboard */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
+        <div className="mx-auto flex max-w-[560px] items-center gap-3">
           <AppButton
             type="button"
             variant="outlined"
-            fullWidth
             onClick={onCancel}
-            className="border-2 font-bold text-text-secondary border-divider"
+            className="border-2 font-bold text-text-secondary border-divider shrink-0 px-5"
           >
             CANCEL
           </AppButton>
           <AppButton
             type="submit"
+            form="address-entry-form"
             fullWidth
             loading={busy}
-            className="bg-primary text-white font-bold shadow-brand"
+            variant="cta"
+            className="font-bold shadow-brand"
           >
             {initial ? "SAVE CHANGES" : "SAVE ADDRESS"}
           </AppButton>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

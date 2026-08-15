@@ -59,6 +59,7 @@ import { Route as AdminCouponsRouteImport } from './routes/admin.coupons'
 import { Route as AdminCampaignsRouteImport } from './routes/admin.campaigns'
 import { Route as AdminAutomationRouteImport } from './routes/admin.automation'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
+import { Route as AddressesCreateRouteImport } from './routes/addresses.create'
 import { Route as OrdersOrderIdIndexRouteImport } from './routes/orders.$orderId.index'
 import { Route as AdminSystemIndexRouteImport } from './routes/admin.system.index'
 import { Route as AdminPetpoojaIndexRouteImport } from './routes/admin.petpooja.index'
@@ -343,6 +344,11 @@ const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => AdminRoute,
 } as any)
+const AddressesCreateRoute = AddressesCreateRouteImport.update({
+  id: '/addresses/create',
+  path: '/addresses/create',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrdersOrderIdIndexRoute = OrdersOrderIdIndexRouteImport.update({
   id: '/orders/$orderId/',
   path: '/orders/$orderId/',
@@ -520,6 +526,7 @@ export interface FileRoutesByFullPath {
   '/stores': typeof StoresRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
+  '/addresses/create': typeof AddressesCreateRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/campaigns': typeof AdminCampaignsRouteWithChildren
@@ -603,6 +610,7 @@ export interface FileRoutesByTo {
   '/stores': typeof StoresRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
+  '/addresses/create': typeof AddressesCreateRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/campaigns': typeof AdminCampaignsRouteWithChildren
@@ -686,6 +694,7 @@ export interface FileRoutesById {
   '/stores': typeof StoresRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
+  '/addresses/create': typeof AddressesCreateRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/automation': typeof AdminAutomationRoute
   '/admin/campaigns': typeof AdminCampaignsRouteWithChildren
@@ -772,6 +781,7 @@ export interface FileRouteTypes {
     | '/stores'
     | '/support'
     | '/terms'
+    | '/addresses/create'
     | '/admin/analytics'
     | '/admin/automation'
     | '/admin/campaigns'
@@ -855,6 +865,7 @@ export interface FileRouteTypes {
     | '/stores'
     | '/support'
     | '/terms'
+    | '/addresses/create'
     | '/admin/analytics'
     | '/admin/automation'
     | '/admin/campaigns'
@@ -937,6 +948,7 @@ export interface FileRouteTypes {
     | '/stores'
     | '/support'
     | '/terms'
+    | '/addresses/create'
     | '/admin/analytics'
     | '/admin/automation'
     | '/admin/campaigns'
@@ -1022,6 +1034,7 @@ export interface RootRouteChildren {
   StoresRoute: typeof StoresRoute
   SupportRoute: typeof SupportRoute
   TermsRoute: typeof TermsRoute
+  AddressesCreateRoute: typeof AddressesCreateRoute
   AuthLoginRoute: typeof AuthLoginRoute
   AuthOtpRoute: typeof AuthOtpRoute
   OrderConfirmationOrderIdRoute: typeof OrderConfirmationOrderIdRoute
@@ -1389,6 +1402,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/analytics'
       preLoaderRoute: typeof AdminAnalyticsRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/addresses/create': {
+      id: '/addresses/create'
+      path: '/addresses/create'
+      fullPath: '/addresses/create'
+      preLoaderRoute: typeof AddressesCreateRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/orders/$orderId/': {
       id: '/orders/$orderId/'
@@ -1817,6 +1837,7 @@ const rootRouteChildren: RootRouteChildren = {
   StoresRoute: StoresRoute,
   SupportRoute: SupportRoute,
   TermsRoute: TermsRoute,
+  AddressesCreateRoute: AddressesCreateRoute,
   AuthLoginRoute: AuthLoginRoute,
   AuthOtpRoute: AuthOtpRoute,
   OrderConfirmationOrderIdRoute: OrderConfirmationOrderIdRoute,

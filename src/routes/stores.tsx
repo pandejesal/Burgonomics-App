@@ -437,17 +437,16 @@ function StoreSelectionPage() {
 
         {/* Loading skeleton */}
         {initialLoading && (
-          <div className="space-y-3" aria-busy="true" aria-live="polite">
-            {Array.from({ length: 4 }).map((_, i) => (
+          <div className="space-y-2" aria-busy="true" aria-live="polite">
+            {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="rounded-[var(--radius-large)] border border-divider bg-surface p-4"
+                className="flex items-center gap-3 rounded-[var(--radius-medium)] border border-divider bg-surface p-3"
               >
-                <Skeleton className="mb-2 h-5 w-1/2" />
-                <Skeleton className="mb-3 h-4 w-3/4" />
-                <div className="flex gap-2">
-                  <Skeleton className="h-5 w-16 rounded-full" />
-                  <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-12 w-12 rounded-full shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-1/2" />
                 </div>
               </div>
             ))}
@@ -466,7 +465,7 @@ function StoreSelectionPage() {
             >
               Recently viewed
             </Text>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {recentStores.slice(0, 2).map((s) => (
                 <StoreCard
                   key={`recent-${s.id}`}
@@ -491,7 +490,7 @@ function StoreSelectionPage() {
             >
               Nearby
             </Text>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {nearbyList.map((s) => (
                 <StoreCard
                   key={`nearby-${s.id}`}
@@ -563,7 +562,7 @@ function StoreSelectionPage() {
                 onAction={() => (query ? setQuery("") : void refresh())}
               />
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {listStores.map((s) => (
                   <StoreCard
                     key={s.id}
