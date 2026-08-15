@@ -39,11 +39,23 @@ interface MenuState {
 
 const PAGE_SIZE = 20;
 
+const VIEW_MODE_KEY = "burgonomics.menu.viewMode";
+
+function initialViewMode(): "list" | "grid" {
+  try {
+    const saved = localStorage.getItem(VIEW_MODE_KEY);
+    if (saved === "list" || saved === "grid") return saved;
+  } catch {
+    // Ignore storage access errors (private mode, SSR).
+  }
+  return "grid";
+}
+
 export const useMenuStore = create<MenuState>()((set, get) => ({
   status: "idle",
   categories: [],
   buckets: {},
-  viewMode: "list",
+  viewMode: initialViewMode(),
   recentlyViewed: [],
 
   async load(storeId, opts) {
@@ -151,6 +163,11 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
 
   setViewMode(mode) {
     set({ viewMode: mode });
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode);
+    } catch {
+      // Ignore storage access errors.
+    }
   },
 
   pushRecentlyViewed(p) {

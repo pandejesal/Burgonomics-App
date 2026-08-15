@@ -329,7 +329,6 @@ function CheckoutPage() {
     <AppShell
       title="Checkout"
       backTo={step === 1 ? "/cart" : undefined}
-      onBack={step > 1 ? () => setStep((s) => (s - 1) as Step) : undefined}
       showTabs={false}
       showTopBar
       contentClassName="pb-[calc(140px+env(safe-area-inset-bottom,0px))]"

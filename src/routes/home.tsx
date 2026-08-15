@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Bell, Search } from "lucide-react";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
@@ -18,7 +18,7 @@ import { FulfillmentChip } from "@/features/stores/components/FulfillmentChip";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useDemoStore } from "@/features/demo/state/demoStore";
 
-import { useHomeStore, greetingForHour } from "@/features/home";
+import { useHomeStore } from "@/features/home";
 import { BannerCarousel } from "@/features/home/components/BannerCarousel";
 import { CategoryGrid } from "@/features/home/components/CategoryGrid";
 import { HorizontalRail } from "@/features/home/components/HorizontalRail";
@@ -95,7 +95,7 @@ function HomePage() {
     }
   }, [store, user?.id, load]);
 
-  const greeting = useMemo(() => greetingForHour(new Date().getHours(), user?.name), [user?.name]);
+  
 
   const handleAddToCart = useCallback(
     (product: Product) => {
@@ -164,59 +164,50 @@ function HomePage() {
     >
       <PullToRefresh onRefresh={handleRefresh} disabled={isLoading}>
         <div className="mx-auto max-w-[520px]">
-          {/* 30% Green Antigravity Header Block */}
-          <div className="bg-gradient-brand text-white rounded-b-[2rem] shadow-medium pb-8 pt-3 relative z-10">
+          {/* Green Header Block */}
+          <div className="bg-gradient-brand text-white rounded-b-[2rem] shadow-medium pb-6 pt-3 relative z-10">
             {/* Store header + fulfillment chip */}
             <div className="space-y-2 px-4">
-            <StoreHeaderCard store={store} fulfillment={fulfillment} />
-            <div className="flex items-center justify-between gap-3">
-              <FulfillmentChip value={fulfillment} onClick={() => setFulfillmentOpen(true)} />
-              {fulfillment === "delivery" && (
-                <Text variant="caption" className="text-white/80">
-                  ETA {store.etaMinutes} min
-                </Text>
-              )}
-              {fulfillment === "takeaway" && (
-                <Text variant="caption" className="text-white/80">
-                  Ready in {store.pickupEtaMinutes ?? Math.max(8, Math.floor(store.etaMinutes / 2))}{" "}
-                  min
-                </Text>
-              )}
-              {fulfillment === "dinein" && (
-                <Text variant="caption" className="text-white/80">
-                  {store.isOpen ? "Open now" : "Closed"}
-                </Text>
-              )}
-            </div>
-          </div>
-
-          {/* Greeting + search */}
-          <section className="mt-4 space-y-3 px-4">
-            <div>
-              <div className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-success">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
-                <span className="type-caption font-medium">100% Pure Veg</span>
+              <StoreHeaderCard store={store} fulfillment={fulfillment} />
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <FulfillmentChip value={fulfillment} onClick={() => setFulfillmentOpen(true)} />
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-success">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
+                    <span className="type-caption font-medium">100% Pure Veg</span>
+                  </span>
+                </div>
+                {fulfillment === "delivery" && (
+                  <Text variant="caption" className="text-white/80">
+                    ETA {store.etaMinutes} min
+                  </Text>
+                )}
+                {fulfillment === "takeaway" && (
+                  <Text variant="caption" className="text-white/80">
+                    Ready in {store.pickupEtaMinutes ?? Math.max(8, Math.floor(store.etaMinutes / 2))}{" "}
+                    min
+                  </Text>
+                )}
+                {fulfillment === "dinein" && (
+                  <Text variant="caption" className="text-white/80">
+                    {store.isOpen ? "Open now" : "Closed"}
+                  </Text>
+                )}
               </div>
-              <Text variant="headlineLarge" className="leading-tight text-white mt-2">
-                {greeting}
-              </Text>
-              <Text variant="bodyMedium" className="text-white/80">
-                {fulfillment === "delivery" && "What are you craving today?"}
-                {fulfillment === "takeaway" && "Order ahead and skip the wait."}
-                {fulfillment === "dinein" && "Order from your table — we'll bring it over."}
-                {!fulfillment && "What are you craving today?"}
-              </Text>
             </div>
-            <Link
-              to="/search"
-              aria-label="Search the menu"
-              className="flex h-12 items-center gap-2 rounded-full glass-panel px-4 hover:border-white/60 transition-colors shadow-low mt-4 float-interactive"
-            >
-              <Search className="h-5 w-5 text-white/90" aria-hidden />
-              <span className="type-body-large text-white/80">Search the menu…</span>
-            </Link>
-          </section>
-        </div>
+
+            {/* Search */}
+            <section className="mt-4 px-4">
+              <Link
+                to="/search"
+                aria-label="Search the menu"
+                className="flex h-11 items-center gap-2 rounded-full glass-panel px-4 hover:border-white/60 transition-colors shadow-low float-interactive"
+              >
+                <Search className="h-5 w-5 text-white/90" aria-hidden />
+                <span className="type-body-large text-white/80">Search the menu…</span>
+              </Link>
+            </section>
+          </div>
 
           {/* Offline strip */}
           {!online && (

@@ -11,6 +11,8 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 import { useDemoStore } from "@/features/demo/state/demoStore";
 
+import { cn } from "@/lib/utils";
+
 import {
   offerRepository,
   useOffersStore,
@@ -116,6 +118,7 @@ function OffersPage() {
   const promo = useCartStore((s) => s.promo);
   const hasItems = useCartStore(selectHasItems);
 
+  const [activeFilter, setActiveFilter] = React.useState("all");
   const [termsOffer, setTermsOffer] = React.useState<Offer | null>(null);
   const [termsOpen, setTermsOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
@@ -193,17 +196,27 @@ function OffersPage() {
 
   const sections = React.useMemo(() => {
     const claimed = new Set<string>();
-    const result: Array<{ title: string; items: Offer[] }> = [];
+    const result: Array<{ key: string; title: string; items: Offer[] }> = [];
     for (const s of SECTION_ORDER) {
       const items = offers.filter((o) => !claimed.has(o.id) && s.match(o));
       if (items.length === 0) continue;
       items.forEach((o) => claimed.add(o.id));
-      result.push({ title: s.title, items });
+      result.push({ key: s.key, title: s.title, items });
     }
     const rest = offers.filter((o) => !claimed.has(o.id));
-    if (rest.length > 0) result.push({ title: "Other offers", items: rest });
+    if (rest.length > 0) result.push({ key: "other", title: "Other offers", items: rest });
     return result;
   }, [offers]);
+
+  const visibleSections = React.useMemo(
+    () => (activeFilter === "all" ? sections : sections.filter((s) => s.key === activeFilter)),
+    [sections, activeFilter],
+  );
+
+  const chipFilters = React.useMemo(
+    () => [{ key: "all", label: "All" }, ...sections.map((s) => ({ key: s.key, label: s.title }))],
+    [sections],
+  );
 
   const lastUpdated = fetchedAt
     ? new Date(fetchedAt).toLocaleTimeString(undefined, {
@@ -234,6 +247,36 @@ function OffersPage() {
       }
     >
       <div className="mx-auto max-w-[560px] space-y-4 px-4 py-4">
+        {/* Sticky type filter chips */}
+        <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 -mx-4 border-b border-divider bg-surface/95 px-4 py-2 backdrop-blur-md">
+          <div
+            role="tablist"
+            aria-label="Filter offers by type"
+            className="flex gap-2 overflow-x-auto no-scrollbar"
+          >
+            {chipFilters.map((f) => {
+              const active = activeFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActiveFilter(f.key)}
+                  className={cn(
+                    "whitespace-nowrap rounded-full px-3.5 py-1.5 type-caption font-semibold transition-all select-none active:scale-[0.96]",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "border border-divider bg-surface text-text-secondary hover:text-primary",
+                  )}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Applied offer summary */}
         {promo && (
           <section
@@ -302,7 +345,7 @@ function OffersPage() {
 
         {/* Sections */}
         {(status === "ready" || status === "refreshing") &&
-          sections.map((section) => (
+          visibleSections.map((section) => (
             <section key={section.title} aria-label={section.title} className="space-y-2">
               <Text variant="titleMedium">{section.title}</Text>
               <div className="space-y-2">

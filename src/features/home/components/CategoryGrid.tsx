@@ -12,9 +12,9 @@ interface Props {
 }
 
 /**
- * Fully dynamic category grid. Categories originate from Petpooja
- * menu synchronization. Renders category images and selects active
- * category on menu page when clicked.
+ * Fully dynamic category rail. Horizontal scroll-snap chips keep the
+ * whole catalog on a single row — zero vertical scroll cost on Home.
+ * Categories originate from Petpooja menu synchronization.
  */
 export function CategoryGrid({ categories, className }: Props) {
   const navigate = useNavigate();
@@ -23,11 +23,11 @@ export function CategoryGrid({ categories, className }: Props) {
   if (categories.length === 0) return null;
   return (
     <nav aria-label="Menu categories" className={cn("px-4", className)}>
-      <ul className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+      <ul className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 snap-x snap-mandatory no-scrollbar">
         {categories.map((c) => {
           const initial = c.name.trim().charAt(0).toUpperCase() || "•";
           return (
-            <li key={c.id}>
+            <li key={c.id} className="shrink-0 snap-start">
               <button
                 type="button"
                 onClick={() => {
@@ -36,14 +36,14 @@ export function CategoryGrid({ categories, className }: Props) {
                 }}
                 aria-label={`Browse ${c.name}, ${c.itemCount} items`}
                 className={cn(
-                  "group flex flex-col items-center gap-2 rounded-[var(--radius-large)] w-full text-left cursor-pointer",
-                  "border border-transparent bg-surface p-2.5",
+                  "group flex w-16 flex-col items-center gap-1.5 rounded-[var(--radius-large)] text-left cursor-pointer",
+                  "border border-transparent bg-surface p-2",
                   "hover:border-divider hover:shadow-[var(--shadow-low)]",
                   "transition-all duration-200 active:scale-[0.97]",
                 )}
               >
                 <span
-                  className="relative grid h-14 w-14 overflow-hidden place-items-center rounded-full bg-primary/10 text-primary type-title-large shadow-xs"
+                  className="relative grid h-12 w-12 overflow-hidden place-items-center rounded-full bg-primary/10 text-primary type-title-large shadow-xs"
                   aria-hidden
                 >
                   {c.imageUrl ? (
@@ -58,7 +58,7 @@ export function CategoryGrid({ categories, className }: Props) {
                 </span>
                 <Text
                   variant="labelLarge"
-                  className="text-center leading-tight line-clamp-2 text-xs font-semibold"
+                  className="w-full text-center leading-tight truncate text-[11px] font-semibold"
                 >
                   {c.name}
                 </Text>
