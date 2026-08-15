@@ -2,6 +2,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import type { MenuCategoryModel } from "@/features/menu/models";
 import { motion } from "motion/react";
+import { HapticService } from "@/core/services/haptics";
 
 interface Props {
   categories: MenuCategoryModel[];
@@ -13,6 +14,7 @@ interface Props {
 /**
  * Sticky, horizontally scrollable category tab bar. Supports an
  * unlimited number of dynamic categories from the repository.
+ * Minimum 44dp touch target height with tactile haptic impact on selection.
  */
 export function CategoryTabs({ categories, activeId, onSelect, className }: Props) {
   const listRef = React.useRef<HTMLDivElement>(null);
@@ -34,7 +36,7 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
       aria-label="Menu categories"
       ref={listRef}
       className={cn(
-        "flex gap-2 overflow-x-auto no-scrollbar px-4 py-2",
+        "flex gap-2 overflow-x-auto no-scrollbar px-4 py-2 [overscroll-behavior-x:contain] touch-pan-x",
         className,
       )}
     >
@@ -47,10 +49,13 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
             role="tab"
             aria-selected={active}
             data-cat-id={c.id}
-            onClick={() => onSelect(c.id)}
+            onClick={() => {
+              void HapticService.impact("light");
+              onSelect(c.id);
+            }}
             className={cn(
-              "group relative flex-none whitespace-nowrap rounded-full px-4 py-2 type-label-large transition-colors",
-              "min-h-[40px] border overflow-hidden",
+              "group relative flex-none whitespace-nowrap rounded-full px-4.5 py-2.5 type-label-large transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85",
+              "min-h-[44px] border overflow-hidden flex items-center justify-center cursor-pointer",
               active
                 ? "text-primary border-white"
                 : "bg-transparent text-white/90 border-white/20 hover:border-white/60",

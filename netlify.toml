@@ -1,6 +1,17 @@
 [build]
   publish = "dist/mobile"
   command = "npm run build"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/payments/*"
+  to = "/.netlify/functions/payments/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/payments/*"
+  to = "/.netlify/functions/payments/:splat"
+  status = 200
 
 [[headers]]
   for = "/.well-known/apple-app-site-association"

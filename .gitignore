@@ -44,6 +44,7 @@ docs/ios-audit.md
 .vscode/*
 !.vscode/extensions.json
 .idea
+.opencode/
 .DS_Store
 *.suo
 *.ntvs*

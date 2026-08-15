@@ -1,9 +1,10 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { auth } from "@/core/config/firebase";
 import { 
-  signInWithCustomToken,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  type ConfirmationResult,
 } from "firebase/auth";
-import { appConfig } from "@/core/config/env";
 
 export interface RequestOtpResponse {
   otpToken: string;
@@ -21,24 +22,57 @@ export interface VerifyOtpResponse {
   payload?: any;
 }
 
-const getAuthBaseUrl = (): string => {
-  if (appConfig.integrations.paymentsApiBaseUrl) {
-    const root = appConfig.integrations.paymentsApiBaseUrl.replace(/\/payments\/?$/, "").replace(/\/$/, "");
-    return `${root}/auth`;
-  }
-  return "https://us-central1-burgonomics-7faa8.cloudfunctions.net/auth";
+let recaptchaVerifier: RecaptchaVerifier | null = null;
+let confirmationResult: ConfirmationResult | null = null;
+
+const normalizePhoneE164 = (phone: string): string => {
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  if (cleaned.startsWith("+")) return cleaned;
+  if (cleaned.startsWith("91") && cleaned.length === 12) return `+${cleaned}`;
+  return `+91${cleaned.replace(/^0+/, "")}`;
 };
 
 export const authService = {
   /**
-   * Safe no-op helpers for backwards compatibility with existing UI hooks.
+   * Initializes real RecaptchaVerifier bound to the specified container.
+   * Uses explicit render for reliable operation inside Capacitor WebViews.
    */
-  initRecaptcha(_containerId: string) {
-    // Custom SMS provider architecture operates without reCAPTCHA friction.
+  initRecaptcha(containerId: string = "recaptcha-container") {
+    if (typeof window === "undefined") return;
+    const element = document.getElementById(containerId);
+    if (!element) {
+      console.warn(`[Auth] Recaptcha container #${containerId} not found in DOM`);
+      return;
+    }
+    try {
+      if (recaptchaVerifier) {
+        try {
+          recaptchaVerifier.clear();
+        } catch (_) {}
+        recaptchaVerifier = null;
+      }
+      recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
+        size: "normal",
+        callback: () => {
+          // reCAPTCHA solved
+        },
+        "expired-callback": () => {
+          console.warn("[Auth] reCAPTCHA expired, will re-render on next request.");
+        },
+      });
+      window.recaptchaVerifier = recaptchaVerifier;
+    } catch (err) {
+      console.error("[Auth] Failed to initialize RecaptchaVerifier:", err);
+    }
   },
 
   clearRecaptcha() {
-    // No-op
+    if (recaptchaVerifier) {
+      try {
+        recaptchaVerifier.clear();
+      } catch (_) {}
+      recaptchaVerifier = null;
+    }
   },
 
   async requestOtp(
@@ -47,81 +81,63 @@ export const authService = {
     _otpToken?: string,
   ): Promise<ApiResult<RequestOtpResponse>> {
     try {
-      const baseUrl = getAuthBaseUrl();
-      const targetUrl = baseUrl.endsWith("/auth") 
-        ? `${baseUrl}/request-otp` 
-        : `${baseUrl}/auth/request-otp`;
+      const formattedPhone = normalizePhoneE164(phone);
 
-      const response = await fetch(targetUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          phone,
-          deliveryMethod,
-        }),
-      });
+      if (!recaptchaVerifier) {
+        authService.initRecaptcha("recaptcha-container");
+      }
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
+      if (!recaptchaVerifier) {
         return fail(
-          data.error || "AUTH_OTP_REQUEST_FAILED",
-          data.message || "Failed to request OTP. Please try again."
+          "RECAPTCHA_UNAVAILABLE",
+          "Verification check failed to load. Please refresh the page and try again."
         );
       }
 
+      // Explicitly trigger render if not yet rendered
+      try {
+        await recaptchaVerifier.render();
+      } catch (_renderErr) {
+        // Container might already have widget rendered
+      }
+
+      const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifier);
+      confirmationResult = result;
+
       return ok({
-        otpToken: data.otpToken || phone,
-        expiresInSec: data.expiresInSec || 300,
-        resendAfterSec: data.resendAfterSec || 60,
-        deliveryMethod: data.deliveryMethod || deliveryMethod,
-        code: data.code,
-        simulated: data.simulated || false,
+        otpToken: formattedPhone,
+        expiresInSec: 300,
+        resendAfterSec: 60,
+        deliveryMethod,
+        simulated: false,
       });
     } catch (error: any) {
-      console.error("Auth requestOtp transport error:", error);
-      return fail("AUTH_OTP_REQUEST_FAILED", error.message || "Failed to connect to authentication service.");
+      console.error("[Auth] Firebase signInWithPhoneNumber error:", error);
+      // Reset reCAPTCHA widget on error so user can retry cleanly
+      if (recaptchaVerifier) {
+        try {
+          recaptchaVerifier.clear();
+        } catch (_) {}
+        recaptchaVerifier = null;
+        authService.initRecaptcha("recaptcha-container");
+      }
+      return fail(
+        error.code || "AUTH_OTP_REQUEST_FAILED",
+        error.message || "Failed to send SMS verification code. Please check the number and try again."
+      );
     }
   },
 
   async verifyOtp(otpToken: string, code: string): Promise<ApiResult<VerifyOtpResponse>> {
     try {
-      const baseUrl = getAuthBaseUrl();
-      const targetUrl = baseUrl.endsWith("/auth") 
-        ? `${baseUrl}/verify-otp` 
-        : `${baseUrl}/auth/verify-otp`;
-
-      const response = await fetch(targetUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          phone: otpToken,
-          otpToken,
-          code: code.trim(),
-        }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
+      if (!confirmationResult) {
         return fail(
-          data.error || "AUTH_OTP_VERIFY_FAILED",
-          data.message || "Invalid verification code. Please try again."
+          "NO_CHALLENGE",
+          "No active verification session found. Please request a new code."
         );
       }
 
-      if (!data.accessToken) {
-        return fail("AUTH_OTP_VERIFY_FAILED", "Authentication token missing from server response.");
-      }
-
-      // Exchange Custom Token for Firebase ID Token & Session
-      const userCredential = await signInWithCustomToken(auth, data.accessToken);
+      const userCredential = await confirmationResult.confirm(code.trim());
       const user = userCredential.user;
 
       const accessToken = await user.getIdToken();
@@ -131,7 +147,7 @@ export const authService = {
       // Firestore user profile sync
       let returnedUser: { id: string; phone: string; name?: string; email?: string } = {
         id: uid,
-        phone: data.user?.phone || user.phoneNumber || otpToken,
+        phone: user.phoneNumber || otpToken,
       };
 
       try {
@@ -152,7 +168,7 @@ export const authService = {
           returnedUser.email = profile?.email;
         }
       } catch (dbError) {
-        console.warn("Firestore user sync warning:", dbError);
+        console.warn("[Auth] Firestore user profile sync warning:", dbError);
       }
 
       return ok({
@@ -161,13 +177,16 @@ export const authService = {
         user: returnedUser,
       });
     } catch (error: any) {
-      console.error("Firebase custom token verification error:", error);
-      return fail("AUTH_OTP_VERIFY_FAILED", error.message || "Authentication failed. Please try again.");
+      console.error("[Auth] Firebase verification confirmation error:", error);
+      return fail(
+        error.code || "AUTH_OTP_VERIFY_FAILED",
+        error.message || "Invalid verification code. Please check and try again."
+      );
     }
   },
 
   async refresh(
-    refreshToken: string,
+    _refreshToken: string,
   ): Promise<ApiResult<{ accessToken: string; refreshToken: string }>> {
     try {
       await auth.authStateReady();
@@ -181,7 +200,7 @@ export const authService = {
         refreshToken: user.refreshToken,
       });
     } catch (error: any) {
-      return fail("AUTH_REFRESH_FAILED", error.message);
+      return fail("AUTH_REFRESH_FAILED", error.message || "Session refresh failed.");
     }
   },
 

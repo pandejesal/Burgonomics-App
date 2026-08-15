@@ -11,7 +11,7 @@ export function AppToaster() {
     <SonnerToaster
       position="bottom-center"
       closeButton
-      offset={20}
+      offset="calc(5.5rem + env(safe-area-inset-bottom, 0px))"
       toastOptions={{
         classNames: {
           toast: cn(

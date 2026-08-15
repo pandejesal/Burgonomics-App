@@ -274,11 +274,19 @@ export const MenuProductCard = React.memo(function MenuProductCard({
 
   if (layout === "grid") {
     return (
-      <Link to={to} params={{ productId: id }} className={cn("block", className)} aria-label={name}>
+      <Link
+        to={to}
+        params={{ productId: id }}
+        className={cn(
+          "block select-none transition-transform duration-150 ease-out active:scale-[0.97] active:opacity-80",
+          className,
+        )}
+        aria-label={name}
+      >
         <AppCard
           elevation="low"
           padded={false}
-          interactive={true}
+          interactive={false}
           className={cn(
             "overflow-hidden flex h-full flex-col transition-all duration-300",
             isFlashActive && "ring-2 ring-emerald-500/50 bg-emerald-50/5 dark:bg-emerald-950/10",
@@ -318,11 +326,19 @@ export const MenuProductCard = React.memo(function MenuProductCard({
 
   // row layout
   return (
-    <Link to={to} params={{ productId: id }} className={cn("block", className)} aria-label={name}>
+    <Link
+      to={to}
+      params={{ productId: id }}
+      className={cn(
+        "block select-none transition-transform duration-150 ease-out active:scale-[0.97] active:opacity-80",
+        className,
+      )}
+      aria-label={name}
+    >
       <AppCard
         elevation="low"
         padded={false}
-        interactive={true}
+        interactive={false}
         className={cn(
           "flex gap-3 p-3 transition-all duration-300",
           isFlashActive && "ring-2 ring-emerald-500/50 bg-emerald-50/5 dark:bg-emerald-950/10",

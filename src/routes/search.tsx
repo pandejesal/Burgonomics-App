@@ -16,6 +16,7 @@ import { useSearchStore } from "@/features/menu/state/searchStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import type { Product } from "@/features/menu/models";
+import { HapticService } from "@/core/services/haptics";
 
 export const Route = createFileRoute("/search")({
   head: () => ({
@@ -73,12 +74,14 @@ function SearchPage() {
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!query.trim()) return;
+    void HapticService.impact("light");
     setSubmitting(true);
     await submit(store?.id);
     setSubmitting(false);
   };
 
   const runRecent = async (q: string) => {
+    void HapticService.impact("light");
     setQuery(q);
     await submit(store?.id);
   };
@@ -163,7 +166,7 @@ function SearchPage() {
                     role="tab"
                     aria-selected={active}
                     onClick={() => setKind(k)}
-                    className={`whitespace-nowrap rounded-full px-3 py-1.5 type-caption transition-colors ${
+                    className={`whitespace-nowrap rounded-full px-3 py-1.5 type-caption transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85 ${
                       active
                         ? "bg-primary text-primary-foreground"
                         : "border border-divider bg-surface text-text-secondary hover:text-primary"
@@ -186,13 +189,13 @@ function SearchPage() {
                   <Text id="sug-heading" variant="titleMedium" className="mb-2">
                     Suggestions
                   </Text>
-                  <ul className="divide-y divide-divider rounded-[var(--radius-medium)] border border-divider bg-surface">
+                  <ul className="divide-y divide-divider rounded-[var(--radius-medium)] border border-divider bg-surface overflow-hidden">
                     {suggestions.map((s) => (
                       <li key={s.id}>
                         <button
                           type="button"
                           onClick={() => runRecent(s.label)}
-                          className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-bg-secondary"
+                          className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-bg-secondary select-none transition-all duration-150 ease-out active:scale-[0.98] active:opacity-80"
                         >
                           <Tag className="h-4 w-4 text-text-secondary" aria-hidden />
                           <span className="type-body-large">{s.label}</span>
@@ -219,7 +222,7 @@ function SearchPage() {
                         <button
                           type="button"
                           onClick={() => runRecent(t.label)}
-                          className="inline-flex items-center gap-2 rounded-full border border-divider bg-surface px-3 py-2 type-label-large hover:border-primary/40"
+                          className="inline-flex items-center gap-2 rounded-full border border-divider bg-surface px-3 py-2 type-label-large select-none transition-all duration-150 ease-out active:scale-[0.96] active:opacity-85 hover:border-primary/40"
                         >
                           <Tag className="h-3.5 w-3.5 text-text-secondary" aria-hidden />
                           {t.label}
@@ -239,7 +242,7 @@ function SearchPage() {
                     <button
                       type="button"
                       onClick={clearRecent}
-                      className="type-label-large text-primary hover:underline"
+                      className="type-label-large text-primary select-none active:opacity-70 transition-opacity"
                     >
                       Clear all
                     </button>
@@ -248,7 +251,7 @@ function SearchPage() {
                     {recent.map((q) => (
                       <li
                         key={q}
-                        className="inline-flex items-center gap-1 rounded-full border border-divider bg-surface pl-3 pr-1"
+                        className="inline-flex items-center gap-1 rounded-full border border-divider bg-surface pl-3 pr-1 select-none transition-all duration-150 ease-out active:scale-[0.96] active:opacity-85"
                       >
                         <button
                           type="button"
@@ -262,7 +265,7 @@ function SearchPage() {
                           type="button"
                           aria-label={`Remove ${q}`}
                           onClick={() => removeRecent(q)}
-                          className="grid h-7 w-7 place-items-center rounded-full text-text-secondary hover:bg-bg-secondary"
+                          className="grid h-7 w-7 place-items-center rounded-full text-text-secondary hover:bg-bg-secondary active:scale-90 transition-transform"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>

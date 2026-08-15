@@ -19,6 +19,7 @@ import type { Store } from "@/features/stores/models/Store";
 import { closesSoon, formatDistance } from "@/features/stores/utils/distance";
 import { getPermanentMapUrl, openDirections } from "@/features/stores/utils/navigation";
 import { toast } from "sonner";
+import { HapticService } from "@/core/services/haptics";
 
 interface StoreCardProps {
   store: Store;
@@ -110,10 +111,13 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
     >
       <button
         type="button"
-        onClick={() => onSelect?.(store)}
+        onClick={() => {
+          void HapticService.impact("light");
+          onSelect?.(store);
+        }}
         aria-label={label}
         aria-pressed={selected || undefined}
-        className="w-full text-left cursor-pointer active:scale-[0.99] touch-manipulation select-none focus:outline-none"
+        className="w-full text-left cursor-pointer active:scale-[0.97] active:opacity-80 transition-all duration-150 ease-out touch-manipulation select-none focus:outline-none"
         style={{ touchAction: "manipulation" }}
       >
         <div className="flex items-start justify-between gap-3">

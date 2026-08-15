@@ -67,8 +67,7 @@ export function BannerCarousel({ banners, className }: Props) {
       <div
         ref={scrollerRef}
         className={cn(
-          "flex snap-x snap-mandatory overflow-x-auto scroll-smooth",
-          "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "flex snap-x snap-mandatory overflow-x-auto scroll-smooth [overscroll-behavior-x:contain] touch-pan-x no-scrollbar",
         )}
       >
         {banners.map((b, idx) => (
@@ -88,8 +87,8 @@ export function BannerCarousel({ banners, className }: Props) {
               className={cn(
                 "relative flex min-h-[148px] items-center gap-4 overflow-hidden rounded-[var(--radius-large)]",
                 "bg-gradient-to-br text-primary-foreground p-4 text-left",
-                "shadow-[var(--shadow-medium)] transition-transform duration-300",
-                "active:scale-[0.99]",
+                "shadow-[var(--shadow-medium)] transition-all duration-150 ease-out select-none",
+                "active:scale-[0.97] active:opacity-85",
                 b.gradient,
               )}
             >

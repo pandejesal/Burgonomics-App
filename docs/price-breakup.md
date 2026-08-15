@@ -235,16 +235,16 @@ Live demo → Client acceptance → FULL PAYMENT (₹40,000) → Go-live & key c
    - Apple Developer Program annual membership ($99/year).
    - Google Play Console one-time registration fee ($25).
 2. **Infrastructure & SaaS Subscriptions**:
-   - Firebase Blaze usage charges (billed directly by Google Cloud if free tiers of 2M invocations/month are exceeded).
-   - SMS gateway credits for phone OTPs (e.g. Twilio, MSG91, Firebase Auth SMS quotas).
+   - Firebase Spark tier & Netlify Serverless (covered under Google's and Netlify's free tiers; no Firebase Blaze plan required).
+   - Phone OTP verifications beyond Google's free tier (10,000 verifications/month included free via Firebase Auth).
    - Petpooja API integration subscription fees.
 3. **Marketing & Media Production**:
    - Commercial food photography, video rendering, and advertising campaigns.
 4. **Pass-Through Costs & Billing Policy**:
-   - All third-party fees and usage costs are billed to the client at cost: Apple Developer Program ($99/yr), Google Play Console ($25 one-time), SMS/OTP credits, Firebase Blaze usage beyond Google's free tier, and Netlify/domain renewals.
+   - All third-party fees and usage costs are billed to the client at cost: Apple Developer Program ($99/yr), Google Play Console ($25 one-time), usage beyond Google's and Netlify's free tiers, billed at cost (no Blaze plan required), and Netlify/domain renewals.
 5. **Deployment Scope Note**:
    - The all-in baseline covers multi-store deployment for the client's first 17 outlets (store registry, per-store data model, per-store Petpooja credentials, per-store webhook routing). Additional outlets beyond 17 are priced at ₹2,500 each under the escalation clause (see Additional Outlets row).
-6. **SMS/OTP Optimization**:
-   - Delivered as goodwill within the all-in quote: MSG91/Fast2SMS provider routing with per-phone and per-IP rate limiting, ~65% SMS cost reduction vs default at 17-outlet volume.
+6. **Phone OTP Verification**:
+   - Phone OTP sign-in via Firebase Auth — free within Google's free tier (10,000 verifications/month); any overage is covered by the existing usage pass-through (no Blaze plan required).
 
 

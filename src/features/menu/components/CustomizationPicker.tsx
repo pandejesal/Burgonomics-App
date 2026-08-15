@@ -55,7 +55,7 @@ export function CustomizationPicker({ groups, value, onChange }: Props) {
                 <label
                   key={o.id}
                   className={cn(
-                    "flex items-center justify-between gap-3 rounded-[var(--radius-medium)] border p-3 cursor-pointer transition-colors",
+                    "flex items-center justify-between gap-3 rounded-[var(--radius-medium)] border p-3 cursor-pointer select-none transition-all duration-150 ease-out active:scale-[0.98] active:opacity-90",
                     selected
                       ? "border-primary bg-primary/5"
                       : "border-divider bg-surface hover:border-primary/40",

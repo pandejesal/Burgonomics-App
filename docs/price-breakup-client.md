@@ -42,7 +42,7 @@ TOTAL CONTRACTED INVESTMENT:            ₹40,000 (INR) — ALL-IN
 
 The **₹40,000 all-in** figure covers everything in Section 1, including multi-store support for the current 17 outlets. Additional outlets beyond 17 are priced at **₹2,500 per outlet** (config, menu, and rollout).
 
-Included at no extra charge: SMS/OTP provider optimization (cost-optimized OTP delivery, reducing SMS spend by ~65% at current volume).
+Included at no extra charge: Phone OTP sign-in via Firebase Auth — free within Google's free tier (10,000 verifications/month); any overage is covered by the existing usage pass-through (no Blaze plan required).
 
 ---
 
@@ -97,11 +97,11 @@ Should additional features or external operational services be requested, they w
    - Apple Developer Program fee ($99 USD/year) is paid directly by the client to Apple Inc.
    - Google Play Console registration fee ($25 USD one-time) is paid directly by the client to Google LLC.
 2. **Cloud Infrastructure Quotas**:
-   - Google Cloud / Firebase Blaze plan costs (covered under Google's free tier of 2M Cloud Function invocations and 50k Firestore daily reads; any higher scaling is billed directly by Google).
-   - Third-party SMS credits for customer phone OTP verification.
+   - Google Cloud & Firebase Spark plan (covered under Google's and Netlify's free tiers; no Firebase Blaze plan required).
+   - Phone OTP verifications beyond Google's free tier (10,000 verifications/month included free via Firebase Auth).
 3. **Marketing & Media Assets**:
    - Photography, graphic design for promotional social banners, and digital advertising campaigns.
 4. **Third-Party & Usage Cost Pass-Through**:
-   - All third-party fees and usage costs are billed to the client at cost: Apple Developer Program ($99/yr), Google Play Console ($25 one-time), SMS/OTP credits, Firebase Blaze usage beyond Google's free tier, and Netlify/domain renewals.
+   - All third-party fees and usage costs are billed to the client at cost: Apple Developer Program ($99/yr), Google Play Console ($25 one-time), usage beyond Google's and Netlify's free tiers, billed at cost (no Blaze plan required), and Netlify/domain renewals.
 5. **Petpooja API Subscription**:
    - Per-store Petpooja API subscription fees are paid directly by the client.

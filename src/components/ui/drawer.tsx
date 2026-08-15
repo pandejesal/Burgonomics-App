@@ -23,7 +23,10 @@ const DrawerOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DrawerPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-black/80", className)}
+    className={cn(
+      "fixed inset-0 z-50 bg-black/60 backdrop-blur-[4px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 duration-300",
+      className,
+    )}
     {...props}
   />
 ));
@@ -38,13 +41,16 @@ const DrawerContent = React.forwardRef<
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[85dvh] flex-col rounded-t-[20px] border bg-background pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]",
+        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto max-h-[88dvh] flex-col rounded-t-[24px] border-t border-divider/60 bg-surface shadow-2xl",
+        "transition-transform duration-320 ease-[cubic-bezier(0.32,0.72,0,1)]",
+        "pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]",
         className,
       )}
       {...props}
     >
+      {/* 36x4px grab handle centered at top-2 */}
       <div
-        className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-divider/80 cursor-grab active:cursor-grabbing"
+        className="mx-auto mt-2 h-1 w-9 rounded-full bg-text-disabled/40 cursor-grab active:cursor-grabbing shrink-0 select-none"
         data-vaul-handle
       />
       {children}

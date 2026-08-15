@@ -35,7 +35,7 @@ const getPaymentBaseUrl = (): string => {
   if (appConfig.integrations.paymentsApiBaseUrl) {
     return appConfig.integrations.paymentsApiBaseUrl.replace(/\/$/, "");
   }
-  return "https://us-central1-burgonomics-7faa8.cloudfunctions.net/payments";
+  return "/.netlify/functions/payments";
 };
 
 async function backendPost<T>(path: string, body: unknown): Promise<T> {

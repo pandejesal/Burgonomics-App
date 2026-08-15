@@ -6,6 +6,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { HapticService } from "@/core/services/haptics";
 
 interface BottomSheetProps {
   open: boolean;
@@ -15,7 +16,7 @@ interface BottomSheetProps {
   children: React.ReactNode;
 }
 
-/** BottomSheet — wraps shadcn Drawer with design-system defaults. */
+/** BottomSheet — wraps shadcn Drawer with design-system defaults and tactile opening haptics. */
 export function BottomSheet({
   open,
   onOpenChange,
@@ -23,7 +24,11 @@ export function BottomSheet({
   description,
   children,
 }: BottomSheetProps) {
-  // Do not return null here, Vaul needs to manage the open state itself to run its cleanup
+  React.useEffect(() => {
+    if (open) {
+      void HapticService.impact("light");
+    }
+  }, [open]);
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} handleOnly shouldScaleBackground>
@@ -34,7 +39,7 @@ export function BottomSheet({
             {description && <DrawerDescription>{description}</DrawerDescription>}
           </DrawerHeader>
         )}
-        <div className="px-4 pb-6 overflow-y-auto max-h-[calc(85dvh-4rem)]">{children}</div>
+        <div className="px-4 pb-6 overflow-y-auto max-h-[calc(85dvh-4rem)] [overscroll-behavior-y:contain]">{children}</div>
       </DrawerContent>
     </Drawer>
   );

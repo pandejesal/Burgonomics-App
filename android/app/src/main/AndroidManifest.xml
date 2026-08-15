@@ -26,15 +26,6 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="burgonomics" />
             </intent-filter>
-
-            <!-- Deep link: HTTPS App Links (universal links) -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="burgonomics.com" />
-                <data android:scheme="https" android:host="www.burgonomics.com" />
-            </intent-filter>
         </activity>
 
         <provider

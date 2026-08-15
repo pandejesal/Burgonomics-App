@@ -36,7 +36,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
             type="button"
             onClick={handleBack}
             aria-label="Go back"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full hover:bg-white/10 active:opacity-70 text-white"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full select-none hover:bg-white/10 active:scale-90 active:opacity-75 transition-all duration-150 text-white"
           >
             <BackIcon className={cn(ios ? "h-6 w-6" : "h-5 w-5")} aria-hidden />
           </button>
@@ -45,7 +45,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
             to={backTo!}
             onClick={() => void HapticService.impact("light")}
             aria-label="Go back"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full hover:bg-white/10 active:opacity-70 text-white"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full select-none hover:bg-white/10 active:scale-90 active:opacity-75 transition-all duration-150 text-white"
           >
             <BackIcon className={cn(ios ? "h-6 w-6" : "h-5 w-5")} aria-hidden />
           </Link>

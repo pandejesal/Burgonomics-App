@@ -24,9 +24,9 @@ export function StoreSwitcher({ className, to = "/stores" }: StoreSwitcherProps)
       to={to}
       aria-label={store ? `Change store. Current: ${store.name}, ${store.area}` : "Choose a store"}
       className={cn(
-        "group inline-flex min-h-[44px] max-w-full items-center gap-2 rounded-full",
+        "group inline-flex min-h-[44px] max-w-full items-center gap-2 rounded-full select-none",
         "border border-divider bg-surface px-3 py-1.5",
-        "hover:border-primary/40 transition-colors",
+        "hover:border-primary/40 active:scale-[0.97] active:opacity-80 transition-all duration-150 ease-out",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className,
       )}

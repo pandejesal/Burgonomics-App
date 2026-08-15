@@ -31,6 +31,7 @@ import { BrandMascot } from "@/shared/components/common/BrandMascot";
 import { appConfig, isProd } from "@/core/config/env";
 import { GlobalErrorBoundary, GlobalErrorFallback } from "@/shared/components/error";
 import { getPlatform } from "@/shared/platform/platform";
+import { ConsumerRouteTransition } from "@/shared/components/common/ConsumerRouteTransition";
 
 if (typeof window !== "undefined" && !isProd()) {
   const keyId = appConfig.integrations.razorpayKeyId;
@@ -220,7 +221,9 @@ function RootComponent() {
   return (
     <GlobalErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <Outlet />
+        <ConsumerRouteTransition>
+          <Outlet />
+        </ConsumerRouteTransition>
         <AppToaster />
         <div id="recaptcha-container"></div>
       </QueryClientProvider>

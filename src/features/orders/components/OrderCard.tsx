@@ -23,7 +23,7 @@ export function OrderCard({ order }: Props) {
     <Link
       to="/orders/$orderId"
       params={{ orderId: order.id }}
-      className="group block rounded-[var(--radius-large)] border border-divider bg-surface p-4 transition-colors hover:bg-bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="group block rounded-[var(--radius-large)] border border-divider bg-surface p-4 transition-all duration-150 ease-out active:scale-[0.97] active:opacity-80 select-none hover:bg-bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       aria-label={`Order ${order.shortCode}, ${order.status.label}`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -63,9 +63,9 @@ export function OrderCard({ order }: Props) {
         <Text variant="titleMedium" className="tabular-nums">
           {formatINR(order.totals.grandTotal)}
         </Text>
-        <span className="inline-flex items-center gap-1 text-primary type-label-large group-hover:underline">
+        <span className="inline-flex items-center gap-1 text-text-secondary type-label-large">
           View
-          <ChevronRight className="h-4 w-4" aria-hidden />
+          <ChevronRight className="h-4 w-4 text-text-secondary" aria-hidden />
         </span>
       </div>
     </Link>

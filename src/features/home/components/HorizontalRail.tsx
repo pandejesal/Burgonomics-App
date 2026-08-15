@@ -10,7 +10,7 @@ interface Props {
 
 /**
  * Horizontal scroll rail with snap points and hidden scrollbars.
- * Each child is wrapped in an equal-width snap cell.
+ * Features native momentum scroll-snap and contained overscroll to prevent chain-scrolling.
  */
 export function HorizontalRail({ children, className, itemClassName, ariaLabel }: Props) {
   const items = React.Children.toArray(children);
@@ -19,8 +19,7 @@ export function HorizontalRail({ children, className, itemClassName, ariaLabel }
       role={ariaLabel ? "list" : undefined}
       aria-label={ariaLabel}
       className={cn(
-        "flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1",
-        "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 [overscroll-behavior-x:contain] touch-pan-x scroll-smooth no-scrollbar",
         className,
       )}
     >

@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' capacitor://localhost http://localhost:* https: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.razorpay.com https://apis.google.com https://www.google.com https://www.gstatic.com; frame-src 'self' https://checkout.razorpay.com https://*.razorpay.com https://*.firebaseapp.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' capacitor://localhost http://localhost:* https://*.burgonomics.com https://*.burgonomics.example https://*.razorpay.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.firebaseio.com https://*.googleapis.com wss:;"
+      content="default-src 'self' capacitor://localhost http://localhost:* https: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.razorpay.com https://apis.google.com https://www.google.com https://www.gstatic.com; frame-src 'self' https://checkout.razorpay.com https://*.razorpay.com https://*.firebaseapp.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' capacitor://localhost http://localhost:* https://*.netlify.app https://*.razorpay.com https://api.razorpay.com https://lumberjack.razorpay.com https://*.firebaseio.com https://*.googleapis.com wss:;"
     />
     <link rel="icon" href="/favicon.ico" type="image/x-icon" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -21,9 +21,16 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Montserrat:wght@300;400;500;600;700;800;900&display=swap"
     />
+    <style>
+      html, body, #app {
+        background-color: #023020;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
     <title>BURGONOMICS — The House of DAMN GOOD BURGERS</title>
   </head>
-  <body>
+  <body style="background-color: #023020;">
     <div id="app"></div>
     <script type="module" src="/src/mobile-entry.tsx"></script>
   </body>

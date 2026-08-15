@@ -1,5 +1,4 @@
-import React, { ReactNode, useState, useEffect } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { type ReactNode } from "react";
 
 interface PageTransitionProps {
   children: ReactNode;
@@ -7,38 +6,14 @@ interface PageTransitionProps {
   id?: string;
 }
 
+/**
+ * PageTransition — container passthrough now that native horizontal
+ * slide-in/pop transitions are orchestrated at the layout level via ConsumerRouteTransition.
+ */
 export function PageTransition({ children, className, id }: PageTransitionProps) {
-  const [mounted, setMounted] = useState(false);
-  const shouldReduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const hasReducedMotion = mounted ? shouldReduceMotion : false;
-
-  if (hasReducedMotion) {
-    return (
-      <div id={id} className={className}>
-        {children}
-      </div>
-    );
-  }
-
   return (
-    <motion.div
-      id={id}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{
-        duration: 0.22, // 220ms (subtle Android/iOS style)
-        ease: [0.33, 1, 0.68, 1], // easeOutCubic
-      }}
-      className={className}
-      style={{ willChange: "transform, opacity" }}
-    >
+    <div id={id} className={className}>
       {children}
-    </motion.div>
+    </div>
   );
 }

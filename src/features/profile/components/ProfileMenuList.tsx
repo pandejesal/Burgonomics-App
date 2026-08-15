@@ -66,7 +66,7 @@ export function ProfileMenuList({ title, items }: Props) {
               {it.to ? (
                 <Link
                   to={it.to}
-                  className="block min-h-[56px] transition-colors hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none"
+                  className="block min-h-[56px] select-none transition-all duration-150 ease-out active:scale-[0.98] active:opacity-80 active:bg-primary/5 hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none"
                 >
                   {inner}
                 </Link>
@@ -74,7 +74,7 @@ export function ProfileMenuList({ title, items }: Props) {
                 <button
                   type="button"
                   onClick={it.onClick}
-                  className="block min-h-[56px] w-full transition-colors hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none"
+                  className="block min-h-[56px] w-full select-none transition-all duration-150 ease-out active:scale-[0.98] active:opacity-80 active:bg-primary/5 hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none text-left"
                 >
                   {inner}
                 </button>
