@@ -1,0 +1,34 @@
+# Burgonomics Implementation Plan — Audit Remediation
+
+Reconciliation of `audit-report.md` remediation blueprint against the live system
+(production: https://burgonomics.netlify.app, APK debug build, Firebase Spark plan).
+
+Legend: **DONE** = verified in live code/deploy · **THIS PASS** = fixed in this changeset ·
+**DEFERRED** = out of agreed pricing scope, gated on client opt-in / hardware.
+
+## Status Matrix
+
+| Area | Blueprint item | Status | Evidence / Notes |
+|---|---|---|---|
+| Backend tier | Serverless authoritative engine (pricing, order creation, webhooks) — no separate NestJS deploy | **DONE** | `netlify/functions/payments.ts` (612 lines) live at `burgonomics.netlify.app/.netlify/functions/payments`; server-authoritative price engine; NestJS `backend/` dormant by decision. Firebase Functions (`functions/`) holds dormant petpooja + notifications only. |
+| Payment integrity | Zero client-controlled amounts; Razorpay HMAC webhook verification; strict amount match before Paid | **DONE** | `payments.ts`: `timingSafeEqual` signature check, blocking Razorpay amount verification, fraud partial-payment detection, dropout recovery, fail-hard credentials. |
+| Petpooja POS | Live POS API + KOT dispatch (verified payments / server-validated cash) | **DEFERRED** | Dormant `functions/src/petpooja/`. Custom POS integration was ₹8k/8hr scoped line item; activate on client opt-in. Sandbox fallback pattern documented in code. |
+| Menu catalog | Webhook receiver + Admin CLI sync (`npm run seed:admin`); `petpooja_*` collections read-only for public callers | **DEFERRED / PARTIAL** | Seed script exists (`scripts/seed.ts`, service-account based, 17 stores). Live webhook receiver is part of the deferred Petpooja work; Firestore rules already expose only curated collections to clients. |
+| DPDP compliance | Privacy/Terms pages; explicit consent on login/checkout; in-app deletion flow; no PII in logs | **DONE** | `src/routes/privacy.tsx` (DPDP section, erasure rights), `terms.tsx`; consent shown during OTP login; deletion request at `profile.settings.tsx:161`; `src/core/utils/logger.ts` redacts payloads. |
+| Mobile/CI | Release signing env-driven; GitHub Actions CI; deep-link verification files; no WebView debug in prod | **THIS PASS** | `app/build.gradle` signing now gated to release variants only (debug builds need no secrets); `.github/workflows/ci.yml` added; `public/.well-known/` files added (fingerprints pending release keystore); WebView debugging never enabled — Capacitor disables it in release by default. |
+| iOS | SPM pinning, Xcode configs, App Store assets | **DEFERRED** | Windows-only machine; iOS build environment unavailable. Apple App Site Association file published now for later. |
+| Admin hygiene | Admin UI isolated from customer bundle; no hardcoded creds; `.gitignore` hygiene | **DONE** | Admin routes lazy-loaded (`admin.*` chunks separate in build output); `seed.ts` has no plaintext credentials; `.gitignore` covers `.env*`, `.swarm/`, `dist`, `*.keystore`. |
+| Android signing | Env-driven `signingConfigs` | **THIS PASS** | Already env-driven (`RELEASE_STORE_FILE/PASSWORD/KEY_ALIAS/KEY_PASSWORD`); the config-time throw for missing passwords was blocking *debug* builds — now scoped to release task names. Keystore must be created before Play Store submission. |
+
+## Phases
+
+- **Phase 1 — CI & release hygiene (this changeset)**: build.gradle fix · GitHub Actions CI (web build/typecheck/lint/unit suite, functions typecheck, android debug build) · `.well-known` deep-link files · commit + push (Netlify auto-redeploy, CI first run).
+- **Phase 2 — Demo readiness**: seed catalog (service-account key), debug APK rebuild + install with live payments URL, end-to-end walkthrough (login → menu → product → cart → checkout → Razorpay test payment → tracking).
+- **Phase 3 — Store submission (client-paid)**: create release keystore + fill `assetlinks.json` fingerprint; Play/App Store listings (`docs/store-listing-assets.md`); privacy policy already hosted at netlify.app.
+- **Phase 4 — Client opt-in**: live Petpooja API + KOT dispatch; WhatsApp order updates (₹750/hr custom); iOS build pipeline (requires a Mac).
+
+## Open items requiring user action
+
+1. Firebase service-account key path (seed + `FIREBASE_SERVICE_ACCOUNT` Netlify env).
+2. Razorpay test keys + webhook secret → Netlify env vars.
+3. Release keystore creation + passwords (only needed for Play Store, not the demo).
