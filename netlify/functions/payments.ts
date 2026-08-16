@@ -333,7 +333,190 @@ export async function handleVerifyPayment(req: Request, res: Response) {
 }
 
 /**
+ * Finalizes a captured payment (payment.captured / order.paid — the
+ * money-in signal). Webhook-first reconciliation:
+ *   1. Gateway re-verify via Payments API before any fulfillment.
+ *   2. Amount integrity vs the authoritative payment_orders doc.
+ *   3. payments doc → payment_orders PAID → orders doc (with orphan recovery).
+ */
+async function handlePaymentCaptured(orderId: string | null, paymentEntity: any): Promise<void> {
+  const paymentId = paymentEntity.id;
+
+  // Defense-in-depth: re-fetch from the gateway; only finalize when Razorpay
+  // itself reports the payment as captured.
+  const rzp = getRazorpayInstance();
+  let apiPayment: any;
+  try {
+    apiPayment = await rzp.payments.fetch(paymentId);
+  } catch (e: any) {
+    throw new Error(`Gateway re-verify failed for ${paymentId}: ${e?.message || "unreachable"}`);
+  }
+  if (!apiPayment) {
+    throw new Error(`Gateway re-verify returned no payment for ${paymentId}`);
+  }
+  if (apiPayment.status !== "captured") {
+    console.warn(
+      `[Netlify Payments] Payment ${paymentId} not yet captured (status=${apiPayment.status}); skipping finalize`,
+    );
+    return;
+  }
+
+  const paymentsRef = db.collection("payments").doc(paymentId);
+  await paymentsRef.set(
+    {
+      id: paymentId,
+      orderId: orderId || null,
+      amountPaise: apiPayment.amount,
+      currency: apiPayment.currency,
+      gateway: "razorpay",
+      gatewayPaymentId: paymentId,
+      status: "CAPTURED",
+      verificationStatus: "VERIFIED",
+      capturedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      customer: {
+        email: paymentEntity.email || "",
+        phone: paymentEntity.contact || "",
+      },
+    },
+    { merge: true },
+  );
+
+  if (!orderId) {
+    console.warn(`[Netlify Payments] Captured payment ${paymentId} without orderId; flagged as ORPHAN_CAPTURED`);
+    await paymentsRef.update({
+      status: "ORPHAN_CAPTURED",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return;
+  }
+
+  const paymentOrderSnap = await db.collection("payment_orders").doc(orderId).get();
+  let expectedAmountPaise = paymentOrderSnap.exists ? paymentOrderSnap.data()?.amountInPaise || 0 : 0;
+
+  let orderRef = db.collection("orders").doc(orderId);
+  let orderSnap = await orderRef.get();
+
+  if (!orderSnap.exists) {
+    const orderQuery = await db
+      .collectionGroup("orders")
+      .where("id", "==", orderId)
+      .limit(1)
+      .get();
+    if (!orderQuery.empty) {
+      orderRef = orderQuery.docs[0].ref;
+      orderSnap = orderQuery.docs[0];
+    }
+  }
+
+  if (orderSnap.exists) {
+    const orderData = orderSnap.data() as any;
+    if (!expectedAmountPaise) {
+      expectedAmountPaise = Math.round((orderData.totals?.grandTotal || 0) * 100);
+    }
+
+    // Idempotent flip: never downgrade an order already paid for this payment.
+    if (orderData.paymentStatus === "Paid" && orderData.payment?.transactionId === paymentId) {
+      console.info(`[Netlify Payments] Order ${orderId} already paid for ${paymentId}; no-op`);
+      return;
+    }
+
+    if (apiPayment.amount < expectedAmountPaise) {
+      console.error(
+        `[Netlify Payments] Amount mismatch for order ${orderId}. Expected ${expectedAmountPaise} paise, got ${apiPayment.amount} paise.`,
+      );
+      await orderRef.update({
+        paymentStatus: "Fraud_PartialPayment",
+        "payment.status": "failed",
+        "payment.transactionId": paymentId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      await orderRef.update({
+        paymentStatus: "Paid",
+        "payment.status": "paid",
+        "payment.transactionId": paymentId,
+        "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      console.info(`[Netlify Payments] Updated Order ${orderId} to Paid`);
+    }
+
+    await paymentOrderSnap.ref.update({
+      status: "PAID",
+      paymentId,
+      paidAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } else if (paymentOrderSnap.exists) {
+    const snapData = paymentOrderSnap.data() || {};
+    const snapshot = snapData.snapshot || {};
+    const placedAt = new Date().toISOString();
+    const etaMs = snapshot.fulfillment === "delivery" ? 35 * 60_000 : 20 * 60_000;
+
+    const recoveredOrder = {
+      id: orderId,
+      shortCode: orderId.slice(-6).toUpperCase(),
+      status: {
+        code: "PLACED",
+        label: "Order placed",
+        kind: "upcoming",
+        terminal: false,
+      },
+      fulfillment: snapshot.fulfillment || snapData.fulfillment || "delivery",
+      store: snapshot.store || {
+        id: snapData.storeId || "unknown",
+        name: "Burgonomics",
+      },
+      address: snapshot.address || null,
+      items: snapshot.items || snapshot.lines || [],
+      totals: snapshot.totals || {
+        grandTotal: snapData.amount || apiPayment.amount / 100,
+      },
+      promo: snapshot.promo || null,
+      notes: snapshot.notes || "",
+      fulfillmentInstructions: snapshot.fulfillmentInstructions || "",
+      payment: {
+        method: "online",
+        label: "Paid Online (Razorpay)",
+        status: "paid",
+        transactionId: paymentId,
+        paidAt: placedAt,
+      },
+      paymentStatus: "Paid",
+      petpoojaStatus: "Pending",
+      placedAt,
+      estimatedAt: new Date(Date.now() + etaMs).toISOString(),
+      userId: snapshot.userId || "guest_recovered",
+      recoveredFromDropout: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await db.collection("orders").doc(orderId).set(recoveredOrder);
+    await paymentOrderSnap.ref.update({
+      status: "CONVERTED",
+      convertedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.info(`[Netlify Payments] Rescued and created orphan order ${orderId} from checkout snapshot`);
+  } else {
+    console.warn(
+      `[Netlify Payments] Payment ${paymentId} captured for unknown orderId ${orderId} without snapshot. Flagged as ORPHAN_CAPTURED.`,
+    );
+    await paymentsRef.update({
+      status: "ORPHAN_CAPTURED",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+/**
  * Handler for Razorpay Webhook events.
+ *
+ * Webhook-first reconciliation (the source of truth for money movement):
+ *   - Signature: HMAC-SHA256 over the RAW request body with RAZORPAY_WEBHOOK_SECRET.
+ *   - Idempotency: dedupe on `${event}:${paymentId}`; replays return 200 no-ops.
+ *   - Client `verifyPayment` is UX-only — order finality comes from here.
  */
 export async function handleRazorpayWebhook(req: any, res: Response) {
   const signature = req.headers["x-razorpay-signature"] as string;
@@ -362,170 +545,60 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
   try {
     const payload = req.body;
     const event = payload.event;
+    const paymentEntity = payload.payload?.payment?.entity;
+    const paymentId = paymentEntity?.id;
+    const eventKey = `${event}:${paymentId ?? "none"}`;
 
     console.info(`[Netlify Payments] Processing Razorpay Webhook Event: ${event}`);
 
-    const paymentEntity = payload.payload?.payment?.entity;
-    if (!paymentEntity) {
-      console.warn("[Netlify Payments] Missing payment entity in Razorpay payload");
-      res.status(400).send("Missing payment entity");
-      return;
-    }
-
-    const orderId =
-      paymentEntity.notes?.orderId ||
-      paymentEntity.notes?.confirmedOrderId ||
-      paymentEntity.receipt ||
-      paymentEntity.order_id;
-    const paymentId = paymentEntity.id;
-
-    const paymentsRef = db.collection("payments").doc(paymentId);
-
-    await paymentsRef.collection("webhook_events").add({
-      event: event,
-      status: "DELIVERED",
-      time: admin.firestore.FieldValue.serverTimestamp(),
-      payload: JSON.stringify(payload),
-    });
-
-    if (event === "payment.captured") {
-      await paymentsRef.set(
-        {
-          id: paymentId,
-          orderId: orderId || null,
-          amountPaise: paymentEntity.amount,
-          currency: paymentEntity.currency,
-          gateway: "razorpay",
-          gatewayPaymentId: paymentId,
-          status: "CAPTURED",
-          verificationStatus: "VERIFIED",
-          capturedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          customer: {
-            email: paymentEntity.email || "",
-            phone: paymentEntity.contact || "",
-          },
-        },
-        { merge: true },
-      );
-
-      if (orderId) {
-        let orderRef = db.collection("orders").doc(orderId);
-        let orderSnap = await orderRef.get();
-
-        if (!orderSnap.exists) {
-          const orderQuery = await db
-            .collectionGroup("orders")
-            .where("id", "==", orderId)
-            .limit(1)
-            .get();
-          if (!orderQuery.empty) {
-            orderRef = orderQuery.docs[0].ref;
-            orderSnap = orderQuery.docs[0];
-          }
-        }
-
-        const paymentOrderSnap = await db.collection("payment_orders").doc(orderId).get();
-        let expectedAmountPaise = 0;
-        if (paymentOrderSnap.exists) {
-          expectedAmountPaise = paymentOrderSnap.data()?.amountInPaise || 0;
-        }
-
-        if (orderSnap.exists) {
-          const orderData = orderSnap.data() as any;
-          if (!expectedAmountPaise) {
-            expectedAmountPaise = Math.round((orderData.totals?.grandTotal || 0) * 100);
-          }
-
-          if (paymentEntity.amount < expectedAmountPaise) {
-            console.error(
-              `[Netlify Payments] Amount mismatch for order ${orderId}. Expected ${expectedAmountPaise} paise, got ${paymentEntity.amount} paise.`,
-            );
-            await orderRef.update({
-              paymentStatus: "Fraud_PartialPayment",
-              "payment.status": "failed",
-              "payment.transactionId": paymentId,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          } else {
-            await orderRef.update({
-              paymentStatus: "Paid",
-              "payment.status": "paid",
-              "payment.transactionId": paymentId,
-              "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-            console.info(`[Netlify Payments] Updated Order ${orderId} to Paid`);
-          }
-        } else {
-          const paymentOrderSnap = await db.collection("payment_orders").doc(orderId).get();
-
-          if (paymentOrderSnap.exists) {
-            const snapData = paymentOrderSnap.data() || {};
-            const snapshot = snapData.snapshot || {};
-            const placedAt = new Date().toISOString();
-            const etaMs = snapshot.fulfillment === "delivery" ? 35 * 60_000 : 20 * 60_000;
-
-            const recoveredOrder = {
-              id: orderId,
-              shortCode: orderId.slice(-6).toUpperCase(),
-              status: {
-                code: "PLACED",
-                label: "Order placed",
-                kind: "upcoming",
-                terminal: false,
-              },
-              fulfillment: snapshot.fulfillment || snapData.fulfillment || "delivery",
-              store: snapshot.store || {
-                id: snapData.storeId || "unknown",
-                name: "Burgonomics",
-              },
-              address: snapshot.address || null,
-              items: snapshot.items || snapshot.lines || [],
-              totals: snapshot.totals || {
-                grandTotal: snapData.amount || paymentEntity.amount / 100,
-              },
-              promo: snapshot.promo || null,
-              notes: snapshot.notes || "",
-              fulfillmentInstructions: snapshot.fulfillmentInstructions || "",
-              payment: {
-                method: "online",
-                label: "Paid Online (Razorpay)",
-                status: "paid",
-                transactionId: paymentId,
-                paidAt: placedAt,
-              },
-              paymentStatus: "Paid",
-              petpoojaStatus: "Pending",
-              placedAt,
-              estimatedAt: new Date(Date.now() + etaMs).toISOString(),
-              userId: snapshot.userId || "guest_recovered",
-              recoveredFromDropout: true,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            };
-
-            await db.collection("orders").doc(orderId).set(recoveredOrder);
-            await paymentOrderSnap.ref.update({
-              status: "CONVERTED",
-              convertedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            console.info(
-              `[Netlify Payments] Rescued and created orphan order ${orderId} from checkout snapshot`,
-            );
-          } else {
-            console.warn(
-              `[Netlify Payments] Payment ${paymentId} captured for unknown orderId ${orderId} without snapshot. Flagged as ORPHAN_CAPTURED.`,
-            );
-            await paymentsRef.update({
-              status: "ORPHAN_CAPTURED",
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          }
-        }
+    if (event === "payment.captured" || event === "order.paid") {
+      if (!paymentEntity) {
+        console.warn("[Netlify Payments] Missing payment entity in Razorpay payload");
+        res.status(400).send("Missing payment entity");
+        return;
       }
+
+      const orderId =
+        paymentEntity.notes?.orderId ||
+        paymentEntity.notes?.confirmedOrderId ||
+        paymentEntity.receipt ||
+        paymentEntity.order_id ||
+        null;
+
+      const paymentsRef = db.collection("payments").doc(paymentId);
+
+      // Idempotency: already-processed event → no-op.
+      const paySnap = await paymentsRef.get();
+      if (paySnap.exists && paySnap.data()?.lastWebhook === eventKey) {
+        console.info(`[Netlify Payments] Deduplicated replayed ${event} for ${paymentId}`);
+        res.status(200).send({ status: "success", dedup: true });
+        return;
+      }
+
+      await handlePaymentCaptured(orderId, paymentEntity);
+      await paymentsRef.set({ lastWebhook: eventKey }, { merge: true });
     } else if (event === "payment.failed") {
+      if (!paymentEntity) {
+        console.warn("[Netlify Payments] Missing payment entity in Razorpay payload");
+        res.status(400).send("Missing payment entity");
+        return;
+      }
+
+      const orderId =
+        paymentEntity.notes?.orderId ||
+        paymentEntity.notes?.confirmedOrderId ||
+        paymentEntity.receipt ||
+        paymentEntity.order_id ||
+        null;
+      const paymentsRef = db.collection("payments").doc(paymentId);
+
+      const paySnap = await paymentsRef.get();
+      if (paySnap.exists && paySnap.data()?.lastWebhook === eventKey) {
+        console.info(`[Netlify Payments] Deduplicated replayed ${event} for ${paymentId}`);
+        res.status(200).send({ status: "success", dedup: true });
+        return;
+      }
+
       await paymentsRef.set(
         {
           id: paymentId,
@@ -533,6 +606,7 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
           status: "FAILED",
           verificationStatus: "FAILED",
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastWebhook: eventKey,
         },
         { merge: true },
       );
@@ -541,38 +615,102 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
         const orderRef = db.collection("orders").doc(orderId);
         const orderSnap = await orderRef.get();
         if (orderSnap.exists) {
-          await orderRef.update({
-            paymentStatus: "Failed",
-            "payment.status": "failed",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          console.info(`[Netlify Payments] Updated Order ${orderId} to Failed`);
+          const orderData = orderSnap.data() as any;
+          // Never downgrade an order that is already paid.
+          if (orderData.paymentStatus !== "Paid") {
+            await orderRef.update({
+              paymentStatus: "Failed",
+              "payment.status": "failed",
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            console.info(`[Netlify Payments] Updated Order ${orderId} to Failed`);
+          }
         }
       }
-    } else if (event === "refund.processed") {
+    } else if (event === "refund.created" || event === "refund.processed" || event === "refund.failed") {
       const refundEntity = payload.payload?.refund?.entity;
-      if (refundEntity) {
-        await paymentsRef.set(
+      if (!refundEntity) {
+        console.warn("[Netlify Payments] Missing refund entity in Razorpay payload");
+        res.status(400).send("Missing refund entity");
+        return;
+      }
+
+      const refundStatus =
+        event === "refund.processed" ? "COMPLETED" : event === "refund.created" ? "PENDING" : "FAILED";
+      const refundsRef = db.collection("refunds").doc(refundEntity.id);
+      const refundSnap = await refundsRef.get();
+
+      if (event === "refund.processed" && refundSnap.exists && refundSnap.data()?.status === "COMPLETED") {
+        console.info(`[Netlify Payments] Deduplicated replayed refund.processed for ${refundEntity.id}`);
+        res.status(200).send({ status: "success", dedup: true });
+        return;
+      }
+
+      const refundPaymentId = refundEntity.payment_id || paymentId;
+      await refundsRef.set(
+        {
+          id: refundEntity.id,
+          paymentId: refundPaymentId || null,
+          orderId: refundEntity.notes?.orderId || null,
+          amountPaise: refundEntity.amount,
+          status: refundStatus,
+          completedAt:
+            event === "refund.processed" ? admin.firestore.FieldValue.serverTimestamp() : null,
+          gatewayStatus: refundEntity.status,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      if (refundStatus === "COMPLETED" && refundPaymentId) {
+        await db.collection("payments").doc(refundPaymentId).set(
           {
             status: "REFUNDED",
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true },
         );
-
-        const refundsRef = db.collection("refunds").doc(refundEntity.id);
-        await refundsRef.set({
-          id: refundEntity.id,
-          paymentId: paymentId,
-          orderId: orderId || null,
-          amountPaise: refundEntity.amount,
-          status: "COMPLETED",
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          gatewayStatus: refundEntity.status,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
       }
+    } else if (event === "settlement.processed") {
+      const settlementEntity = payload.payload?.settlement?.entity;
+      if (!settlementEntity) {
+        console.warn("[Netlify Payments] Missing settlement entity in Razorpay payload");
+        res.status(400).send("Missing settlement entity");
+        return;
+      }
+
+      const settlementRef = db.collection("settlements").doc(settlementEntity.id);
+      const settlementSnap = await settlementRef.get();
+      if (settlementSnap.exists) {
+        console.info(`[Netlify Payments] Deduplicated replayed settlement.processed for ${settlementEntity.id}`);
+        res.status(200).send({ status: "success", dedup: true });
+        return;
+      }
+
+      await settlementRef.set({
+        id: settlementEntity.id,
+        utr: settlementEntity.utr || "",
+        amountPaise: settlementEntity.amount,
+        feesPaise: settlementEntity.fees || 0,
+        taxPaise: settlementEntity.tax || 0,
+        status: "PROCESSED",
+        settlementPeriod: settlementEntity.settlement_period || null,
+        settledAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      console.info(`[Netlify Payments] Acknowledged event without dedicated handler: ${event}`);
     }
+
+    // Audit trail, recorded only AFTER successful processing so retries re-run.
+    await db.collection("webhook_events").add({
+      event,
+      eventId: eventKey,
+      status: "PROCESSED",
+      time: admin.firestore.FieldValue.serverTimestamp(),
+      payload: JSON.stringify(payload),
+    });
 
     res.status(200).send({ status: "success" });
   } catch (error: any) {
