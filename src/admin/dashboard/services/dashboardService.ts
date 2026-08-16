@@ -16,6 +16,7 @@ import {
   TopProduct,
   CustomerInsight,
   MenuSyncLog,
+  PetpoojaSyncHealth,
   StoreResponse,
   PaymentStats,
   RefundStats,
@@ -603,6 +604,22 @@ export class DashboardService {
    * 10. Stores Directory from Firestore
    */
   async getStores(params: { city?: string; query?: string } = {}): Promise<StoreResponse[]> {
+    const fallbackStores = (): StoreResponse[] =>
+      INITIAL_RICH_STORES.map((s) => ({
+        id: s.id,
+        name: s.name,
+        address: s.address,
+        city: s.city,
+        state: "",
+        pincode: "",
+        country: "India",
+        phone: s.phone,
+        status: s.isOpen ? "OPEN" : "CLOSED",
+        latitude: s.lat,
+        longitude: s.lng,
+        distanceKm: s.distanceKm,
+      }));
+
     try {
       const snap = await getDocs(collection(db, "admin_stores"));
       let stores: StoreResponse[] = [];
@@ -629,19 +646,7 @@ export class DashboardService {
         });
       } else {
         // Fallback to repository stores dataset
-        stores = INITIAL_RICH_STORES.map((s) => ({
-          id: s.id,
-          name: s.name,
-          address: s.address,
-          city: s.city,
-          state: s.state,
-          pincode: s.pincode,
-          country: s.country,
-          phone: s.phone,
-          status: s.status === "active" ? "OPEN" : "CLOSED",
-          latitude: s.location?.latitude || null,
-          longitude: s.location?.longitude || null,
-        }));
+        stores = fallbackStores();
       }
 
       if (params.city && params.city !== "all") {
@@ -661,17 +666,7 @@ export class DashboardService {
       return stores;
     } catch (err) {
       console.warn("dashboardService.getStores failed:", err);
-      return INITIAL_RICH_STORES.map((s) => ({
-        id: s.id,
-        name: s.name,
-        address: s.address,
-        city: s.city,
-        state: s.state,
-        pincode: s.pincode,
-        country: s.country,
-        phone: s.phone,
-        status: s.status === "active" ? "OPEN" : "CLOSED",
-      }));
+      return fallbackStores();
     }
   }
 
@@ -685,11 +680,7 @@ export class DashboardService {
   /**
    * 12. Sync Health (Honest standby state)
    */
-  async getSyncHealth(): Promise<{
-    status: "standby";
-    connected: false;
-    message: string;
-  }> {
+  async getSyncHealth(): Promise<PetpoojaSyncHealth> {
     return {
       status: "standby",
       connected: false,

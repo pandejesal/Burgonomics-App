@@ -66,10 +66,20 @@ export interface SystemHealthInfo {
 }
 
 export interface SystemHealthResponse {
-  status: "ok" | "error" | "shutting_down";
+  status: "ok" | "error" | "shutting_down" | "standby";
   info: Record<string, SystemHealthInfo>;
   error?: Record<string, any>;
   details: Record<string, SystemHealthInfo>;
+}
+
+export interface PetpoojaSyncHealth {
+  status: "standby" | "connected" | "disconnected";
+  connected: boolean;
+  message: string;
+  api?: "up" | "down";
+  webhooks?: "up" | "down";
+  circuitBreaker?: "OPEN" | "CLOSED";
+  lastSyncAt?: string | null;
 }
 
 export interface AuditLogEntry {

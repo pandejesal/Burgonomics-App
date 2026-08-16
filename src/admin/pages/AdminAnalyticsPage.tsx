@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   AreaChart,
   Area,
@@ -33,24 +33,9 @@ import {
 import { PageHeader } from "../components/Headers";
 import { StatCard, AdminCard } from "../components/Cards";
 import { marketingStorage } from "./marketingData";
+import { useDashboardSnapshot, useRevenueSeries, useOrderSeries } from "../dashboard/hooks/useDashboardData";
 
-// Sales Data (Existing)
-const REVENUE_DATA = [
-  { name: "Mon", revenue: 42000, orders: 120 },
-  { name: "Tue", revenue: 48000, orders: 140 },
-  { name: "Wed", revenue: 51000, orders: 152 },
-  { name: "Thu", revenue: 45000, orders: 130 },
-  { name: "Fri", revenue: 68000, orders: 198 },
-  { name: "Sat", revenue: 84000, orders: 245 },
-  { name: "Sun", revenue: 92000, orders: 280 },
-];
-
-const CATEGORY_DATA = [
-  { name: "Classic Veg", sales: 480, fill: "#0E4825" },
-  { name: "Wraps", sales: 320, fill: "#FF6600" },
-  { name: "Fries/Sides", sales: 510, fill: "#F59E0B" },
-  { name: "Shakes", sales: 290, fill: "#16A34A" },
-];
+const CHART_FILLS = ["#0E4825", "#FF6600", "#F59E0B", "#16A34A", "#7C3AED"];
 
 // Marketing Analytics Data (New)
 const CHANNEL_PERF_DATA = [
@@ -77,8 +62,19 @@ const OUTLET_CONVERSION = [
   { name: "Sector 62 Noida", sent: 900, sales: 108, rate: 12.0 },
 ];
 
+/** Formats an ISO date bucket (YYYY-MM-DD) as a short label like "12 Aug". */
+const formatBucketLabel = (bucket: string) => {
+  const d = new Date(`${bucket}T00:00:00`);
+  if (isNaN(d.getTime())) return bucket;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+};
+
+const formatINR = (paise: number) =>
+  `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
 export const AdminAnalyticsPage: React.FC = () => {
   const [tab, setTab] = useState<"sales" | "marketing">("sales");
+  const [rangeDays, setRangeDays] = useState(7);
   const [campaigns, setCampaigns] = useState<any[]>([]);
 
   useEffect(() => {
@@ -90,6 +86,46 @@ export const AdminAnalyticsPage: React.FC = () => {
       sub();
     };
   }, []);
+
+  // Live analytics window (now − rangeDays → now)
+  const from = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - (rangeDays - 1));
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, [rangeDays]);
+  const to = useMemo(() => new Date().toISOString(), [rangeDays]);
+
+  const { data: snapshot, isLoading: isSnapshotLoading } = useDashboardSnapshot({ from, to });
+  const { data: revenueSeries } = useRevenueSeries({ from, to, granularity: "day" });
+  const { data: orderSeries } = useOrderSeries({ from, to, granularity: "day" });
+
+  const salesTrend = useMemo(() => {
+    if (!revenueSeries || !orderSeries) return [];
+    const merged = new Map<string, { revenue: number; orders: number }>();
+    for (const pt of revenueSeries) {
+      merged.set(pt.bucket, { revenue: pt.value, orders: 0 });
+    }
+    for (const pt of orderSeries) {
+      const prev = merged.get(pt.bucket) || { revenue: 0, orders: 0 };
+      merged.set(pt.bucket, { revenue: prev.revenue, orders: pt.value });
+    }
+    return Array.from(merged.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([bucket, v]) => ({ name: formatBucketLabel(bucket), revenue: v.revenue, orders: v.orders }));
+  }, [revenueSeries, orderSeries]);
+
+  const topProducts = useMemo(
+    () =>
+      (snapshot?.topProducts || [])
+        .slice(0, 5)
+        .map((p, i) => ({ name: p.name, sales: p.units, fill: CHART_FILLS[i % CHART_FILLS.length] })),
+    [snapshot],
+  );
+
+  const revenuePaise = snapshot?.revenue.netRevenuePaise ?? 0;
+  const orderCount = snapshot?.revenue.orderCount ?? 0;
+  const aovPaise = snapshot?.revenue.aov ?? 0;
 
   // Compute dynamic marketing totals
   const totalSent = campaigns.reduce((acc, c) => acc + c.stats.sent, 0);
@@ -141,35 +177,52 @@ export const AdminAnalyticsPage: React.FC = () => {
         <div className="space-y-6 animate-fadeIn">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
-              title="Consolidated Revenue (7d)"
-              value="₹4,26,000"
+              title="Consolidated Revenue"
+              value={isSnapshotLoading ? "—" : formatINR(revenuePaise)}
               icon={DollarSign}
-              trend={{ value: 14.5, label: "vs last week", isPositive: true }}
+              subtext={`Net of refunds · last ${rangeDays} days`}
             />
             <StatCard
-              title="Consolidated Orders (7d)"
-              value="1,265"
+              title="Consolidated Orders"
+              value={isSnapshotLoading ? "—" : orderCount.toLocaleString("en-IN")}
               icon={ShoppingBag}
-              trend={{ value: 8.2, label: "vs last week", isPositive: true }}
+              subtext={`Last ${rangeDays} days`}
             />
             <StatCard
-              title="Conversion Rate"
-              value="4.8%"
+              title="Average Order Value"
+              value={isSnapshotLoading ? "—" : formatINR(aovPaise)}
               icon={Eye}
-              subtext="Total mobile visitors to paid conversions"
+              subtext="Net revenue per completed order"
             />
+          </div>
+
+          {/* Range selector */}
+          <div className="flex items-center gap-1.5 justify-end">
+            {[7, 30].map((days) => (
+              <button
+                key={days}
+                onClick={() => setRangeDays(days)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wide transition-all cursor-pointer border ${
+                  rangeDays === days
+                    ? "bg-[#0E4825] text-white border-[#0E4825] dark:bg-emerald-600 dark:border-emerald-600"
+                    : "bg-white dark:bg-[#1A1A1A] text-gray-500 border-gray-100 dark:border-gray-800 hover:border-gray-200"
+                }`}
+              >
+                {days}d
+              </button>
+            ))}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Sales trend area chart */}
             <AdminCard
               title="Sales Revenue & Order volume"
-              subtitle="Consolidated performance curves across active weeks"
+              subtitle={`Consolidated performance curves · last ${rangeDays} days`}
             >
               <div className="h-80 w-full font-sans text-xs">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
-                    data={REVENUE_DATA}
+                    data={salesTrend}
                     margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                   >
                     <defs>
@@ -187,11 +240,14 @@ export const AdminAnalyticsPage: React.FC = () => {
                         border: "1px solid #EAEAEA",
                         boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
                       }}
+                      formatter={(value: any, name: string) =>
+                        name === "revenue" ? [formatINR(Number(value)), "Revenue"] : [value, "Orders"]
+                      }
                     />
                     <Area
                       type="monotone"
                       dataKey="revenue"
-                      name="Revenue (₹)"
+                      name="revenue"
                       stroke="#0E4825"
                       strokeWidth={3}
                       fillOpacity={1}
@@ -202,15 +258,15 @@ export const AdminAnalyticsPage: React.FC = () => {
               </div>
             </AdminCard>
 
-            {/* Categories sales bar chart */}
+            {/* Top products bar chart */}
             <AdminCard
-              title="Top-selling product categories"
-              subtitle="Units sold across active categories (Today)"
+              title="Top-selling products"
+              subtitle={`Units sold · last ${rangeDays} days`}
             >
               <div className="h-80 w-full font-sans text-xs">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={CATEGORY_DATA}
+                    data={topProducts}
                     margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EAEAEA" />
@@ -223,7 +279,7 @@ export const AdminAnalyticsPage: React.FC = () => {
                       }}
                     />
                     <Bar dataKey="sales" name="Units Sold" radius={[10, 10, 0, 0]}>
-                      {CATEGORY_DATA.map((entry, index) => (
+                      {topProducts.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.fill} />
                       ))}
                     </Bar>

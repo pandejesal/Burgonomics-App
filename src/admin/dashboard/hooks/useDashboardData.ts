@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dashboardService } from "../services/dashboardService";
+import type { AuditLogEntry, QueueStats, SystemHealthResponse } from "../types";
 
 export function useLiveCounts(enabled = true) {
   return useQuery({
@@ -32,10 +33,10 @@ export function useDashboardSnapshot(
 export function useSystemHealth(enabled = true) {
   return useQuery({
     queryKey: ["admin", "dashboard", "health"],
-    queryFn: async () => ({
-      status: "standby" as const,
-      connected: false as const,
-      message: "Awaiting live merchant Petpooja credentials",
+    queryFn: async (): Promise<SystemHealthResponse> => ({
+      status: "standby",
+      info: {},
+      details: {},
     }),
     refetchInterval: 15000,
     enabled,
@@ -99,7 +100,7 @@ export function useOrderSeries(
 export function useQueueStats(enabled = true) {
   return useQuery({
     queryKey: ["admin", "ops", "queues"],
-    queryFn: async () => [],
+    queryFn: async (): Promise<QueueStats[]> => [],
     refetchInterval: 15000,
     enabled,
     retry: 1,
@@ -242,7 +243,10 @@ export function useAuditLogs(
 ) {
   return useQuery({
     queryKey: ["admin", "audit"],
-    queryFn: async () => ({ results: [], total: 0 }),
+    queryFn: async (): Promise<{ results: AuditLogEntry[]; total: number }> => ({
+      results: [],
+      total: 0,
+    }),
     refetchInterval: 30000,
     enabled,
     retry: 2,
