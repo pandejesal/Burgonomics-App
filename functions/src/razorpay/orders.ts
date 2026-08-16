@@ -8,7 +8,7 @@ const Razorpay = require("razorpay");
 const db = admin.firestore();
 
 function getRazorpayInstance() {
-  const keyId = process.env.RAZORPAY_KEY_ID || functions.config().razorpay?.key_id || "rzp_test_TDmKPAQdJfbv6Z";
+  const keyId = process.env.RAZORPAY_KEY_ID || functions.config().razorpay?.key_id || "rzp_test_TQNIxYfbRYkmBQ";
   const keySecret = process.env.RAZORPAY_KEY_SECRET || functions.config().razorpay?.key_secret || "rzp_test_secret_placeholder";
 
   return new Razorpay({

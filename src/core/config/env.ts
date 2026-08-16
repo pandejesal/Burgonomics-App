@@ -91,7 +91,7 @@ export const appConfig: AppConfig = {
     // Accept both VITE_RAZORPAY_KEY_ID (canonical) and VITE_RAZORPAY_KEY (alias).
     razorpayKeyId: readEnv(
       "VITE_RAZORPAY_KEY_ID",
-      readEnv("VITE_RAZORPAY_KEY", ENV_NAME === "production" ? "" : "rzp_test_TDmKPAQdJfbv6Z"),
+      readEnv("VITE_RAZORPAY_KEY", ENV_NAME === "production" ? "" : "rzp_test_TQNIxYfbRYkmBQ"),
     ),
     paymentsApiBaseUrl: readEnv("VITE_PAYMENTS_API_BASE_URL", ""),
     petpoojaEnabled: readEnv("VITE_PETPOOJA_ENABLED", "false") === "true",
