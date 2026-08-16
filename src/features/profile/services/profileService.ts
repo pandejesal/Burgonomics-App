@@ -56,25 +56,35 @@ export const profileService = {
 
   async requestDeleteAccount(): Promise<ApiResult<{ ticketId: string }>> {
     try {
-      const { db, auth } = await import("@/core/config/firebase");
-      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const { auth } = await import("@/core/config/firebase");
       const user = auth.currentUser;
-      const ticketId = `del_${Date.now().toString(36)}`;
+      if (!user) return fail("UNAUTHORIZED", "Not logged in");
 
-      if (user) {
-        const userRef = doc(db, "users", user.uid);
-        await updateDoc(userRef, {
-          deletionRequested: true,
-          deletionTicketId: ticketId,
-          deletionRequestedAt: serverTimestamp(),
-        }).catch(() => {
-          // If user doc doesn't exist yet, ignore
-        });
+      const token = await user.getIdToken(true);
+      const res = await fetch("/.netlify/functions/account/deleteAccount", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return fail("SERVER_ERROR", `Deletion failed (HTTP ${res.status}): ${text}`);
       }
 
+      const data = (await res.json()) as { status: string; deleted?: boolean; ordersAnonymized?: number };
+      if (data.status !== "success" || !data.deleted) {
+        return fail("SERVER_ERROR", "Deletion was not completed by the server.");
+      }
+
+      const ticketId = `del_${Date.now().toString(36)}`;
       return ok({ ticketId });
     } catch (err: any) {
-      return ok({ ticketId: `del_${Date.now().toString(36)}` });
+      console.error("Account deletion request failed:", err);
+      return fail("SERVER_ERROR", `Failed to reach deletion service: ${err?.message || err}`);
     }
   },
 

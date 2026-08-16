@@ -16,6 +16,11 @@
   to = "/.netlify/functions/payments/:splat"
   status = 200
 
+[[redirects]]
+  from = "/api/account/*"
+  to = "/.netlify/functions/account/:splat"
+  status = 200
+
 [[headers]]
   for = "/.well-known/apple-app-site-association"
   [headers.values]

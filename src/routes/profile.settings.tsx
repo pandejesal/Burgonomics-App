@@ -39,7 +39,7 @@ function Body() {
   const requestDelete = async () => {
     const res = await profileRepository.requestAccountDeletion();
     if (res.success) {
-      toast.success("Account deletion scheduled under DPDP. Signing out...");
+      toast.success("Account deleted. Order history anonymized, all personal data removed.");
       setTimeout(async () => {
         const { useAuthStore } = await import("@/features/auth/state/authStore");
         await useAuthStore.getState().logout();
@@ -158,10 +158,11 @@ function Body() {
             onClick={() => setConfirmDelete(true)}
             className="type-label-large text-error hover:underline"
           >
-            Request account deletion
+            Delete account
           </button>
           <Text variant="caption" tone="secondary" className="mt-1">
-            We'll process your request within 30 days as required by law.
+            Permanently deletes your account. Order history is anonymized for records; all other
+            personal data is removed immediately.
           </Text>
         </AppCard>
 
@@ -173,9 +174,9 @@ function Body() {
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title="Request account deletion?"
-        description="Your data will be scheduled for deletion. This cannot be undone once processed."
-        confirmLabel="Request deletion"
+        title="Delete your account?"
+        description="This permanently deletes your account. Order history is anonymized; all other personal data is removed immediately. This cannot be undone."
+        confirmLabel="Delete account"
         destructive
         onConfirm={() => void requestDelete()}
       />
