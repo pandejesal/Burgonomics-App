@@ -23,7 +23,7 @@ export function CategoryGrid({ categories, className }: Props) {
   if (categories.length === 0) return null;
   return (
     <nav aria-label="Menu categories" className={cn("px-4", className)}>
-      <ul className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 snap-x snap-mandatory no-scrollbar">
+      <ul className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 snap-x snap-proximity scroll-smooth [overscroll-behavior-x:contain] touch-pan-x no-scrollbar">
         {categories.map((c) => {
           const initial = c.name.trim().charAt(0).toUpperCase() || "•";
           return (

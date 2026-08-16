@@ -104,7 +104,10 @@
 
 @font-face {
   font-family: "MonstroSolid";
-  src: local("MonstroSolid"), local("Monstro Solid");
+  src: local("MonstroSolid"), local("Monstro Solid"),
+    url("/fonts/MonstroSolid.woff2") format("woff2"),
+    url("/fonts/MonstroSolid.ttf") format("truetype");
+  font-display: swap;
 }
 
 :root {
@@ -129,8 +132,8 @@
   --text-inverse: #ffffff;
   --text-disabled: #9ca3af;
 
-  --divider: #e5ebf7;
-  --border: #e5ebf7;
+--divider: #e3eae5;
+  --border: #e3eae5;
   --input: #f1f5f3;
   --ring: #ff6600;
 
@@ -469,7 +472,6 @@
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
   &::-webkit-scrollbar {
     display: none; /* Chrome, Safari, Opera */
   }

@@ -9,7 +9,7 @@ interface SettingsState extends AppSettings {
 }
 
 const DEFAULTS: AppSettings = {
-  theme: "system",
+  theme: "light",
   language: "en",
   notifications: {
     offers: true,
@@ -33,7 +33,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "burg.settings",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => {
         if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
         const memoryStorage = new Map<string, string>();
