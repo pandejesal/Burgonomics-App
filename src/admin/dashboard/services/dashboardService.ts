@@ -42,6 +42,17 @@ function toMillis(value: any): number {
 }
 
 /**
+ * Normalizes an order status: real orders store a nested status object
+ * ({ code, label, kind }), legacy shapes used a flat string.
+ */
+function normalizeOrderStatus(order: any): string {
+  if (typeof order?.status?.code === "string") return order.status.code;
+  if (typeof order?.status === "string") return order.status;
+  if (typeof order?.orderStatus === "string") return order.orderStatus;
+  return "Completed";
+}
+
+/**
  * Formats a Date/timestamp into ISO-like date string (YYYY-MM-DD)
  */
 function toDayBucket(millis: number): string {
@@ -201,7 +212,7 @@ export class DashboardService {
       if (placedMillis >= oneDayAgo) {
         ordersLast24h++;
       }
-      const status = (order.orderStatus || order.status || "").toLowerCase();
+      const status = normalizeOrderStatus(order).toLowerCase();
       if (["new", "preparing", "ready", "accepted", "in_transit", "placed"].includes(status)) {
         ordersActive++;
       }
@@ -265,17 +276,19 @@ export class DashboardService {
     const productAgg = new Map<string, { name: string; units: number; revenuePaise: number }>();
 
     for (const order of ordersInRange) {
-      // Amount in paise
+      // Amount in paise (Order model stores totals.grandTotal; legacy shapes used totalAmount/total)
       const totalPaise =
         order.pricing?.finalTotal
           ? Math.round(order.pricing.finalTotal * 100)
-          : order.totalAmount
-            ? Math.round(order.totalAmount * 100)
-            : order.total
-              ? Math.round(order.total * 100)
-              : 0;
+          : order.totals?.grandTotal
+            ? Math.round(order.totals.grandTotal * 100)
+            : order.totalAmount
+              ? Math.round(order.totalAmount * 100)
+              : order.total
+                ? Math.round(order.total * 100)
+                : 0;
 
-      const status = order.orderStatus || order.status || "Completed";
+      const status = normalizeOrderStatus(order);
       if (status !== "Cancelled" && status !== "Refunded") {
         totalRevenuePaise += totalPaise;
       }
