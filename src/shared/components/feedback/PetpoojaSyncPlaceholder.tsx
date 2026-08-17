@@ -10,9 +10,7 @@ interface PetpoojaSyncPlaceholderProps {
   className?: string;
 }
 
-export function PetpoojaSyncPlaceholder({
-  className,
-}: PetpoojaSyncPlaceholderProps) {
+export function PetpoojaSyncPlaceholder({ className }: PetpoojaSyncPlaceholderProps) {
   const [showLogs, setShowLogs] = useState(false);
 
   const mockWebhookLogs = [
@@ -88,8 +86,8 @@ export function PetpoojaSyncPlaceholder({
       </Text>
 
       <p className="mt-2 text-xs text-text-secondary max-w-[22rem] italic">
-        When a manager updates the menu on the billing machine, this screen automatically updates with
-        fresh burgers, prices, and stock indicators.
+        When a manager updates the menu on the billing machine, this screen automatically updates
+        with fresh burgers, prices, and stock indicators.
       </p>
 
       {/* Sync Status / Logs */}

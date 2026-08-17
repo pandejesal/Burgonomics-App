@@ -20,13 +20,9 @@ export const adminPaymentsService = {
   listenLiveTransactions(
     onUpdate: (transactions: TransactionDetails[]) => void,
     onError: (err: Error) => void,
-    limitCount = 100
+    limitCount = 100,
   ) {
-    const q = query(
-      collection(db, "payments"),
-      orderBy("createdAt", "desc"),
-      limit(limitCount)
-    );
+    const q = query(collection(db, "payments"), orderBy("createdAt", "desc"), limit(limitCount));
 
     return onSnapshot(
       q,
@@ -37,7 +33,7 @@ export const adminPaymentsService = {
         });
         onUpdate(liveTransactions);
       },
-      (error) => onError(error)
+      (error) => onError(error),
     );
   },
 
@@ -47,13 +43,9 @@ export const adminPaymentsService = {
   listenLiveRefunds(
     onUpdate: (refunds: RefundDetails[]) => void,
     onError: (err: Error) => void,
-    limitCount = 100
+    limitCount = 100,
   ) {
-    const q = query(
-      collection(db, "refunds"),
-      orderBy("createdAt", "desc"),
-      limit(limitCount)
-    );
+    const q = query(collection(db, "refunds"), orderBy("createdAt", "desc"), limit(limitCount));
 
     return onSnapshot(
       q,
@@ -64,7 +56,7 @@ export const adminPaymentsService = {
         });
         onUpdate(liveRefunds);
       },
-      (error) => onError(error)
+      (error) => onError(error),
     );
   },
 
@@ -74,12 +66,12 @@ export const adminPaymentsService = {
   listenLiveDiscrepancies(
     onUpdate: (discrepancies: DiscrepancyDetails[]) => void,
     onError: (err: Error) => void,
-    limitCount = 100
+    limitCount = 100,
   ) {
     const q = query(
       collection(db, "payment_discrepancies"),
       orderBy("createdAt", "desc"),
-      limit(limitCount)
+      limit(limitCount),
     );
 
     return onSnapshot(
@@ -91,7 +83,7 @@ export const adminPaymentsService = {
         });
         onUpdate(liveDiscrepancies);
       },
-      (error) => onError(error)
+      (error) => onError(error),
     );
   },
 
@@ -101,7 +93,7 @@ export const adminPaymentsService = {
   async resolveDiscrepancy(
     discrepancyId: string,
     resolvedBy: string,
-    notes: string
+    notes: string,
   ): Promise<boolean> {
     try {
       const docRef = doc(db, "payment_discrepancies", discrepancyId);
@@ -109,7 +101,7 @@ export const adminPaymentsService = {
         status: "RESOLVED",
         resolvedAt: new Date().toISOString(),
         resolvedBy,
-        resolutionNotes: notes
+        resolutionNotes: notes,
       });
       return true;
     } catch (e) {
@@ -117,7 +109,7 @@ export const adminPaymentsService = {
       return false;
     }
   },
-  
+
   /**
    * Initiate a manual refund
    */
@@ -125,7 +117,7 @@ export const adminPaymentsService = {
     paymentId: string,
     amountPaise: number,
     reason: string,
-    processedBy: string
+    processedBy: string,
   ): Promise<boolean> {
     try {
       // In a real app, this would trigger a Firebase Function to talk to Razorpay API
@@ -140,12 +132,12 @@ export const adminPaymentsService = {
         status: "PENDING",
         processedBy,
         createdAt: new Date().toISOString(),
-        gatewayStatus: "initiated"
+        gatewayStatus: "initiated",
       });
       return true;
     } catch (e) {
       console.error("Failed to process manual refund", e);
       return false;
     }
-  }
+  },
 };

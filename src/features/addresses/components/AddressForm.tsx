@@ -100,7 +100,15 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       const data = await response.json();
 
       if (data && data.address) {
-        const { road, house_number, city: fetchedCity, town, village, postcode, state: fetchedState } = data.address;
+        const {
+          road,
+          house_number,
+          city: fetchedCity,
+          town,
+          village,
+          postcode,
+          state: fetchedState,
+        } = data.address;
 
         const bestCity = fetchedCity || town || village;
         if (bestCity) setCity(bestCity);
@@ -247,7 +255,11 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       </div>
 
       {/* Form Fields */}
-      <form id="address-entry-form" onSubmit={submit} className="space-y-5 bg-surface rounded-[var(--radius-large)] p-1">
+      <form
+        id="address-entry-form"
+        onSubmit={submit}
+        className="space-y-5 bg-surface rounded-[var(--radius-large)] p-1"
+      >
         <fieldset>
           <legend className="type-label-large uppercase text-primary mb-3 tracking-wide">
             Save as

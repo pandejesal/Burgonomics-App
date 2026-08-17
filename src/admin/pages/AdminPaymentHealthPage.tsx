@@ -79,9 +79,9 @@ export const AdminPaymentHealthPage: React.FC = () => {
       adminPaymentsService.listenLiveDiscrepancies(
         (data) => {
           setDiscrepancies(data);
-          setRetryQueueCount(data.filter(d => d.status === "UNRESOLVED").length);
+          setRetryQueueCount(data.filter((d) => d.status === "UNRESOLVED").length);
         },
-        (err) => console.error("Discrepancy listener error", err)
+        (err) => console.error("Discrepancy listener error", err),
       );
     });
   }, []);
@@ -103,9 +103,7 @@ export const AdminPaymentHealthPage: React.FC = () => {
 
   const handleClearRetryQueue = () => {
     if (!canModifyInfrastructure) {
-      toast.error(
-        "Access Denied: Your administrative role is unauthorized to clear queues.",
-      );
+      toast.error("Access Denied: Your administrative role is unauthorized to clear queues.");
       return;
     }
 

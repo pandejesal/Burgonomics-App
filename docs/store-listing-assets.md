@@ -7,6 +7,7 @@ This document contains production-ready store listing copy, specifications, priv
 ## 1. Store Listing Metadata
 
 ### Basic Information
+
 - **App Name**: `Burgonomics — Burgers & Dining` (Google Play: 30 chars max, Apple App Store: 30 chars max)
 - **Subtitle (iOS)**: `Gourmet Burgers, Fast Delivery` (30 chars max)
 - **Short Description (Google Play)**: `Order gourmet burgers, fries, shakes & combos for delivery or dine-in.` (80 chars max)
@@ -16,6 +17,7 @@ This document contains production-ready store listing copy, specifications, priv
 - **Default Language**: English (India) — `en-IN`
 
 ### Promotional & Search Keywords
+
 - **Google Play Tags**: Food Delivery, Restaurant, Gourmet Burgers, Takeaway, Online Ordering, Fast Food
 - **Apple App Store Keywords (100 chars max)**: `burgers,food delivery,restaurant,burgonomics,dine-in,fries,shakes,combos,fast food,takeaway,meals`
 
@@ -57,39 +59,43 @@ Website: https://burgonomics.com
 ## 3. Visual Assets Specifications
 
 ### Google Play Store Specifications
-| Asset | Dimensions | Format | Requirements |
-|---|---|---|---|
-| **App Icon** | 512 x 512 px | PNG (32-bit, no alpha) | High-res logo with rounded square mask applied by Google |
-| **Feature Graphic** | 1024 x 500 px | JPEG / 24-bit PNG | Bold hero branding banner with burger imagery and logo |
-| **Phone Screenshots** | 1080 x 2400 px (or 1080 x 1920) | PNG / JPEG (16:9 or 18:9) | Min 4 screenshots: Home, Menu Customizer, Cart/Checkout, Live Tracking |
-| **7-Inch Tablet Screenshots** | 1200 x 1920 px | PNG / JPEG | Optional / Recommended |
-| **10-Inch Tablet Screenshots** | 1600 x 2560 px | PNG / JPEG | Optional / Recommended |
+
+| Asset                          | Dimensions                      | Format                    | Requirements                                                           |
+| ------------------------------ | ------------------------------- | ------------------------- | ---------------------------------------------------------------------- |
+| **App Icon**                   | 512 x 512 px                    | PNG (32-bit, no alpha)    | High-res logo with rounded square mask applied by Google               |
+| **Feature Graphic**            | 1024 x 500 px                   | JPEG / 24-bit PNG         | Bold hero branding banner with burger imagery and logo                 |
+| **Phone Screenshots**          | 1080 x 2400 px (or 1080 x 1920) | PNG / JPEG (16:9 or 18:9) | Min 4 screenshots: Home, Menu Customizer, Cart/Checkout, Live Tracking |
+| **7-Inch Tablet Screenshots**  | 1200 x 1920 px                  | PNG / JPEG                | Optional / Recommended                                                 |
+| **10-Inch Tablet Screenshots** | 1600 x 2560 px                  | PNG / JPEG                | Optional / Recommended                                                 |
 
 ### Apple App Store Specifications
-| Device Category | Display Size | Dimensions | Format |
-|---|---|---|---|
-| **iPhone 6.7" Display** | iPhone 15 Pro Max / 16 Pro Max | 1290 x 2796 px | PNG / Flat JPEG (No alpha) |
-| **iPhone 6.5" Display** | iPhone 11 Pro Max / XS Max | 1242 x 2688 px | PNG / Flat JPEG |
-| **iPhone 5.5" Display** | iPhone 8 Plus | 1242 x 2208 px | PNG / Flat JPEG |
-| **iPad Pro (6th Gen) 12.9"** | iPad Pro 12.9" | 2048 x 2732 px | PNG / Flat JPEG |
-| **App Store Icon** | Universal | 1024 x 1024 px | PNG (No alpha / transparency) |
+
+| Device Category              | Display Size                   | Dimensions     | Format                        |
+| ---------------------------- | ------------------------------ | -------------- | ----------------------------- |
+| **iPhone 6.7" Display**      | iPhone 15 Pro Max / 16 Pro Max | 1290 x 2796 px | PNG / Flat JPEG (No alpha)    |
+| **iPhone 6.5" Display**      | iPhone 11 Pro Max / XS Max     | 1242 x 2688 px | PNG / Flat JPEG               |
+| **iPhone 5.5" Display**      | iPhone 8 Plus                  | 1242 x 2208 px | PNG / Flat JPEG               |
+| **iPad Pro (6th Gen) 12.9"** | iPad Pro 12.9"                 | 2048 x 2732 px | PNG / Flat JPEG               |
+| **App Store Icon**           | Universal                      | 1024 x 1024 px | PNG (No alpha / transparency) |
 
 ---
 
 ## 4. Google Play Data Safety Questionnaire Draft
 
 ### 1. Data Collection & Purpose
-| Data Type | Collected? | Shared with 3rd Parties? | Required / Optional | Purpose |
-|---|---|---|---|---|
-| **Name** | Yes | No | Required | Order fulfillment & customer support |
-| **Phone Number** | Yes | No | Required | Account sign-in (OTP) & delivery SMS alerts |
-| **Physical Address** | Yes | No | Optional (Delivery only) | Food delivery routing |
-| **Purchase History** | Yes | No | Required | Order history, receipts & refunds |
-| **Payment Info** | Handled by Gateway | Shared with Razorpay | Required for online pay | Payment processing (PCI-DSS compliant) |
-| **Precise / Approx Location** | Yes | No | Optional | Finding nearby restaurant branches & delivery address autofill |
-| **Device / Push Token** | Yes | No | Required | Transactional order status notifications |
+
+| Data Type                     | Collected?         | Shared with 3rd Parties? | Required / Optional      | Purpose                                                        |
+| ----------------------------- | ------------------ | ------------------------ | ------------------------ | -------------------------------------------------------------- |
+| **Name**                      | Yes                | No                       | Required                 | Order fulfillment & customer support                           |
+| **Phone Number**              | Yes                | No                       | Required                 | Account sign-in (OTP) & delivery SMS alerts                    |
+| **Physical Address**          | Yes                | No                       | Optional (Delivery only) | Food delivery routing                                          |
+| **Purchase History**          | Yes                | No                       | Required                 | Order history, receipts & refunds                              |
+| **Payment Info**              | Handled by Gateway | Shared with Razorpay     | Required for online pay  | Payment processing (PCI-DSS compliant)                         |
+| **Precise / Approx Location** | Yes                | No                       | Optional                 | Finding nearby restaurant branches & delivery address autofill |
+| **Device / Push Token**       | Yes                | No                       | Required                 | Transactional order status notifications                       |
 
 ### 2. Security Practices
+
 - **Data Encrypted in Transit**: Yes (HTTPS / TLS 1.3 for all client-to-server communications).
 - **Data Deletion Mechanism**: Yes — users can delete their account and associated data directly within the app (**Profile → Settings → Delete Account**) or by emailing `privacy@burgonomics.com`.
 - **Target Audience**: General public (Ages 13+).
@@ -99,9 +105,11 @@ Website: https://burgonomics.com
 ## 5. Apple App Store Privacy Details (App Privacy Labels)
 
 ### "Data Used to Track You"
+
 - **None** — Burgonomics does not track users across apps and websites owned by other companies for advertising.
 
 ### "Data Linked to You"
+
 - **Contact Info**: Phone Number, Name, Physical Address.
 - **Financial Info**: Payment Information (Razorpay transaction token ID; no raw card/banking numbers stored).
 - **Purchases**: Purchase History.
@@ -109,6 +117,7 @@ Website: https://burgonomics.com
 - **Location**: Coarse / Precise Location (for delivery address detection).
 
 ### "Data Not Linked to You"
+
 - **Diagnostics**: Crash logs and performance diagnostics.
 
 ---
@@ -117,6 +126,7 @@ Website: https://burgonomics.com
 
 > [!NOTE]
 > **IAP Exemption Ruling**:
-> - Under **Apple App Store Review Guideline 3.1.3(e)** (*"Goods and Services Outside of the App"*) and **Google Play Payments Policy** (*"Physical goods or services"*), applications that sell physical goods or services consumed in the physical world (such as restaurant food, grocery items, physical delivery) **MUST NOT** use In-App Purchase / Google Play In-App Billing.
+>
+> - Under **Apple App Store Review Guideline 3.1.3(e)** (_"Goods and Services Outside of the App"_) and **Google Play Payments Policy** (_"Physical goods or services"_), applications that sell physical goods or services consumed in the physical world (such as restaurant food, grocery items, physical delivery) **MUST NOT** use In-App Purchase / Google Play In-App Billing.
 > - Burgonomics processes transactions for physical restaurant meals, delivery, and takeaway.
 > - Third-party payment gateways (Razorpay, UPI, Cash on Delivery) are fully permitted and required by platform guidelines. Digital IAP entitlements do not apply.

@@ -1,9 +1,5 @@
 import { create } from "zustand";
-import {
-  adminAuthService,
-  AdminUser,
-  LoginResponse,
-} from "../services/adminAuthService";
+import { adminAuthService, AdminUser, LoginResponse } from "../services/adminAuthService";
 import { auth } from "@/core/config/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -51,13 +47,18 @@ export const useAdminAuthStore = create<AdminAuthState>((set, get) => ({
 
   bootstrap: async () => {
     set({ isLoading: true });
-    
+
     return new Promise((resolve) => {
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
           const authState = await adminAuthService.checkAuthState();
           if (authState) {
-            set({ admin: authState.admin, accessToken: authState.accessToken, isLoading: false, error: null });
+            set({
+              admin: authState.admin,
+              accessToken: authState.accessToken,
+              isLoading: false,
+              error: null,
+            });
             resolve(true);
           } else {
             set({ admin: null, accessToken: null, isLoading: false });

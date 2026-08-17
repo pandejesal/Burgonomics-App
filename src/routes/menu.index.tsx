@@ -48,6 +48,7 @@ function MenuPage() {
   const online = useAppConfig((s) => s.isOnline);
   const store = useStoreSelection((s) => s.activeStore);
   const isHydrated = useStoreSelection((s) => s.isHydrated);
+  const simulationMode = useDemoStore((s) => s.simulationMode);
 
   const status = useMenuStore((s) => s.status);
   const error = useMenuStore((s) => s.error);
@@ -59,7 +60,7 @@ function MenuPage() {
   const loadMore = useMenuStore((s) => s.loadMore);
   const setActiveCategory = useMenuStore((s) => s.setActiveCategory);
   const setViewMode = useMenuStore((s) => s.setViewMode);
-  const simulationMode = useDemoStore((s) => s.simulationMode);
+  const subscribeToLiveMenu = useMenuStore((s) => s.subscribeToLiveMenu);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -68,7 +69,9 @@ function MenuPage() {
       return;
     }
     void load(store.id);
-  }, [isHydrated, store, load, navigate]);
+    const unsub = subscribeToLiveMenu(store.id);
+    return () => unsub();
+  }, [isHydrated, store, load, subscribeToLiveMenu, navigate]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -194,7 +197,9 @@ function MenuPage() {
                     onClick={() => setViewMode("list")}
                     className={cn(
                       "grid h-9 w-9 place-items-center rounded-full transition-colors",
-                      viewMode === "list" ? "bg-primary/10 text-primary font-bold" : "text-text-secondary hover:text-text-primary",
+                      viewMode === "list"
+                        ? "bg-primary/10 text-primary font-bold"
+                        : "text-text-secondary hover:text-text-primary",
                     )}
                   >
                     <ListIcon className="h-4 w-4" />
@@ -206,7 +211,9 @@ function MenuPage() {
                     onClick={() => setViewMode("grid")}
                     className={cn(
                       "grid h-9 w-9 place-items-center rounded-full transition-colors",
-                      viewMode === "grid" ? "bg-primary/10 text-primary font-bold" : "text-text-secondary hover:text-text-primary",
+                      viewMode === "grid"
+                        ? "bg-primary/10 text-primary font-bold"
+                        : "text-text-secondary hover:text-text-primary",
                     )}
                   >
                     <LayoutGrid className="h-4 w-4" />

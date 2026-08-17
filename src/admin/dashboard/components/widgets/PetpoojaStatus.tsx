@@ -1,13 +1,7 @@
 import React from "react";
 import { useSyncHealth, useSyncHistory, useSyncMutations } from "../../hooks/useDashboardData";
 import { toast } from "sonner";
-import {
-  AlertTriangle,
-  RefreshCw,
-  Zap,
-  Play,
-  Activity,
-} from "lucide-react";
+import { AlertTriangle, RefreshCw, Zap, Play, Activity } from "lucide-react";
 
 export const PetpoojaStatus: React.FC = () => {
   const {
@@ -114,14 +108,16 @@ export const PetpoojaStatus: React.FC = () => {
   }
 
   // Extract from real health API:
-  const apiStatus = isConnected
-    ? health?.api === "up" ? "UP" : "DOWN"
-    : "NOT CONNECTED";
+  const apiStatus = isConnected ? (health?.api === "up" ? "UP" : "DOWN") : "NOT CONNECTED";
   const webhookStatus = isConnected
-    ? health?.webhooks === "up" ? "ACTIVE" : "DOWN"
+    ? health?.webhooks === "up"
+      ? "ACTIVE"
+      : "DOWN"
     : "AWAITING CREDENTIALS";
   const circuitBreaker = isConnected
-    ? health?.circuitBreaker === "OPEN" ? "OPEN (TRIPPED)" : "CLOSED (SECURE)"
+    ? health?.circuitBreaker === "OPEN"
+      ? "OPEN (TRIPPED)"
+      : "CLOSED (SECURE)"
     : "STANDBY";
 
   // Extract stats from sync history
@@ -173,7 +169,9 @@ export const PetpoojaStatus: React.FC = () => {
             <span
               className={`block font-black text-xs font-mono mt-1 ${
                 isConnected
-                  ? apiStatus === "UP" ? "text-[#16A34A]" : "text-[#DC2626]"
+                  ? apiStatus === "UP"
+                    ? "text-[#16A34A]"
+                    : "text-[#DC2626]"
                   : "text-amber-500"
               }`}
             >
@@ -188,7 +186,9 @@ export const PetpoojaStatus: React.FC = () => {
             <span
               className={`block font-black text-xs font-mono mt-1 ${
                 isConnected
-                  ? webhookStatus === "ACTIVE" ? "text-[#16A34A]" : "text-[#DC2626]"
+                  ? webhookStatus === "ACTIVE"
+                    ? "text-[#16A34A]"
+                    : "text-[#DC2626]"
                   : "text-amber-500"
               }`}
             >
@@ -203,7 +203,9 @@ export const PetpoojaStatus: React.FC = () => {
             <span
               className={`block font-black text-xs font-mono mt-1 ${
                 isConnected
-                  ? circuitBreaker.includes("CLOSED") ? "text-[#16A34A]" : "text-orange-500"
+                  ? circuitBreaker.includes("CLOSED")
+                    ? "text-[#16A34A]"
+                    : "text-orange-500"
                   : "text-amber-500/80"
               }`}
             >

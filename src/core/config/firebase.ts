@@ -9,7 +9,7 @@ const firebaseConfig = {
   storageBucket: "burgonomics-7faa8.firebasestorage.app",
   messagingSenderId: "738930066637",
   appId: "1:738930066637:web:fc1aa0f0e2a52a19df9584",
-  measurementId: "G-HQ218Q7CXF"
+  measurementId: "G-HQ218Q7CXF",
 };
 
 const app = initializeApp(firebaseConfig);

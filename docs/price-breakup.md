@@ -3,7 +3,7 @@
 **Project**: Burgonomics Food Ordering & Restaurant Integration Platform  
 **Target Platforms**: Android (Capacitor), iOS (Capacitor), Web / PWA, NestJS API, Firebase Cloud Infrastructure  
 **Baseline Repository State**: Verified Commit `9c4c2a3` (Triple-Green CI, Hardened Security, POS & Payment Integration)  
-**Standard Blended Engineering Rate**: ₹750 / hour (Indian Senior Full-Stack & Mobile Engineering)  
+**Standard Blended Engineering Rate**: ₹750 / hour (Indian Senior Full-Stack & Mobile Engineering)
 
 ---
 
@@ -41,6 +41,7 @@ The inventory below reflects the verified codebase architecture across frontend,
 ### Detailed Module Scope & Task Breakdown
 
 #### Module 1: Mobile Client Application (React 19 + TanStack Router + TailwindCSS)
+
 - **Authentication & User State (10 hrs)**:
   - Phone OTP authentication via Firebase Auth with passwordless SMS flow.
   - User session persistence, secure storage bridging, profile management.
@@ -64,11 +65,12 @@ The inventory below reflects the verified codebase architecture across frontend,
   - Glassmorphic theme system, smooth page transitions, tactile haptic feedback.
   - Embedded Privacy Policy and Terms of Service views.
 
-*Subtotal Effort*: **52 hours** · *Market Valuation*: **₹39,000**
+_Subtotal Effort_: **52 hours** · _Market Valuation_: **₹39,000**
 
 ---
 
 #### Module 2: Enterprise Backend Microservices (NestJS + TypeScript)
+
 - **API Core & Architecture (8 hrs)**:
   - Modular architecture (Auth, Mobile POS, Admin, Orders, Realtime).
   - Class-validator DTOs with strict input sanitization.
@@ -79,11 +81,12 @@ The inventory below reflects the verified codebase architecture across frontend,
 - **Automated Testing Suite (6 hrs)**:
   - 25 Jest test suites validating controllers, guards, filters, and interceptors.
 
-*Subtotal Effort*: **24 hours** · *Market Valuation*: **₹18,000**
+_Subtotal Effort_: **24 hours** · _Market Valuation_: **₹18,000**
 
 ---
 
 #### Module 3: Firebase Cloud Infrastructure & POS Bridge (Node 20 + Express)
+
 - **Cloud Functions Payments Router (12 hrs)**:
   - Express app mounted on `/payments` handling `/createPaymentOrder`, `/verifyPayment`, and `/razorpayWebhook`.
   - Authoritative catalog lookup computing exact item + addon sums.
@@ -96,11 +99,12 @@ The inventory below reflects the verified codebase architecture across frontend,
   - Production `firestore.rules` locking down direct client writes to orders and payment docs.
   - 5-minute replay-window timestamp verification on incoming webhooks.
 
-*Subtotal Effort*: **32 hours** · *Market Valuation*: **₹24,000**
+_Subtotal Effort_: **32 hours** · _Market Valuation_: **₹24,000**
 
 ---
 
 #### Module 4: Native Container Engineering (Capacitor 8 + Android + iOS)
+
 - **Android Native Container (8 hrs)**:
   - Gradle multi-module setup with Android SDK 34 / 35.
   - Native release keystore generation and signing configuration.
@@ -111,11 +115,12 @@ The inventory below reflects the verified codebase architecture across frontend,
   - Universal Links (`apple-app-site-association`) integration.
   - Free personal Apple ID local signing configuration.
 
-*Subtotal Effort*: **22 hours** · *Market Valuation*: **₹16,500**
+_Subtotal Effort_: **22 hours** · _Market Valuation_: **₹16,500**
 
 ---
 
 #### Module 5: Automated CI/CD Pipelines (GitHub Actions)
+
 - **Android Release Pipeline (5 hrs)**:
   - Automated build script producing signed APK and Google Play AAB bundles.
 - **iOS Simulator Pipeline (5 hrs)**:
@@ -123,11 +128,12 @@ The inventory below reflects the verified codebase architecture across frontend,
 - **Backend Test Automation (4 hrs)**:
   - NestJS test runner executing 25 test suites per commit.
 
-*Subtotal Effort*: **14 hours** · *Market Valuation*: **₹10,500**
+_Subtotal Effort_: **14 hours** · _Market Valuation_: **₹10,500**
 
 ---
 
 #### Module 6: App Store & Google Play Store Submission Packaging
+
 - **Production Asset Preparation (6 hrs)**:
   - Android App Bundle (`.aab`) packaging and signing verification.
   - Visual asset dimension specifications for iPhone (6.7", 6.5", 5.5", iPad) and Android.
@@ -137,11 +143,12 @@ The inventory below reflects the verified codebase architecture across frontend,
   - Apple App Privacy label mapping.
   - In-App Purchase (IAP) physical goods exemption legal audit.
 
-*Subtotal Effort*: **12 hours** · *Market Valuation*: **₹9,000**
+_Subtotal Effort_: **12 hours** · _Market Valuation_: **₹9,000**
 
 ---
 
 #### Module 7: Security Audit Remediation & Hardening
+
 - **Remediation of 20+ Audit Vulnerabilities (18 hrs)**:
   - Elimination of client-supplied payment amount overrides.
   - Blocking unauthenticated payment order creation and verification.
@@ -149,18 +156,19 @@ The inventory below reflects the verified codebase architecture across frontend,
   - Fail-closed webhook security with HMAC validation.
   - DPDP Act compliant privacy controls and data segregation.
 
-*Subtotal Effort*: **18 hours** · *Market Valuation*: **₹13,500**
+_Subtotal Effort_: **18 hours** · _Market Valuation_: **₹13,500**
 
 ---
 
 #### Module 8: Web Hosting, Verification & Catalog Tooling
+
 - **Netlify & Edge Routing (4 hrs)**:
   - `netlify.toml` SPA rewrites and `public/_headers` configuration.
   - Static fallback pages for `/privacy` and `/terms`.
 - **QA Acceptance Probes & Catalog Seed Script (4 hrs)**:
   - End-to-end endpoint probing scripts and Firestore seed script.
 
-*Subtotal Effort*: **8 hours** · *Market Valuation*: **₹6,000**
+_Subtotal Effort_: **8 hours** · _Market Valuation_: **₹6,000**
 
 ---
 
@@ -186,6 +194,7 @@ Hour-by-hour math (182 hrs / ₹750 / ₹1,36,500) is INTERNAL ONLY — never pr
 
 > [!NOTE]
 > **Primary Cost Drivers**:
+>
 > 1. **Payments & Security Architecture**: Catalog-authoritative pricing, anti-tamper verification, and audit remediation.
 > 2. **Petpooja POS Cloud Bridge**: Bi-directional webhooks and KOT dispatch.
 > 3. **Native iOS SwiftPM Engineering**: Swift container patches and Universal Links.
@@ -199,17 +208,17 @@ Hour-by-hour math (182 hrs / ₹750 / ₹1,36,500) is INTERNAL ONLY — never pr
 
 The contracted rate of **₹40,000** covers the complete repository scope documented above **plus multi-store support for 17 outlets**. Any operational or feature expansion beyond this baseline is priced under the schedule below:
 
-| # | Escalation Trigger | Scope Description | Estimated Effort | Additional Cost | Paid By |
-|---|---|---|---|---|---|
-| **1** | **Live Petpooja Production Setup** | Transitioning from sandbox to production merchant credentials, store ID mapping, and live KOT testing. | 10–12 hrs | **₹8,000** | Client pays dev fee; Petpooja API subscription direct. |
-| **2** | **Apple Developer Account & Submission** | Apple Developer enrollment assistance ($99/yr paid to Apple), TestFlight setup, App Store upload, and review response cycle. | 12–16 hrs | **₹10,000** | Dev fee to engineer; $99 Apple fee paid directly by client. |
-| **3** | **Google Play Console Submission** | Play Console registration ($25 one-time paid to Google), Store listing submission, and review cycle. | 8–10 hrs | **₹6,000** | Dev fee to engineer; $25 Google fee paid directly by client. |
-| **4** | **Production Push Notifications** | Generating Apple APNs `.p8` keys, FCM production credentials, and live multi-device push verification. | 8–10 hrs | **₹6,000** | Developer fee. |
-| **5** | **Live Kitchen Display System (KDS)** | Dedicated web/tablet dashboard for kitchen staff with live sound alerts, ticket bumping, and prep time tracking. | 25–30 hrs | **₹20,000** | Developer fee. |
-| **6** | **Additional Outlets (beyond 17)** | Per-outlet configuration: store registry registration, menu mapping, per-store Petpooja credentials and webhook routing, availability/pricing, rollout. First 17 outlets are included in the all-in quote. | 2–4 hrs / outlet | **₹2,500 / outlet** | Dev fee; per-outlet Petpooja API subscriptions paid directly by client. |
-| **7** | **Advanced Admin Marketing & CRM** | Dynamic discount coupon engine, customer loyalty points, and automated SMS marketing triggers. | 20–25 hrs | **₹16,000** | Developer fee. |
-| **8** | **Post-Launch Maintenance & Support Retainer** | Best-effort bug fixes, security patches, dependency updates, and uptime monitoring.<br>• **SLA**: 48-hr response for non-critical; critical issues (app down / payment failure) acknowledged within 12 hrs and best-effort same-day fix (no 24/7 commitment).<br>• **Limits**: Up to **2 hours** of engineering work/month included; additional hours at standard rate (₹750/hr). | Retainer | **₹6,000 / 6 mo** (₹1,000/mo) | Developer fee (Semi-annual billing). |
-| **9** | **New Custom Features / 3rd Party APIs** | Any new feature not in Section 1 (e.g. Dunzo/Shadowfax delivery logistics, WhatsApp bot). | Hourly | **₹750 / hr** (Quoted per feature) | Developer fee. |
+| #     | Escalation Trigger                             | Scope Description                                                                                                                                                                                                                                                                                                                                                                 | Estimated Effort | Additional Cost                    | Paid By                                                                 |
+| ----- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| **1** | **Live Petpooja Production Setup**             | Transitioning from sandbox to production merchant credentials, store ID mapping, and live KOT testing.                                                                                                                                                                                                                                                                            | 10–12 hrs        | **₹8,000**                         | Client pays dev fee; Petpooja API subscription direct.                  |
+| **2** | **Apple Developer Account & Submission**       | Apple Developer enrollment assistance ($99/yr paid to Apple), TestFlight setup, App Store upload, and review response cycle.                                                                                                                                                                                                                                                      | 12–16 hrs        | **₹10,000**                        | Dev fee to engineer; $99 Apple fee paid directly by client.             |
+| **3** | **Google Play Console Submission**             | Play Console registration ($25 one-time paid to Google), Store listing submission, and review cycle.                                                                                                                                                                                                                                                                              | 8–10 hrs         | **₹6,000**                         | Dev fee to engineer; $25 Google fee paid directly by client.            |
+| **4** | **Production Push Notifications**              | Generating Apple APNs `.p8` keys, FCM production credentials, and live multi-device push verification.                                                                                                                                                                                                                                                                            | 8–10 hrs         | **₹6,000**                         | Developer fee.                                                          |
+| **5** | **Live Kitchen Display System (KDS)**          | Dedicated web/tablet dashboard for kitchen staff with live sound alerts, ticket bumping, and prep time tracking.                                                                                                                                                                                                                                                                  | 25–30 hrs        | **₹20,000**                        | Developer fee.                                                          |
+| **6** | **Additional Outlets (beyond 17)**             | Per-outlet configuration: store registry registration, menu mapping, per-store Petpooja credentials and webhook routing, availability/pricing, rollout. First 17 outlets are included in the all-in quote.                                                                                                                                                                        | 2–4 hrs / outlet | **₹2,500 / outlet**                | Dev fee; per-outlet Petpooja API subscriptions paid directly by client. |
+| **7** | **Advanced Admin Marketing & CRM**             | Dynamic discount coupon engine, customer loyalty points, and automated SMS marketing triggers.                                                                                                                                                                                                                                                                                    | 20–25 hrs        | **₹16,000**                        | Developer fee.                                                          |
+| **8** | **Post-Launch Maintenance & Support Retainer** | Best-effort bug fixes, security patches, dependency updates, and uptime monitoring.<br>• **SLA**: 48-hr response for non-critical; critical issues (app down / payment failure) acknowledged within 12 hrs and best-effort same-day fix (no 24/7 commitment).<br>• **Limits**: Up to **2 hours** of engineering work/month included; additional hours at standard rate (₹750/hr). | Retainer         | **₹6,000 / 6 mo** (₹1,000/mo)      | Developer fee (Semi-annual billing).                                    |
+| **9** | **New Custom Features / 3rd Party APIs**       | Any new feature not in Section 1 (e.g. Dunzo/Shadowfax delivery logistics, WhatsApp bot).                                                                                                                                                                                                                                                                                         | Hourly           | **₹750 / hr** (Quoted per feature) | Developer fee.                                                          |
 
 ---
 
@@ -246,5 +255,3 @@ Live demo → Client acceptance → FULL PAYMENT (₹40,000) → Go-live & key c
    - The all-in baseline covers multi-store deployment for the client's first 17 outlets (store registry, per-store data model, per-store Petpooja credentials, per-store webhook routing). Additional outlets beyond 17 are priced at ₹2,500 each under the escalation clause (see Additional Outlets row).
 6. **Phone OTP Verification**:
    - Phone OTP sign-in via Firebase Auth — free within Google's free tier (10,000 verifications/month); any overage is covered by the existing usage pass-through (no Blaze plan required).
-
-

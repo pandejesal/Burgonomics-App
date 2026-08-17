@@ -11,9 +11,11 @@ import {
   CheckCircle2,
   Bike,
   Store as StoreIcon,
+  Utensils,
   ShieldCheck,
   CreditCard,
   Coins,
+  Timer,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -77,6 +79,7 @@ function CheckoutPage() {
   const lines = useCartStore((s) => s.lines);
   const promo = useCartStore((s) => s.promo);
   const itemCount = useCartStore(selectItemCount);
+  const priceLockExpiresAt = useCartStore((s) => s.priceLockExpiresAt);
 
   const activeStore = useStoreSelection((s) => s.activeStore);
   const fulfillment = useStoreSelection((s) => s.fulfillment);
@@ -87,6 +90,8 @@ function CheckoutPage() {
 
   const orderNotes = useCheckoutStore((s) => s.orderNotes);
   const setOrderNotes = useCheckoutStore((s) => s.setOrderNotes);
+  const tableNumber = useCheckoutStore((s) => s.tableNumber);
+  const setTableNumber = useCheckoutStore((s) => s.setTableNumber);
   const selectedAddress = useAddressStore(selectSelectedAddress);
 
   const paymentMethod = usePaymentStore((s) => s.method);
@@ -102,6 +107,33 @@ function CheckoutPage() {
   const [orderNotePresets, setOrderNotePresets] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [validationError, setValidationError] = React.useState<string | null>(null);
+  const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
+
+  // 10-Minute Price Lock Countdown Timer
+  React.useEffect(() => {
+    if (!priceLockExpiresAt) {
+      setRemainingLockSeconds(null);
+      return;
+    }
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.floor((priceLockExpiresAt - Date.now()) / 1000));
+      setRemainingLockSeconds(remaining);
+      if (remaining === 0) {
+        // Auto-revalidate cart when price lock expires
+        void cartRepository.validateAndRefreshPriceLock().then((res) => {
+          if (res.success && res.data.revalidated && res.data.messages.length > 0) {
+            toast.warning("Price Lock Expired", {
+              description: res.data.messages.join(" "),
+            });
+            void recompute();
+          }
+        });
+      }
+    };
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [priceLockExpiresAt]);
 
   const recompute = React.useCallback(async () => {
     const res = await cartRepository.calculateTotals();
@@ -142,13 +174,18 @@ function CheckoutPage() {
 
   const grandTotal = totals?.grandTotal ?? 0;
   const isDelivery = fulfillment === "delivery";
+  const isTakeaway = fulfillment === "takeaway";
+  const isDineIn = fulfillment === "dinein";
 
   // Step 1 Validation
   const validateStep1 = (): string | null => {
     if (!activeStore) return "Please choose a kitchen location.";
-    if (!fulfillment) return "Please select delivery or takeaway.";
+    if (!fulfillment) return "Please select delivery, takeaway, or dine-in.";
     if (isDelivery && !selectedAddress) {
       return "Please add or select a delivery address.";
+    }
+    if (isDineIn && !tableNumber.trim()) {
+      return "Please enter your Table Number for Dine-In.";
     }
     const unavailable = lines.find((l) => l.availability === "unavailable");
     if (unavailable) return `${unavailable.name} is unavailable — please edit your cart.`;
@@ -198,7 +235,8 @@ function CheckoutPage() {
       setBusy(false);
       setValidationError(
         validation.success
-          ? (validation.data.issues[0]?.message ?? "Some items in your cart are no longer available.")
+          ? (validation.data.issues[0]?.message ??
+              "Some items in your cart are no longer available.")
           : validation.error.message,
       );
       return;
@@ -361,7 +399,9 @@ function CheckoutPage() {
                         "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all",
                         isActive && "bg-primary text-white ring-2 ring-primary/30",
                         isPast && "bg-primary/20 text-primary font-bold",
-                        !isActive && !isPast && "bg-bg-secondary text-text-secondary border border-divider",
+                        !isActive &&
+                          !isPast &&
+                          "bg-bg-secondary text-text-secondary border border-divider",
                       )}
                     >
                       {isPast ? "✓" : s.num}
@@ -392,6 +432,19 @@ function CheckoutPage() {
           </div>
         </div>
 
+        {/* 10-Minute Price Lock Indicator */}
+        {remainingLockSeconds !== null && remainingLockSeconds > 0 && (
+          <div className="flex items-center justify-between rounded-xl bg-orange-500/10 border border-orange-500/20 px-3.5 py-2 text-xs">
+            <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300 font-semibold">
+              <Timer className="h-4 w-4 animate-pulse text-accent" />
+              <span>10-Min Price Lock Active</span>
+            </div>
+            <span className="font-mono font-bold text-accent">
+              {Math.floor(remainingLockSeconds / 60)}:{(remainingLockSeconds % 60).toString().padStart(2, "0")} left
+            </span>
+          </div>
+        )}
+
         {/* Validation Alert */}
         {validationError && (
           <div
@@ -409,11 +462,15 @@ function CheckoutPage() {
           <div className="space-y-4">
             {/* Fulfillment Toggle Segmented Bar */}
             <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
-              <Text variant="caption" tone="secondary" className="font-semibold uppercase tracking-wider text-[11px]">
+              <Text
+                variant="caption"
+                tone="secondary"
+                className="font-semibold uppercase tracking-wider text-[11px]"
+              >
                 Choose Fulfillment Method
               </Text>
 
-              <div className="grid grid-cols-2 gap-2 p-1 bg-bg-secondary rounded-[var(--radius-medium)] border border-divider">
+              <div className="grid grid-cols-3 gap-1.5 p-1 bg-bg-secondary rounded-[var(--radius-medium)] border border-divider">
                 <button
                   type="button"
                   onClick={() => {
@@ -422,7 +479,7 @@ function CheckoutPage() {
                     setValidationError(null);
                   }}
                   className={cn(
-                    "flex items-center justify-center gap-2 py-2.5 px-3 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
+                    "flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
                     isDelivery
                       ? "bg-primary text-white shadow-sm"
                       : "text-text-secondary hover:text-text-primary",
@@ -439,14 +496,31 @@ function CheckoutPage() {
                     setValidationError(null);
                   }}
                   className={cn(
-                    "flex items-center justify-center gap-2 py-2.5 px-3 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
-                    !isDelivery
+                    "flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
+                    isTakeaway
                       ? "bg-primary text-white shadow-sm"
                       : "text-text-secondary hover:text-text-primary",
                   )}
                 >
                   <StoreIcon className="h-4 w-4" />
                   <span>Takeaway</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void HapticService.impact("light");
+                    setFulfillment("dinein");
+                    setValidationError(null);
+                  }}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
+                    isDineIn
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-text-secondary hover:text-text-primary",
+                  )}
+                >
+                  <Utensils className="h-4 w-4" />
+                  <span>Dine-In</span>
                 </button>
               </div>
 
@@ -461,7 +535,7 @@ function CheckoutPage() {
             </section>
 
             {/* Delivery Address Section (Delivery Mode Only) */}
-            {isDelivery ? (
+            {isDelivery && (
               <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
                 <div className="flex items-center justify-between">
                   <Text variant="titleMedium" className="font-bold">
@@ -494,7 +568,9 @@ function CheckoutPage() {
                   <div className="rounded-[var(--radius-medium)] border-2 border-dashed border-divider p-4 text-center space-y-3 bg-bg-secondary/40">
                     <MapPin className="h-8 w-8 text-primary mx-auto" />
                     <div>
-                      <p className="text-sm font-bold text-text-primary">No delivery address selected</p>
+                      <p className="text-sm font-bold text-text-primary">
+                        No delivery address selected
+                      </p>
                       <p className="text-xs text-text-secondary mt-0.5">
                         Add an address to proceed with food delivery
                       </p>
@@ -516,17 +592,21 @@ function CheckoutPage() {
                   </div>
                 )}
 
-                {/* Delivery fee info */}
+                {/* Delivery fee & radius info */}
                 <div className="flex items-center justify-between rounded-[var(--radius-medium)] bg-bg-secondary p-3 text-xs">
                   <div className="flex items-center gap-2">
                     <Bike className="h-4 w-4 text-text-secondary" />
-                    <span>Estimated delivery time</span>
+                    <span>Store delivery radius</span>
                   </div>
-                  <span className="font-bold text-text-primary">~{activeStore?.etaMinutes || 30} mins</span>
+                  <span className="font-bold text-text-primary">
+                    ~{activeStore?.deliveryRadiusKm || 7} km (~{activeStore?.etaMinutes || 30} mins)
+                  </span>
                 </div>
               </section>
-            ) : (
-              /* Takeaway Mode Information */
+            )}
+
+            {/* Takeaway Mode Information */}
+            {isTakeaway && (
               <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
                 <div className="flex items-center gap-2">
                   <StoreIcon className="h-5 w-5 text-primary" />
@@ -540,6 +620,43 @@ function CheckoutPage() {
                   <div className="pt-2 flex items-center gap-2 text-xs font-semibold text-emerald-600">
                     <Clock className="h-4 w-4" />
                     <span>Ready for pickup in ~15 minutes</span>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Dine-In Mode Information & Table Number Input */}
+            {isDineIn && (
+              <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
+                <div className="flex items-center gap-2">
+                  <Utensils className="h-5 w-5 text-primary" />
+                  <Text variant="titleMedium" className="font-bold">
+                    Dine-In Table Details
+                  </Text>
+                </div>
+                <div className="rounded-[var(--radius-medium)] bg-bg-secondary p-3.5 space-y-3">
+                  <div>
+                    <label htmlFor="table-number-input" className="block text-xs font-bold text-text-primary mb-1">
+                      Table Number <span className="text-accent">*</span>
+                    </label>
+                    <input
+                      id="table-number-input"
+                      type="text"
+                      placeholder="e.g. 4 or T-12"
+                      value={tableNumber}
+                      onChange={(e) => {
+                        setTableNumber(e.target.value);
+                        setValidationError(null);
+                      }}
+                      className="w-full rounded-xl border border-divider bg-surface px-3.5 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
+                    />
+                    <p className="text-[11px] text-text-secondary mt-1">
+                      Enter the table number on your table stand or coaster.
+                    </p>
+                  </div>
+                  <div className="pt-1 flex items-center gap-2 text-xs font-semibold text-emerald-600">
+                    <Clock className="h-4 w-4" />
+                    <span>Kitchen serves fresh KOT directly to your table</span>
                   </div>
                 </div>
               </section>
@@ -579,13 +696,29 @@ function CheckoutPage() {
             {/* Fulfillment & Payment context recap */}
             <div className="rounded-[var(--radius-large)] border border-divider bg-surface p-3.5 shadow-sm flex items-center justify-between text-xs">
               <div className="flex items-center gap-2 min-w-0">
-                {isDelivery ? <Bike className="h-4 w-4 text-primary shrink-0" /> : <StoreIcon className="h-4 w-4 text-primary shrink-0" />}
+                {isDelivery ? (
+                  <Bike className="h-4 w-4 text-primary shrink-0" />
+                ) : isDineIn ? (
+                  <Utensils className="h-4 w-4 text-primary shrink-0" />
+                ) : (
+                  <StoreIcon className="h-4 w-4 text-primary shrink-0" />
+                )}
                 <span className="truncate font-semibold text-text-primary">
-                  {isDelivery ? `Delivery: ${selectedAddress?.line1 || "Selected address"}` : `Pickup: ${activeStore?.name}`}
+                  {isDelivery
+                    ? `Delivery: ${selectedAddress?.line1 || "Selected address"}`
+                    : isDineIn
+                      ? `Dine-In: Table ${tableNumber || "Unassigned"}`
+                      : `Pickup: ${activeStore?.name}`}
                 </span>
               </div>
               <AppBadge tone="primary" className="shrink-0 font-bold capitalize">
-                {paymentMethod === "online" ? "Online Pay" : "Cash"}
+                {paymentMethod === "online"
+                  ? "Online Pay"
+                  : isDelivery
+                    ? "COD"
+                    : isDineIn
+                      ? "Pay at Table"
+                      : "Pay at Counter"}
               </AppBadge>
             </div>
 

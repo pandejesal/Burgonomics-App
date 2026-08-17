@@ -31,21 +31,17 @@ declare module "@capacitor/push-notifications" {
     register(): Promise<void>;
     unregister?(): Promise<void>;
     getDeliveredNotifications?(): Promise<{ notifications: PushNotificationSchema[] }>;
-    removeDeliveredNotifications?(options: { notifications: PushNotificationSchema[] }): Promise<void>;
+    removeDeliveredNotifications?(options: {
+      notifications: PushNotificationSchema[];
+    }): Promise<void>;
     removeAllDeliveredNotifications?(): Promise<void>;
     createChannel?(channel: any): Promise<void>;
     deleteChannel?(options: { id: string }): Promise<void>;
     listChannels?(): Promise<{ channels: any[] }>;
     checkPermissions(): Promise<PermissionStatus>;
     requestPermissions(): Promise<PermissionStatus>;
-    addListener(
-      eventName: "registration",
-      listenerFunc: (token: Token) => void,
-    ): Promise<any>;
-    addListener(
-      eventName: "registrationError",
-      listenerFunc: (error: any) => void,
-    ): Promise<any>;
+    addListener(eventName: "registration", listenerFunc: (token: Token) => void): Promise<any>;
+    addListener(eventName: "registrationError", listenerFunc: (error: any) => void): Promise<any>;
     addListener(
       eventName: "pushNotificationReceived",
       listenerFunc: (notification: PushNotificationSchema) => void,

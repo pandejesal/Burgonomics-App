@@ -72,9 +72,7 @@ function LoginScreen() {
     clearError();
     const res = await requestOtp(sanitizePhone(phone), deliveryMethod);
     if (res.ok) {
-      toast.success(
-        `OTP sent via SMS to +91 ${phone}`,
-      );
+      toast.success(`OTP sent via SMS to +91 ${phone}`);
 
       void navigate({
         to: "/auth/otp",
@@ -136,8 +134,6 @@ function LoginScreen() {
             </div>
           </div>
 
-
-
           {serverError && (
             <div
               role="alert"
@@ -174,7 +170,7 @@ function LoginScreen() {
             .
           </Text>
         </div>
-        
+
         {/* reCAPTCHA container for Firebase Phone Auth */}
         <div id="recaptcha-container" className="flex justify-center my-2" />
       </form>

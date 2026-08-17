@@ -85,16 +85,36 @@ export function FulfillmentPanel({ order, etaMinutes }: Props) {
   return (
     <div className="space-y-4">
       <EtaRow etaMinutes={etaMinutes} label="Prep time" />
+      {order.tableNumber && (
+        <div className="rounded-[var(--radius-large)] border border-primary/20 bg-primary/5 p-4 flex items-center justify-between">
+          <div>
+            <Text variant="caption" tone="secondary">
+              Dine-In Table
+            </Text>
+            <Text variant="headlineMedium" className="font-bold text-primary">
+              Table {order.tableNumber}
+            </Text>
+          </div>
+          <div className="text-right">
+            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+              KOT Dispatched
+            </span>
+          </div>
+        </div>
+      )}
       <Section icon={<Utensils className="h-4 w-4" aria-hidden />} title="Restaurant">
         <Text variant="titleMedium">{order.store.name}</Text>
         <Text variant="caption" tone="secondary">
           {order.store.address}
         </Text>
       </Section>
+      <StoreContact order={order} address />
       <Section icon={<Package className="h-4 w-4" aria-hidden />} title="Dining instructions">
         <Text variant="bodyMedium" tone="secondary">
           {order.fulfillmentInstructions?.trim() ||
-            "Please share your order code with the server when they arrive at your table."}
+            (order.tableNumber
+              ? `Your meal will be served directly at Table ${order.tableNumber}. Please relax and enjoy!`
+              : "Please share your order code with the server when they arrive at your table.")}
         </Text>
       </Section>
     </div>

@@ -1,14 +1,35 @@
-import { delay, ok, fail, type ApiResult } from "@/core/network/http";
+import { ok, fail, type ApiResult } from "@/core/network/http";
 import type { Store } from "@/features/stores/models/Store";
 import { MOCK_STORES } from "@/features/stores/data/mockStores";
 import { haversineKm } from "@/features/stores/utils/distance";
+import { db } from "@/core/config/firebase";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 
-/**
- * Mock transport for the Stores feature. Simulates realistic network
- * latency and injects distance from the caller's coordinates when
- * provided. Swap this file for real HTTP calls (`httpClient.get`) when
- * the backend lands — the repository/UI contract is unchanged.
- */
+function mapStoreDoc(data: any, id: string): Store {
+  const lat = data.lat ?? data.latitude ?? 23.0225;
+  const lng = data.lng ?? data.longitude ?? 72.5714;
+  return {
+    id: id,
+    name: data.name || "Burgonomics Store",
+    address: data.address || "",
+    city: data.city || "Ahmedabad",
+    area: data.area || data.city || "Ahmedabad",
+    lat,
+    lng,
+    phone: data.phone || "+91 79 4000 0000",
+    imageUrl: data.imageUrl || null,
+    hours: data.hours || { open: "11:00", close: "23:00" },
+    isOpen: data.isOpen !== false && data.status !== "CLOSED",
+    isBusy: Boolean(data.isBusy),
+    isRecentlyOpened: Boolean(data.isRecentlyOpened),
+    supports: data.supports || { delivery: true, takeaway: true, dineIn: true },
+    etaMinutes: data.etaMinutes || data.minPrepMinutes || 25,
+    pickupEtaMinutes: data.pickupEtaMinutes || 15,
+    deliveryFee: data.deliveryFee ?? 29,
+    petpoojaRestId: data.petpoojaRestId || null,
+    deliveryRadiusKm: data.deliveryRadiusKm ?? 7,
+  };
+}
 
 const withDistance = (stores: Store[], coords?: { lat: number; lng: number }): Store[] => {
   if (!coords) {
@@ -21,39 +42,63 @@ const withDistance = (stores: Store[], coords?: { lat: number; lng: number }): S
     .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
 };
 
-// Toggle to simulate a network failure for QA (kept false in mock mode).
-const SHOULD_FAIL = false;
+async function fetchFirestoreStores(): Promise<Store[]> {
+  try {
+    const storesSnap = await getDocs(collection(db, "stores"));
+    if (!storesSnap.empty) {
+      const stores: Store[] = [];
+      storesSnap.forEach((d) => stores.push(mapStoreDoc(d.data(), d.id)));
+      return stores;
+    }
+
+    // Fallback to admin_stores
+    const adminStoresSnap = await getDocs(collection(db, "admin_stores"));
+    if (!adminStoresSnap.empty) {
+      const stores: Store[] = [];
+      adminStoresSnap.forEach((d) => stores.push(mapStoreDoc(d.data(), d.id)));
+      return stores;
+    }
+  } catch (err) {
+    console.warn("storesService: Firestore fetch error, using built-in catalog:", err);
+  }
+  return MOCK_STORES;
+}
 
 export const storesService = {
   async list(coords?: { lat: number; lng: number }): Promise<ApiResult<Store[]>> {
-    await delay(700 + Math.random() * 500);
-    if (SHOULD_FAIL) {
-      return fail("NETWORK", "Couldn't load stores. Please try again.", true);
-    }
-    return ok(withDistance(MOCK_STORES, coords));
+    const allStores = await fetchFirestoreStores();
+    return ok(withDistance(allStores, coords));
   },
 
   async nearby(lat?: number, lng?: number): Promise<ApiResult<Store[]>> {
-    await delay(600 + Math.random() * 400);
-    if (SHOULD_FAIL) {
-      return fail("NETWORK", "Couldn't load nearby stores.", true);
-    }
     const coords = lat !== undefined && lng !== undefined ? { lat, lng } : undefined;
-    const ranked = withDistance(MOCK_STORES, coords);
+    const allStores = await fetchFirestoreStores();
+    const ranked = withDistance(allStores, coords);
     return ok(ranked.slice(0, 5));
   },
 
   async byId(id: string): Promise<ApiResult<Store | null>> {
-    await delay(250);
+    try {
+      const snap = await getDoc(doc(db, "stores", id));
+      if (snap.exists()) {
+        return ok(mapStoreDoc(snap.data(), snap.id));
+      }
+      const adminSnap = await getDoc(doc(db, "admin_stores", id));
+      if (adminSnap.exists()) {
+        return ok(mapStoreDoc(adminSnap.data(), adminSnap.id));
+      }
+    } catch {
+      // fallback
+    }
     const found = MOCK_STORES.find((s) => s.id === id) ?? null;
     return ok(found);
   },
 
   async search(query: string, coords?: { lat: number; lng: number }): Promise<ApiResult<Store[]>> {
-    await delay(300);
     const q = query.trim().toLowerCase();
-    if (!q) return ok(withDistance(MOCK_STORES, coords));
-    const filtered = MOCK_STORES.filter((s) =>
+    const allStores = await fetchFirestoreStores();
+    if (!q) return ok(withDistance(allStores, coords));
+    const filtered = allStores.filter((s) =>
       [s.name, s.city, s.area, s.address].some((f) => f.toLowerCase().includes(q)),
     );
     return ok(withDistance(filtered, coords));

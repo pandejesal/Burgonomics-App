@@ -91,11 +91,12 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
 }) => {
   // Use real Admin Auth Role
   const { admin } = useAdminAuthStore();
-  const selectedRole = (admin?.role?.name as "Developer" | "Operations" | "Store Manager" | "Finance") || "Developer";
-  
+  const selectedRole =
+    (admin?.role?.name as "Developer" | "Operations" | "Store Manager" | "Finance") || "Developer";
+
   // Real apps might store the assigned store in the user profile/claims
   const managerAssignedStoreId = admin?.assignedStoreId || "st_cp_delhi";
-  
+
   // Main states
   const [orders, setOrders] = useState<RichOrder[]>([]);
   const [isSimulatorEnabled, setIsSimulatorEnabled] = useState(false);
@@ -114,16 +115,19 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
   // Fetch Live Orders
   useEffect(() => {
     if (viewMode !== "live") return;
-    
+
     // If user is Store Manager, restrict to their store. Otherwise, follow the filterStore UI selection.
-    const effectiveStoreFilter = selectedRole === "Store Manager" 
-      ? managerAssignedStoreId 
-      : (filterStore === "all" ? null : filterStore);
+    const effectiveStoreFilter =
+      selectedRole === "Store Manager"
+        ? managerAssignedStoreId
+        : filterStore === "all"
+          ? null
+          : filterStore;
 
     const unsubscribe = adminOrdersService.listenLiveOrders(
       effectiveStoreFilter,
       (liveOrders) => setOrders(liveOrders),
-      (err) => console.error("Error listening to live orders:", err)
+      (err) => console.error("Error listening to live orders:", err),
     );
 
     return () => unsubscribe();
@@ -132,10 +136,13 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
   // Fetch Historical Orders
   useEffect(() => {
     if (viewMode !== "history") return;
-    
-    const effectiveStoreFilter = selectedRole === "Store Manager" 
-      ? managerAssignedStoreId 
-      : (filterStore === "all" ? null : filterStore);
+
+    const effectiveStoreFilter =
+      selectedRole === "Store Manager"
+        ? managerAssignedStoreId
+        : filterStore === "all"
+          ? null
+          : filterStore;
 
     adminOrdersService.getHistory(effectiveStoreFilter, 50).then(setOrders);
   }, [viewMode, filterStore, selectedRole, managerAssignedStoreId]);
@@ -202,8 +209,6 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
     return { fresh, preps, completedToday, activeRevenue };
   }, [orders]);
 
-
-
   // Asynchronous state updating function + audit logging write
   const handleUpdateStatus = async (
     orderId: string,
@@ -217,15 +222,15 @@ export const AdminOrdersPage: React.FC<AdminOrdersPageProps> = ({
         actor,
         description: descOverride || `Transitioned status to ${nextStatus}`,
       });
-      
+
       // The local state (orders array) will automatically update via the onSnapshot listener if we are in "live" mode.
       // If we are in "history" mode, we might need a manual refresh, but history mode shouldn't typically be used for real-time status transitions.
-      
+
       // Update selected order view if it is open
       if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder((prev) => prev ? { ...prev, orderStatus: nextStatus } : prev);
+        setSelectedOrder((prev) => (prev ? { ...prev, orderStatus: nextStatus } : prev));
       }
-      
+
       console.log(
         `[AUDIT LOG] ${actor} modified order ${orderId} status to ${nextStatus} at ${new Date().toLocaleTimeString()}`,
       );

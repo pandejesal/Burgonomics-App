@@ -79,9 +79,12 @@ async function run() {
     await productsRef.doc(prod.id).set(prod);
   }
 
-  console.log("Seeding Admin Stores (17 Outlets)...");
+  console.log("Seeding Stores & Admin Stores (17 Outlets)...");
   const adminStoresRef = db.collection("admin_stores");
+  const storesRef = db.collection("stores");
   for (const store of INITIAL_RICH_STORES) {
+    const lat = store.lat || (store as any).location?.latitude || 23.0225;
+    const lng = store.lng || (store as any).location?.longitude || 72.5714;
     const storeData = {
       id: store.id,
       name: store.name,
@@ -92,20 +95,31 @@ async function run() {
       country: store.country || "India",
       phone: store.phone || null,
       status: "OPEN",
-      latitude: store.lat || (store as any).location?.latitude || null,
-      longitude: store.lng || (store as any).location?.longitude || null,
+      isOpen: true,
+      isBusy: false,
+      isRecentlyOpened: false,
+      latitude: lat,
+      longitude: lng,
+      lat,
+      lng,
       minPrepMinutes: 15,
+      deliveryRadiusKm: 7,
       distanceKm: 0,
       turnOnAt: null,
+      petpoojaRestId: (store as any).petpoojaRestId || null,
+      supports: { delivery: true, takeaway: true, dineIn: true },
       updatedAt: new Date().toISOString(),
     };
     await adminStoresRef.doc(store.id).set(storeData);
+    await storesRef.doc(store.id).set(storeData);
   }
 
   console.log("Seeding Demo Data (users, orders, payments, refunds)...");
   await seedDemoData(db);
 
-  console.log("Successfully seeded all categories, products, 17 admin stores, and demo data to Firestore!");
+  console.log(
+    "Successfully seeded all categories, products, 17 admin stores, and demo data to Firestore!",
+  );
   process.exit(0);
 }
 
@@ -115,9 +129,24 @@ async function run() {
  * user (+91 98765 01234) with attached orders for the account-deletion pass.
  */
 const DEMO_USERS = [
-  { id: "demo_user_priya", fullName: "Priya Sharma", phone: "+919876123401", email: "priya.demo@burgonomics.in" },
-  { id: "demo_user_rahul", fullName: "Rahul Mehta", phone: "+919876123402", email: "rahul.demo@burgonomics.in" },
-  { id: "demo_user_anjali", fullName: "Anjali Patel", phone: "+919876123403", email: "anjali.demo@burgonomics.in" },
+  {
+    id: "demo_user_priya",
+    fullName: "Priya Sharma",
+    phone: "+919876123401",
+    email: "priya.demo@burgonomics.in",
+  },
+  {
+    id: "demo_user_rahul",
+    fullName: "Rahul Mehta",
+    phone: "+919876123402",
+    email: "rahul.demo@burgonomics.in",
+  },
+  {
+    id: "demo_user_anjali",
+    fullName: "Anjali Patel",
+    phone: "+919876123403",
+    email: "anjali.demo@burgonomics.in",
+  },
 ];
 
 const E2E_PHONE = "+919876501234"; // Test OTP 123456
@@ -130,7 +159,12 @@ interface SeedLine {
 }
 
 const DEMO_MENU: SeedLine[] = [
-  { productId: "prd_alfanso_mango_shake", name: "Alfanso Mango Shake", quantity: 1, unitPrice: 149 },
+  {
+    productId: "prd_alfanso_mango_shake",
+    name: "Alfanso Mango Shake",
+    quantity: 1,
+    unitPrice: 149,
+  },
   { productId: "prd_chocolate_blast", name: "Chocolate Blast", quantity: 1, unitPrice: 129 },
   { productId: "prd_butter_paneer", name: "Butter Paneer Combo", quantity: 1, unitPrice: 219 },
   { productId: "prd_veg_burger", name: "Veg Burger", quantity: 1, unitPrice: 99 },
@@ -138,7 +172,12 @@ const DEMO_MENU: SeedLine[] = [
   { productId: "prd_oreo_shake", name: "Oreo Shake", quantity: 1, unitPrice: 159 },
 ];
 
-function seedGrandTotal(items: SeedLine[]): { subtotal: number; taxes: number; deliveryFee: number; grandTotal: number } {
+function seedGrandTotal(items: SeedLine[]): {
+  subtotal: number;
+  taxes: number;
+  deliveryFee: number;
+  grandTotal: number;
+} {
   const subtotal = items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
   const taxes = Math.round(subtotal * 0.05 * 100) / 100;
   const deliveryFee = subtotal > 499 ? 0 : 40;
@@ -149,7 +188,9 @@ function seedGrandTotal(items: SeedLine[]): { subtotal: number; taxes: number; d
 function pickLines(): SeedLine[] {
   const count = 1 + Math.floor(Math.random() * 3);
   const shuffled = [...DEMO_MENU].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count).map((it) => ({ ...it, quantity: 1 + Math.floor(Math.random() * 2) }));
+  return shuffled
+    .slice(0, count)
+    .map((it) => ({ ...it, quantity: 1 + Math.floor(Math.random() * 2) }));
 }
 
 function isoDaysAgo(days: number, hourJitter = 0): string {
@@ -222,7 +263,10 @@ async function seedDemoData(db: FirebaseFirestore.Firestore) {
       const placedAt = isoDaysAgo(daysAgo, Math.random() * 10);
       const items = pickLines();
       const totals = seedGrandTotal(items);
-      const statusCode = daysAgo < 1 ? activeStatuses[Math.floor(Math.random() * activeStatuses.length)] : "COMPLETED";
+      const statusCode =
+        daysAgo < 1
+          ? activeStatuses[Math.floor(Math.random() * activeStatuses.length)]
+          : "COMPLETED";
       const orderId = `demo_o_${(++orderIndex).toString().padStart(3, "0")}`;
       const txSuffix = orderId.slice(-3);
 
@@ -231,7 +275,12 @@ async function seedDemoData(db: FirebaseFirestore.Firestore) {
         shortCode: `BG-D${orderId.slice(-4).toUpperCase()}`,
         status: {
           code: statusCode,
-          label: statusCode === "COMPLETED" ? "Delivered" : statusCode === "PREPARING" ? "Preparing" : "Out for delivery",
+          label:
+            statusCode === "COMPLETED"
+              ? "Delivered"
+              : statusCode === "PREPARING"
+                ? "Preparing"
+                : "Out for delivery",
           kind: statusCode === "COMPLETED" ? "completed" : "in_progress",
           terminal: statusCode === "COMPLETED",
         },
@@ -323,18 +372,21 @@ async function seedDemoData(db: FirebaseFirestore.Firestore) {
     status: string,
     gatewayStatus: string,
   ) => {
-    await db.collection("refunds").doc(id).set({
-      id,
-      paymentId,
-      orderId,
-      amountPaise,
-      status,
-      completedAt: status === "COMPLETED" ? serverTs() : null,
-      gatewayStatus,
-      createdAt: serverTs(),
-      updatedAt: serverTs(),
-      demo: true,
-    });
+    await db
+      .collection("refunds")
+      .doc(id)
+      .set({
+        id,
+        paymentId,
+        orderId,
+        amountPaise,
+        status,
+        completedAt: status === "COMPLETED" ? serverTs() : null,
+        gatewayStatus,
+        createdAt: serverTs(),
+        updatedAt: serverTs(),
+        demo: true,
+      });
   };
   await refundDoc("demo_ref_001", "demo_pay_002", "demo_o_002", 9900, "COMPLETED", "processed");
   await refundDoc("demo_ref_002", "demo_pay_007", "demo_o_007", 12900, "COMPLETED", "processed");

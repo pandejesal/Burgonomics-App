@@ -31,10 +31,10 @@ export const addressService = {
       const { collection, getDocs } = await import("firebase/firestore");
       const user = auth.currentUser;
       if (!user) return ok([]);
-      
+
       const snap = await getDocs(collection(db, `users/${user.uid}/addresses`));
       const addresses: Address[] = [];
-      snap.forEach(doc => {
+      snap.forEach((doc) => {
         addresses.push(doc.data() as Address);
       });
       return ok(addresses);
@@ -47,7 +47,7 @@ export const addressService = {
   async create(input: AddressInput): Promise<ApiResult<Address>> {
     const err = validate(input);
     if (err) return fail("INVALID_ADDRESS", err);
-    
+
     const created: Address = {
       id: nextId(),
       isDefault: input.isDefault ?? false,
@@ -64,7 +64,7 @@ export const addressService = {
     } catch (error: any) {
       console.warn("Firestore address create error:", error);
     }
-    
+
     return ok(created);
   },
 

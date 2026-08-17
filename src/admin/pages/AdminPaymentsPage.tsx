@@ -49,7 +49,7 @@ export const AdminPaymentsPage: React.FC = () => {
         console.error("Live transaction listener error:", err);
         toast.error("Failed to connect to live payment stream.");
       },
-      200
+      200,
     );
     return () => unsubscribe();
   }, []);

@@ -139,7 +139,11 @@ export const notificationsService = {
         updateData.pushEnabled = prefs.pushEnabled;
       }
 
-      if (prefs.orders !== undefined || prefs.offers !== undefined || prefs.announcements !== undefined) {
+      if (
+        prefs.orders !== undefined ||
+        prefs.offers !== undefined ||
+        prefs.announcements !== undefined
+      ) {
         updateData.preferences = {
           orders: prefs.orders ?? true,
           offers: prefs.offers ?? true,

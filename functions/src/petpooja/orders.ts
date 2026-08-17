@@ -60,7 +60,9 @@ export const pushOrderToPetpooja = functions.firestore
         : null;
       // If processing lease is less than 60s old, respect the lease to prevent duplicate KOTs
       if (startedAt && Date.now() - startedAt < 60000) {
-        functions.logger.info(`Order ${orderId} is actively being processed by another worker lease.`);
+        functions.logger.info(
+          `Order ${orderId} is actively being processed by another worker lease.`,
+        );
         return null;
       }
     }
@@ -110,9 +112,18 @@ export const pushOrderToPetpooja = functions.firestore
     // 4. Resolve Store & Petpooja credentials
     const restID = orderAfter.store?.restId || "52x8797b";
     const storeName = orderAfter.store?.name || "Burgonomics Flagship";
-    const appKey = process.env.PETPOOJA_APP_KEY || functions.config().petpooja?.app_key || "mock_petpooja_app_key";
-    const appSecret = process.env.PETPOOJA_APP_SECRET || functions.config().petpooja?.app_secret || "mock_petpooja_app_secret";
-    const accessToken = process.env.PETPOOJA_ACCESS_TOKEN || functions.config().petpooja?.access_token || "mock_petpooja_access_token";
+    const appKey =
+      process.env.PETPOOJA_APP_KEY ||
+      functions.config().petpooja?.app_key ||
+      "mock_petpooja_app_key";
+    const appSecret =
+      process.env.PETPOOJA_APP_SECRET ||
+      functions.config().petpooja?.app_secret ||
+      "mock_petpooja_app_secret";
+    const accessToken =
+      process.env.PETPOOJA_ACCESS_TOKEN ||
+      functions.config().petpooja?.access_token ||
+      "mock_petpooja_access_token";
     const isSandbox =
       process.env.PETPOOJA_ENV === "sandbox" ||
       appKey === "mock_petpooja_app_key" ||
@@ -120,7 +131,8 @@ export const pushOrderToPetpooja = functions.firestore
 
     // Format customer details safely
     const customerName = orderAfter.address?.contactName || "Customer";
-    const customerPhone = orderAfter.address?.contactPhone || orderAfter.customerPhone || "9999999999";
+    const customerPhone =
+      orderAfter.address?.contactPhone || orderAfter.customerPhone || "9999999999";
     const customerAddress = orderAfter.address
       ? `${orderAfter.address.addressLine1 || ""} ${orderAfter.address.landmark || ""}`.trim()
       : orderAfter.store?.addressLine1 || "Takeaway / Dine-in";
@@ -220,7 +232,9 @@ export const pushOrderToPetpooja = functions.firestore
     let responseData: any = null;
 
     if (isSandbox) {
-      functions.logger.info(`Petpooja Sandbox Mode: Simulating valid V2.1.0 POS dispatch for order ${orderId}`);
+      functions.logger.info(
+        `Petpooja Sandbox Mode: Simulating valid V2.1.0 POS dispatch for order ${orderId}`,
+      );
       await sleep(150); // Simulate brief POS network latency
       responseData = {
         success: "1",
@@ -232,7 +246,9 @@ export const pushOrderToPetpooja = functions.firestore
     } else {
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-          functions.logger.info(`Petpooja push attempt ${attempt}/${MAX_RETRIES} for order ${orderId}`);
+          functions.logger.info(
+            `Petpooja push attempt ${attempt}/${MAX_RETRIES} for order ${orderId}`,
+          );
           const response = await axios.post(PETPOOJA_SAVE_ORDER_URL, payload, {
             headers: {
               "Content-Type": "application/json",
@@ -258,12 +274,15 @@ export const pushOrderToPetpooja = functions.firestore
             break;
           } else {
             throw new Error(
-              responseData?.message || `Petpooja returned unexpected response: ${JSON.stringify(responseData)}`,
+              responseData?.message ||
+                `Petpooja returned unexpected response: ${JSON.stringify(responseData)}`,
             );
           }
         } catch (err: any) {
           lastError = err;
-          functions.logger.warn(`Petpooja push attempt ${attempt} failed for order ${orderId}: ${err.message}`);
+          functions.logger.warn(
+            `Petpooja push attempt ${attempt} failed for order ${orderId}: ${err.message}`,
+          );
           if (attempt < MAX_RETRIES) {
             await sleep(RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1));
           }
@@ -282,14 +301,20 @@ export const pushOrderToPetpooja = functions.firestore
       functions.logger.info(`Successfully synced order ${orderId} to Petpooja POS. KOT: ${kotId}`);
 
       // Record in internal petpooja_orders collection
-      await db.collection("petpooja_orders").doc(orderId).set({
-        orderId,
-        kotId,
-        posOrderId,
-        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-        mode: isSandbox ? "sandbox" : "live",
-        payload,
-      }, { merge: true });
+      await db
+        .collection("petpooja_orders")
+        .doc(orderId)
+        .set(
+          {
+            orderId,
+            kotId,
+            posOrderId,
+            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+            mode: isSandbox ? "sandbox" : "live",
+            payload,
+          },
+          { merge: true },
+        );
 
       // Update customer order document
       await orderRef.update({

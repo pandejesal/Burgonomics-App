@@ -72,7 +72,9 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
             <span className="relative z-10 flex items-center">
               {c.name}
               {typeof c.itemCount === "number" && c.itemCount > 0 && (
-                <span className={cn("ml-1.5 type-caption", active ? "opacity-90" : "opacity-60")}>({c.itemCount})</span>
+                <span className={cn("ml-1.5 type-caption", active ? "opacity-90" : "opacity-60")}>
+                  ({c.itemCount})
+                </span>
               )}
             </span>
           </button>

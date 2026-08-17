@@ -19,7 +19,7 @@ export const adminOrdersService = {
   listenLiveOrders(
     storeId: string | null,
     onUpdate: (orders: RichOrder[]) => void,
-    onError: (err: Error) => void
+    onError: (err: Error) => void,
   ) {
     let q;
     if (storeId) {
@@ -27,13 +27,13 @@ export const adminOrdersService = {
         collectionGroup(db, "orders"),
         where("store.id", "==", storeId),
         where("orderStatus", "in", ["New", "Preparing", "Ready", "Accepted"]),
-        orderBy("placedAt", "asc")
+        orderBy("placedAt", "asc"),
       );
     } else {
       q = query(
         collectionGroup(db, "orders"),
         where("orderStatus", "in", ["New", "Preparing", "Ready", "Accepted"]),
-        orderBy("placedAt", "asc")
+        orderBy("placedAt", "asc"),
       );
     }
 
@@ -44,17 +44,19 @@ export const adminOrdersService = {
         snapshot.forEach((docSnap) => {
           liveOrders.push(docSnap.data() as RichOrder);
         });
-        
-        // Temporarily blend with INITIAL_RICH_ORDERS if empty, so the UI doesn't look blank 
-        // while we are waiting for real orders in demo mode. 
+
+        // Temporarily blend with INITIAL_RICH_ORDERS if empty, so the UI doesn't look blank
+        // while we are waiting for real orders in demo mode.
         if (liveOrders.length === 0 && import.meta.env.DEV) {
-           const mockLive = INITIAL_RICH_ORDERS.filter(o => ["New", "Preparing", "Ready", "Accepted"].includes(o.orderStatus));
-           onUpdate(mockLive);
+          const mockLive = INITIAL_RICH_ORDERS.filter((o) =>
+            ["New", "Preparing", "Ready", "Accepted"].includes(o.orderStatus),
+          );
+          onUpdate(mockLive);
         } else {
-           onUpdate(liveOrders);
+          onUpdate(liveOrders);
         }
       },
-      (error) => onError(error)
+      (error) => onError(error),
     );
   },
 
@@ -69,14 +71,14 @@ export const adminOrdersService = {
         where("store.id", "==", storeId),
         where("orderStatus", "in", ["Completed", "Cancelled", "Refunded"]),
         orderBy("placedAt", "desc"),
-        limit(limitCount)
+        limit(limitCount),
       );
     } else {
       q = query(
         collectionGroup(db, "orders"),
         where("orderStatus", "in", ["Completed", "Cancelled", "Refunded"]),
         orderBy("placedAt", "desc"),
-        limit(limitCount)
+        limit(limitCount),
       );
     }
 
@@ -99,34 +101,34 @@ export const adminOrdersService = {
   async updateOrderStatus(
     orderId: string,
     status: RichOrder["orderStatus"],
-    timelineUpdate?: { title: string; actor: string; description: string }
+    timelineUpdate?: { title: string; actor: string; description: string },
   ): Promise<boolean> {
     try {
       const q = query(collectionGroup(db, "orders"), where("id", "==", orderId), limit(1));
       const snapshot = await getDocs(q);
-      
+
       if (snapshot.empty) return false;
-      
+
       const orderDoc = snapshot.docs[0];
       const currentData = orderDoc.data() as RichOrder;
-      
+
       const updates: any = { orderStatus: status };
-      
+
       if (timelineUpdate) {
         updates.timeline = [
           ...(currentData.timeline || []),
           {
             ...timelineUpdate,
-            timestamp: new Date().toISOString()
-          }
+            timestamp: new Date().toISOString(),
+          },
         ];
       }
-      
+
       await updateDoc(orderDoc.ref, updates);
       return true;
     } catch (e) {
       console.error("Failed to update order status", e);
       return false;
     }
-  }
+  },
 };

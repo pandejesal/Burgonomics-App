@@ -95,7 +95,7 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
   // Use real Admin Auth Role
   const { admin } = useAdminAuthStore();
   const selectedRole = (admin?.role?.name as RoleType) || "Developer";
-  
+
   // Real apps might store the assigned store in the user profile/claims
   const managerAssignedStoreId = admin?.assignedStoreId || "str_001";
 
@@ -570,7 +570,6 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
 
   return (
     <div className="space-y-6 font-sans">
-
       <PageHeader
         title="Burgonomics Enterprise Outlets"
         description="Operational command, Petpooja rest mapping parameters, live operating shifts, API link status tracking, and performance queue logs."
@@ -593,615 +592,628 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
               <>
                 {/* KPI STATS ROW */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
-                title="Active Directory Locations"
-                value={`${stats.open} / ${stats.total}`}
-                icon={StoreIcon}
-                subtext={`${stats.busy} busy outlets currently`}
-              />
-              <StatCard
-                title="Consolidated Revenue (Today)"
-                value={`₹${stats.rev.toLocaleString()}`}
-                icon={TrendingUp}
-                subtext="Simulated from connected POS APIs"
-              />
-              <StatCard
-                title="Petpooja API Link Health"
-                value={`${Math.floor((stats.healthySyncs / (stats.total || 1)) * 100)}%`}
-                icon={Activity}
-                subtext={`${stats.healthySyncs} healthy webhook links`}
-              />
-              <StatCard
-                title="Pending Order Queues"
-                value={stats.ords.toString()}
-                icon={Users}
-                subtext="Total delivery & dine-in orders"
-              />
-            </div>
-
-            {/* VIEWS, FILTERS & MAIN LIST BAR */}
-            <div className="flex flex-col gap-4 rounded-[20px] bg-white p-5 shadow-sm border border-gray-100 dark:bg-[#1C1C1E] dark:border-gray-800">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                {/* Search Bar */}
-                <div className="relative flex-1">
-                  <Search
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                    size={18}
+                  <StatCard
+                    title="Active Directory Locations"
+                    value={`${stats.open} / ${stats.total}`}
+                    icon={StoreIcon}
+                    subtext={`${stats.busy} busy outlets currently`}
                   />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by name, area, city, petpoojaRestId..."
-                    className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm font-semibold outline-none focus:border-[#0E4825] dark:border-gray-700 dark:bg-gray-800 focus:ring-1 focus:ring-[#0E4825]"
+                  <StatCard
+                    title="Consolidated Revenue (Today)"
+                    value={`₹${stats.rev.toLocaleString()}`}
+                    icon={TrendingUp}
+                    subtext="Simulated from connected POS APIs"
+                  />
+                  <StatCard
+                    title="Petpooja API Link Health"
+                    value={`${Math.floor((stats.healthySyncs / (stats.total || 1)) * 100)}%`}
+                    icon={Activity}
+                    subtext={`${stats.healthySyncs} healthy webhook links`}
+                  />
+                  <StatCard
+                    title="Pending Order Queues"
+                    value={stats.ords.toString()}
+                    icon={Users}
+                    subtext="Total delivery & dine-in orders"
                   />
                 </div>
 
-                {/* View Toggles */}
-                <div className="flex items-center gap-2 self-end md:self-auto">
-                  <div className="flex rounded-xl bg-gray-50 p-1 border border-gray-100 dark:bg-gray-900 dark:border-gray-800">
-                    {(["list", "grid", "radar"] as ViewTab[]).map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setViewTab(tab)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-black capitalize transition-all ${
-                          viewTab === tab
-                            ? "bg-white text-[#0E4825] shadow-sm dark:bg-[#1A1A1A] dark:text-emerald-400"
-                            : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
-                        }`}
-                      >
-                        {tab === "radar" ? "Logistics Radar" : `${tab} View`}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Actions */}
-                  {!isReadOnly && (
-                    <button
-                      onClick={() => setIsCreating(true)}
-                      className="flex items-center gap-1.5 rounded-xl bg-[#0E4825] hover:bg-[#082E17] text-white px-4 py-2.5 text-xs font-black shadow-md transition-all shrink-0"
-                    >
-                      <Plus size={16} />
-                      <span>REGISTER STORE</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Advanced Filter Pills */}
-              <div className="flex flex-wrap items-center gap-3 border-t border-gray-50 pt-4 dark:border-gray-800">
-                {/* City select */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase text-gray-400">City:</span>
-                  <select
-                    value={selectedCity}
-                    onChange={(e) => setSelectedCity(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-bold dark:border-gray-700 dark:bg-gray-800 outline-none"
-                  >
-                    {cities.map((city) => (
-                      <option key={city} value={city}>
-                        {city}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Status Filter */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase text-gray-400">POS State:</span>
-                  <select
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-bold dark:border-gray-700 dark:bg-gray-800 outline-none"
-                  >
-                    <option value="All">All States</option>
-                    <option value="Open">Active / Open</option>
-                    <option value="Closed">Closed</option>
-                    <option value="Busy">Busy / Overloaded</option>
-                  </select>
-                </div>
-
-                {/* Sync Status Filter */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase text-gray-400">
-                    Petpooja Sync:
-                  </span>
-                  <select
-                    value={selectedSync}
-                    onChange={(e) => setSelectedSync(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-bold dark:border-gray-700 dark:bg-gray-800 outline-none"
-                  >
-                    <option value="All">All Sync Status</option>
-                    <option value="Healthy">Healthy (Linked)</option>
-                    <option value="Degraded">Connection Fault</option>
-                  </select>
-                </div>
-
-                <div className="ml-auto flex items-center gap-2">
-                  <button
-                    onClick={handleSyncAllStores}
-                    disabled={isSyncingAll}
-                    className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-                  >
-                    <RotateCw size={12} className={isSyncingAll ? "animate-spin" : ""} />
-                    <span>POS Batch Sync</span>
-                  </button>
-                  <div className="h-4 w-[1px] bg-gray-200 dark:bg-gray-800" />
-                  <button
-                    onClick={() => handleExportDirectory("csv")}
-                    className="rounded-lg bg-gray-50 p-1 text-gray-400 hover:text-[#0E4825] dark:bg-gray-900"
-                    title="Export CSV"
-                  >
-                    <Download size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* NO RESULTS VIEW */}
-            {filteredStores.length === 0 && (
-              <div className="flex flex-col items-center justify-center rounded-[20px] bg-white py-16 px-4 text-center border border-dashed border-gray-200 dark:bg-[#1C1C1E] dark:border-gray-800">
-                <StoreIcon size={48} className="text-gray-300 dark:text-gray-700 animate-pulse" />
-                <h3 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">
-                  No Burgonomics Outlets Found
-                </h3>
-                <p className="mt-1 max-w-md text-sm text-gray-500 font-semibold">
-                  No stores match the active search criteria or your RBAC permission assignment
-                  boundaries. Try clearing your filters.
-                </p>
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setSelectedCity("All");
-                    setSelectedStatus("All");
-                    setSelectedSync("All");
-                  }}
-                  className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-black shadow-sm hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700"
-                >
-                  Reset Active Filters
-                </button>
-              </div>
-            )}
-
-            {/* TAB RENDERS */}
-            {filteredStores.length > 0 && (
-              <div className="transition-all duration-300">
-                {/* 1. GRID BOARD VIEW */}
-                {viewTab === "grid" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredStores.map((store) => (
-                      <div
-                        key={store.id}
-                        className="group relative flex flex-col justify-between overflow-hidden rounded-[20px] border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md dark:border-gray-800/50 dark:bg-[#1C1C1E]"
-                      >
-                        {/* Card Header */}
-                        <div>
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <span className="font-mono text-[10px] font-black tracking-widest text-[#FF6600]">
-                                {store.id}
-                              </span>
-                              <h3
-                                onClick={() => setActiveStoreId(store.id)}
-                                className="cursor-pointer text-base font-black tracking-tight text-gray-900 hover:text-[#0E4825] dark:text-white dark:hover:text-emerald-400"
-                              >
-                                {store.name}
-                              </h3>
-                              <p className="mt-1 text-xs font-bold text-gray-400">
-                                {store.city}, {store.area}
-                              </p>
-                            </div>
-
-                            {/* Status toggles */}
-                            <div className="flex flex-col items-end gap-2">
-                              <span
-                                onClick={() => handleToggleStoreActiveState(store.id)}
-                                className={`cursor-pointer inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black border ${
-                                  store.isOpen
-                                    ? "bg-emerald-50 text-[#16A34A] border-emerald-200/50"
-                                    : "bg-red-50 text-[#DC2626] border-red-200/50"
-                                }`}
-                              >
-                                <span className="h-1 w-1 rounded-full bg-current" />
-                                <span>{store.isOpen ? "OPEN" : "CLOSED"}</span>
-                              </span>
-
-                              {store.isOpen && (
-                                <span
-                                  onClick={() => handleToggleBusyState(store.id)}
-                                  className={`cursor-pointer inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black border ${
-                                    store.isBusy
-                                      ? "bg-amber-50 text-amber-600 border-amber-200"
-                                      : "bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-800"
-                                  }`}
-                                >
-                                  <span>
-                                    {store.isBusy ? "BUSY (Queue Limit)" : "NORMAL QUEUE"}
-                                  </span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="my-4 border-t border-gray-50 dark:border-gray-800" />
-
-                          {/* Quick Metrics */}
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <span className="block text-[10px] font-black uppercase text-gray-400">
-                                Revenue (Today)
-                              </span>
-                              <span className="font-mono text-base font-black text-gray-900 dark:text-white">
-                                ₹{store.todayRevenue.toLocaleString()}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="block text-[10px] font-black uppercase text-gray-400">
-                                Total POS Orders
-                              </span>
-                              <span className="font-mono text-base font-black text-gray-900 dark:text-white">
-                                {store.todayOrders} orders
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Card Footer controls */}
-                        <div className="mt-5 border-t border-gray-50 pt-4 dark:border-gray-800">
-                          <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1 text-gray-500">
-                              <HealthBadge
-                                system="petpooja"
-                                status={store.webhookStatus === "active" ? "healthy" : "degraded"}
-                              />
-                              <span className="font-mono text-[10px] font-bold text-gray-400">
-                                {store.menuVersion}
-                              </span>
-                            </div>
-
-                            <button
-                              onClick={() => setActiveStoreId(store.id)}
-                              className="flex items-center gap-1 font-black text-[#0E4825] hover:text-[#082E17] dark:text-emerald-400"
-                            >
-                              <span>ENTER CONSOLE</span>
-                              <ChevronRight size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* 2. DIRECTORY LIST TABLE VIEW */}
-                {viewTab === "list" && (
-                  <div className="overflow-x-auto rounded-[20px] bg-white shadow-sm border border-gray-100 dark:bg-[#1C1C1E] dark:border-gray-800">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-gray-50 bg-gray-50/50 text-[10px] font-black uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:bg-gray-900/55">
-                          <th className="py-4 px-6">Outlet ID</th>
-                          <th className="py-4 px-6">Store Name & Address</th>
-                          <th className="py-4 px-6">POS Revenue</th>
-                          <th className="py-4 px-6">Fulfillment API Sync</th>
-                          <th className="py-4 px-6">POS State</th>
-                          <th className="py-4 px-6 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50 text-sm font-semibold text-gray-700 dark:divide-gray-800 dark:text-gray-300">
-                        {filteredStores.map((store) => (
-                          <tr
-                            key={store.id}
-                            className="hover:bg-gray-50/50 dark:hover:bg-gray-900/30"
-                          >
-                            <td className="py-4 px-6 font-mono text-xs font-black text-gray-400">
-                              {store.id}
-                            </td>
-                            <td className="py-4 px-6">
-                              <div>
-                                <span
-                                  onClick={() => setActiveStoreId(store.id)}
-                                  className="cursor-pointer block text-sm font-black text-gray-900 hover:text-[#0E4825] dark:text-white dark:hover:text-emerald-400"
-                                >
-                                  {store.name}
-                                </span>
-                                <span className="block text-xs font-bold text-gray-400">
-                                  {store.address.slice(0, 50)}...
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="font-mono">
-                                <span className="block font-black text-gray-900 dark:text-white">
-                                  ₹{store.todayRevenue.toLocaleString()}
-                                </span>
-                                <span className="block text-[10px] text-gray-400 font-bold">
-                                  {store.todayOrders} live orders
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className={`h-2 w-2 rounded-full ${
-                                    store.webhookStatus === "active"
-                                      ? "bg-emerald-500"
-                                      : "bg-red-500"
-                                  }`}
-                                />
-                                <span className="font-mono text-xs font-bold">
-                                  {store.petpoojaRestId || "No mapping"}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <span
-                                onClick={() => handleToggleStoreActiveState(store.id)}
-                                className={`cursor-pointer inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-black border ${
-                                  store.isOpen
-                                    ? "bg-emerald-50 text-[#16A34A] border-emerald-200/50"
-                                    : "bg-red-50 text-[#DC2626] border-red-200/50"
-                                }`}
-                              >
-                                {store.isOpen ? "OPEN" : "CLOSED"}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => handleSyncStore(store.id)}
-                                  disabled={syncingStoreId === store.id}
-                                  className="rounded-lg p-1.5 text-gray-400 hover:text-[#0E4825]"
-                                  title="Sync Menu"
-                                >
-                                  <RotateCw
-                                    size={14}
-                                    className={syncingStoreId === store.id ? "animate-spin" : ""}
-                                  />
-                                </button>
-                                <button
-                                  onClick={() => setActiveStoreId(store.id)}
-                                  className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-black text-[#0E4825] hover:bg-gray-100 dark:bg-gray-800 dark:text-emerald-400"
-                                >
-                                  CONSOLE
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {/* 3. LOGISTICS RADAR VIEW (SVG Spatial Grid) */}
-                {viewTab === "radar" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Radar Screen Card */}
-                    <div className="lg:col-span-2 flex flex-col items-center justify-center rounded-[20px] bg-[#121214] p-6 text-white border border-gray-800 relative overflow-hidden">
-                      {/* Grid background styling */}
-                      <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-20" />
-
-                      {/* Header indicators */}
-                      <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-                        <span className="flex h-2.5 w-2.5 items-center justify-center rounded-full bg-emerald-500/20">
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                        </span>
-                        <span className="font-mono text-[10px] font-black tracking-widest text-emerald-400 uppercase">
-                          Burgonomics Spatial Radar (Live Tracking)
-                        </span>
-                      </div>
-
-                      <div className="absolute top-4 right-4 z-10 text-right font-mono text-[9px] text-gray-500">
-                        <span>
-                          CENTER COORDS: {avgLat.toFixed(4)}N, {avgLng.toFixed(4)}E
-                        </span>
-                      </div>
-
-                      {/* Radar SVG Circle */}
-                      <div className="relative h-96 w-96 max-w-full my-6 flex items-center justify-center">
-                        {/* Interactive SVG overlay */}
-                        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 400 400">
-                          {/* Concentric rings */}
-                          <circle
-                            cx="200"
-                            cy="200"
-                            r="160"
-                            fill="none"
-                            stroke="#0E4825"
-                            strokeWidth="1"
-                            strokeDasharray="4 6"
-                            opacity="0.4"
-                          />
-                          <circle
-                            cx="200"
-                            cy="200"
-                            r="110"
-                            fill="none"
-                            stroke="#0E4825"
-                            strokeWidth="1"
-                            strokeDasharray="3 4"
-                            opacity="0.5"
-                          />
-                          <circle
-                            cx="200"
-                            cy="200"
-                            r="60"
-                            fill="none"
-                            stroke="#0E4825"
-                            strokeWidth="1"
-                            opacity="0.6"
-                          />
-
-                          {/* Radar axes */}
-                          <line
-                            x1="200"
-                            y1="40"
-                            x2="200"
-                            y2="360"
-                            stroke="#0E4825"
-                            strokeWidth="0.5"
-                            opacity="0.4"
-                          />
-                          <line
-                            x1="40"
-                            y1="200"
-                            x2="360"
-                            y2="200"
-                            stroke="#0E4825"
-                            strokeWidth="0.5"
-                            opacity="0.4"
-                          />
-
-                          {/* Concentric rings tags */}
-                          <text
-                            x="205"
-                            y="55"
-                            fill="#16A34A"
-                            fontSize="8"
-                            fontFamily="monospace"
-                            opacity="0.6"
-                          >
-                            8KM RADAR
-                          </text>
-                          <text
-                            x="205"
-                            y="105"
-                            fill="#16A34A"
-                            fontSize="8"
-                            fontFamily="monospace"
-                            opacity="0.6"
-                          >
-                            5KM RADAR
-                          </text>
-                          <text
-                            x="205"
-                            y="155"
-                            fill="#16A34A"
-                            fontSize="8"
-                            fontFamily="monospace"
-                            opacity="0.6"
-                          >
-                            2KM RADAR
-                          </text>
-
-                          {/* Dynamic sweep line (CSS rotate) */}
-                          <line
-                            x1="200"
-                            y1="200"
-                            x2="341"
-                            y2="59"
-                            stroke="url(#radarSweepGradient)"
-                            strokeWidth="2.5"
-                            className="origin-[200px_200px] animate-[spin_5s_linear_infinite]"
-                          />
-
-                          {/* Gradients */}
-                          <defs>
-                            <linearGradient
-                              id="radarSweepGradient"
-                              x1="0%"
-                              y1="0%"
-                              x2="100%"
-                              y2="100%"
-                            >
-                              <stop offset="0%" stopColor="#16A34A" stopOpacity="0" />
-                              <stop offset="100%" stopColor="#16A34A" stopOpacity="0.8" />
-                            </linearGradient>
-                          </defs>
-
-                          {/* Plot Stores on Radar Map */}
-                          {filteredStores.map((store) => {
-                            const { x, y } = getRadarCoordinates(store.lat, store.lng);
-                            const isStoreOpen = store.isOpen;
-                            const isStoreBusy = store.isBusy;
-
-                            return (
-                              <g
-                                key={store.id}
-                                className="cursor-pointer group"
-                                onClick={() => setActiveStoreId(store.id)}
-                              >
-                                {/* Pulsing rings for open stores */}
-                                {isStoreOpen && (
-                                  <circle
-                                    cx={x}
-                                    cy={y}
-                                    r={isStoreBusy ? "12" : "8"}
-                                    fill="none"
-                                    stroke={isStoreBusy ? "#F59E0B" : "#10B981"}
-                                    strokeWidth="1"
-                                    className="animate-ping origin-center"
-                                    style={{ transformOrigin: `${x}px ${y}px` }}
-                                    opacity="0.5"
-                                  />
-                                )}
-
-                                {/* Main pin point */}
-                                <circle
-                                  cx={x}
-                                  cy={y}
-                                  r="4.5"
-                                  fill={
-                                    !isStoreOpen ? "#EF4444" : isStoreBusy ? "#F59E0B" : "#10B981"
-                                  }
-                                />
-
-                                {/* Text Label shown when visible/hovered */}
-                                <text
-                                  x={x + 8}
-                                  y={y + 3}
-                                  fill="#E2E8F0"
-                                  fontSize="8"
-                                  fontFamily="sans-serif"
-                                  fontWeight="bold"
-                                  className="opacity-65 group-hover:opacity-100 transition-all font-mono"
-                                >
-                                  {store.name.replace("Burgonomics ", "")}
-                                </text>
-                              </g>
-                            );
-                          })}
-                        </svg>
-                      </div>
+                {/* VIEWS, FILTERS & MAIN LIST BAR */}
+                <div className="flex flex-col gap-4 rounded-[20px] bg-white p-5 shadow-sm border border-gray-100 dark:bg-[#1C1C1E] dark:border-gray-800">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    {/* Search Bar */}
+                    <div className="relative flex-1">
+                      <Search
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        size={18}
+                      />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by name, area, city, petpoojaRestId..."
+                        className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm font-semibold outline-none focus:border-[#0E4825] dark:border-gray-700 dark:bg-gray-800 focus:ring-1 focus:ring-[#0E4825]"
+                      />
                     </div>
 
-                    {/* Sidebar: Selected Store on radar list */}
-                    <div className="flex flex-col rounded-[20px] border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-[#1C1C1E]">
-                      <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider mb-4">
-                        Plotting visible outlets ({filteredStores.length})
-                      </h3>
-                      <div className="flex-1 overflow-y-auto space-y-3 max-h-[360px] pr-2">
+                    {/* View Toggles */}
+                    <div className="flex items-center gap-2 self-end md:self-auto">
+                      <div className="flex rounded-xl bg-gray-50 p-1 border border-gray-100 dark:bg-gray-900 dark:border-gray-800">
+                        {(["list", "grid", "radar"] as ViewTab[]).map((tab) => (
+                          <button
+                            key={tab}
+                            onClick={() => setViewTab(tab)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-black capitalize transition-all ${
+                              viewTab === tab
+                                ? "bg-white text-[#0E4825] shadow-sm dark:bg-[#1A1A1A] dark:text-emerald-400"
+                                : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                            }`}
+                          >
+                            {tab === "radar" ? "Logistics Radar" : `${tab} View`}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Actions */}
+                      {!isReadOnly && (
+                        <button
+                          onClick={() => setIsCreating(true)}
+                          className="flex items-center gap-1.5 rounded-xl bg-[#0E4825] hover:bg-[#082E17] text-white px-4 py-2.5 text-xs font-black shadow-md transition-all shrink-0"
+                        >
+                          <Plus size={16} />
+                          <span>REGISTER STORE</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Advanced Filter Pills */}
+                  <div className="flex flex-wrap items-center gap-3 border-t border-gray-50 pt-4 dark:border-gray-800">
+                    {/* City select */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black uppercase text-gray-400">City:</span>
+                      <select
+                        value={selectedCity}
+                        onChange={(e) => setSelectedCity(e.target.value)}
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-bold dark:border-gray-700 dark:bg-gray-800 outline-none"
+                      >
+                        {cities.map((city) => (
+                          <option key={city} value={city}>
+                            {city}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Status Filter */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black uppercase text-gray-400">
+                        POS State:
+                      </span>
+                      <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-bold dark:border-gray-700 dark:bg-gray-800 outline-none"
+                      >
+                        <option value="All">All States</option>
+                        <option value="Open">Active / Open</option>
+                        <option value="Closed">Closed</option>
+                        <option value="Busy">Busy / Overloaded</option>
+                      </select>
+                    </div>
+
+                    {/* Sync Status Filter */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black uppercase text-gray-400">
+                        Petpooja Sync:
+                      </span>
+                      <select
+                        value={selectedSync}
+                        onChange={(e) => setSelectedSync(e.target.value)}
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-bold dark:border-gray-700 dark:bg-gray-800 outline-none"
+                      >
+                        <option value="All">All Sync Status</option>
+                        <option value="Healthy">Healthy (Linked)</option>
+                        <option value="Degraded">Connection Fault</option>
+                      </select>
+                    </div>
+
+                    <div className="ml-auto flex items-center gap-2">
+                      <button
+                        onClick={handleSyncAllStores}
+                        disabled={isSyncingAll}
+                        className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                      >
+                        <RotateCw size={12} className={isSyncingAll ? "animate-spin" : ""} />
+                        <span>POS Batch Sync</span>
+                      </button>
+                      <div className="h-4 w-[1px] bg-gray-200 dark:bg-gray-800" />
+                      <button
+                        onClick={() => handleExportDirectory("csv")}
+                        className="rounded-lg bg-gray-50 p-1 text-gray-400 hover:text-[#0E4825] dark:bg-gray-900"
+                        title="Export CSV"
+                      >
+                        <Download size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* NO RESULTS VIEW */}
+                {filteredStores.length === 0 && (
+                  <div className="flex flex-col items-center justify-center rounded-[20px] bg-white py-16 px-4 text-center border border-dashed border-gray-200 dark:bg-[#1C1C1E] dark:border-gray-800">
+                    <StoreIcon
+                      size={48}
+                      className="text-gray-300 dark:text-gray-700 animate-pulse"
+                    />
+                    <h3 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">
+                      No Burgonomics Outlets Found
+                    </h3>
+                    <p className="mt-1 max-w-md text-sm text-gray-500 font-semibold">
+                      No stores match the active search criteria or your RBAC permission assignment
+                      boundaries. Try clearing your filters.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSelectedCity("All");
+                        setSelectedStatus("All");
+                        setSelectedSync("All");
+                      }}
+                      className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-black shadow-sm hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700"
+                    >
+                      Reset Active Filters
+                    </button>
+                  </div>
+                )}
+
+                {/* TAB RENDERS */}
+                {filteredStores.length > 0 && (
+                  <div className="transition-all duration-300">
+                    {/* 1. GRID BOARD VIEW */}
+                    {viewTab === "grid" && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredStores.map((store) => (
                           <div
                             key={store.id}
-                            onClick={() => setActiveStoreId(store.id)}
-                            className="cursor-pointer group flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/40 p-3 hover:border-[#0E4825]/35 hover:bg-[#0E4825]/5 dark:border-gray-800 dark:bg-gray-900/30 dark:hover:bg-emerald-950/10"
+                            className="group relative flex flex-col justify-between overflow-hidden rounded-[20px] border border-gray-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md dark:border-gray-800/50 dark:bg-[#1C1C1E]"
                           >
+                            {/* Card Header */}
                             <div>
-                              <span className="block font-black text-sm text-gray-900 group-hover:text-[#0E4825] dark:text-white dark:group-hover:text-emerald-400">
-                                {store.name}
-                              </span>
-                              <span className="block font-mono text-[9px] text-gray-400 font-bold">
-                                COORDS: {store.lat.toFixed(4)}, {store.lng.toFixed(4)}
-                              </span>
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <span className="font-mono text-[10px] font-black tracking-widest text-[#FF6600]">
+                                    {store.id}
+                                  </span>
+                                  <h3
+                                    onClick={() => setActiveStoreId(store.id)}
+                                    className="cursor-pointer text-base font-black tracking-tight text-gray-900 hover:text-[#0E4825] dark:text-white dark:hover:text-emerald-400"
+                                  >
+                                    {store.name}
+                                  </h3>
+                                  <p className="mt-1 text-xs font-bold text-gray-400">
+                                    {store.city}, {store.area}
+                                  </p>
+                                </div>
+
+                                {/* Status toggles */}
+                                <div className="flex flex-col items-end gap-2">
+                                  <span
+                                    onClick={() => handleToggleStoreActiveState(store.id)}
+                                    className={`cursor-pointer inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black border ${
+                                      store.isOpen
+                                        ? "bg-emerald-50 text-[#16A34A] border-emerald-200/50"
+                                        : "bg-red-50 text-[#DC2626] border-red-200/50"
+                                    }`}
+                                  >
+                                    <span className="h-1 w-1 rounded-full bg-current" />
+                                    <span>{store.isOpen ? "OPEN" : "CLOSED"}</span>
+                                  </span>
+
+                                  {store.isOpen && (
+                                    <span
+                                      onClick={() => handleToggleBusyState(store.id)}
+                                      className={`cursor-pointer inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black border ${
+                                        store.isBusy
+                                          ? "bg-amber-50 text-amber-600 border-amber-200"
+                                          : "bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-800"
+                                      }`}
+                                    >
+                                      <span>
+                                        {store.isBusy ? "BUSY (Queue Limit)" : "NORMAL QUEUE"}
+                                      </span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="my-4 border-t border-gray-50 dark:border-gray-800" />
+
+                              {/* Quick Metrics */}
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="block text-[10px] font-black uppercase text-gray-400">
+                                    Revenue (Today)
+                                  </span>
+                                  <span className="font-mono text-base font-black text-gray-900 dark:text-white">
+                                    ₹{store.todayRevenue.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="block text-[10px] font-black uppercase text-gray-400">
+                                    Total POS Orders
+                                  </span>
+                                  <span className="font-mono text-base font-black text-gray-900 dark:text-white">
+                                    {store.todayOrders} orders
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${
-                                !store.isOpen
-                                  ? "bg-red-500"
-                                  : store.isBusy
-                                    ? "bg-amber-500"
-                                    : "bg-emerald-500"
-                              }`}
-                            />
+
+                            {/* Card Footer controls */}
+                            <div className="mt-5 border-t border-gray-50 pt-4 dark:border-gray-800">
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-1 text-gray-500">
+                                  <HealthBadge
+                                    system="petpooja"
+                                    status={
+                                      store.webhookStatus === "active" ? "healthy" : "degraded"
+                                    }
+                                  />
+                                  <span className="font-mono text-[10px] font-bold text-gray-400">
+                                    {store.menuVersion}
+                                  </span>
+                                </div>
+
+                                <button
+                                  onClick={() => setActiveStoreId(store.id)}
+                                  className="flex items-center gap-1 font-black text-[#0E4825] hover:text-[#082E17] dark:text-emerald-400"
+                                >
+                                  <span>ENTER CONSOLE</span>
+                                  <ChevronRight size={14} />
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    </div>
+                    )}
+
+                    {/* 2. DIRECTORY LIST TABLE VIEW */}
+                    {viewTab === "list" && (
+                      <div className="overflow-x-auto rounded-[20px] bg-white shadow-sm border border-gray-100 dark:bg-[#1C1C1E] dark:border-gray-800">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-gray-50 bg-gray-50/50 text-[10px] font-black uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:bg-gray-900/55">
+                              <th className="py-4 px-6">Outlet ID</th>
+                              <th className="py-4 px-6">Store Name & Address</th>
+                              <th className="py-4 px-6">POS Revenue</th>
+                              <th className="py-4 px-6">Fulfillment API Sync</th>
+                              <th className="py-4 px-6">POS State</th>
+                              <th className="py-4 px-6 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 text-sm font-semibold text-gray-700 dark:divide-gray-800 dark:text-gray-300">
+                            {filteredStores.map((store) => (
+                              <tr
+                                key={store.id}
+                                className="hover:bg-gray-50/50 dark:hover:bg-gray-900/30"
+                              >
+                                <td className="py-4 px-6 font-mono text-xs font-black text-gray-400">
+                                  {store.id}
+                                </td>
+                                <td className="py-4 px-6">
+                                  <div>
+                                    <span
+                                      onClick={() => setActiveStoreId(store.id)}
+                                      className="cursor-pointer block text-sm font-black text-gray-900 hover:text-[#0E4825] dark:text-white dark:hover:text-emerald-400"
+                                    >
+                                      {store.name}
+                                    </span>
+                                    <span className="block text-xs font-bold text-gray-400">
+                                      {store.address.slice(0, 50)}...
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-6">
+                                  <div className="font-mono">
+                                    <span className="block font-black text-gray-900 dark:text-white">
+                                      ₹{store.todayRevenue.toLocaleString()}
+                                    </span>
+                                    <span className="block text-[10px] text-gray-400 font-bold">
+                                      {store.todayOrders} live orders
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-6">
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className={`h-2 w-2 rounded-full ${
+                                        store.webhookStatus === "active"
+                                          ? "bg-emerald-500"
+                                          : "bg-red-500"
+                                      }`}
+                                    />
+                                    <span className="font-mono text-xs font-bold">
+                                      {store.petpoojaRestId || "No mapping"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-6">
+                                  <span
+                                    onClick={() => handleToggleStoreActiveState(store.id)}
+                                    className={`cursor-pointer inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-black border ${
+                                      store.isOpen
+                                        ? "bg-emerald-50 text-[#16A34A] border-emerald-200/50"
+                                        : "bg-red-50 text-[#DC2626] border-red-200/50"
+                                    }`}
+                                  >
+                                    {store.isOpen ? "OPEN" : "CLOSED"}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-6 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => handleSyncStore(store.id)}
+                                      disabled={syncingStoreId === store.id}
+                                      className="rounded-lg p-1.5 text-gray-400 hover:text-[#0E4825]"
+                                      title="Sync Menu"
+                                    >
+                                      <RotateCw
+                                        size={14}
+                                        className={
+                                          syncingStoreId === store.id ? "animate-spin" : ""
+                                        }
+                                      />
+                                    </button>
+                                    <button
+                                      onClick={() => setActiveStoreId(store.id)}
+                                      className="rounded-lg bg-gray-50 px-2.5 py-1 text-xs font-black text-[#0E4825] hover:bg-gray-100 dark:bg-gray-800 dark:text-emerald-400"
+                                    >
+                                      CONSOLE
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* 3. LOGISTICS RADAR VIEW (SVG Spatial Grid) */}
+                    {viewTab === "radar" && (
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Radar Screen Card */}
+                        <div className="lg:col-span-2 flex flex-col items-center justify-center rounded-[20px] bg-[#121214] p-6 text-white border border-gray-800 relative overflow-hidden">
+                          {/* Grid background styling */}
+                          <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-20" />
+
+                          {/* Header indicators */}
+                          <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+                            <span className="flex h-2.5 w-2.5 items-center justify-center rounded-full bg-emerald-500/20">
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                            </span>
+                            <span className="font-mono text-[10px] font-black tracking-widest text-emerald-400 uppercase">
+                              Burgonomics Spatial Radar (Live Tracking)
+                            </span>
+                          </div>
+
+                          <div className="absolute top-4 right-4 z-10 text-right font-mono text-[9px] text-gray-500">
+                            <span>
+                              CENTER COORDS: {avgLat.toFixed(4)}N, {avgLng.toFixed(4)}E
+                            </span>
+                          </div>
+
+                          {/* Radar SVG Circle */}
+                          <div className="relative h-96 w-96 max-w-full my-6 flex items-center justify-center">
+                            {/* Interactive SVG overlay */}
+                            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 400 400">
+                              {/* Concentric rings */}
+                              <circle
+                                cx="200"
+                                cy="200"
+                                r="160"
+                                fill="none"
+                                stroke="#0E4825"
+                                strokeWidth="1"
+                                strokeDasharray="4 6"
+                                opacity="0.4"
+                              />
+                              <circle
+                                cx="200"
+                                cy="200"
+                                r="110"
+                                fill="none"
+                                stroke="#0E4825"
+                                strokeWidth="1"
+                                strokeDasharray="3 4"
+                                opacity="0.5"
+                              />
+                              <circle
+                                cx="200"
+                                cy="200"
+                                r="60"
+                                fill="none"
+                                stroke="#0E4825"
+                                strokeWidth="1"
+                                opacity="0.6"
+                              />
+
+                              {/* Radar axes */}
+                              <line
+                                x1="200"
+                                y1="40"
+                                x2="200"
+                                y2="360"
+                                stroke="#0E4825"
+                                strokeWidth="0.5"
+                                opacity="0.4"
+                              />
+                              <line
+                                x1="40"
+                                y1="200"
+                                x2="360"
+                                y2="200"
+                                stroke="#0E4825"
+                                strokeWidth="0.5"
+                                opacity="0.4"
+                              />
+
+                              {/* Concentric rings tags */}
+                              <text
+                                x="205"
+                                y="55"
+                                fill="#16A34A"
+                                fontSize="8"
+                                fontFamily="monospace"
+                                opacity="0.6"
+                              >
+                                8KM RADAR
+                              </text>
+                              <text
+                                x="205"
+                                y="105"
+                                fill="#16A34A"
+                                fontSize="8"
+                                fontFamily="monospace"
+                                opacity="0.6"
+                              >
+                                5KM RADAR
+                              </text>
+                              <text
+                                x="205"
+                                y="155"
+                                fill="#16A34A"
+                                fontSize="8"
+                                fontFamily="monospace"
+                                opacity="0.6"
+                              >
+                                2KM RADAR
+                              </text>
+
+                              {/* Dynamic sweep line (CSS rotate) */}
+                              <line
+                                x1="200"
+                                y1="200"
+                                x2="341"
+                                y2="59"
+                                stroke="url(#radarSweepGradient)"
+                                strokeWidth="2.5"
+                                className="origin-[200px_200px] animate-[spin_5s_linear_infinite]"
+                              />
+
+                              {/* Gradients */}
+                              <defs>
+                                <linearGradient
+                                  id="radarSweepGradient"
+                                  x1="0%"
+                                  y1="0%"
+                                  x2="100%"
+                                  y2="100%"
+                                >
+                                  <stop offset="0%" stopColor="#16A34A" stopOpacity="0" />
+                                  <stop offset="100%" stopColor="#16A34A" stopOpacity="0.8" />
+                                </linearGradient>
+                              </defs>
+
+                              {/* Plot Stores on Radar Map */}
+                              {filteredStores.map((store) => {
+                                const { x, y } = getRadarCoordinates(store.lat, store.lng);
+                                const isStoreOpen = store.isOpen;
+                                const isStoreBusy = store.isBusy;
+
+                                return (
+                                  <g
+                                    key={store.id}
+                                    className="cursor-pointer group"
+                                    onClick={() => setActiveStoreId(store.id)}
+                                  >
+                                    {/* Pulsing rings for open stores */}
+                                    {isStoreOpen && (
+                                      <circle
+                                        cx={x}
+                                        cy={y}
+                                        r={isStoreBusy ? "12" : "8"}
+                                        fill="none"
+                                        stroke={isStoreBusy ? "#F59E0B" : "#10B981"}
+                                        strokeWidth="1"
+                                        className="animate-ping origin-center"
+                                        style={{ transformOrigin: `${x}px ${y}px` }}
+                                        opacity="0.5"
+                                      />
+                                    )}
+
+                                    {/* Main pin point */}
+                                    <circle
+                                      cx={x}
+                                      cy={y}
+                                      r="4.5"
+                                      fill={
+                                        !isStoreOpen
+                                          ? "#EF4444"
+                                          : isStoreBusy
+                                            ? "#F59E0B"
+                                            : "#10B981"
+                                      }
+                                    />
+
+                                    {/* Text Label shown when visible/hovered */}
+                                    <text
+                                      x={x + 8}
+                                      y={y + 3}
+                                      fill="#E2E8F0"
+                                      fontSize="8"
+                                      fontFamily="sans-serif"
+                                      fontWeight="bold"
+                                      className="opacity-65 group-hover:opacity-100 transition-all font-mono"
+                                    >
+                                      {store.name.replace("Burgonomics ", "")}
+                                    </text>
+                                  </g>
+                                );
+                              })}
+                            </svg>
+                          </div>
+                        </div>
+
+                        {/* Sidebar: Selected Store on radar list */}
+                        <div className="flex flex-col rounded-[20px] border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-[#1C1C1E]">
+                          <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider mb-4">
+                            Plotting visible outlets ({filteredStores.length})
+                          </h3>
+                          <div className="flex-1 overflow-y-auto space-y-3 max-h-[360px] pr-2">
+                            {filteredStores.map((store) => (
+                              <div
+                                key={store.id}
+                                onClick={() => setActiveStoreId(store.id)}
+                                className="cursor-pointer group flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/40 p-3 hover:border-[#0E4825]/35 hover:bg-[#0E4825]/5 dark:border-gray-800 dark:bg-gray-900/30 dark:hover:bg-emerald-950/10"
+                              >
+                                <div>
+                                  <span className="block font-black text-sm text-gray-900 group-hover:text-[#0E4825] dark:text-white dark:group-hover:text-emerald-400">
+                                    {store.name}
+                                  </span>
+                                  <span className="block font-mono text-[9px] text-gray-400 font-bold">
+                                    COORDS: {store.lat.toFixed(4)}, {store.lng.toFixed(4)}
+                                  </span>
+                                </div>
+                                <span
+                                  className={`h-2.5 w-2.5 rounded-full ${
+                                    !store.isOpen
+                                      ? "bg-red-500"
+                                      : store.isBusy
+                                        ? "bg-amber-500"
+                                        : "bg-emerald-500"
+                                  }`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
               </>
             )}
           </motion.div>
@@ -1701,7 +1713,8 @@ export const AdminStoresPage: React.FC<{ defaultStoreId?: string; isCreate?: boo
                             onBlur={() => {
                               if (editingPetpoojaId !== activeStore.petpoojaRestId) {
                                 const updated = stores.map((s) => {
-                                  if (s.id === activeStore.id) return { ...s, petpoojaRestId: editingPetpoojaId };
+                                  if (s.id === activeStore.id)
+                                    return { ...s, petpoojaRestId: editingPetpoojaId };
                                   return s;
                                 });
                                 void saveStores(updated);

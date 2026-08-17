@@ -1,12 +1,16 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { AppliedPromo, CartLine, CartStatus } from "@/features/cart/models";
+import type { Product } from "@/features/menu/models";
+
+export const PRICE_LOCK_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
 interface CartState {
   // Persisted
   storeId: string | null;
   lines: CartLine[];
   promo: AppliedPromo | null;
+  priceLockExpiresAt: number | null;
 
   // Runtime
   status: CartStatus;
@@ -25,6 +29,9 @@ interface CartState {
   setStatus: (status: CartStatus) => void;
   setError: (message: string | null) => void;
   setSyncPending: (v: boolean) => void;
+  renewPriceLock: () => void;
+  isPriceLockExpired: () => boolean;
+  revalidateWithProducts: (products: Product[]) => { changed: boolean; messages: string[] };
   /** Replace all lines. Used when a store switch confirms a wipe. */
   reset: (storeId?: string | null) => void;
 }
@@ -37,6 +44,7 @@ export const useCartStore = create<CartState>()(
       storeId: null,
       lines: [],
       promo: null,
+      priceLockExpiresAt: null,
 
       status: "empty",
       error: null,
@@ -60,6 +68,7 @@ export const useCartStore = create<CartState>()(
           return {
             lines,
             storeId: line.storeId,
+            priceLockExpiresAt: Date.now() + PRICE_LOCK_DURATION_MS,
             status: "ready",
             error: null,
           };
@@ -73,6 +82,7 @@ export const useCartStore = create<CartState>()(
             status: initialStatus(lines),
             storeId: lines.length ? s.storeId : null,
             promo: lines.length ? s.promo : null,
+            priceLockExpiresAt: lines.length ? s.priceLockExpiresAt : null,
           };
         }),
 
@@ -99,6 +109,7 @@ export const useCartStore = create<CartState>()(
           lines: [],
           storeId: null,
           promo: null,
+          priceLockExpiresAt: null,
           status: "empty",
           error: null,
         }),
@@ -108,18 +119,82 @@ export const useCartStore = create<CartState>()(
       setError: (message) => set({ error: message }),
       setSyncPending: (v) => set({ syncPending: v }),
 
+      renewPriceLock: () =>
+        set({
+          priceLockExpiresAt: Date.now() + PRICE_LOCK_DURATION_MS,
+        }),
+
+      isPriceLockExpired: () => {
+        const expires = get().priceLockExpiresAt;
+        if (!expires || get().lines.length === 0) return false;
+        return Date.now() > expires;
+      },
+
+      revalidateWithProducts: (products: Product[]) => {
+        const s = get();
+        const productMap = new Map(products.map((p) => [p.id, p]));
+        const messages: string[] = [];
+        let changed = false;
+
+        const updatedLines = s.lines.map((line) => {
+          const prod = productMap.get(line.productId);
+          if (!prod) return line;
+
+          let lineChanged = false;
+          let newPrice = line.unitPrice;
+          let newAvailability = line.availability;
+
+          if (prod.price !== line.unitPrice) {
+            messages.push(`Price for ${line.name} updated from ₹${line.unitPrice} to ₹${prod.price}.`);
+            newPrice = prod.price;
+            lineChanged = true;
+          }
+
+          if (!prod.inStock && line.availability !== "unavailable") {
+            messages.push(`${line.name} is now out of stock.`);
+            newAvailability = "unavailable";
+            lineChanged = true;
+          }
+
+          if (lineChanged) {
+            changed = true;
+            return {
+              ...line,
+              unitPrice: newPrice,
+              price: newPrice,
+              availability: newAvailability,
+            };
+          }
+          return line;
+        });
+
+        if (changed) {
+          set({
+            lines: updatedLines,
+            priceLockExpiresAt: Date.now() + PRICE_LOCK_DURATION_MS,
+          });
+        } else {
+          set({
+            priceLockExpiresAt: Date.now() + PRICE_LOCK_DURATION_MS,
+          });
+        }
+
+        return { changed, messages };
+      },
+
       reset: (storeId = null) =>
         set({
           lines: [],
           storeId,
           promo: null,
+          priceLockExpiresAt: null,
           status: "empty",
           error: null,
         }),
     }),
     {
       name: "burg.cart",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => {
         if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
         const memoryStorage = new Map<string, string>();
@@ -143,19 +218,20 @@ export const useCartStore = create<CartState>()(
         storeId: s.storeId,
         lines: s.lines,
         promo: s.promo,
+        priceLockExpiresAt: s.priceLockExpiresAt,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) state.status = initialStatus(state.lines);
       },
-      // Fulfillment moved to storeStore in v3 — discard any prior shape.
       migrate: (persisted, version) => {
-        if (!persisted || typeof persisted !== "object" || version < 3) {
+        if (!persisted || typeof persisted !== "object" || version < 4) {
           const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
           const lines = Array.isArray(anyPersisted.lines) ? (anyPersisted.lines as CartLine[]) : [];
           return {
             storeId: (anyPersisted.storeId as string | null) ?? null,
             lines,
             promo: (anyPersisted.promo as AppliedPromo | null) ?? null,
+            priceLockExpiresAt: typeof anyPersisted.priceLockExpiresAt === "number" ? anyPersisted.priceLockExpiresAt : null,
           } as Partial<CartState>;
         }
         return persisted as Partial<CartState>;

@@ -149,6 +149,7 @@ export class OrderRepository {
       address: addressSnapshot,
       notes: checkout.orderNotes,
       fulfillmentInstructions,
+      tableNumber: sel.fulfillment === "dinein" ? checkout.tableNumber : undefined,
       payment,
       confirmedOrderId: opts.confirmedOrderId,
     };
@@ -217,8 +218,8 @@ export class OrderRepository {
   }
 
   /**
-   * Start a repository-managed tracking subscription. Polling today,
-   * WebSocket / push-driven tomorrow — the calling screen doesn't care.
+   * Start a repository-managed real-time tracking subscription (<5s sync).
+   * Backed by Firestore onSnapshot listeners with graceful polling fallback.
    */
   subscribeTracking(
     id: string,
@@ -228,6 +229,7 @@ export class OrderRepository {
     const intervalMs = options.intervalMs ?? 8000;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let fsUnsubscribe: (() => void) | null = null;
 
     const fetchOnce = async () => {
       if (stopped) return;
@@ -241,12 +243,42 @@ export class OrderRepository {
       }
       timer = setTimeout(fetchOnce, intervalMs);
     };
+
+    // Initialize real-time Firestore onSnapshot listener
+    void (async () => {
+      try {
+        const { db } = await import("@/core/config/firebase");
+        const { doc, onSnapshot } = await import("firebase/firestore");
+        if (stopped) return;
+
+        fsUnsubscribe = onSnapshot(
+          doc(db, "orders", id),
+          (snapshot) => {
+            if (stopped || !snapshot.exists()) return;
+            // Immediate refresh tracking on snapshot event
+            void (async () => {
+              const res = await this.service.getTracking(id);
+              if (!stopped && res.success && res.data) {
+                listener(res.data);
+              }
+            })();
+          },
+          (err) => {
+            console.warn("OrderRepository: Firestore tracking onSnapshot error:", err);
+          },
+        );
+      } catch (err) {
+        console.warn("OrderRepository: Could not bind Firestore onSnapshot listener:", err);
+      }
+    })();
+
     void fetchOnce();
 
     return {
       stop: () => {
         stopped = true;
         if (timer) clearTimeout(timer);
+        if (fsUnsubscribe) fsUnsubscribe();
       },
       refresh: fetchOnce,
     };

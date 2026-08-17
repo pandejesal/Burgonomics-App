@@ -159,7 +159,9 @@ function CartPage() {
           <div className="mx-auto flex max-w-[480px] md:max-w-[480px] max-md:max-w-full items-center justify-between gap-3 px-4 py-3">
             <div>
               <p className="type-caption text-text-secondary">Grand total</p>
-              <p className="type-title-large tabular-nums text-text-primary">{formatINR(totals?.grandTotal ?? 0)}</p>
+              <p className="type-title-large tabular-nums text-text-primary">
+                {formatINR(totals?.grandTotal ?? 0)}
+              </p>
             </div>
             <AppButton
               variant="cta"

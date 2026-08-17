@@ -1,6 +1,6 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { db } from "@/core/config/firebase";
-import { collection, getDocs, doc, getDoc, query, where, limit } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, where, limit, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import type {
   CustomizationGroup,
   CustomizationOption,
@@ -41,8 +41,7 @@ function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
     const options: CustomizationOption[] = (group.options || []).map((opt: any) => ({
       id: opt.id?.toString() || opt.optionId || "",
       name: opt.name || "",
-      priceDelta:
-        typeof opt.price === "number" ? opt.price : parseFloat(opt.price) || 0,
+      priceDelta: typeof opt.price === "number" ? opt.price : parseFloat(opt.price) || 0,
       isDefault: Boolean(opt.isDefault),
       outOfStock: opt.isAvailable === false || opt.outOfStock === true,
     }));
@@ -66,6 +65,27 @@ function mapProductDoc(data: any, docId: string): Product {
 
   const customizations = mapToCustomizationGroups(data.customizations || []);
 
+  const heroUrl = data.heroImageUrl || data.heroImage;
+  const standardUrl = data.imageUrl || data.itemimage_url || undefined;
+  const finalImageUrl = heroUrl || standardUrl;
+
+  const badges = Array.isArray(data.badges) ? [...data.badges] : [];
+  if (data.isBestseller || data.bestseller || (Array.isArray(data.tags) && data.tags.includes("bestseller"))) {
+    if (!badges.some((b: any) => b.id === "bestseller")) {
+      badges.push({ id: "bestseller", label: "Bestseller", tone: "warning" });
+    }
+  }
+  if (data.isChefsSpecial || data.chefsSpecial || (Array.isArray(data.tags) && data.tags.includes("chef_special"))) {
+    if (!badges.some((b: any) => b.id === "chefs_special")) {
+      badges.push({ id: "chefs_special", label: "Chef's Special", tone: "primary" });
+    }
+  }
+  if (data.isNew || data.new || (Array.isArray(data.tags) && data.tags.includes("new"))) {
+    if (!badges.some((b: any) => b.id === "new")) {
+      badges.push({ id: "new", label: "New", tone: "success" });
+    }
+  }
+
   return {
     id: docId,
     categoryId: data.categoryId || "",
@@ -75,13 +95,13 @@ function mapProductDoc(data: any, docId: string): Product {
     compareAtPrice: data.compareAtPrice,
     discountPercentage: data.discountPercentage,
     veg,
-    imageUrl: data.imageUrl || data.itemimage_url || undefined,
-    imageUrls: data.imageUrls || (data.imageUrl ? [data.imageUrl] : []),
+    imageUrl: finalImageUrl,
+    imageUrls: data.imageUrls || (finalImageUrl ? [finalImageUrl] : []),
     fallbackImageUrl: data.fallbackImageUrl,
     inStock: data.isAvailable !== undefined ? Boolean(data.isAvailable) : data.inStock !== false,
     customizable: customizations.length > 0 || Boolean(data.customizable),
     prepTimeMinutes: data.prepTimeMinutes || 15,
-    badges: data.badges || [],
+    badges,
     tags: data.tags || [],
     unavailableReason: data.unavailableReason,
   };
@@ -346,5 +366,120 @@ export const menuService = {
   async getItem(id: string): Promise<ApiResult<MenuItem | null>> {
     const detail = await this.getProduct(id);
     return detail.success ? ok(detail.data as MenuItem | null) : detail;
+  },
+
+  /**
+   * Real-time listener for Petpooja menu categories (<5s sync).
+   */
+  subscribeCategories(
+    storeId: string | undefined,
+    callback: (result: ApiResult<MenuCategory[]>) => void,
+  ): () => void {
+    let q = query(collection(db, "petpooja_categories"));
+    if (storeId) {
+      q = query(collection(db, "petpooja_categories"), where("restId", "==", storeId));
+    }
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const categories: MenuCategory[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as any;
+          categories.push({
+            id: d.id,
+            name: data.name || data.categoryname || "Category",
+            slug: data.slug,
+            order: data.sortOrder ?? data.order ?? 0,
+            itemCount: data.itemCount || 0,
+            imageUrl: data.imageUrl || data.categoryimage_url || undefined,
+          });
+        });
+        callback(ok(categories.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))));
+      },
+      (err) => {
+        console.warn("menuService.subscribeCategories snapshot error:", err);
+        callback(fail("MENU_SYNC_FAILED", "Failed to sync categories in real-time."));
+      },
+    );
+
+    return unsubscribe;
+  },
+
+  /**
+   * Real-time listener for Petpooja menu products & 86ing (<5s sync).
+   */
+  subscribeProducts(
+    storeId: string | undefined,
+    categoryId: string | undefined,
+    callback: (result: ApiResult<ProductPage>) => void,
+    page = 1,
+    pageSize = 40,
+  ): () => void {
+    let q = query(collection(db, "petpooja_products"));
+    if (storeId && categoryId) {
+      q = query(
+        collection(db, "petpooja_products"),
+        where("restId", "==", storeId),
+        where("categoryId", "==", categoryId),
+      );
+    } else if (categoryId) {
+      q = query(collection(db, "petpooja_products"), where("categoryId", "==", categoryId));
+    } else if (storeId) {
+      q = query(collection(db, "petpooja_products"), where("restId", "==", storeId));
+    }
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const all: Product[] = [];
+        snap.forEach((d) => {
+          all.push(mapProductDoc(d.data(), d.id));
+        });
+        callback(ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length }));
+      },
+      (err) => {
+        console.warn("menuService.subscribeProducts snapshot error:", err);
+        callback(fail("MENU_SYNC_FAILED", "Failed to sync products in real-time."));
+      },
+    );
+
+    return unsubscribe;
+  },
+
+  /**
+   * Real-time single product listener (e.g. For product details modal).
+   */
+  subscribeProduct(
+    id: string,
+    callback: (result: ApiResult<ProductDetails | null>) => void,
+  ): () => void {
+    const unsub = onSnapshot(
+      doc(db, "petpooja_products", id),
+      (snap) => {
+        if (!snap.exists()) {
+          callback(ok(null));
+          return;
+        }
+        const data = snap.data();
+        const baseProduct = mapProductDoc(data, snap.id);
+        const customizations = mapToCustomizationGroups(data.customizations || []);
+
+        const details: ProductDetails = {
+          ...baseProduct,
+          customizations,
+          ingredients: data.ingredients || [],
+          nutrition: data.nutrition || [],
+          allowSpecialInstructions: data.allowSpecialInstructions ?? true,
+        };
+        callback(ok(details));
+      },
+      (err) => {
+        console.warn("menuService.subscribeProduct snapshot error:", err);
+        callback(fail("PRODUCT_SYNC_FAILED", "Could not sync product details."));
+      },
+    );
+
+    return unsub;
   },
 };

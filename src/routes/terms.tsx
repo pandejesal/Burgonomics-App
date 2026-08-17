@@ -42,7 +42,9 @@ function TermsPage() {
               <ShoppingCart className="h-4 w-4 text-primary" /> 1. Ordering & Acceptance
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              By placing an order via the Burgonomics app, you make an offer to purchase food items at the stated prices. Order acceptance occurs when the restaurant store acknowledges the order and generates a Kitchen Order Ticket (KOT).
+              By placing an order via the Burgonomics app, you make an offer to purchase food items
+              at the stated prices. Order acceptance occurs when the restaurant store acknowledges
+              the order and generates a Kitchen Order Ticket (KOT).
             </Text>
           </section>
 
@@ -51,7 +53,9 @@ function TermsPage() {
               <Clock className="h-4 w-4 text-primary" /> 2. Pricing, Taxes & Delivery
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              All prices listed on the app are in Indian Rupees (INR) and are subject to statutory Goods and Services Tax (GST 5% on restaurant service). Delivery charges may apply based on order subtotal and distance from the fulfilling store.
+              All prices listed on the app are in Indian Rupees (INR) and are subject to statutory
+              Goods and Services Tax (GST 5% on restaurant service). Delivery charges may apply
+              based on order subtotal and distance from the fulfilling store.
             </Text>
           </section>
 
@@ -60,7 +64,11 @@ function TermsPage() {
               <RotateCcw className="h-4 w-4 text-primary" /> 3. Cancellations & Refunds
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              Orders may be cancelled free of charge prior to kitchen confirmation. Once food preparation has begun, cancellations cannot be accepted due to perishable goods regulations. If an order fails to deliver or arrives damaged/incorrect, a full or partial refund will be processed to the original payment method within 5–7 business days via Razorpay.
+              Orders may be cancelled free of charge prior to kitchen confirmation. Once food
+              preparation has begun, cancellations cannot be accepted due to perishable goods
+              regulations. If an order fails to deliver or arrives damaged/incorrect, a full or
+              partial refund will be processed to the original payment method within 5–7 business
+              days via Razorpay.
             </Text>
           </section>
 
@@ -69,7 +77,9 @@ function TermsPage() {
               <HelpCircle className="h-4 w-4 text-primary" /> 4. Customer Support
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              If you have any questions regarding your order or these terms, please contact our support team at <strong>support@burgonomics.com</strong> or via the in-app Help & Support channel.
+              If you have any questions regarding your order or these terms, please contact our
+              support team at <strong>support@burgonomics.com</strong> or via the in-app Help &
+              Support channel.
             </Text>
           </section>
         </AppCard>

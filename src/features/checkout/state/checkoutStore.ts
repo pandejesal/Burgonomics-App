@@ -25,11 +25,13 @@ interface CheckoutState {
   deliveryInstructions: string;
   pickupInstructions: string;
   diningNotes: string;
+  tableNumber: string;
 
   setOrderNotes: (v: string) => void;
   setDeliveryInstructions: (v: string) => void;
   setPickupInstructions: (v: string) => void;
   setDiningNotes: (v: string) => void;
+  setTableNumber: (v: string) => void;
   reset: () => void;
 }
 
@@ -38,6 +40,7 @@ const initial = {
   deliveryInstructions: "",
   pickupInstructions: "",
   diningNotes: "",
+  tableNumber: "",
 };
 
 export const useCheckoutStore = create<CheckoutState>()(
@@ -48,11 +51,12 @@ export const useCheckoutStore = create<CheckoutState>()(
       setDeliveryInstructions: (v) => set({ deliveryInstructions: v.slice(0, 160) }),
       setPickupInstructions: (v) => set({ pickupInstructions: v.slice(0, 160) }),
       setDiningNotes: (v) => set({ diningNotes: v.slice(0, 160) }),
+      setTableNumber: (v) => set({ tableNumber: v.slice(0, 20) }),
       reset: () => set({ ...initial }),
     }),
     {
       name: "burg.checkout",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => {
         if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
         const memoryStorage = new Map<string, string>();
@@ -76,6 +80,7 @@ export const useCheckoutStore = create<CheckoutState>()(
         deliveryInstructions: s.deliveryInstructions,
         pickupInstructions: s.pickupInstructions,
         diningNotes: s.diningNotes,
+        tableNumber: s.tableNumber,
       }),
     },
   ),

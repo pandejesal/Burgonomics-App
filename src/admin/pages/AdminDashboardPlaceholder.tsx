@@ -353,4 +353,3 @@ export const AdminDashboardPlaceholder: React.FC = () => {
     </div>
   );
 };
-

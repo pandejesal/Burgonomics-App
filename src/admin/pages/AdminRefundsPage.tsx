@@ -24,11 +24,7 @@ import { AdminCard } from "../components/Cards";
 import { AdminButton } from "../components/Buttons";
 import { StatusBadge } from "../components/Badges";
 import { ConfirmDialog } from "../components/Utilities";
-import {
-  paymentStorage,
-  RefundDetails,
-  PaymentTransaction,
-} from "./paymentsData";
+import { paymentStorage, RefundDetails, PaymentTransaction } from "./paymentsData";
 import { adminPaymentsService } from "../services/adminPaymentsService";
 import { useAdmin } from "../hooks/useAdmin";
 import { toast } from "sonner";
@@ -45,7 +41,7 @@ export const AdminRefundsPage: React.FC = () => {
         console.error("Live refund listener error:", err);
         toast.error("Failed to connect to live refund stream.");
       },
-      100
+      100,
     );
     return () => unsubscribe();
   }, []);

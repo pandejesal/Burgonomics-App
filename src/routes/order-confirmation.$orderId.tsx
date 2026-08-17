@@ -147,6 +147,39 @@ function OrderConfirmationPage() {
             {order.shortCode}
           </Text>
 
+          {/* Prominent Fulfillment Token / Table Standout */}
+          {order.fulfillment === "takeaway" && (
+            <div className="mt-3 rounded-2xl bg-primary/5 border border-dashed border-primary/40 p-3.5 flex items-center justify-between">
+              <div>
+                <span className="block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                  Counter Pickup Token
+                </span>
+                <span className="font-mono text-xl font-black text-primary tracking-widest">
+                  {order.shortCode.split("-").pop() || order.shortCode}
+                </span>
+              </div>
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
+                Show at Counter
+              </span>
+            </div>
+          )}
+
+          {order.fulfillment === "dinein" && order.tableNumber && (
+            <div className="mt-3 rounded-2xl bg-primary/5 border border-dashed border-primary/40 p-3.5 flex items-center justify-between">
+              <div>
+                <span className="block text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                  Dine-In Table
+                </span>
+                <span className="font-mono text-xl font-black text-primary">
+                  Table {order.tableNumber}
+                </span>
+              </div>
+              <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-600">
+                KOT Dispatched
+              </span>
+            </div>
+          )}
+
           <div className="mt-4 space-y-3 border-t border-divider pt-4">
             <MetaRow icon={<ShoppingBag className="h-4 w-4" aria-hidden />} label="Fulfillment">
               {fulfillmentLabel}

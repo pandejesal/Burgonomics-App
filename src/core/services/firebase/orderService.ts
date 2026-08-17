@@ -21,9 +21,9 @@ export const orderService = {
     const q = query(
       collection(db, "orders"),
       where("userId", "==", userId),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
     );
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => doc.data() as OrderData);
-  }
+    return querySnapshot.docs.map((doc) => doc.data() as OrderData);
+  },
 };

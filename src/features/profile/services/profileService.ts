@@ -31,20 +31,27 @@ export const profileService = {
       if (!user) return fail("UNAUTHORIZED", "Not logged in");
 
       const userRef = doc(db, "users", user.uid);
-      
+
       // Firestore does not support undefined values, so we filter them out.
       const cleanPatch = Object.fromEntries(
-        Object.entries(patch).filter(([_, v]) => v !== undefined)
+        Object.entries(patch).filter(([_, v]) => v !== undefined),
       );
-      
-      await setDoc(userRef, {
-        ...cleanPatch,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+
+      await setDoc(
+        userRef,
+        {
+          ...cleanPatch,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      );
       return ok(patch);
     } catch (error: any) {
       console.error("Firestore profile update error:", error);
-      return fail("SERVER_ERROR", `Failed to update profile in database: ${error?.message || error}`);
+      return fail(
+        "SERVER_ERROR",
+        `Failed to update profile in database: ${error?.message || error}`,
+      );
     }
   },
 
@@ -75,7 +82,11 @@ export const profileService = {
         return fail("SERVER_ERROR", `Deletion failed (HTTP ${res.status}): ${text}`);
       }
 
-      const data = (await res.json()) as { status: string; deleted?: boolean; ordersAnonymized?: number };
+      const data = (await res.json()) as {
+        status: string;
+        deleted?: boolean;
+        ordersAnonymized?: number;
+      };
       if (data.status !== "success" || !data.deleted) {
         return fail("SERVER_ERROR", "Deletion was not completed by the server.");
       }
@@ -93,7 +104,7 @@ export const profileService = {
       const { db, auth } = await import("@/core/config/firebase");
       const { doc, getDoc } = await import("firebase/firestore");
       let user = auth.currentUser;
-      
+
       if (!user) {
         user = await new Promise((resolve) => {
           const unsubscribe = auth.onAuthStateChanged((u) => {
@@ -106,7 +117,7 @@ export const profileService = {
           }, 3000);
         });
       }
-      
+
       if (!user) {
         console.warn("profileService.me(): No active firebase session.");
         return ok(null);

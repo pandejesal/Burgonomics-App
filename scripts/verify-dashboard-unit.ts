@@ -176,7 +176,9 @@ async function runTestSuite() {
   console.log("  ✓ Connected:", health.connected);
   console.log("  ✓ Message:", `"${health.message}"`);
   if (health.status !== "standby" || health.connected !== false) {
-    throw new Error(`getSyncHealth failed: expected standby and connected: false, got ${JSON.stringify(health)}`);
+    throw new Error(
+      `getSyncHealth failed: expected standby and connected: false, got ${JSON.stringify(health)}`,
+    );
   }
 
   // 2. Test getStores()
@@ -186,7 +188,9 @@ async function runTestSuite() {
   const openStores = stores.filter((s) => s.status === "OPEN").length;
   console.log("  ✓ Open stores count:", openStores);
   if (stores.length !== 3 || openStores !== 2) {
-    throw new Error(`getStores failed: expected 3 total and 2 open, got ${stores.length} and ${openStores}`);
+    throw new Error(
+      `getStores failed: expected 3 total and 2 open, got ${stores.length} and ${openStores}`,
+    );
   }
 
   // 3. Test getLiveCounts()
@@ -197,7 +201,11 @@ async function runTestSuite() {
   console.log("  ✓ paymentsCapturedLast24h:", liveCounts.paymentsCapturedLast24h, "(Expected: 2)");
   console.log("  ✓ refundsPendingCount:", liveCounts.refundsPendingCount, "(Expected: 1)");
   console.log("  ✓ storesActive:", liveCounts.storesActive, "(Expected: 2)");
-  console.log("  ✓ realtimeSessionsActive:", liveCounts.realtimeSessionsActive, "(Expected: 2, plain storesActive)");
+  console.log(
+    "  ✓ realtimeSessionsActive:",
+    liveCounts.realtimeSessionsActive,
+    "(Expected: 2, plain storesActive)",
+  );
 
   if (
     liveCounts.ordersLast24h !== 3 ||
@@ -217,9 +225,18 @@ async function runTestSuite() {
   const to = now.toISOString();
 
   const snapshot = await service.getDashboardSnapshot({ from, to });
-  console.log("  ✓ Total Revenue:", `₹${snapshot.revenue.totalRevenuePaise / 100} (${snapshot.revenue.totalRevenuePaise} paise)`);
-  console.log("  ✓ Completed Refunds:", `₹${snapshot.revenue.refundsPaise / 100} (${snapshot.revenue.refundsPaise} paise)`);
-  console.log("  ✓ Net Revenue:", `₹${snapshot.revenue.netRevenuePaise / 100} (${snapshot.revenue.netRevenuePaise} paise)`);
+  console.log(
+    "  ✓ Total Revenue:",
+    `₹${snapshot.revenue.totalRevenuePaise / 100} (${snapshot.revenue.totalRevenuePaise} paise)`,
+  );
+  console.log(
+    "  ✓ Completed Refunds:",
+    `₹${snapshot.revenue.refundsPaise / 100} (${snapshot.revenue.refundsPaise} paise)`,
+  );
+  console.log(
+    "  ✓ Net Revenue:",
+    `₹${snapshot.revenue.netRevenuePaise / 100} (${snapshot.revenue.netRevenuePaise} paise)`,
+  );
   console.log("  ✓ Total Orders in range:", snapshot.revenue.orderCount);
   console.log("  ✓ AOV:", `₹${snapshot.revenue.aov / 100} (${snapshot.revenue.aov} paise)`);
 
@@ -236,10 +253,14 @@ async function runTestSuite() {
   // Top products verification
   console.log("  ✓ Top Products Ranking:");
   snapshot.topProducts.forEach((p, i) => {
-    console.log(`    #${i + 1} ${p.name} (${p.productId}): ${p.units} units, ₹${p.revenuePaise / 100}`);
+    console.log(
+      `    #${i + 1} ${p.name} (${p.productId}): ${p.units} units, ₹${p.revenuePaise / 100}`,
+    );
   });
   if (snapshot.topProducts[0].productId !== "prod-1" || snapshot.topProducts[0].units !== 6) {
-    throw new Error(`Top product ranking mismatch: expected prod-1 with 6 units, got ${JSON.stringify(snapshot.topProducts[0])}`);
+    throw new Error(
+      `Top product ranking mismatch: expected prod-1 with 6 units, got ${JSON.stringify(snapshot.topProducts[0])}`,
+    );
   }
 
   // 5. Test getRevenueSeries() and getOrderSeries()
@@ -259,9 +280,21 @@ async function runTestSuite() {
   console.log("\n[Test 6] Real getAnalyticsSummary():");
   const analytics = await service.getAnalyticsSummary({ from, to });
   console.log("  ✓ Customers totalActive:", analytics.customers.totalActive, "(Expected: 2)");
-  console.log("  ✓ Customers newCustomers:", analytics.customers.newCustomers, "(Expected: 1 within 7 days)");
-  console.log("  ✓ Customers returningCustomers:", analytics.customers.returningCustomers, "(Expected: 1)");
-  console.log("  ✓ Offer Redemptions:", analytics.offerRedemptions, "(Expected: 1 with coupon discount)");
+  console.log(
+    "  ✓ Customers newCustomers:",
+    analytics.customers.newCustomers,
+    "(Expected: 1 within 7 days)",
+  );
+  console.log(
+    "  ✓ Customers returningCustomers:",
+    analytics.customers.returningCustomers,
+    "(Expected: 1)",
+  );
+  console.log(
+    "  ✓ Offer Redemptions:",
+    analytics.offerRedemptions,
+    "(Expected: 1 with coupon discount)",
+  );
 
   if (
     analytics.customers.totalActive !== 2 ||

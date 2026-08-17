@@ -8,21 +8,21 @@ Baseline: stores list, address entry, and checkout were already compacted in `01
 
 ## Verdicts at a glance
 
-| # | Surface | Severity | Vertical cost | Action |
-|---|---------|----------|---------------|--------|
-| 1 | Home hero block | **HIGH** | ~300px of chrome before any content | Shrink |
-| 2 | Home category grid | **HIGH** | ~450px (5 rows × 3 cols, 13 cats) | Horizontalize |
-| 3 | Offers page | **HIGH** | 3–4 screens when many offers (9 stacked type-sections) | Filter chips |
-| 4 | Menu default view | **MED** | List rows ≈ 2× taller than grid | Default to grid |
-| 5 | Cart | LOW | Acceptable (sticky total bar) | Verify CartItemRow notes |
-| 6 | Product detail | OK | Sticky Add-to-cart bar already pinned | — |
-| 7 | Menu screen | OK | Sticky category tabs + infinite scroll already | — |
-| 8 | Search | OK | Sticky form + chip results | — |
-| 9 | Orders list | OK | Bucket tabs + paginated cards | — |
-| 10 | Profile | OK | Compact menu lists | — |
-| 11 | Login / OTP | OK | Single-screen `100dvh` layout, no scroll | — |
-| 12 | Order detail / confirmation / track | OK | Standard info layout (not deep-audited, low risk) | — |
-| 13 | Terms / Privacy / About / Support | OK | Long documents by nature | — |
+| #   | Surface                             | Severity | Vertical cost                                          | Action                   |
+| --- | ----------------------------------- | -------- | ------------------------------------------------------ | ------------------------ |
+| 1   | Home hero block                     | **HIGH** | ~300px of chrome before any content                    | Shrink                   |
+| 2   | Home category grid                  | **HIGH** | ~450px (5 rows × 3 cols, 13 cats)                      | Horizontalize            |
+| 3   | Offers page                         | **HIGH** | 3–4 screens when many offers (9 stacked type-sections) | Filter chips             |
+| 4   | Menu default view                   | **MED**  | List rows ≈ 2× taller than grid                        | Default to grid          |
+| 5   | Cart                                | LOW      | Acceptable (sticky total bar)                          | Verify CartItemRow notes |
+| 6   | Product detail                      | OK       | Sticky Add-to-cart bar already pinned                  | —                        |
+| 7   | Menu screen                         | OK       | Sticky category tabs + infinite scroll already         | —                        |
+| 8   | Search                              | OK       | Sticky form + chip results                             | —                        |
+| 9   | Orders list                         | OK       | Bucket tabs + paginated cards                          | —                        |
+| 10  | Profile                             | OK       | Compact menu lists                                     | —                        |
+| 11  | Login / OTP                         | OK       | Single-screen `100dvh` layout, no scroll               | —                        |
+| 12  | Order detail / confirmation / track | OK       | Standard info layout (not deep-audited, low risk)      | —                        |
+| 13  | Terms / Privacy / About / Support   | OK       | Long documents by nature                               | —                        |
 
 ---
 
@@ -35,6 +35,7 @@ Baseline: stores list, address entry, and checkout were already compacted in `01
 The green hero stacks: StoreHeaderCard (icon + 4 text rows ≈ 110px), fulfillment chip + ETA row (~36px), `headlineLarge` greeting (~56px), subtitle (~20px), search pill `h-12` (48px), `pb-8` bottom padding (32px). Total ≈ **290–320px of a ~667px screen**.
 
 **Recommended fixes (all tiny, in `home.tsx`/`StoreHeaderCard`):**
+
 - Drop the greeting `headlineLarge` — the top bar already shows "BURGONOMICS" (home.tsx:200-202).
 - Inline the ETA into the fulfillment chip row (one line instead of two).
 - `pb-8` → `pb-6`; search pill `h-12` → `h-11`.
@@ -47,6 +48,7 @@ The green hero stacks: StoreHeaderCard (icon + 4 text rows ≈ 110px), fulfillme
 `grid-cols-3` with `h-14 w-14` circles + 2-line labels ≈ 90px per row. With the seeded 13 categories this is the single tallest content block on the app's landing screen.
 
 **Recommended fixes (pick one):**
+
 - **A (best):** convert to a horizontal scroll-snap carousel of circles (like Zomato/Swiggy category chips) — zero vertical cost, one finger swipe. `CategoryGrid.tsx` is a self-contained component; the change is contained.
 - B: `grid-cols-4` with `h-12 w-12` circles and `gap-2` — cuts it to 4 rows and narrows each.
 - C: chip wrap (text-only pills, 2 rows max).

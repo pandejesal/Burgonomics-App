@@ -28,14 +28,14 @@ export const userService = {
   async toggleFavorite(userId: string, productId: string, isFavorite: boolean): Promise<void> {
     const profile = await this.getUserProfile(userId);
     if (!profile) return;
-    
+
     let favorites = profile.favorites || [];
     if (isFavorite && !favorites.includes(productId)) {
       favorites.push(productId);
     } else if (!isFavorite) {
-      favorites = favorites.filter(id => id !== productId);
+      favorites = favorites.filter((id) => id !== productId);
     }
 
     await this.updateUserProfile(userId, { favorites });
-  }
+  },
 };

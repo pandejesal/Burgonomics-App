@@ -49,6 +49,8 @@ export interface Store {
   distanceKm?: number;
   /** Petpooja Restaurant ID, nullable for now. */
   petpoojaRestId?: string | null;
+  /** Delivery radius in km. */
+  deliveryRadiusKm?: number;
 }
 
 /**

@@ -136,10 +136,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 <Text
                   as="h3"
                   variant="titleMedium"
-                  className={cn(
-                    "truncate font-bold text-text-primary",
-                    selected && "text-primary",
-                  )}
+                  className={cn("truncate font-bold text-text-primary", selected && "text-primary")}
                 >
                   {store.name}
                 </Text>
@@ -255,7 +252,8 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 ~{store.etaMinutes} mins
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">
-                Radius: {deliveryRadiusKm.toFixed(1)} km {store.distanceKm ? `(${formatDistance(store.distanceKm)} away)` : ""}
+                Radius: {deliveryRadiusKm.toFixed(1)} km{" "}
+                {store.distanceKm ? `(${formatDistance(store.distanceKm)} away)` : ""}
               </p>
             </div>
           </div>
@@ -286,7 +284,11 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
 
           {/* Quick Actions Grid */}
           <div className="pt-2 border-t border-divider">
-            <Text variant="caption" tone="secondary" className="mb-2 uppercase tracking-wider font-semibold text-[10px]">
+            <Text
+              variant="caption"
+              tone="secondary"
+              className="mb-2 uppercase tracking-wider font-semibold text-[10px]"
+            >
               Store Actions
             </Text>
             <div className="grid grid-cols-3 gap-2">
@@ -321,7 +323,11 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                   onClick={handleCopyAddress}
                   className="flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] bg-bg-secondary p-3 text-xs font-medium text-text-secondary hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
                 >
-                  {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                  {copied ? (
+                    <Check className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
                   <span>{copied ? "Copied" : "Copy Addr"}</span>
                 </button>
               )}
@@ -333,7 +339,11 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 onClick={handleCopyAddress}
                 className="flex items-center justify-center gap-2 rounded-[var(--radius-medium)] border border-divider p-2.5 text-xs font-medium text-text-secondary hover:border-primary/40 hover:text-primary transition-colors cursor-pointer"
               >
-                {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
                 <span>{copied ? "Address Copied!" : "Copy Full Address"}</span>
               </button>
               <button

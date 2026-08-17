@@ -103,7 +103,10 @@ export class DashboardService {
       });
       return orders;
     } catch (err) {
-      console.warn("dashboardService.fetchOrders via collectionGroup failed, trying root collection:", err);
+      console.warn(
+        "dashboardService.fetchOrders via collectionGroup failed, trying root collection:",
+        err,
+      );
       try {
         const rootSnap = await getDocs(collection(db, "orders"));
         const orders: any[] = [];
@@ -126,7 +129,9 @@ export class DashboardService {
    */
   protected async fetchPayments(): Promise<PaymentStats[]> {
     try {
-      const snap = await getDocs(query(collection(db, "payments"), orderBy("createdAt", "desc"), limit(200)));
+      const snap = await getDocs(
+        query(collection(db, "payments"), orderBy("createdAt", "desc"), limit(200)),
+      );
       const payments: PaymentStats[] = [];
       snap.forEach((doc) => {
         const data = doc.data();
@@ -154,7 +159,9 @@ export class DashboardService {
    */
   protected async fetchRefunds(): Promise<RefundStats[]> {
     try {
-      const snap = await getDocs(query(collection(db, "refunds"), orderBy("createdAt", "desc"), limit(100)));
+      const snap = await getDocs(
+        query(collection(db, "refunds"), orderBy("createdAt", "desc"), limit(100)),
+      );
       const refunds: RefundStats[] = [];
       snap.forEach((doc) => {
         const data = doc.data();
@@ -244,11 +251,7 @@ export class DashboardService {
   /**
    * 2. Composite Dashboard Snapshot (Firestore direct calculation)
    */
-  async getDashboardSnapshot(params: {
-    from: string;
-    to: string;
-    storeId?: string;
-  }): Promise<{
+  async getDashboardSnapshot(params: { from: string; to: string; storeId?: string }): Promise<{
     counts: DashboardCounts;
     revenue: RevenueSummary;
     topProducts: TopProduct[];
@@ -277,16 +280,15 @@ export class DashboardService {
 
     for (const order of ordersInRange) {
       // Amount in paise (Order model stores totals.grandTotal; legacy shapes used totalAmount/total)
-      const totalPaise =
-        order.pricing?.finalTotal
-          ? Math.round(order.pricing.finalTotal * 100)
-          : order.totals?.grandTotal
-            ? Math.round(order.totals.grandTotal * 100)
-            : order.totalAmount
-              ? Math.round(order.totalAmount * 100)
-              : order.total
-                ? Math.round(order.total * 100)
-                : 0;
+      const totalPaise = order.pricing?.finalTotal
+        ? Math.round(order.pricing.finalTotal * 100)
+        : order.totals?.grandTotal
+          ? Math.round(order.totals.grandTotal * 100)
+          : order.totalAmount
+            ? Math.round(order.totalAmount * 100)
+            : order.total
+              ? Math.round(order.total * 100)
+              : 0;
 
       const status = normalizeOrderStatus(order);
       if (status !== "Cancelled" && status !== "Refunded") {
@@ -362,11 +364,7 @@ export class DashboardService {
   /**
    * 3. Analytics Summary (Includes Customer Insights & Offers)
    */
-  async getAnalyticsSummary(params: {
-    from: string;
-    to: string;
-    storeId?: string;
-  }): Promise<{
+  async getAnalyticsSummary(params: { from: string; to: string; storeId?: string }): Promise<{
     revenue: RevenueSummary;
     statusBreakdown: OrderStatusBreakdown[];
     topProducts: TopProduct[];
@@ -445,12 +443,11 @@ export class DashboardService {
           bucket = toDayBucket(orderMillis);
         }
 
-        const totalPaise =
-          order.pricing?.finalTotal
-            ? Math.round(order.pricing.finalTotal * 100)
-            : order.totalAmount
-              ? Math.round(order.totalAmount * 100)
-              : 0;
+        const totalPaise = order.pricing?.finalTotal
+          ? Math.round(order.pricing.finalTotal * 100)
+          : order.totalAmount
+            ? Math.round(order.totalAmount * 100)
+            : 0;
 
         bucketMap.set(bucket, (bucketMap.get(bucket) || 0) + totalPaise);
       }

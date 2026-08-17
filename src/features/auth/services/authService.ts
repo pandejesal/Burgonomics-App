@@ -1,10 +1,6 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { auth } from "@/core/config/firebase";
-import { 
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  type ConfirmationResult,
-} from "firebase/auth";
+import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
 
 export interface RequestOtpResponse {
   otpToken: string;
@@ -48,7 +44,9 @@ export const authService = {
       if (recaptchaVerifier) {
         try {
           recaptchaVerifier.clear();
-        } catch (_) {}
+        } catch {
+          // ignore
+        }
         recaptchaVerifier = null;
       }
       recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
@@ -70,7 +68,9 @@ export const authService = {
     if (recaptchaVerifier) {
       try {
         recaptchaVerifier.clear();
-      } catch (_) {}
+      } catch {
+        // ignore
+      }
       recaptchaVerifier = null;
     }
   },
@@ -90,14 +90,14 @@ export const authService = {
       if (!recaptchaVerifier) {
         return fail(
           "RECAPTCHA_UNAVAILABLE",
-          "Verification check failed to load. Please refresh the page and try again."
+          "Verification check failed to load. Please refresh the page and try again.",
         );
       }
 
       // Explicitly trigger render if not yet rendered
       try {
         await recaptchaVerifier.render();
-      } catch (_renderErr) {
+      } catch {
         // Container might already have widget rendered
       }
 
@@ -117,13 +117,16 @@ export const authService = {
       if (recaptchaVerifier) {
         try {
           recaptchaVerifier.clear();
-        } catch (_) {}
+        } catch {
+          // ignore
+        }
         recaptchaVerifier = null;
         authService.initRecaptcha("recaptcha-container");
       }
       return fail(
         error.code || "AUTH_OTP_REQUEST_FAILED",
-        error.message || "Failed to send SMS verification code. Please check the number and try again."
+        error.message ||
+          "Failed to send SMS verification code. Please check the number and try again.",
       );
     }
   },
@@ -133,7 +136,7 @@ export const authService = {
       if (!confirmationResult) {
         return fail(
           "NO_CHALLENGE",
-          "No active verification session found. Please request a new code."
+          "No active verification session found. Please request a new code.",
         );
       }
 
@@ -145,7 +148,7 @@ export const authService = {
       const uid = user.uid;
 
       // Firestore user profile sync
-      let returnedUser: { id: string; phone: string; name?: string; email?: string } = {
+      const returnedUser: { id: string; phone: string; name?: string; email?: string } = {
         id: uid,
         phone: user.phoneNumber || otpToken,
       };
@@ -155,7 +158,7 @@ export const authService = {
         const { doc, getDoc, setDoc } = await import("firebase/firestore");
         const userRef = doc(db, "users", uid);
         const userSnap = await getDoc(userRef);
-        
+
         if (!userSnap.exists()) {
           await setDoc(userRef, {
             id: uid,
@@ -180,7 +183,7 @@ export const authService = {
       console.error("[Auth] Firebase verification confirmation error:", error);
       return fail(
         error.code || "AUTH_OTP_VERIFY_FAILED",
-        error.message || "Invalid verification code. Please check and try again."
+        error.message || "Invalid verification code. Please check and try again.",
       );
     }
   },

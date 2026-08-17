@@ -50,7 +50,8 @@ export function ConsentBanner() {
             </button>
           </div>
           <Text variant="caption" tone="secondary" className="mt-1 leading-relaxed">
-            We use cookies and essential data to fulfill orders, ensure secure payments, and enhance your dining experience in accordance with the India DPDP Act. Learn more in our{" "}
+            We use cookies and essential data to fulfill orders, ensure secure payments, and enhance
+            your dining experience in accordance with the India DPDP Act. Learn more in our{" "}
             <Link to="/privacy" className="text-primary underline">
               Privacy Policy
             </Link>{" "}

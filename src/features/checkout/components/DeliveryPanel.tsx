@@ -110,7 +110,11 @@ export function DeliveryPanel({ store, deliveryFee, onAddressChange }: Props) {
             </div>
           </div>
           <Text variant="titleMedium" className="tabular-nums">
-            {deliveryFee === undefined ? "Calculating..." : deliveryFee > 0 ? formatINR(deliveryFee) : "Free"}
+            {deliveryFee === undefined
+              ? "Calculating..."
+              : deliveryFee > 0
+                ? formatINR(deliveryFee)
+                : "Free"}
           </Text>
         </div>
         {store && (

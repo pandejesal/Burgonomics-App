@@ -1,12 +1,5 @@
 import { db } from "@/core/config/firebase";
-import {
-  collection,
-  query,
-  orderBy,
-  limit,
-  getDocs,
-  onSnapshot,
-} from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs, onSnapshot } from "firebase/firestore";
 import { CustomerProfile } from "../pages/customersData";
 
 export const adminCustomersService = {
@@ -16,13 +9,9 @@ export const adminCustomersService = {
   listenLiveCustomers(
     onUpdate: (customers: CustomerProfile[]) => void,
     onError: (err: Error) => void,
-    limitCount = 100
+    limitCount = 100,
   ) {
-    const q = query(
-      collection(db, "users"),
-      orderBy("lastActiveAt", "desc"),
-      limit(limitCount)
-    );
+    const q = query(collection(db, "users"), orderBy("lastActiveAt", "desc"), limit(limitCount));
 
     return onSnapshot(
       q,
@@ -42,9 +31,13 @@ export const adminCustomersService = {
             ordersCount: data.ordersCount || 0,
             totalSpent: data.totalSpent || 0,
             loyaltyTier: data.loyaltyTier || "Bronze",
-            lastOrderDate: data.lastActiveAt ? new Date(data.lastActiveAt.seconds * 1000).toISOString() : new Date().toISOString(),
+            lastOrderDate: data.lastActiveAt
+              ? new Date(data.lastActiveAt.seconds * 1000).toISOString()
+              : new Date().toISOString(),
             status: data.status || "Active",
-            joinedAt: data.createdAt ? new Date(data.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
+            joinedAt: data.createdAt
+              ? new Date(data.createdAt.seconds * 1000).toISOString()
+              : new Date().toISOString(),
             gender: data.gender || "Prefer not to say",
             birthday: data.birthday || "",
             preferredLanguage: data.preferredLanguage || "English",
@@ -56,17 +49,17 @@ export const adminCustomersService = {
               pointsExpiring: 0,
               expiringDate: "",
               tierProgress: 0,
-              history: []
+              history: [],
             },
             coupons: data.coupons || [],
             notifications: data.notifications || [],
             supportHistory: data.supportHistory || [],
-            auditLogs: data.auditLogs || []
+            auditLogs: data.auditLogs || [],
           } as CustomerProfile);
         });
         onUpdate(liveCustomers);
       },
-      (error) => onError(error)
+      (error) => onError(error),
     );
-  }
+  },
 };

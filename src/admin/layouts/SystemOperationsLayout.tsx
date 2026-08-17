@@ -106,7 +106,12 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
     { label: "API Explorer", to: "/admin/system/apis", icon: Network, requiresOps: true },
     { label: "Realtime Logs", to: "/admin/system/logs", icon: Terminal, requiresOps: true },
     { label: "Audits & Events", to: "/admin/system/audit", icon: ShieldAlert, requiresOps: true },
-    { label: "Feature Flags", to: "/admin/system/feature-flags", icon: ToggleLeft, requiresOps: true },
+    {
+      label: "Feature Flags",
+      to: "/admin/system/feature-flags",
+      icon: ToggleLeft,
+      requiresOps: true,
+    },
     { label: "Cron Jobs", to: "/admin/system/jobs", icon: Clock, requiresOps: true },
     { label: "Security Center", to: "/admin/system/security", icon: Shield },
     { label: "System Config", to: "/admin/system/settings", icon: Settings },
@@ -115,7 +120,6 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
   const systemTabs = allSystemTabs.filter(
     (tab) => !tab.requiresOps || appConfig.featureFlags.adminOps,
   );
-
 
   const currentTab = systemTabs.find((t) => location.pathname === t.to) || systemTabs[0];
 

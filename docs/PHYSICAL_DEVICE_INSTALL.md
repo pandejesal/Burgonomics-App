@@ -7,19 +7,23 @@ This document provides exact instructions for building, signing, and installing 
 ## 1. Android Physical Device Installation (Release APK)
 
 ### Prerequisites
+
 - Android device with USB Debugging enabled (or file transfer capability)
 - Java 17+ and Android SDK
 
 ### Step 1: Keystore Verification
+
 The release keystore is located at `android/release.keystore` (ignored by Git) with SHA-256 fingerprint matching `public/.well-known/assetlinks.json`:
 `C8:70:5A:38:DA:BA:C8:A6:2A:AF:0B:89:6A:EF:7E:DB:8A:A8:AA:E9:33:E7:4F:48:A4:24:5E:EA:44:93:6D:70`
 
 To generate a new keystore with your secure credentials:
+
 ```bash
 keytool -genkeypair -v -keystore android/release.keystore -alias burgonomics -keyalg RSA -keysize 2048 -validity 10000 -storepass "$RELEASE_STORE_PASSWORD" -keypass "$RELEASE_KEY_PASSWORD" -dname "CN=Burgonomics, OU=Mobile, O=GlassdoorsStudio, L=Ahmedabad, ST=Gujarat, C=IN"
 ```
 
 ### Step 2: Build Signed Release APK
+
 ```bash
 # 1. Export required signing environment variables (passwords must be provided via environment)
 export RELEASE_STORE_FILE="../release.keystore"
@@ -41,26 +45,32 @@ npx cap sync android
 cd android
 ./gradlew assembleRelease
 ```
+
 The output APK is generated at:
 `android/app/build/outputs/apk/release/app-release.apk`
 
 ### Step 3: Install onto Physical Phone
+
 Connect your phone via USB and run:
+
 ```bash
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
-*(Or transfer `app-release.apk` via Google Drive / WhatsApp / direct download and tap to install).*
+
+_(Or transfer `app-release.apk` via Google Drive / WhatsApp / direct download and tap to install)._
 
 ---
 
 ## 2. iOS Device & Simulator Installation (Mac + Xcode)
 
 ### Prerequisites
+
 - macOS machine with Xcode 16+
 - iPhone connected via USB with Developer Mode enabled (iOS 16+: Settings → Privacy & Security → Developer Mode)
 - Apple ID (Free Personal Team or Paid Apple Developer Account)
 
 ### Step 1: Sync Assets & Open Xcode Project
+
 ```bash
 npm run build:mobile
 npx cap sync ios
@@ -68,12 +78,14 @@ npx cap open ios
 ```
 
 ### Step 2: Configure Signing & Device Target
+
 1. In Xcode, select the **App** project in the navigator.
 2. Go to **Signing & Capabilities**.
 3. Check **Automatically manage signing** and choose your **Team** (Free Personal Apple ID or Paid Organization).
 4. Select your connected **iPhone** in the device destination bar (or select an **iOS Simulator** like iPhone 16 Pro).
 
 ### Step 3: Run & Certificate Trust
+
 1. Press `Cmd + R` (or the **Play** button) to compile and install on your device.
 2. **Free Apple ID Note**: Free developer certificates are valid for 7 days. On first launch on a physical device, trust the developer certificate:
    **Settings → General → VPN & Device Management → Tap Developer App → Trust**.
@@ -86,6 +98,7 @@ npx cap open ios
 When moving from demo sandbox mode to live production with real Petpooja and Razorpay accounts, set the following production environment variables with zero code changes required:
 
 ### 1. Razorpay Live Configuration
+
 ```bash
 # Frontend / Client Runtime (.env.production)
 VITE_RAZORPAY_KEY_ID="rzp_live_..."
@@ -98,6 +111,7 @@ firebase functions:config:set \
 ```
 
 ### 2. Petpooja POS Live Configuration
+
 ```bash
 # Backend Cloud Functions Environment
 firebase functions:config:set \
@@ -109,6 +123,7 @@ firebase functions:config:set \
 ```
 
 ### 3. Deploy Functions & Rules
+
 ```bash
 npm --prefix functions run build
 firebase deploy --only functions,firestore:rules

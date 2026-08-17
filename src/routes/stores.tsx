@@ -115,7 +115,6 @@ function StoreSelectionPage() {
     }
   };
 
-
   // Initial load — try location first; fall back to a coord-less list.
   useEffect(() => {
     let cancelled = false;

@@ -33,7 +33,11 @@ import {
 import { PageHeader } from "../components/Headers";
 import { StatCard, AdminCard } from "../components/Cards";
 import { marketingStorage } from "./marketingData";
-import { useDashboardSnapshot, useRevenueSeries, useOrderSeries } from "../dashboard/hooks/useDashboardData";
+import {
+  useDashboardSnapshot,
+  useRevenueSeries,
+  useOrderSeries,
+} from "../dashboard/hooks/useDashboardData";
 
 const CHART_FILLS = ["#0E4825", "#FF6600", "#F59E0B", "#16A34A", "#7C3AED"];
 
@@ -112,14 +116,20 @@ export const AdminAnalyticsPage: React.FC = () => {
     }
     return Array.from(merged.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([bucket, v]) => ({ name: formatBucketLabel(bucket), revenue: v.revenue, orders: v.orders }));
+      .map(([bucket, v]) => ({
+        name: formatBucketLabel(bucket),
+        revenue: v.revenue,
+        orders: v.orders,
+      }));
   }, [revenueSeries, orderSeries]);
 
   const topProducts = useMemo(
     () =>
-      (snapshot?.topProducts || [])
-        .slice(0, 5)
-        .map((p, i) => ({ name: p.name, sales: p.units, fill: CHART_FILLS[i % CHART_FILLS.length] })),
+      (snapshot?.topProducts || []).slice(0, 5).map((p, i) => ({
+        name: p.name,
+        sales: p.units,
+        fill: CHART_FILLS[i % CHART_FILLS.length],
+      })),
     [snapshot],
   );
 
@@ -221,10 +231,7 @@ export const AdminAnalyticsPage: React.FC = () => {
             >
               <div className="h-80 w-full font-sans text-xs">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={salesTrend}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
+                  <AreaChart data={salesTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#0E4825" stopOpacity={0.2} />
@@ -241,7 +248,9 @@ export const AdminAnalyticsPage: React.FC = () => {
                         boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
                       }}
                       formatter={(value: any, name: string) =>
-                        name === "revenue" ? [formatINR(Number(value)), "Revenue"] : [value, "Orders"]
+                        name === "revenue"
+                          ? [formatINR(Number(value)), "Revenue"]
+                          : [value, "Orders"]
                       }
                     />
                     <Area
@@ -265,10 +274,7 @@ export const AdminAnalyticsPage: React.FC = () => {
             >
               <div className="h-80 w-full font-sans text-xs">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={topProducts}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
+                  <BarChart data={topProducts} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EAEAEA" />
                     <XAxis dataKey="name" stroke="#A3A3A3" fontSize={11} tickLine={false} />
                     <YAxis stroke="#A3A3A3" fontSize={11} tickLine={false} axisLine={false} />

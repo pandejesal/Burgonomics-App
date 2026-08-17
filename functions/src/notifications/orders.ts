@@ -63,10 +63,7 @@ export const onOrderStatusChanged = functions.firestore
 
     try {
       // Find all active device tokens for this user
-      const tokensSnap = await db
-        .collection("device_tokens")
-        .where("userId", "==", userId)
-        .get();
+      const tokensSnap = await db.collection("device_tokens").where("userId", "==", userId).get();
 
       if (tokensSnap.empty) {
         functions.logger.info(`No device tokens found for user ${userId}`);

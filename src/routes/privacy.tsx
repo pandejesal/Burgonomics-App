@@ -31,7 +31,8 @@ function PrivacyPage() {
               Privacy Policy
             </Text>
             <Text variant="caption" tone="secondary">
-              Effective Date: August 14, 2026 · Compliant with Digital Personal Data Protection (DPDP) Act
+              Effective Date: August 14, 2026 · Compliant with Digital Personal Data Protection
+              (DPDP) Act
             </Text>
           </div>
         </div>
@@ -42,13 +43,26 @@ function PrivacyPage() {
               <Eye className="h-4 w-4 text-primary" /> 1. Information We Collect
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              When you use Burgonomics for food ordering, delivery, and dine-in services, we collect:
+              When you use Burgonomics for food ordering, delivery, and dine-in services, we
+              collect:
             </Text>
             <ul className="list-disc pl-5 space-y-1 text-sm text-text-secondary">
-              <li><strong>Contact Information:</strong> Mobile phone number (for OTP login and order status SMS).</li>
-              <li><strong>Profile Information:</strong> Name, delivery address, and dietary preferences you provide.</li>
-              <li><strong>Order & Transaction Data:</strong> Items ordered, customization notes, order timestamps, and payment reference tokens.</li>
-              <li><strong>Device & Usage Data:</strong> Device platform, IP address, and push notification tokens.</li>
+              <li>
+                <strong>Contact Information:</strong> Mobile phone number (for OTP login and order
+                status SMS).
+              </li>
+              <li>
+                <strong>Profile Information:</strong> Name, delivery address, and dietary
+                preferences you provide.
+              </li>
+              <li>
+                <strong>Order & Transaction Data:</strong> Items ordered, customization notes, order
+                timestamps, and payment reference tokens.
+              </li>
+              <li>
+                <strong>Device & Usage Data:</strong> Device platform, IP address, and push
+                notification tokens.
+              </li>
             </ul>
           </section>
 
@@ -62,7 +76,9 @@ function PrivacyPage() {
             <ul className="list-disc pl-5 space-y-1 text-sm text-text-secondary">
               <li>Processing and delivering your food orders accurately.</li>
               <li>Transmitting Kitchen Order Tickets (KOT) to store POS terminals.</li>
-              <li>Processing payments securely through RBI-authorized payment gateways (Razorpay).</li>
+              <li>
+                Processing payments securely through RBI-authorized payment gateways (Razorpay).
+              </li>
               <li>Sending transactional alerts (order placed, cooking, out for delivery).</li>
             </ul>
           </section>
@@ -72,7 +88,9 @@ function PrivacyPage() {
               <FileText className="h-4 w-4 text-primary" /> 3. Payment & Card Security
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              Burgonomics does <strong>not</strong> store your credit/debit card numbers, UPI PINs, or bank account credentials. All online payments are handled directly by Razorpay in compliance with PCI-DSS standards and RBI guidelines.
+              Burgonomics does <strong>not</strong> store your credit/debit card numbers, UPI PINs,
+              or bank account credentials. All online payments are handled directly by Razorpay in
+              compliance with PCI-DSS standards and RBI guidelines.
             </Text>
           </section>
 
@@ -81,7 +99,11 @@ function PrivacyPage() {
               <Trash2 className="h-4 w-4 text-primary" /> 4. Your Rights & Account Deletion
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              Under the DPDP Act, you have the right to access your data, request correction of inaccuracies, and request complete erasure of your account and personal records. You can request deletion directly from <strong>Profile → Settings → Delete Account</strong> or by emailing our Data Protection Officer.
+              Under the DPDP Act, you have the right to access your data, request correction of
+              inaccuracies, and request complete erasure of your account and personal records. You
+              can request deletion directly from{" "}
+              <strong>Profile → Settings → Delete Account</strong> or by emailing our Data
+              Protection Officer.
             </Text>
           </section>
 

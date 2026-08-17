@@ -34,6 +34,7 @@ interface MenuState {
   setActiveCategory: (id: string) => void;
   setViewMode: (mode: "list" | "grid") => void;
   pushRecentlyViewed: (p: Product) => void;
+  subscribeToLiveMenu: (storeId: string) => () => void;
   reset: () => void;
 }
 
@@ -57,6 +58,49 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
   buckets: {},
   viewMode: initialViewMode(),
   recentlyViewed: [],
+
+  subscribeToLiveMenu(storeId) {
+    const unsubCat = menuRepository.subscribeCategories(storeId, (res) => {
+      if (res.success && res.data.length > 0) {
+        const cats = [...res.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        set((s) => ({
+          categories: cats,
+          activeCategoryId:
+            s.activeCategoryId && cats.some((c) => c.id === s.activeCategoryId)
+              ? s.activeCategoryId
+              : cats[0].id,
+          status: "ready",
+        }));
+      }
+    });
+
+    const unsubProd = menuRepository.subscribeProducts(storeId, undefined, (res) => {
+      if (res.success) {
+        const allProducts = res.data.items;
+        const newBuckets: Record<string, CategoryBucket> = {};
+        allProducts.forEach((p) => {
+          if (!newBuckets[p.categoryId]) {
+            newBuckets[p.categoryId] = {
+              items: [],
+              page: 1,
+              pageSize: 100,
+              total: 0,
+              hasMore: false,
+              loading: false,
+            };
+          }
+          newBuckets[p.categoryId].items.push(p);
+          newBuckets[p.categoryId].total++;
+        });
+        set({ buckets: newBuckets });
+      }
+    });
+
+    return () => {
+      unsubCat();
+      unsubProd();
+    };
+  },
 
   async load(storeId, opts) {
     const isRefresh = !!opts?.refresh;

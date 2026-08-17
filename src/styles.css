@@ -104,7 +104,9 @@
 
 @font-face {
   font-family: "MonstroSolid";
-  src: local("MonstroSolid"), local("Monstro Solid"),
+  src:
+    local("MonstroSolid"),
+    local("Monstro Solid"),
     url("/fonts/MonstroSolid.woff2") format("woff2"),
     url("/fonts/MonstroSolid.ttf") format("truetype");
   font-display: swap;
@@ -532,7 +534,9 @@
 
 /* Base interactive hover scale for floating cards */
 @utility float-interactive {
-  transition: transform 0.4s var(--ease-out-back), box-shadow 0.4s var(--ease-out-back);
+  transition:
+    transform 0.4s var(--ease-out-back),
+    box-shadow 0.4s var(--ease-out-back);
   will-change: transform, box-shadow;
 
   &:hover {
@@ -612,4 +616,3 @@
     transform: none !important;
   }
 }
-

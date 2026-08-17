@@ -54,7 +54,9 @@ async function backendPost<T>(path: string, body: unknown): Promise<T> {
   }
 
   // Adjust path if base already contains /payments
-  const targetUrl = base.endsWith("/payments") ? `${base}${path.replace(/^\/payments/, "")}` : `${base}${path}`;
+  const targetUrl = base.endsWith("/payments")
+    ? `${base}${path.replace(/^\/payments/, "")}`
+    : `${base}${path}`;
 
   const res = await fetch(targetUrl, {
     method: "POST",

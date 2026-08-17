@@ -8,8 +8,14 @@ const Razorpay = require("razorpay");
 const db = admin.firestore();
 
 function getRazorpayInstance() {
-  const keyId = process.env.RAZORPAY_KEY_ID || functions.config().razorpay?.key_id || "rzp_test_" + "TQNIxYfbRYkmBQ";
-  const keySecret = process.env.RAZORPAY_KEY_SECRET || functions.config().razorpay?.key_secret || "rzp_test_secret_placeholder";
+  const keyId =
+    process.env.RAZORPAY_KEY_ID ||
+    functions.config().razorpay?.key_id ||
+    "rzp_test_" + "TQNIxYfbRYkmBQ";
+  const keySecret =
+    process.env.RAZORPAY_KEY_SECRET ||
+    functions.config().razorpay?.key_secret ||
+    "rzp_test_secret_placeholder";
 
   return new Razorpay({
     key_id: keyId,
@@ -20,7 +26,9 @@ function getRazorpayInstance() {
 /**
  * Validates the caller's Firebase Auth token.
  */
-async function authenticateRequest(req: functions.https.Request | express.Request): Promise<admin.auth.DecodedIdToken | null> {
+async function authenticateRequest(
+  req: functions.https.Request | express.Request,
+): Promise<admin.auth.DecodedIdToken | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return null;
@@ -100,12 +108,21 @@ export async function handleCreatePaymentOrder(req: any, res: any) {
   // 1. Authenticate caller (SEC-3: Strictly require valid Firebase ID token; never trust body)
   const decodedToken = await authenticateRequest(req);
   if (!decodedToken || !decodedToken.uid) {
-    res.status(401).send({ status: "error", message: "Unauthorized. Valid Firebase ID token is required." });
+    res
+      .status(401)
+      .send({ status: "error", message: "Unauthorized. Valid Firebase ID token is required." });
     return;
   }
   const userId = decodedToken.uid;
 
-  const { currency = "INR", receipt, storeId, fulfillment, checkoutToken, checkoutSnapshot } = req.body;
+  const {
+    currency = "INR",
+    receipt,
+    storeId,
+    fulfillment,
+    checkoutToken,
+    checkoutSnapshot,
+  } = req.body;
 
   try {
     // 2. Server-Authoritative Price Engine (PAY-4: 100% computed from catalog; no client amount bypass)
@@ -119,7 +136,12 @@ export async function handleCreatePaymentOrder(req: any, res: any) {
     const grandTotal = serverPrice.grandTotal;
 
     if (grandTotal <= 0) {
-      res.status(400).send({ status: "error", message: "Server-calculated order amount must be greater than zero." });
+      res
+        .status(400)
+        .send({
+          status: "error",
+          message: "Server-calculated order amount must be greater than zero.",
+        });
       return;
     }
 
@@ -141,20 +163,23 @@ export async function handleCreatePaymentOrder(req: any, res: any) {
     const rzpOrder = await rzp.orders.create(orderOptions);
 
     // Save authoritative pre-order snapshot in Firestore
-    await db.collection("payment_orders").doc(rzpOrder.id).set({
-      orderId: rzpOrder.id,
-      userId,
-      amount: grandTotal,
-      amountInPaise,
-      currency: rzpOrder.currency || "INR",
-      receipt: rzpOrder.receipt,
-      status: "PENDING_PAYMENT",
-      storeId: storeId || checkoutSnapshot?.store?.id || null,
-      fulfillment: fulfillment || checkoutSnapshot?.fulfillment || null,
-      snapshot: checkoutSnapshot || null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    });
+    await db
+      .collection("payment_orders")
+      .doc(rzpOrder.id)
+      .set({
+        orderId: rzpOrder.id,
+        userId,
+        amount: grandTotal,
+        amountInPaise,
+        currency: rzpOrder.currency || "INR",
+        receipt: rzpOrder.receipt,
+        status: "PENDING_PAYMENT",
+        storeId: storeId || checkoutSnapshot?.store?.id || null,
+        fulfillment: fulfillment || checkoutSnapshot?.fulfillment || null,
+        snapshot: checkoutSnapshot || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      });
 
     res.status(200).send({
       orderId: rzpOrder.id,
@@ -170,7 +195,9 @@ export async function handleCreatePaymentOrder(req: any, res: any) {
     });
   } catch (err: any) {
     functions.logger.error("Error creating Razorpay order", err);
-    res.status(500).send({ status: "error", message: err.message || "Failed to create payment order" });
+    res
+      .status(500)
+      .send({ status: "error", message: err.message || "Failed to create payment order" });
   }
 }
 
@@ -207,7 +234,9 @@ export async function handleVerifyPayment(req: any, res: any) {
   }
 
   const keySecret =
-    process.env.RAZORPAY_KEY_SECRET || functions.config().razorpay?.key_secret || "rzp_test_secret_placeholder";
+    process.env.RAZORPAY_KEY_SECRET ||
+    functions.config().razorpay?.key_secret ||
+    "rzp_test_secret_placeholder";
 
   const text = `${orderId}|${paymentId}`;
   const expectedSignature = crypto.createHmac("sha256", keySecret).update(text).digest("hex");
@@ -236,7 +265,9 @@ export async function handleVerifyPayment(req: any, res: any) {
     try {
       rzpPayment = await rzp.payments.fetch(paymentId);
     } catch (e: any) {
-      functions.logger.error(`Razorpay payment fetch failed for payment ${paymentId}: ${e?.message}`);
+      functions.logger.error(
+        `Razorpay payment fetch failed for payment ${paymentId}: ${e?.message}`,
+      );
       res.status(502).send({
         status: "error",
         message: `Failed to verify payment with gateway: ${e?.message || "Gateway unreachable"}`,
@@ -245,7 +276,9 @@ export async function handleVerifyPayment(req: any, res: any) {
     }
 
     if (!rzpPayment) {
-      res.status(400).send({ status: "error", message: "Gateway payment record could not be retrieved." });
+      res
+        .status(400)
+        .send({ status: "error", message: "Gateway payment record could not be retrieved." });
       return;
     }
 
@@ -254,7 +287,9 @@ export async function handleVerifyPayment(req: any, res: any) {
       functions.logger.error(
         `Amount mismatch: expected ${expectedPaise} paise, Razorpay recorded ${rzpPayment.amount} paise`,
       );
-      res.status(400).send({ status: "error", message: "Paid amount does not match required order total." });
+      res
+        .status(400)
+        .send({ status: "error", message: "Paid amount does not match required order total." });
       return;
     }
 
@@ -317,7 +352,9 @@ export async function handleVerifyPayment(req: any, res: any) {
     });
   } catch (err: any) {
     functions.logger.error("Error finalizing verified payment", err);
-    res.status(500).send({ status: "error", message: err.message || "Failed to finalize payment." });
+    res
+      .status(500)
+      .send({ status: "error", message: err.message || "Failed to finalize payment." });
   }
 }
 

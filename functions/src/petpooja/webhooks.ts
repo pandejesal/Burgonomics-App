@@ -10,7 +10,7 @@ async function logWebhook(
   payload: any,
   execTimeMs: number,
   storeId: string = "unknown",
-  storeName: string = "Unknown Store"
+  storeName: string = "Unknown Store",
 ) {
   try {
     await db.collection("petpooja_webhook_logs").add({
@@ -33,8 +33,7 @@ async function logWebhook(
  * { ok: false, reason } and the caller must reject the request.
  */
 function isAuthorizedPetpoojaWebhook(req: any): { ok: boolean; reason?: string } {
-  const secret =
-    process.env.PETPOOJA_WEBHOOK_SECRET || functions.config().petpooja?.webhook_secret;
+  const secret = process.env.PETPOOJA_WEBHOOK_SECRET || functions.config().petpooja?.webhook_secret;
   if (!secret) {
     return { ok: false, reason: "Webhook secret not configured" };
   }
@@ -92,9 +91,9 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
   const startTime = Date.now();
   try {
     const payload = req.body;
-    
+
     const { restaurants, success } = payload;
-    
+
     if (success !== "1" && success !== 1 && success !== true) {
       functions.logger.warn("Received failed menu push payload from Petpooja", payload);
       res.status(400).send("Invalid success flag");
@@ -114,13 +113,13 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
     for (const rest of restaurants) {
       const restId = rest.details?.restID;
       if (!restId) continue;
-      
+
       const categories = rest.categories || [];
-      
+
       // Batch writes can only hold 500 ops. We should chunk them.
       let batch = db.batch();
       let opCount = 0;
-      
+
       const commitBatchIfNeeded = async () => {
         if (opCount >= 450) {
           await batch.commit();
@@ -132,16 +131,20 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
       for (const cat of categories) {
         // Upsert Category
         const catRef = db.collection("petpooja_categories").doc(cat.categoryid.toString());
-        batch.set(catRef, {
-          id: cat.categoryid.toString(),
-          name: cat.categoryname,
-          description: cat.categorydescription || "",
-          active: cat.active === "1" || cat.active === 1,
-          sortOrder: parseInt(cat.categoryrank, 10) || 0,
-          restId: restId,
-          imageUrl: cat.categoryimage_url || null,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        batch.set(
+          catRef,
+          {
+            id: cat.categoryid.toString(),
+            name: cat.categoryname,
+            description: cat.categorydescription || "",
+            active: cat.active === "1" || cat.active === 1,
+            sortOrder: parseInt(cat.categoryrank, 10) || 0,
+            restId: restId,
+            imageUrl: cat.categoryimage_url || null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
         opCount++;
         await commitBatchIfNeeded();
 
@@ -149,7 +152,7 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
         const items = cat.items || [];
         for (const item of items) {
           const itemRef = db.collection("petpooja_products").doc(item.itemid.toString());
-          
+
           // Map Customizations (Addons/Variations)
           const customizations = (item.addon_groups || []).map((ag: any) => ({
             id: ag.addon_group_id?.toString(),
@@ -161,41 +164,56 @@ export const pushMenu = functions.https.onRequest(async (req: any, res: any) => 
               name: ai.addon_item_name,
               price: parseFloat(ai.addon_item_price) || 0,
               isAvailable: ai.active === "1" || ai.active === 1,
-            }))
+            })),
           }));
 
-          batch.set(itemRef, {
-            id: item.itemid.toString(),
-            categoryId: cat.categoryid.toString(),
-            restId: restId,
-            name: item.itemname,
-            description: item.itemdescription || "",
-            price: parseFloat(item.itemprice) || 0,
-            imageUrl: item.itemimage_url || null,
-            isAvailable: item.active === "1" || item.active === 1,
-            dietaryTag: item.item_attributeid === "1" ? "veg" : item.item_attributeid === "2" ? "non-veg" : "veg",
-            sortOrder: parseInt(item.itemrank, 10) || 0,
-            customizations: customizations,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
+          batch.set(
+            itemRef,
+            {
+              id: item.itemid.toString(),
+              categoryId: cat.categoryid.toString(),
+              restId: restId,
+              name: item.itemname,
+              description: item.itemdescription || "",
+              price: parseFloat(item.itemprice) || 0,
+              imageUrl: item.itemimage_url || null,
+              isAvailable: item.active === "1" || item.active === 1,
+              dietaryTag:
+                item.item_attributeid === "1"
+                  ? "veg"
+                  : item.item_attributeid === "2"
+                    ? "non-veg"
+                    : "veg",
+              sortOrder: parseInt(item.itemrank, 10) || 0,
+              customizations: customizations,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
           opCount++;
           await commitBatchIfNeeded();
         }
       }
-      
+
       // Commit remaining ops
       if (opCount > 0) {
         await batch.commit();
       }
-      
+
       overallRestId = restId;
       overallRestName = `Store ${restId}`;
       functions.logger.info(`Successfully processed menu for restaurant ${restId}`);
     }
 
-    await logWebhook("menu.sync", "SUCCESS", payload, Date.now() - startTime, overallRestId, overallRestName);
+    await logWebhook(
+      "menu.sync",
+      "SUCCESS",
+      payload,
+      Date.now() - startTime,
+      overallRestId,
+      overallRestName,
+    );
     res.status(200).send({ status: "success", message: "Menu synced successfully" });
-
   } catch (error: any) {
     functions.logger.error("Error processing Petpooja Menu push", error);
     await logWebhook("menu.sync", "FAILED", req.body, Date.now() - startTime);
@@ -223,17 +241,20 @@ export const storeStatus = functions.https.onRequest(async (req: any, res: any) 
   try {
     const payload = req.body;
     const { restID, status } = payload;
-    
+
     if (!restID || !status) {
       res.status(400).send("Missing restID or status");
       await logWebhook("store.status", "FAILED", payload, Date.now() - startTime);
       return;
     }
-    
+
     // Find the store in admin_stores by petpoojaRestId
     const storesRef = db.collection("admin_stores");
-    const snapshot = await storesRef.where("petpoojaRestId", "==", restID.toString()).limit(1).get();
-    
+    const snapshot = await storesRef
+      .where("petpoojaRestId", "==", restID.toString())
+      .limit(1)
+      .get();
+
     let storeName = "Unknown Store";
     if (!snapshot.empty) {
       const storeDoc = snapshot.docs[0];
@@ -241,14 +262,21 @@ export const storeStatus = functions.https.onRequest(async (req: any, res: any) 
       await storeDoc.ref.update({
         isOpen: status === "1" || status === "active" || status === 1,
         lastSyncTime: admin.firestore.FieldValue.serverTimestamp(),
-        webhookStatus: "active"
+        webhookStatus: "active",
       });
       functions.logger.info(`Updated store ${storeDoc.id} status to ${status}`);
     } else {
       functions.logger.warn(`Received status for unknown petpoojaRestId: ${restID}`);
     }
 
-    await logWebhook("store.status", "SUCCESS", payload, Date.now() - startTime, restID.toString(), storeName);
+    await logWebhook(
+      "store.status",
+      "SUCCESS",
+      payload,
+      Date.now() - startTime,
+      restID.toString(),
+      storeName,
+    );
     res.status(200).send({ status: "success" });
   } catch (error: any) {
     functions.logger.error("Error processing Store Status push", error);

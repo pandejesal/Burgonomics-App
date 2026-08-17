@@ -144,10 +144,7 @@ function OrderHistoryPage() {
             aria-label="Refresh orders"
             className="grid h-11 w-11 place-items-center rounded-full text-white hover:bg-white/10 active:scale-95 transition-all"
           >
-            <RefreshCw
-              className={cn("h-5 w-5", loading && "animate-spin")}
-              aria-hidden
-            />
+            <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} aria-hidden />
           </button>
         }
       >

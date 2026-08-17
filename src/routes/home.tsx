@@ -94,8 +94,6 @@ function HomePage() {
     }
   }, [store, user?.id, load]);
 
-  
-
   const handleAddToCart = useCallback(
     (product: Product) => {
       if (product.customizable) {
@@ -207,208 +205,208 @@ function HomePage() {
           </section>
         </div>
 
-          {/* Offline strip */}
-          {!online && (
-            <div className="mt-4 px-4">
-              <div
-                role="status"
-                className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium text-warning-foreground"
-              >
-                You are offline. Showing the latest available content.
-              </div>
+        {/* Offline strip */}
+        {!online && (
+          <div className="mt-4 px-4">
+            <div
+              role="status"
+              className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium text-warning-foreground"
+            >
+              You are offline. Showing the latest available content.
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Body */}
-          {isLoading ? (
+        {/* Body */}
+        {isLoading ? (
+          <div className="mt-4">
+            <HomeSkeleton />
+          </div>
+        ) : status === "error" && !bundle ? (
+          <div className="mt-6">
+            <FailureState
+              title="We couldn't load Home"
+              message={error ?? "Please try again in a moment."}
+              onRetry={handleRefresh}
+            />
+          </div>
+        ) : status === "empty" || !bundle ? (
+          !simulationMode ? (
             <div className="mt-4">
-              <HomeSkeleton />
+              <PetpoojaSyncPlaceholder storeId={store.id} />
             </div>
-          ) : status === "error" && !bundle ? (
-            <div className="mt-6">
-              <FailureState
-                title="We couldn't load Home"
-                message={error ?? "Please try again in a moment."}
-                onRetry={handleRefresh}
-              />
-            </div>
-          ) : status === "empty" || !bundle ? (
-            !simulationMode ? (
-              <div className="mt-4">
-                <PetpoojaSyncPlaceholder storeId={store.id} />
-              </div>
-            ) : (
-              <EmptyState
-                title="Nothing to show yet"
-                description="Menu and offers for this store will appear here soon."
-                actionLabel="Browse menu"
-                onAction={() => navigate({ to: "/menu" })}
-              />
-            )
           ) : (
-            <div ref={sectionsRef} className="mt-5 space-y-7 pb-6">
-              {/* Banners */}
-              {bundle.banners.length > 0 && <BannerCarousel banners={bundle.banners} />}
+            <EmptyState
+              title="Nothing to show yet"
+              description="Menu and offers for this store will appear here soon."
+              actionLabel="Browse menu"
+              onAction={() => navigate({ to: "/menu" })}
+            />
+          )
+        ) : (
+          <div ref={sectionsRef} className="mt-5 space-y-7 pb-6">
+            {/* Banners */}
+            {bundle.banners.length > 0 && <BannerCarousel banners={bundle.banners} />}
 
-              {/* Categories */}
-              {bundle.categories.length > 0 && (
-                <section aria-labelledby="cats-heading">
-                  <SectionHeader
-                    title="What's on your plate?"
-                    subtitle="Browse by category"
-                    actionLabel="See menu"
-                    actionTo="/menu"
-                  />
-                  <CategoryGrid categories={bundle.categories} />
-                </section>
-              )}
+            {/* Categories */}
+            {bundle.categories.length > 0 && (
+              <section aria-labelledby="cats-heading">
+                <SectionHeader
+                  title="What's on your plate?"
+                  subtitle="Browse by category"
+                  actionLabel="See menu"
+                  actionTo="/menu"
+                />
+                <CategoryGrid categories={bundle.categories} />
+              </section>
+            )}
 
-              {/* Featured offers */}
-              {bundle.featuredOffers.length > 0 && (
-                <section aria-labelledby="offers-heading">
-                  <SectionHeader
-                    title="Featured offers"
-                    subtitle="Save on today's favourites"
-                    actionLabel="All offers"
-                    actionTo="/offers"
-                  />
-                  <HorizontalRail ariaLabel="Featured offers">
-                    {bundle.featuredOffers.map((o) => (
-                      <OfferCard
-                        key={o.id}
-                        code={o.code ?? ""}
-                        title={o.title}
-                        description={o.description}
-                        className="w-[280px]"
-                      />
-                    ))}
-                  </HorizontalRail>
-                </section>
-              )}
+            {/* Featured offers */}
+            {bundle.featuredOffers.length > 0 && (
+              <section aria-labelledby="offers-heading">
+                <SectionHeader
+                  title="Featured offers"
+                  subtitle="Save on today's favourites"
+                  actionLabel="All offers"
+                  actionTo="/offers"
+                />
+                <HorizontalRail ariaLabel="Featured offers">
+                  {bundle.featuredOffers.map((o) => (
+                    <OfferCard
+                      key={o.id}
+                      code={o.code ?? ""}
+                      title={o.title}
+                      description={o.description}
+                      className="w-[280px]"
+                    />
+                  ))}
+                </HorizontalRail>
+              </section>
+            )}
 
-              {/* Quick reorder */}
-              {isAuthenticated && bundle.quickReorder.length > 0 && (
-                <section aria-labelledby="reorder-heading">
-                  <SectionHeader
-                    title="Reorder in one tap"
-                    subtitle="From your recent orders"
-                    actionLabel="View orders"
-                    actionTo="/orders"
-                  />
-                  <QuickReorderRail items={bundle.quickReorder} />
-                </section>
-              )}
+            {/* Quick reorder */}
+            {isAuthenticated && bundle.quickReorder.length > 0 && (
+              <section aria-labelledby="reorder-heading">
+                <SectionHeader
+                  title="Reorder in one tap"
+                  subtitle="From your recent orders"
+                  actionLabel="View orders"
+                  actionTo="/orders"
+                />
+                <QuickReorderRail items={bundle.quickReorder} />
+              </section>
+            )}
 
-              {/* Best sellers */}
-              {bundle.bestSellers.length > 0 && (
-                <section aria-labelledby="best-heading">
-                  <SectionHeader
-                    title="Best sellers"
-                    subtitle="Most loved at this store"
-                    actionLabel="See all"
-                    actionTo="/menu"
-                  />
-                  <HorizontalRail ariaLabel="Best selling items">
-                    {bundle.bestSellers.map((it) => (
-                      <ProductCard
-                        key={it.id}
-                        id={it.id}
-                        name={it.name}
-                        description={it.description}
-                        price={it.price}
-                        veg={it.veg}
-                        imageUrl={it.imageUrl}
-                        fallbackImageUrl={it.fallbackImageUrl}
-                        inStock={it.inStock}
-                        onAdd={() => handleAddToCart(it)}
-                        onClickCard={() => handleCardClick(it.id)}
-                        className="w-[200px]"
-                      />
-                    ))}
-                  </HorizontalRail>
-                </section>
-              )}
+            {/* Best sellers */}
+            {bundle.bestSellers.length > 0 && (
+              <section aria-labelledby="best-heading">
+                <SectionHeader
+                  title="Best sellers"
+                  subtitle="Most loved at this store"
+                  actionLabel="See all"
+                  actionTo="/menu"
+                />
+                <HorizontalRail ariaLabel="Best selling items">
+                  {bundle.bestSellers.map((it) => (
+                    <ProductCard
+                      key={it.id}
+                      id={it.id}
+                      name={it.name}
+                      description={it.description}
+                      price={it.price}
+                      veg={it.veg}
+                      imageUrl={it.imageUrl}
+                      fallbackImageUrl={it.fallbackImageUrl}
+                      inStock={it.inStock}
+                      onAdd={() => handleAddToCart(it)}
+                      onClickCard={() => handleCardClick(it.id)}
+                      className="w-[200px]"
+                    />
+                  ))}
+                </HorizontalRail>
+              </section>
+            )}
 
-              {/* Popular combos */}
-              {bundle.popularCombos.length > 0 && (
-                <section aria-labelledby="combos-heading">
-                  <SectionHeader
-                    title="Popular combos"
-                    subtitle="Bundle up and save more"
-                    actionLabel="See all"
-                    actionTo="/menu"
-                  />
-                  <HorizontalRail ariaLabel="Popular combos">
-                    {bundle.popularCombos.map((c) => (
-                      <ComboCard key={c.id} combo={c} />
-                    ))}
-                  </HorizontalRail>
-                </section>
-              )}
+            {/* Popular combos */}
+            {bundle.popularCombos.length > 0 && (
+              <section aria-labelledby="combos-heading">
+                <SectionHeader
+                  title="Popular combos"
+                  subtitle="Bundle up and save more"
+                  actionLabel="See all"
+                  actionTo="/menu"
+                />
+                <HorizontalRail ariaLabel="Popular combos">
+                  {bundle.popularCombos.map((c) => (
+                    <ComboCard key={c.id} combo={c} />
+                  ))}
+                </HorizontalRail>
+              </section>
+            )}
 
-              {/* Recommendations */}
-              {bundle.recommendations.length > 0 && (
-                <section aria-labelledby="recs-heading">
-                  <SectionHeader
-                    title="Recommended for you"
-                    subtitle="Picked from what you'll likely enjoy"
-                  />
-                  <HorizontalRail ariaLabel="Recommended items">
-                    {bundle.recommendations.map((it) => (
-                      <ProductCard
-                        key={it.id}
-                        id={it.id}
-                        name={it.name}
-                        description={it.reason ?? it.description}
-                        price={it.price}
-                        veg={it.veg}
-                        imageUrl={it.imageUrl}
-                        fallbackImageUrl={it.fallbackImageUrl}
-                        inStock={it.inStock}
-                        onAdd={() => handleAddToCart(it)}
-                        onClickCard={() => handleCardClick(it.id)}
-                        className="w-[200px]"
-                      />
-                    ))}
-                  </HorizontalRail>
-                </section>
-              )}
+            {/* Recommendations */}
+            {bundle.recommendations.length > 0 && (
+              <section aria-labelledby="recs-heading">
+                <SectionHeader
+                  title="Recommended for you"
+                  subtitle="Picked from what you'll likely enjoy"
+                />
+                <HorizontalRail ariaLabel="Recommended items">
+                  {bundle.recommendations.map((it) => (
+                    <ProductCard
+                      key={it.id}
+                      id={it.id}
+                      name={it.name}
+                      description={it.reason ?? it.description}
+                      price={it.price}
+                      veg={it.veg}
+                      imageUrl={it.imageUrl}
+                      fallbackImageUrl={it.fallbackImageUrl}
+                      inStock={it.inStock}
+                      onAdd={() => handleAddToCart(it)}
+                      onClickCard={() => handleCardClick(it.id)}
+                      className="w-[200px]"
+                    />
+                  ))}
+                </HorizontalRail>
+              </section>
+            )}
 
-              {/* Recently viewed — only when populated */}
-              {bundle.recentlyViewed.length > 0 && (
-                <section aria-labelledby="recent-heading">
-                  <SectionHeader title="Recently viewed" subtitle="Pick up where you left off" />
-                  <HorizontalRail ariaLabel="Recently viewed items">
-                    {bundle.recentlyViewed.map((it) => (
-                      <ProductCard
-                        key={it.id}
-                        id={it.id}
-                        name={it.name}
-                        description={it.description}
-                        price={it.price}
-                        veg={it.veg}
-                        imageUrl={it.imageUrl}
-                        fallbackImageUrl={it.fallbackImageUrl}
-                        inStock={it.inStock}
-                        onAdd={() => handleAddToCart(it)}
-                        onClickCard={() => handleCardClick(it.id)}
-                        className="w-[200px]"
-                      />
-                    ))}
-                  </HorizontalRail>
-                </section>
-              )}
+            {/* Recently viewed — only when populated */}
+            {bundle.recentlyViewed.length > 0 && (
+              <section aria-labelledby="recent-heading">
+                <SectionHeader title="Recently viewed" subtitle="Pick up where you left off" />
+                <HorizontalRail ariaLabel="Recently viewed items">
+                  {bundle.recentlyViewed.map((it) => (
+                    <ProductCard
+                      key={it.id}
+                      id={it.id}
+                      name={it.name}
+                      description={it.description}
+                      price={it.price}
+                      veg={it.veg}
+                      imageUrl={it.imageUrl}
+                      fallbackImageUrl={it.fallbackImageUrl}
+                      inStock={it.inStock}
+                      onAdd={() => handleAddToCart(it)}
+                      onClickCard={() => handleCardClick(it.id)}
+                      className="w-[200px]"
+                    />
+                  ))}
+                </HorizontalRail>
+              </section>
+            )}
 
-              {/* Footer spacing so the last rail clears the tab bar. */}
-              <div className="h-2" aria-hidden />
-              {isRefreshing && (
-                <p role="status" className="type-caption text-center text-text-secondary">
-                  Refreshing…
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+            {/* Footer spacing so the last rail clears the tab bar. */}
+            <div className="h-2" aria-hidden />
+            {isRefreshing && (
+              <p role="status" className="type-caption text-center text-text-secondary">
+                Refreshing…
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       <FulfillmentSheet
         open={fulfillmentOpen}

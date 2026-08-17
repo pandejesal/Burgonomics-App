@@ -53,11 +53,7 @@ function AddressCreatePage() {
       showTopBar
     >
       <div className="mx-auto max-w-[560px] px-4 py-4">
-        <AddressForm
-          initial={initialAddress}
-          onSaved={handleSaved}
-          onCancel={handleCancel}
-        />
+        <AddressForm initial={initialAddress} onSaved={handleSaved} onCancel={handleCancel} />
       </div>
     </AppShell>
   );

@@ -39,7 +39,9 @@ export function BottomSheet({
             {description && <DrawerDescription>{description}</DrawerDescription>}
           </DrawerHeader>
         )}
-        <div className="px-4 pb-6 overflow-y-auto max-h-[calc(85dvh-4rem)] [overscroll-behavior-y:contain]">{children}</div>
+        <div className="px-4 pb-6 overflow-y-auto max-h-[calc(85dvh-4rem)] [overscroll-behavior-y:contain]">
+          {children}
+        </div>
       </DrawerContent>
     </Drawer>
   );

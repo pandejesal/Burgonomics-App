@@ -60,10 +60,7 @@ export function ConsumerRouteTransition({ children }: ConsumerRouteTransitionPro
   }
 
   return (
-    <div
-      key={pathname}
-      className={`route-transition-container ${transitionClass}`.trim()}
-    >
+    <div key={pathname} className={`route-transition-container ${transitionClass}`.trim()}>
       {children}
     </div>
   );

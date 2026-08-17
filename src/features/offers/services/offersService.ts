@@ -145,7 +145,8 @@ export const offersService = {
       code: offer.code ?? offer.id,
       title: offer.title,
       discount: discountAmount,
-      savingsLabel: discountAmount > 0 ? `You saved ₹${discountAmount}` : (offer.discount?.label ?? ""),
+      savingsLabel:
+        discountAmount > 0 ? `You saved ₹${discountAmount}` : (offer.discount?.label ?? ""),
       type: offer.type,
     });
   },

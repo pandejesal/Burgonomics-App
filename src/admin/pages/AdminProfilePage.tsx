@@ -37,15 +37,12 @@ export const AdminProfilePage: React.FC = () => {
 
   useEffect(() => {
     if (!admin?.id) return;
-    const q = query(
-      collection(db, "admins", admin.id, "sessions"),
-      orderBy("lastSeen", "desc")
-    );
+    const q = query(collection(db, "admins", admin.id, "sessions"), orderBy("lastSeen", "desc"));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const activeSessionId = await secureStorage.get("admin_session_id");
       const loaded = snapshot.docs
-        .filter(doc => doc.data().active === true)
-        .map(doc => {
+        .filter((doc) => doc.data().active === true)
+        .map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -55,7 +52,8 @@ export const AdminProfilePage: React.FC = () => {
             ip: data.ip || "Unknown",
             country: data.country || "Unknown",
             active: doc.id === activeSessionId,
-            lastSeen: doc.id === activeSessionId ? "Just Now" : new Date(data.lastSeen).toLocaleString(),
+            lastSeen:
+              doc.id === activeSessionId ? "Just Now" : new Date(data.lastSeen).toLocaleString(),
           };
         });
       // Sort so active session is first
@@ -161,7 +159,8 @@ export const AdminProfilePage: React.FC = () => {
                   </div>
 
                   <div className="pt-2 border-t border-gray-200 dark:border-gray-800 text-[11px] text-gray-400 leading-relaxed">
-                    Administrative access is authorized via verified Firebase Auth JWT tokens and backed by strict Firestore security rules.
+                    Administrative access is authorized via verified Firebase Auth JWT tokens and
+                    backed by strict Firestore security rules.
                   </div>
                 </div>
               </div>
@@ -268,7 +267,9 @@ export const AdminProfilePage: React.FC = () => {
                     <button
                       onClick={() => {
                         if (admin?.id) {
-                           updateDoc(doc(db, "admins", admin.id, "sessions", sess.id), { active: false });
+                          updateDoc(doc(db, "admins", admin.id, "sessions", sess.id), {
+                            active: false,
+                          });
                         }
                       }}
                       className="flex h-8 w-8 items-center justify-center rounded-xl text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-950/15 transition-colors"

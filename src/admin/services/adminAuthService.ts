@@ -72,7 +72,11 @@ class AdminAuthService {
         admin: adminUser,
       };
     } catch (error: any) {
-      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
+      if (
+        error.code === "auth/invalid-credential" ||
+        error.code === "auth/user-not-found" ||
+        error.code === "auth/wrong-password"
+      ) {
         throw new Error("Invalid email or password.");
       }
       throw error;
@@ -91,7 +95,7 @@ class AdminAuthService {
         console.warn("Failed to deactivate session on logout", err);
       }
     }
-    
+
     await secureStorage.remove("admin_session_id");
     await signOut(auth);
   }
@@ -116,7 +120,11 @@ class AdminAuthService {
                   avatar: adminData.avatar || null,
                   role: {
                     name: adminData.role || "Admin",
-                    permissions: adminData.permissions || ["admin.system", "admin.stores", "admin.orders"],
+                    permissions: adminData.permissions || [
+                      "admin.system",
+                      "admin.stores",
+                      "admin.orders",
+                    ],
                   },
                 },
                 accessToken,

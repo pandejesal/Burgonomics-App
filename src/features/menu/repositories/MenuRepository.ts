@@ -64,6 +64,31 @@ export class MenuRepository {
   getItem(id: string): Promise<ApiResult<MenuItem | null>> {
     return this.service.getItem(id);
   }
+
+  // Real-time synchronization (<5s sync).
+  subscribeCategories(
+    storeId: string | undefined,
+    callback: (result: ApiResult<MenuCategory[]>) => void,
+  ): () => void {
+    return this.service.subscribeCategories(storeId, callback);
+  }
+
+  subscribeProducts(
+    storeId: string | undefined,
+    categoryId: string | undefined,
+    callback: (result: ApiResult<ProductPage>) => void,
+    page = 1,
+    pageSize = 40,
+  ): () => void {
+    return this.service.subscribeProducts(storeId, categoryId, callback, page, pageSize);
+  }
+
+  subscribeProduct(
+    id: string,
+    callback: (result: ApiResult<ProductDetails | null>) => void,
+  ): () => void {
+    return this.service.subscribeProduct(id, callback);
+  }
 }
 
 export const menuRepository = new MenuRepository();

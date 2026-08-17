@@ -188,7 +188,29 @@ export class CartRepository {
   // -- Validation / checkout hand-off ---------------------------------
 
   async validateCart(): Promise<ApiResult<CartValidation>> {
+    const s = useCartStore.getState();
+    if (s.isPriceLockExpired()) {
+      await this.validateAndRefreshPriceLock();
+    }
     return validateCartMock(useCartStore.getState().lines);
+  }
+
+  async validateAndRefreshPriceLock(): Promise<ApiResult<{ revalidated: boolean; messages: string[] }>> {
+    const s = useCartStore.getState();
+    if (s.lines.length === 0) return ok({ revalidated: false, messages: [] });
+
+    try {
+      const { menuRepository } = await import("@/features/menu/repositories/MenuRepository");
+      const productsRes = await menuRepository.listProducts(s.storeId ?? undefined, undefined, 1, 100);
+      if (productsRes.success) {
+        const res = s.revalidateWithProducts(productsRes.data.items);
+        return ok({ revalidated: true, messages: res.messages });
+      }
+    } catch {
+      // ignore
+    }
+    s.renewPriceLock();
+    return ok({ revalidated: false, messages: [] });
   }
 
   async prepareCheckout(): Promise<ApiResult<{ checkoutToken: string }>> {

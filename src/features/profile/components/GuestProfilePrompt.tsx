@@ -26,7 +26,11 @@ export function GuestProfilePrompt() {
         <Text as="h1" variant="headlineLarge" className="tracking-tight">
           Welcome to {APP.name}
         </Text>
-        <Text variant="bodyMedium" tone="secondary" className="mx-auto mt-3 w-11/12 max-w-[320px] leading-relaxed">
+        <Text
+          variant="bodyMedium"
+          tone="secondary"
+          className="mx-auto mt-3 w-11/12 max-w-[320px] leading-relaxed"
+        >
           Sign in with your mobile number to unlock your saved favourites, addresses and orders —
           with everything synced across your devices.
         </Text>
@@ -59,7 +63,10 @@ export function GuestProfilePrompt() {
             Terms
           </Link>{" "}
           and{" "}
-          <Link to="/privacy" className="font-medium text-primary underline-offset-2 hover:underline">
+          <Link
+            to="/privacy"
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
             Privacy Policy
           </Link>
           .

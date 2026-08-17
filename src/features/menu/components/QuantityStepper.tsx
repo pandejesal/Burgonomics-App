@@ -43,7 +43,10 @@ export function QuantityStepper({ value, onChange, min = 1, max = 99, className 
       >
         <Minus className="h-4 w-4" />
       </button>
-      <span className="min-w-8 text-center type-title-medium tabular-nums font-bold" aria-live="polite">
+      <span
+        className="min-w-8 text-center type-title-medium tabular-nums font-bold"
+        aria-live="polite"
+      >
         {value}
       </span>
       <button

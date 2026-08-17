@@ -4,12 +4,14 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
 
-export function useGsapReveal(options: {
-  yOffset?: number;
-  duration?: number;
-  stagger?: number;
-  delay?: number;
-} = {}) {
+export function useGsapReveal(
+  options: {
+    yOffset?: number;
+    duration?: number;
+    stagger?: number;
+    delay?: number;
+  } = {},
+) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export function useGsapReveal(options: {
             start: "top 85%", // Trigger when top of element hits 85% of viewport
             toggleActions: "play none none reverse",
           },
-        }
+        },
       );
     }, el);
 

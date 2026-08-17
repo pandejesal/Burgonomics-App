@@ -1,12 +1,5 @@
 import { db } from "@/core/config/firebase";
-import {
-  collection,
-  doc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  query,
-} from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, updateDoc, query } from "firebase/firestore";
 import type { RichStore } from "../pages/storesData";
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { logger } from "@/core/logging/logger";
@@ -38,7 +31,7 @@ export const adminStoresService = {
   async bulkUpsert(stores: RichStore[]): Promise<ApiResult<void>> {
     try {
       const batchPromises = stores.map((store) =>
-        setDoc(doc(db, STORES_COLLECTION, store.id), store)
+        setDoc(doc(db, STORES_COLLECTION, store.id), store),
       );
       await Promise.all(batchPromises);
       return ok(undefined);

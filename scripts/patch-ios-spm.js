@@ -1,38 +1,38 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 // 1. Patch CapApp-SPM Package.swift
-const spmFile = path.resolve('ios/App/CapApp-SPM/Package.swift');
+const spmFile = path.resolve("ios/App/CapApp-SPM/Package.swift");
 
 if (fs.existsSync(spmFile)) {
-  let content = fs.readFileSync(spmFile, 'utf8');
+  let content = fs.readFileSync(spmFile, "utf8");
 
   // Convert Windows backslashes to POSIX forward slashes
-  content = content.replace(/\\/g, '/');
+  content = content.replace(/\\/g, "/");
 
   // Set deployment target to iOS 16.0
-  content = content.replace(/\.iOS\(\.v15\)/g, '.iOS(.v16)');
+  content = content.replace(/\.iOS\(\.v15\)/g, ".iOS(.v16)");
 
   // Pin capacitor-swift-pm to 8.5.0
   content = content.replace(/exact:\s*"8\.[0-9]+\.[0-9]+"/g, 'exact: "8.5.0"');
   content = content.replace(/from:\s*"8\.[0-9]+\.[0-9]+"/g, 'exact: "8.5.0"');
 
   // Inject keychain-swift dependency if missing
-  if (!content.includes('keychain-swift')) {
+  if (!content.includes("keychain-swift")) {
     content = content.replace(
       /(\.package\(url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*exact:\s*"8\.5\.0"\),)/,
-      '$1\n        .package(url: "https://github.com/evgenyneu/keychain-swift.git", exact: "21.0.0"),'
+      '$1\n        .package(url: "https://github.com/evgenyneu/keychain-swift.git", exact: "21.0.0"),',
     );
-    if (!content.includes('KeychainSwift')) {
+    if (!content.includes("KeychainSwift")) {
       content = content.replace(
         '.product(name: "Capacitor", package: "capacitor-swift-pm"),',
-        '.product(name: "Capacitor", package: "capacitor-swift-pm"),\n                .product(name: "KeychainSwift", package: "keychain-swift"),'
+        '.product(name: "Capacitor", package: "capacitor-swift-pm"),\n                .product(name: "KeychainSwift", package: "keychain-swift"),',
       );
     }
   }
 
-  fs.writeFileSync(spmFile, content, 'utf8');
-  console.log('✅ Successfully patched ios/App/CapApp-SPM/Package.swift');
+  fs.writeFileSync(spmFile, content, "utf8");
+  console.log("✅ Successfully patched ios/App/CapApp-SPM/Package.swift");
 } else {
   console.error(`❌ SPM file not found at ${spmFile}`);
   process.exit(1);
@@ -40,27 +40,35 @@ if (fs.existsSync(spmFile)) {
 
 // 2. Patch all capacitor plugins in node_modules to pin capacitor-swift-pm to 8.5.0
 const nodeModulesDirs = [
-  path.resolve('node_modules/@capacitor'),
-  path.resolve('node_modules/@aparajita')
+  path.resolve("node_modules/@capacitor"),
+  path.resolve("node_modules/@aparajita"),
 ];
 
 for (const baseDir of nodeModulesDirs) {
   if (!fs.existsSync(baseDir)) continue;
   const packages = fs.readdirSync(baseDir);
   for (const pkg of packages) {
-    const pkgSwift = path.join(baseDir, pkg, 'Package.swift');
+    const pkgSwift = path.join(baseDir, pkg, "Package.swift");
     if (fs.existsSync(pkgSwift)) {
-      let c = fs.readFileSync(pkgSwift, 'utf8');
-      c = c.replace(/url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*from:\s*"[^"]+"/g, 'url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0"');
-      c = c.replace(/url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*exact:\s*"8\.[0-9]+\.[0-9]+"/g, 'url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0"');
-      fs.writeFileSync(pkgSwift, c, 'utf8');
+      let c = fs.readFileSync(pkgSwift, "utf8");
+      c = c.replace(
+        /url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*from:\s*"[^"]+"/g,
+        'url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0"',
+      );
+      c = c.replace(
+        /url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*exact:\s*"8\.[0-9]+\.[0-9]+"/g,
+        'url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0"',
+      );
+      fs.writeFileSync(pkgSwift, c, "utf8");
       console.log(`✅ Pinned capacitor-swift-pm 8.5.0 in ${pkgSwift}`);
     }
   }
 }
 
 // 3. Patch @capacitor/status-bar
-const statusBarColorSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/UIColor.swift');
+const statusBarColorSwift = path.resolve(
+  "node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/UIColor.swift",
+);
 if (fs.existsSync(statusBarColorSwift)) {
   const content = `import Capacitor
 import UIKit
@@ -111,11 +119,13 @@ public extension CapacitorExtensionTypeWrapper where T: UIColor {
     }
 }
 `;
-  fs.writeFileSync(statusBarColorSwift, content, 'utf8');
-  console.log('✅ Overwritten StatusBarPlugin UIColor.swift');
+  fs.writeFileSync(statusBarColorSwift, content, "utf8");
+  console.log("✅ Overwritten StatusBarPlugin UIColor.swift");
 }
 
-const statusBarSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBar.swift');
+const statusBarSwift = path.resolve(
+  "node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBar.swift",
+);
 if (fs.existsSync(statusBarSwift)) {
   const content = `import Foundation
 import Capacitor
@@ -296,11 +306,13 @@ public class StatusBar {
     }
 }
 `;
-  fs.writeFileSync(statusBarSwift, content, 'utf8');
-  console.log('✅ Overwritten StatusBar.swift');
+  fs.writeFileSync(statusBarSwift, content, "utf8");
+  console.log("✅ Overwritten StatusBar.swift");
 }
 
-const statusBarPluginSwift = path.resolve('node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBarPlugin.swift');
+const statusBarPluginSwift = path.resolve(
+  "node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBarPlugin.swift",
+);
 if (fs.existsSync(statusBarPluginSwift)) {
   const content = `import Foundation
 import Capacitor
@@ -402,12 +414,14 @@ public class StatusBarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 `;
-  fs.writeFileSync(statusBarPluginSwift, content, 'utf8');
-  console.log('✅ Overwritten StatusBarPlugin.swift');
+  fs.writeFileSync(statusBarPluginSwift, content, "utf8");
+  console.log("✅ Overwritten StatusBarPlugin.swift");
 }
 
 // 4. Patch @capacitor/splash-screen
-const splashScreenPluginSwift = path.resolve('node_modules/@capacitor/splash-screen/ios/Sources/SplashScreenPlugin/SplashScreenPlugin.swift');
+const splashScreenPluginSwift = path.resolve(
+  "node_modules/@capacitor/splash-screen/ios/Sources/SplashScreenPlugin/SplashScreenPlugin.swift",
+);
 if (fs.existsSync(splashScreenPluginSwift)) {
   const content = `import Foundation
 import Capacitor
@@ -526,12 +540,14 @@ public class SplashScreenPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 `;
-  fs.writeFileSync(splashScreenPluginSwift, content, 'utf8');
-  console.log('✅ Overwritten SplashScreenPlugin.swift');
+  fs.writeFileSync(splashScreenPluginSwift, content, "utf8");
+  console.log("✅ Overwritten SplashScreenPlugin.swift");
 }
 
 // 5. Patch @capacitor/push-notifications
-const pushHandlerSwift = path.resolve('node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsHandler.swift');
+const pushHandlerSwift = path.resolve(
+  "node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsHandler.swift",
+);
 if (fs.existsSync(pushHandlerSwift)) {
   const content = `import Capacitor
 import UserNotifications
@@ -627,11 +643,13 @@ public class PushNotificationsHandler: NSObject, NotificationHandlerProtocol {
     }
 }
 `;
-  fs.writeFileSync(pushHandlerSwift, content, 'utf8');
-  console.log('✅ Overwritten PushNotificationsHandler.swift');
+  fs.writeFileSync(pushHandlerSwift, content, "utf8");
+  console.log("✅ Overwritten PushNotificationsHandler.swift");
 }
 
-const pushPluginSwift = path.resolve('node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsPlugin.swift');
+const pushPluginSwift = path.resolve(
+  "node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsPlugin.swift",
+);
 if (fs.existsSync(pushPluginSwift)) {
   const content = `import Foundation
 import Capacitor
@@ -824,12 +842,14 @@ public class PushNotificationsPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 `;
-  fs.writeFileSync(pushPluginSwift, content, 'utf8');
-  console.log('✅ Overwritten PushNotificationsPlugin.swift');
+  fs.writeFileSync(pushPluginSwift, content, "utf8");
+  console.log("✅ Overwritten PushNotificationsPlugin.swift");
 }
 
 // 6. Patch @capacitor/preferences
-const prefPluginSwift = path.resolve('node_modules/@capacitor/preferences/ios/Sources/PreferencesPlugin/PreferencesPlugin.swift');
+const prefPluginSwift = path.resolve(
+  "node_modules/@capacitor/preferences/ios/Sources/PreferencesPlugin/PreferencesPlugin.swift",
+);
 if (fs.existsSync(prefPluginSwift)) {
   const content = `import Foundation
 import Capacitor
@@ -950,12 +970,14 @@ public class PreferencesPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 `;
-  fs.writeFileSync(prefPluginSwift, content, 'utf8');
-  console.log('✅ Overwritten PreferencesPlugin.swift');
+  fs.writeFileSync(prefPluginSwift, content, "utf8");
+  console.log("✅ Overwritten PreferencesPlugin.swift");
 }
 
 // 7. Patch @capacitor/app
-const appPluginSwift = path.resolve('node_modules/@capacitor/app/ios/Sources/AppPlugin/AppPlugin.swift');
+const appPluginSwift = path.resolve(
+  "node_modules/@capacitor/app/ios/Sources/AppPlugin/AppPlugin.swift",
+);
 if (fs.existsSync(appPluginSwift)) {
   const content = `import Foundation
 import Capacitor
@@ -1086,12 +1108,14 @@ public class AppPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 }
 `;
-  fs.writeFileSync(appPluginSwift, content, 'utf8');
-  console.log('✅ Overwritten AppPlugin.swift');
+  fs.writeFileSync(appPluginSwift, content, "utf8");
+  console.log("✅ Overwritten AppPlugin.swift");
 }
 
 // 8. Patch @aparajita/capacitor-secure-storage
-const keychainErrorSwift = path.resolve('node_modules/@aparajita/capacitor-secure-storage/ios/Sources/SecureStoragePlugin/KeychainError.swift');
+const keychainErrorSwift = path.resolve(
+  "node_modules/@aparajita/capacitor-secure-storage/ios/Sources/SecureStoragePlugin/KeychainError.swift",
+);
 if (fs.existsSync(keychainErrorSwift)) {
   const content = `//
 //  KeychainError.swift
@@ -1150,11 +1174,13 @@ public class KeychainError: Error {
   }
 }
 `;
-  fs.writeFileSync(keychainErrorSwift, content, 'utf8');
-  console.log('✅ Overwritten KeychainError.swift');
+  fs.writeFileSync(keychainErrorSwift, content, "utf8");
+  console.log("✅ Overwritten KeychainError.swift");
 }
 
-const secureStoragePluginSwift = path.resolve('node_modules/@aparajita/capacitor-secure-storage/ios/Sources/SecureStoragePlugin/Plugin.swift');
+const secureStoragePluginSwift = path.resolve(
+  "node_modules/@aparajita/capacitor-secure-storage/ios/Sources/SecureStoragePlugin/Plugin.swift",
+);
 if (fs.existsSync(secureStoragePluginSwift)) {
   const content = `import Capacitor
 import Foundation
@@ -1339,12 +1365,14 @@ public class SecureStorage: CAPPlugin, CAPBridgedPlugin {
   }
 }
 `;
-  fs.writeFileSync(secureStoragePluginSwift, content, 'utf8');
-  console.log('✅ Overwritten Plugin.swift');
+  fs.writeFileSync(secureStoragePluginSwift, content, "utf8");
+  console.log("✅ Overwritten Plugin.swift");
 }
 
 // 9. Patch @capacitor/geolocation
-const geolocationCallbackManagerSwift = path.resolve('node_modules/@capacitor/geolocation/ios/Sources/GeolocationPlugin/GeolocationCallbackManager.swift');
+const geolocationCallbackManagerSwift = path.resolve(
+  "node_modules/@capacitor/geolocation/ios/Sources/GeolocationPlugin/GeolocationCallbackManager.swift",
+);
 if (fs.existsSync(geolocationCallbackManagerSwift)) {
   const content = `import Capacitor
 import IONGeolocationLib
@@ -1510,37 +1538,43 @@ private extension GeolocationCallbackManager {
     }
 }
 `;
-  fs.writeFileSync(geolocationCallbackManagerSwift, content, 'utf8');
-  console.log('✅ Overwritten GeolocationCallbackManager.swift');
+  fs.writeFileSync(geolocationCallbackManagerSwift, content, "utf8");
+  console.log("✅ Overwritten GeolocationCallbackManager.swift");
 }
 
-const geolocationPluginSwift = path.resolve('node_modules/@capacitor/geolocation/ios/Sources/GeolocationPlugin/GeolocationPlugin.swift');
+const geolocationPluginSwift = path.resolve(
+  "node_modules/@capacitor/geolocation/ios/Sources/GeolocationPlugin/GeolocationPlugin.swift",
+);
 if (fs.existsSync(geolocationPluginSwift)) {
-  let content = fs.readFileSync(geolocationPluginSwift, 'utf8');
+  let content = fs.readFileSync(geolocationPluginSwift, "utf8");
   content = content.replace(
-    'guard let callbackId = call.getString(Constants.Arguments.id) else {',
-    'guard let callbackId = call.options[Constants.Arguments.id] as? String else {'
+    "guard let callbackId = call.getString(Constants.Arguments.id) else {",
+    "guard let callbackId = call.options[Constants.Arguments.id] as? String else {",
   );
-  fs.writeFileSync(geolocationPluginSwift, content, 'utf8');
-  console.log('✅ Overwritten GeolocationPlugin.swift');
+  fs.writeFileSync(geolocationPluginSwift, content, "utf8");
+  console.log("✅ Overwritten GeolocationPlugin.swift");
 }
 
 // 10. Ensure AppDelegate.swift uses direct universal link handling
-const appDelegatePath = path.resolve('ios/App/App/AppDelegate.swift');
+const appDelegatePath = path.resolve("ios/App/App/AppDelegate.swift");
 if (fs.existsSync(appDelegatePath)) {
-  let content = fs.readFileSync(appDelegatePath, 'utf8');
-  if (content.includes('return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)')) {
+  let content = fs.readFileSync(appDelegatePath, "utf8");
+  if (
+    content.includes(
+      "return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)",
+    )
+  ) {
     content = content.replace(
-      'return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)',
+      "return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)",
       `guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else {
             return false
         }
         NotificationCenter.default.post(name: .capacitorOpenUniversalLink, object: [
             "url": url
         ])
-        return true`
+        return true`,
     );
-    fs.writeFileSync(appDelegatePath, content, 'utf8');
-    console.log('✅ Patched AppDelegate.swift universal links handling');
+    fs.writeFileSync(appDelegatePath, content, "utf8");
+    console.log("✅ Patched AppDelegate.swift universal links handling");
   }
 }

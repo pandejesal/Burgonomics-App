@@ -282,8 +282,7 @@ export const SystemSecurityTab: React.FC = () => {
               </div>
               <p>
                 Toggling maintenance blocks all checkout routes and returns HTTP 503 across customer
-                platforms. Requires authorization confirmation PIN to confirm emergency
-                protocol.
+                platforms. Requires authorization confirmation PIN to confirm emergency protocol.
               </p>
 
               {!isMaintenanceMode && (

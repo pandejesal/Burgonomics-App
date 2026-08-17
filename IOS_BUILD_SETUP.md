@@ -10,10 +10,10 @@ This project uses GitHub Actions to build the iOS app on macOS runners, so you n
 
 ## Artifacts
 
-| Artifact | Description |
-|---|---|
-| `Burgonomics-iOS-Simulator-App.zip` | Always built. Runs on iOS Simulator only. |
-| `Burgonomics-iOS-Device-IPA` | Built only when signing secrets are configured. Can be installed on physical devices via TestFlight, Ad Hoc, or Enterprise distribution. |
+| Artifact                            | Description                                                                                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `Burgonomics-iOS-Simulator-App.zip` | Always built. Runs on iOS Simulator only.                                                                                                |
+| `Burgonomics-iOS-Device-IPA`        | Built only when signing secrets are configured. Can be installed on physical devices via TestFlight, Ad Hoc, or Enterprise distribution. |
 
 ## Simulator Build (no secrets needed)
 
@@ -27,18 +27,18 @@ To build an IPA for physical devices, add these **GitHub Secrets** to your repos
 
 ### Required Secrets
 
-| Secret | Description |
-|---|---|
-| `IOS_CERTIFICATE_BASE64` | Base64-encoded `.p12` distribution certificate |
-| `IOS_CERTIFICATE_PASSWORD` | Password for the `.p12` certificate |
-| `IOS_PROVISIONING_PROFILE_BASE64` | Base64-encoded `.mobileprovision` file |
-| `IOS_PROVISIONING_PROFILE_UUID` | UUID of the provisioning profile |
-| `IOS_TEAM_ID` | Your Apple Developer Team ID (10-character string) |
+| Secret                            | Description                                        |
+| --------------------------------- | -------------------------------------------------- |
+| `IOS_CERTIFICATE_BASE64`          | Base64-encoded `.p12` distribution certificate     |
+| `IOS_CERTIFICATE_PASSWORD`        | Password for the `.p12` certificate                |
+| `IOS_PROVISIONING_PROFILE_BASE64` | Base64-encoded `.mobileprovision` file             |
+| `IOS_PROVISIONING_PROFILE_UUID`   | UUID of the provisioning profile                   |
+| `IOS_TEAM_ID`                     | Your Apple Developer Team ID (10-character string) |
 
 ### How to get these values
 
 1. **Apple Developer Account**: Enroll at [developer.apple.com](https://developer.apple.com)
-2. **Create a Distribution Certificate**: 
+2. **Create a Distribution Certificate**:
    - Go to Certificates, Identifiers & Profiles
    - Create a "Apple Distribution" certificate
    - Download the `.p12` file
@@ -78,6 +78,7 @@ Once you have an IPA, you can distribute via:
 ## Removing macOS from the picture
 
 With this setup:
+
 - ✅ You write code on Windows
 - ✅ You push to GitHub
 - ✅ GitHub Actions builds iOS on macOS runners
@@ -85,6 +86,7 @@ With this setup:
 - ✅ You never touch a Mac
 
 The only time you'd need a Mac is if you want to:
+
 - Open the project in Xcode for native debugging
 - Submit directly to App Store Connect with Transporter
 - Create/refresh certificates and profiles

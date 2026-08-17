@@ -132,6 +132,7 @@ export interface Order {
   /** Free-text special instructions collected on checkout. */
   notes?: string;
   fulfillmentInstructions?: string;
+  tableNumber?: string;
 
   payment: OrderPaymentInfo;
 
@@ -165,6 +166,7 @@ export interface OrderTrackingSnapshot {
   etaMinutes?: number;
   /** For delivery — populated when partner has been assigned. */
   deliveryPartner?: DeliveryPartnerInfo;
+  tableNumber?: string;
   refreshedAt: Iso8601;
 }
 
@@ -198,6 +200,7 @@ export interface CreateOrderInput {
   address?: OrderAddressSnapshot;
   notes?: string;
   fulfillmentInstructions?: string;
+  tableNumber?: string;
   payment: OrderPaymentInfo;
   /** Backend confirmed order id (from payment verification). */
   confirmedOrderId?: string;
