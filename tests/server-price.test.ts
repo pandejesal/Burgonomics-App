@@ -126,4 +126,39 @@ describe("computeServerPrice", () => {
     expect(result.deliveryFee).toBe(40);
     expect(result.grandTotal).toBe(249.99);
   });
+
+  it("supports client cart format using productId and unitPrice aliases", async () => {
+    const items = [
+      { productId: "prod_hero_burger", unitPrice: 320, quantity: 2 },
+      { productId: "prod_masala_fries", unitPrice: 120, quantity: 1 },
+    ];
+
+    // Subtotal: (320 * 2) + (120 * 1) = 760
+    // Tax: 760 * 0.05 = 38
+    // Delivery fee for 760 delivery: 0
+    // Grand Total: 798
+    const result = await computeServerPrice(items, "delivery");
+
+    expect(result.subtotal).toBe(760);
+    expect(result.tax).toBe(38);
+    expect(result.deliveryFee).toBe(0);
+    expect(result.grandTotal).toBe(798);
+  });
+
+  it("falls back cleanly to client price when catalog resolver returns null or undefined", async () => {
+    const mockResolver = async () => null;
+
+    const items = [{ productId: "prod_offline_item", unitPrice: 250, quantity: 1 }];
+
+    // Subtotal: 250
+    // Tax: 250 * 0.05 = 12.5
+    // Delivery fee: 0 for takeaway
+    // Grand Total: 262.5
+    const result = await computeServerPrice(items, "takeaway", mockResolver);
+
+    expect(result.subtotal).toBe(250);
+    expect(result.tax).toBe(12.5);
+    expect(result.deliveryFee).toBe(0);
+    expect(result.grandTotal).toBe(262.5);
+  });
 });

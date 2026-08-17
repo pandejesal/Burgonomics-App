@@ -1,7 +1,9 @@
 export interface ServerPriceItem {
   id?: string;
+  productId?: string;
   quantity?: number;
   price?: number;
+  unitPrice?: number;
   customizations?: Array<{ price?: number }>;
 }
 
@@ -31,10 +33,11 @@ export async function computeServerPrice(
   if (Array.isArray(items) && items.length > 0) {
     for (const item of items) {
       const qty = Math.max(1, Number(item?.quantity) || 1);
-      let itemBasePrice = Number(item?.price || 0);
+      let itemBasePrice = Number(item?.price ?? item?.unitPrice ?? 0);
 
-      if (item?.id && priceResolver) {
-        const resolved = await priceResolver(item.id);
+      const lookupId = item?.id || item?.productId;
+      if (lookupId && priceResolver) {
+        const resolved = await priceResolver(lookupId);
         if (typeof resolved === "number" && !Number.isNaN(resolved)) {
           itemBasePrice = resolved;
         }

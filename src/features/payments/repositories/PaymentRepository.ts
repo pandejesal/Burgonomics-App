@@ -112,7 +112,15 @@ export class PaymentRepository {
     const checkoutSnapshot = {
       store: toStoreSnapshot(sel.activeStore),
       fulfillment: sel.fulfillment,
-      items: cart.lines,
+      items: cart.lines.map((l) => ({
+        id: l.productId,
+        productId: l.productId,
+        price: l.unitPrice,
+        unitPrice: l.unitPrice,
+        name: l.name,
+        quantity: l.quantity,
+        customizations: l.customizations,
+      })),
       totals: totalsRes.data,
       promo: cart.promo,
       address: address

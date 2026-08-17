@@ -63,14 +63,15 @@ import { computeServerPrice } from "./lib/server-price";
 /**
  * Resolves live product price from Firestore catalog.
  */
-async function resolveProductPrice(productId: string): Promise<number> {
-  if (!productId) return 0;
+async function resolveProductPrice(productId: string): Promise<number | null> {
+  if (!productId) return null;
   const prodSnap = await db.collection("petpooja_products").doc(productId).get();
   if (prodSnap.exists) {
     const prodData = prodSnap.data();
-    return Number(prodData?.price || prodData?.min_price || 0);
+    const price = Number(prodData?.price || prodData?.min_price || 0);
+    return Number.isNaN(price) ? null : price;
   }
-  return 0;
+  return null;
 }
 
 /**
