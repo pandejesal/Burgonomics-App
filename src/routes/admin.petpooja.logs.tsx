@@ -1,22 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
-import React, { useState } from "react";
-import { motion } from "motion/react";
+import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardService } from "@/admin/dashboard/services/dashboardService";
-import { MOCK_STORES } from "@/features/stores/data/mockStores";
+import {
+  petpoojaGateway,
+  type SyncLogRecord,
+  type GatewayStore,
+} from "@/core/integrations/petpooja";
 import { AdminCard } from "@/admin/components/Cards";
 import { AdminButton } from "@/admin/components/Buttons";
 import {
-  FileText,
   Search,
   Filter,
   Download,
   AlertTriangle,
   CheckCircle,
   XCircle,
-  Clock,
   RefreshCw,
-  Sliders,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,151 +23,29 @@ export const Route = createFileRoute("/admin/petpooja/logs")({
   component: PetpoojaLogsPage,
 });
 
-interface SyncLogRecord {
-  id: string;
-  storeName: string;
-  storeId: string;
-  scope: "FULL" | "INCREMENTAL" | "STOCK" | "STATUS";
-  status: "COMPLETED" | "FAILED" | "RUNNING" | "PENDING";
-  version: string;
-  startedAt: string;
-  finishedAt: string;
-  duration: string;
-  created: number;
-  updated: number;
-  deleted: number;
-  conflicts: number;
-  error: string | null;
-}
-
-const MOCK_SYNC_LOGS: SyncLogRecord[] = [
-  {
-    id: "log_001",
-    storeName: "Burgonomics Navrangpura",
-    storeId: "str_001",
-    scope: "FULL",
-    status: "COMPLETED",
-    version: "v4.2.1",
-    startedAt: "2026-07-19 06:42:11",
-    finishedAt: "2026-07-19 06:42:15",
-    duration: "4.3s",
-    created: 3,
-    updated: 34,
-    deleted: 1,
-    conflicts: 0,
-    error: null,
-  },
-  {
-    id: "log_002",
-    storeName: "Burgonomics Nehrunagar",
-    storeId: "str_002",
-    scope: "STOCK",
-    status: "COMPLETED",
-    version: "v4.1.8",
-    startedAt: "2026-07-19 05:12:00",
-    finishedAt: "2026-07-19 05:12:01",
-    duration: "1.2s",
-    created: 0,
-    updated: 12,
-    deleted: 0,
-    conflicts: 0,
-    error: null,
-  },
-  {
-    id: "log_003",
-    storeName: "Burgonomics Mansi Circle",
-    storeId: "str_003",
-    scope: "INCREMENTAL",
-    status: "COMPLETED",
-    version: "v4.2.0",
-    startedAt: "2026-07-19 04:00:30",
-    finishedAt: "2026-07-19 04:00:32",
-    duration: "2.1s",
-    created: 1,
-    updated: 8,
-    deleted: 0,
-    conflicts: 0,
-    error: null,
-  },
-  {
-    id: "log_004",
-    storeName: "Burgonomics Science City",
-    storeId: "str_004",
-    scope: "FULL",
-    status: "FAILED",
-    version: "v4.0.2",
-    startedAt: "2026-07-18 23:45:00",
-    finishedAt: "2026-07-18 23:45:12",
-    duration: "12.0s",
-    created: 0,
-    updated: 0,
-    deleted: 0,
-    conflicts: 0,
-    error: "Petpooja POS terminal handshake timeout after 10000ms",
-  },
-  {
-    id: "log_005",
-    storeName: "Burgonomics Gota",
-    storeId: "str_005",
-    scope: "STATUS",
-    status: "COMPLETED",
-    version: "v3.9.5",
-    startedAt: "2026-07-18 22:15:00",
-    finishedAt: "2026-07-18 22:15:01",
-    duration: "0.8s",
-    created: 0,
-    updated: 0,
-    deleted: 0,
-    conflicts: 0,
-    error: null,
-  },
-  {
-    id: "log_006",
-    storeName: "Burgonomics Navrangpura",
-    storeId: "str_001",
-    scope: "INCREMENTAL",
-    status: "COMPLETED",
-    version: "v4.2.0",
-    startedAt: "2026-07-18 20:00:00",
-    finishedAt: "2026-07-18 20:00:02",
-    duration: "1.9s",
-    created: 0,
-    updated: 14,
-    deleted: 2,
-    conflicts: 1,
-    error: null,
-  },
-  {
-    id: "log_007",
-    storeName: "Burgonomics Gota",
-    storeId: "str_005",
-    scope: "FULL",
-    status: "FAILED",
-    version: "v3.9.2",
-    startedAt: "2026-07-18 18:30:10",
-    finishedAt: "2026-07-18 18:30:18",
-    duration: "8.4s",
-    created: 0,
-    updated: 0,
-    deleted: 0,
-    conflicts: 0,
-    error: "Signature mismatch: webhook verification failed",
-  },
-];
-
 function PetpoojaLogsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [storeFilter, setStoreFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [scopeFilter, setScopeFilter] = useState("all");
+  const [stores, setStores] = useState<GatewayStore[]>([]);
 
-  const { data: remoteSyncLogs, isLoading } = useQuery({
-    queryKey: ["petpooja-sync-history-logs"],
-    queryFn: () => dashboardService.getSyncHistory().catch(() => []),
+  useEffect(() => {
+    void petpoojaGateway.getStores().then(setStores);
+  }, []);
+
+  const {
+    data: logs = [],
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["petpooja-gateway-sync-logs"],
+    queryFn: () => petpoojaGateway.getSyncLogs(),
+    refetchInterval: 10000,
   });
 
   // Filter logs based on parameters
-  const filteredLogs = MOCK_SYNC_LOGS.filter((log) => {
+  const filteredLogs = logs.filter((log: SyncLogRecord) => {
     const matchesSearch =
       log.storeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (log.version && log.version.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -203,9 +80,9 @@ function PetpoojaLogsPage() {
   };
 
   const handleExportExcel = () => {
-    toast.info("Generating Excel document...");
+    toast.info("Generating spreadsheet document...");
     setTimeout(() => {
-      handleExportCSV(); // Fallback to clean CSV structure with excel file extension triggers Excel nicely too
+      handleExportCSV();
     }, 500);
   };
 
@@ -213,11 +90,22 @@ function PetpoojaLogsPage() {
     <div className="space-y-6">
       {/* Dynamic Filters panel */}
       <div className="bg-white dark:bg-[#1A1A1A] border border-gray-100 dark:border-gray-800 rounded-[20px] p-6 shadow-sm space-y-4">
-        <div className="flex items-center gap-2 border-b border-gray-50 dark:border-gray-800 pb-3">
-          <Filter size={14} className="text-[#0E4825] dark:text-emerald-400" />
-          <span className="text-xs font-black uppercase tracking-wider text-gray-800 dark:text-gray-200 font-sans">
-            Filters Explorer
-          </span>
+        <div className="flex items-center justify-between border-b border-gray-50 dark:border-gray-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Filter size={14} className="text-[#0E4825] dark:text-emerald-400" />
+            <span className="text-xs font-black uppercase tracking-wider text-gray-800 dark:text-gray-200 font-sans">
+              Filters Explorer
+            </span>
+          </div>
+          <AdminButton
+            variant="outline"
+            size="sm"
+            onClick={() => void refetch()}
+            isLoading={isLoading}
+          >
+            <RefreshCw size={12} className="mr-1" />
+            <span>Refresh</span>
+          </AdminButton>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-sans">
@@ -252,7 +140,7 @@ function PetpoojaLogsPage() {
               className="w-full px-3 py-2 bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="all">All Connected Stores</option>
-              {MOCK_STORES.map((s) => (
+              {stores.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
@@ -299,7 +187,7 @@ function PetpoojaLogsPage() {
 
         <div className="flex justify-between items-center pt-2 border-t border-gray-50 dark:border-gray-800/40 font-sans">
           <span className="text-xs text-gray-400 font-semibold">
-            Matched logs: {filteredLogs.length} entries
+            Matched logs: {filteredLogs.length} entries (Firestore-persisted)
           </span>
           <div className="flex gap-2">
             <AdminButton variant="outline" size="sm" onClick={handleExportCSV}>
@@ -316,8 +204,8 @@ function PetpoojaLogsPage() {
 
       {/* Synchronizations Logs Table */}
       <AdminCard
-        title="Catalog Mutations Logs Logbook"
-        subtitle="Audited chronological ledger of POS menu downloads"
+        title="Catalog Mutations Logbook"
+        subtitle="Audited chronological ledger of POS synchronization events (persisted in Firestore)"
       >
         <div className="overflow-x-auto no-scrollbar rounded-xl border border-gray-100 dark:border-gray-800">
           <table className="w-full text-left border-collapse font-sans">
@@ -338,7 +226,9 @@ function PetpoojaLogsPage() {
               {filteredLogs.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-8 text-center text-gray-400 font-semibold">
-                    No sync logs match the search filters.
+                    {isLoading
+                      ? "Loading sync logs from Firestore..."
+                      : "No sync logs recorded yet. Trigger a sync from Connected Stores to create logs."}
                   </td>
                 </tr>
               ) : (

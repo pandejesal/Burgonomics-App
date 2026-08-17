@@ -10,41 +10,17 @@ import {
   HeartPulse,
   AlertTriangle,
   X,
-  Sparkles,
 } from "lucide-react";
-
 import { appConfig } from "@/core/config/env";
-
-interface AlertMessage {
-  id: string;
-  type: "warning" | "error" | "info";
-  title: string;
-  message: string;
-  timestamp: string;
-}
+import { petpoojaGateway, type GatewayAlert } from "@/core/integrations/petpooja";
 
 export const PetpoojaOperationsLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
+  const [alerts, setAlerts] = useState<GatewayAlert[]>([]);
 
-  // Prepopulate with a couple of active system alerts to feel highly dynamic and alive!
-  const [alerts, setAlerts] = useState<AlertMessage[]>([
-    {
-      id: "alert-1",
-      type: "error",
-      title: "Circuit Breaker Tripped (Open)",
-      message:
-        "API Gateway for Connaught Place POS Store has tripped after 5 consecutive timeouts. Auto-retry in cooldown mode.",
-      timestamp: "3 mins ago",
-    },
-    {
-      id: "alert-2",
-      type: "warning",
-      title: "Queue Growth Spike",
-      message:
-        "BullMQ queue 'petpooja-menu-sync' has exceeded 12 waiting jobs. Delayed execution triggered.",
-      timestamp: "8 mins ago",
-    },
-  ]);
+  useEffect(() => {
+    void petpoojaGateway.getAlerts().then(setAlerts);
+  }, []);
 
   const dismissAlert = (id: string) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -85,10 +61,7 @@ export const PetpoojaOperationsLayout: React.FC<{ children: React.ReactNode }> =
     },
   ];
 
-  const tabs = allTabs.filter(
-    (tab) => !tab.requiresOps || appConfig.featureFlags.adminOps,
-  );
-
+  const tabs = allTabs.filter((tab) => !tab.requiresOps || appConfig.featureFlags.adminOps);
 
   return (
     <div className="space-y-6">
@@ -97,14 +70,14 @@ export const PetpoojaOperationsLayout: React.FC<{ children: React.ReactNode }> =
         description="The mission control hub for Burgonomics Petpooja integration. Monitor live queues, debug webhooks, audit sync timelines, and toggle circuit breakers."
         breadcrumbs={[{ label: "Petpooja Ops" }]}
         badge={
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#0E4825]/10 text-[#0E4825] dark:bg-emerald-500/10 dark:text-emerald-400 border border-[#0E4825]/20 dark:border-emerald-500/20">
-            <Sparkles size={11} className="animate-pulse" />
-            <span>Enterprise Gateway Live</span>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 border border-amber-500/20">
+            <Activity size={11} className="animate-pulse" />
+            <span>Integration Standby</span>
           </span>
         }
       />
 
-      {/* Real-time Incident alerts */}
+      {/* Incident alerts */}
       {alerts.length > 0 && (
         <div className="space-y-3">
           {alerts.map((alert) => (

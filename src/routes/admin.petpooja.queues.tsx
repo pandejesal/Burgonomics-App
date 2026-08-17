@@ -1,22 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import React, { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import React, { useState, useEffect } from "react";
+import { motion } from "motion/react";
 import { AdminCard } from "@/admin/components/Cards";
 import { AdminButton, DangerButton } from "@/admin/components/Buttons";
 import { ConfirmDialog } from "@/admin/components/Utilities";
+import { petpoojaGateway, type QueueJob, type QueueOverview } from "@/core/integrations/petpooja";
 import {
   Boxes,
-  RefreshCw,
-  Play,
-  Pause,
   Trash2,
   AlertTriangle,
   CheckCircle,
   Clock,
-  ChevronRight,
   ListRestart,
   Sliders,
-  Sparkles,
+  Pause,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,107 +21,19 @@ export const Route = createFileRoute("/admin/petpooja/queues")({
   component: PetpoojaQueuesPage,
 });
 
-interface QueueJob {
-  id: string;
-  name: string;
-  queue: string;
-  state: "active" | "waiting" | "completed" | "failed" | "delayed" | "paused";
-  attempts: number;
-  maxAttempts: number;
-  createdAt: string;
-  processedAt: string | null;
-  durationMs: number | null;
-  payload: Record<string, any>;
-  errorMessage: string | null;
-}
-
-const MOCK_JOBS: QueueJob[] = [
-  {
-    id: "job_01",
-    name: "sync-menu-navrangpura",
-    queue: "petpooja-menu-sync",
-    state: "active",
-    attempts: 1,
-    maxAttempts: 3,
-    createdAt: "2026-07-19 09:15:00",
-    processedAt: "2026-07-19 09:15:02",
-    durationMs: null,
-    payload: { store_id: "str_001", mode: "full", initiated_by: "system_scheduler" },
-    errorMessage: null,
-  },
-  {
-    id: "job_02",
-    name: "process-order-webhook-89224155",
-    queue: "petpooja-webhook-handler",
-    state: "active",
-    attempts: 1,
-    maxAttempts: 5,
-    createdAt: "2026-07-19 09:15:01",
-    processedAt: "2026-07-19 09:15:01",
-    durationMs: null,
-    payload: { event: "order.save", payload_id: "wh_001" },
-    errorMessage: null,
-  },
-  {
-    id: "job_03",
-    name: "reconcile-stock-nehrunagar",
-    queue: "petpooja-stock-reconciler",
-    state: "waiting",
-    attempts: 0,
-    maxAttempts: 3,
-    createdAt: "2026-07-19 09:14:30",
-    processedAt: null,
-    durationMs: null,
-    payload: { store_id: "str_002", items: ["itm_classic_veg"] },
-    errorMessage: null,
-  },
-  {
-    id: "job_04",
-    name: "sync-menu-gota",
-    queue: "petpooja-menu-sync",
-    state: "failed",
-    attempts: 3,
-    maxAttempts: 3,
-    createdAt: "2026-07-19 08:30:10",
-    processedAt: "2026-07-19 08:30:18",
-    durationMs: 8400,
-    payload: { store_id: "str_005", mode: "full", initiated_by: "admin_trigger" },
-    errorMessage: "Signature mismatch: webhook payload verification failed",
-  },
-  {
-    id: "job_05",
-    name: "sync-menu-sciencecity",
-    queue: "petpooja-menu-sync",
-    state: "delayed",
-    attempts: 2,
-    maxAttempts: 5,
-    createdAt: "2026-07-19 08:59:12",
-    processedAt: "2026-07-19 08:59:15",
-    durationMs: 3200,
-    payload: { store_id: "str_004", mode: "incremental" },
-    errorMessage: "Connection failure to Burgonomics client API. Retrying in 300s.",
-  },
-  {
-    id: "job_06",
-    name: "process-status-webhook-mansicircle",
-    queue: "petpooja-webhook-handler",
-    state: "completed",
-    attempts: 1,
-    maxAttempts: 3,
-    createdAt: "2026-07-19 09:05:30",
-    processedAt: "2026-07-19 09:05:30",
-    durationMs: 5,
-    payload: { event: "store.status", payload_id: "wh_004" },
-    errorMessage: null,
-  },
-];
-
 function PetpoojaQueuesPage() {
   const [selectedQueue, setSelectedQueue] = useState("petpooja-menu-sync");
   const [activeTab, setActiveTab] = useState<QueueJob["state"]>("active");
-  const [jobs, setJobs] = useState<QueueJob[]>(MOCK_JOBS);
+  const [queueOverview, setQueueOverview] = useState<QueueOverview>({
+    status: "standby",
+    activeJobsCount: 0,
+    waitingJobsCount: 0,
+    failedJobsCount: 0,
+    delayedJobsCount: 0,
+    completedJobsCount: 0,
+    jobs: [],
+  });
 
-  // Manual trigger states
   const [confirmOp, setConfirmOp] = useState<{
     type: string;
     title: string;
@@ -132,28 +41,36 @@ function PetpoojaQueuesPage() {
     action: () => void;
   } | null>(null);
 
+  useEffect(() => {
+    void petpoojaGateway.getQueues().then(setQueueOverview);
+  }, []);
+
   const queues = [
     {
       name: "petpooja-menu-sync",
       description: "Menu catalog ingestion queue",
-      active: 2,
-      failed: 1,
+      active: queueOverview.activeJobsCount,
+      failed: queueOverview.failedJobsCount,
+      status: "STANDBY",
     },
     {
       name: "petpooja-webhook-handler",
       description: "Live webhooks dispatch processor",
-      active: 1,
+      active: 0,
       failed: 0,
+      status: "STANDBY",
     },
     {
       name: "petpooja-stock-reconciler",
       description: "Real-time stock level auditor",
       active: 0,
       failed: 0,
+      status: "STANDBY",
     },
   ];
 
-  // Tab indicators count
+  const jobs = queueOverview.jobs;
+
   const getJobCount = (state: QueueJob["state"]) => {
     return jobs.filter((j) => j.queue === selectedQueue && j.state === state).length;
   };
@@ -175,7 +92,7 @@ function PetpoojaQueuesPage() {
         setTimeout(() => {
           callback();
           toast.success(`Success: ${title} done.`);
-        }, 1000);
+        }, 500);
       },
     });
   };
@@ -202,14 +119,12 @@ function PetpoojaQueuesPage() {
                   <Boxes size={18} />
                 </div>
                 <div className="flex gap-1.5 font-mono text-[9px] font-black uppercase tracking-wider">
-                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/10 dark:text-emerald-400">
+                  <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20">
+                    {q.status}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
                     Active: {q.active}
                   </span>
-                  {q.failed > 0 && (
-                    <span className="px-2 py-0.5 rounded bg-red-50 text-red-700">
-                      Failed: {q.failed}
-                    </span>
-                  )}
                 </div>
               </div>
 
@@ -241,15 +156,9 @@ function PetpoojaQueuesPage() {
               handleQueueAction(
                 "retry failed",
                 "Replay Failed Jobs",
-                "Requeue all failed tasks in this BullMQ worker cluster back into waiting states.",
+                "Requeue all failed tasks in this worker cluster back into waiting states.",
                 () => {
-                  setJobs((prev) =>
-                    prev.map((j) =>
-                      j.queue === selectedQueue && j.state === "failed"
-                        ? { ...j, state: "waiting", attempts: 1 }
-                        : j,
-                    ),
-                  );
+                  toast.info("No failed queue jobs to retry.");
                 },
               )
             }
@@ -265,11 +174,9 @@ function PetpoojaQueuesPage() {
               handleQueueAction(
                 "clean completed",
                 "Clean Completed Jobs Heap",
-                "Empty all processed jobs in this queue from Redis storage, preserving failed logs.",
+                "Empty all processed jobs in this queue from storage.",
                 () => {
-                  setJobs((prev) =>
-                    prev.filter((j) => !(j.queue === selectedQueue && j.state === "completed")),
-                  );
+                  toast.info("Completed jobs buffer is empty.");
                 },
               )
             }
@@ -285,8 +192,10 @@ function PetpoojaQueuesPage() {
               handleQueueAction(
                 "pause queue",
                 "Pause/Resume Worker Pool",
-                "Toggle ingestion thread. While paused, workers will stop pulling waiting jobs until resumed.",
-                () => {},
+                "Toggle ingestion thread. Workers are currently on standby awaiting live merchant credentials.",
+                () => {
+                  toast.info("Queue is already on standby.");
+                },
               )
             }
           >
@@ -300,11 +209,9 @@ function PetpoojaQueuesPage() {
               handleQueueAction(
                 "drain queue",
                 "Drain Entire Waiting Queue",
-                "WARNING: Instantly delete all waiting, paused, and delayed tasks in this queue. This operation is non-reversible.",
+                "Instantly clear any waiting, paused, and delayed tasks in this queue.",
                 () => {
-                  setJobs((prev) =>
-                    prev.filter((j) => !(j.queue === selectedQueue && j.state === "waiting")),
-                  );
+                  toast.info("Queue is already empty.");
                 },
               )
             }
@@ -356,9 +263,9 @@ function PetpoojaQueuesPage() {
         <div className="space-y-4">
           {filteredJobs.length === 0 ? (
             <div className="text-center py-12 text-gray-400 font-sans">
-              <CheckCircle size={24} className="mx-auto text-gray-300 mb-2" />
+              <CheckCircle size={24} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
               <p className="text-xs font-semibold">
-                No jobs exist in the '{activeTab.toUpperCase()}' state.
+                No jobs in the '{activeTab.toUpperCase()}' state. Queue is idle.
               </p>
             </div>
           ) : (

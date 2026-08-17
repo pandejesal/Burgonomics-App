@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useDemoStore } from "@/features/demo/state/demoStore";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useOrdersStore } from "@/features/orders/state/ordersStore";
-import { petpoojaAdapter } from "@/core/integrations/petpooja";
+import { petpoojaGateway } from "@/core/integrations/petpooja";
 import { mapOrderToPetpoojaSaveOrder } from "@/core/integrations/petpooja/mapper";
 
 interface WebhookLog {
@@ -42,7 +42,7 @@ export function PetpoojaTab() {
     }
     setSyncing(true);
     try {
-      const result = await petpoojaAdapter.pushMenu(activeStore.id);
+      const result = await petpoojaGateway.pushMenu(activeStore.id);
       toast.success("Menu Push Complete!", {
         description: `Successfully received push of ${result.itemsSynced} items & ${result.categoriesCount} categories.`,
       });

@@ -1,22 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import React, { useState } from "react";
-import { motion } from "motion/react";
+import React, { useState, useEffect } from "react";
 import { AdminCard } from "@/admin/components/Cards";
 import { AdminButton, DangerButton } from "@/admin/components/Buttons";
 import { ConfirmDialog } from "@/admin/components/Utilities";
-import { MOCK_STORES } from "@/features/stores/data/mockStores";
 import {
-  HeartPulse,
+  petpoojaGateway,
+  type CircuitBreakerOverride,
+  type GatewayHealthService,
+} from "@/core/integrations/petpooja";
+import {
   Database,
   RefreshCw,
   Cpu,
   Server,
   Network,
-  Zap,
   CheckCircle,
   AlertTriangle,
   Flame,
   ShieldAlert,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,101 +26,15 @@ export const Route = createFileRoute("/admin/petpooja/health")({
   component: PetpoojaHealthPage,
 });
 
-interface HealthStatus {
-  service: string;
-  status: "healthy" | "degraded" | "failing";
-  latencyMs: number;
-  details: string;
-}
-
-interface CircuitBreakerOverride {
-  storeId: string;
-  storeName: string;
-  restId: string;
-  state: "closed" | "open" | "half-open";
-  failureCount: number;
-  maxFailures: number;
-}
-
-const INITIAL_OVER_STATES: CircuitBreakerOverride[] = [
-  {
-    storeId: "str_001",
-    storeName: "Burgonomics Navrangpura",
-    restId: "rest_navrangpura",
-    state: "closed",
-    failureCount: 0,
-    maxFailures: 5,
-  },
-  {
-    storeId: "str_002",
-    storeName: "Burgonomics Nehrunagar",
-    restId: "rest_nehrunagar",
-    state: "closed",
-    failureCount: 0,
-    maxFailures: 5,
-  },
-  {
-    storeId: "str_003",
-    storeName: "Burgonomics Mansi Circle",
-    restId: "rest_mansi_circle",
-    state: "closed",
-    failureCount: 0,
-    maxFailures: 5,
-  },
-  {
-    storeId: "str_004",
-    storeName: "Burgonomics Science City",
-    restId: "rest_science_city",
-    state: "half-open",
-    failureCount: 3,
-    maxFailures: 5,
-  },
-  {
-    storeId: "str_005",
-    storeName: "Burgonomics Gota",
-    restId: "rest_gota",
-    state: "open",
-    failureCount: 5,
-    maxFailures: 5,
-  },
-];
-
 function PetpoojaHealthPage() {
-  const [circuitBreakers, setCircuitBreakers] =
-    useState<CircuitBreakerOverride[]>(INITIAL_OVER_STATES);
-  const [healths, setHealths] = useState<HealthStatus[]>([
-    {
-      service: "PostgreSQL Database Cluster",
-      status: "healthy",
-      latencyMs: 2,
-      details: "8 / 10 active connections pooled",
-    },
-    {
-      service: "Redis Cache & Job Cluster",
-      status: "healthy",
-      latencyMs: 1,
-      details: "Memory: 142 MB, Keys: 842",
-    },
-    {
-      service: "Petpooja Merchant API",
-      status: "healthy",
-      latencyMs: 142,
-      details: "Handshake payload accepted",
-    },
-    {
-      service: "Webhook Verification Service",
-      status: "healthy",
-      latencyMs: 4,
-      details: "Signature key valid",
-    },
-  ]);
-
+  const [circuitBreakers, setCircuitBreakers] = useState<CircuitBreakerOverride[]>([]);
+  const [services, setServices] = useState<GatewayHealthService[]>([]);
   const [cacheMetrics, setCacheMetrics] = useState({
-    memory: "142.4 MB",
-    keys: 842,
-    hits: 24902,
-    misses: 1142,
-    ttl: "14400s (4h)",
+    memory: "0 KB",
+    keys: 0,
+    hits: 0,
+    misses: 0,
+    status: "Idle",
   });
 
   const [confirmFlush, setConfirmFlush] = useState(false);
@@ -126,6 +42,24 @@ function PetpoojaHealthPage() {
     storeId: string;
     targetState: "closed" | "open";
   } | null>(null);
+
+  const loadHealth = () => {
+    void petpoojaGateway.getHealth().then((h) => {
+      setCircuitBreakers(h.circuitBreakers);
+      setServices(h.services);
+      setCacheMetrics({
+        memory: h.cacheMetrics.sizeFormatted,
+        keys: h.cacheMetrics.keyCount,
+        hits: 0,
+        misses: 0,
+        status: h.cacheMetrics.status,
+      });
+    });
+  };
+
+  useEffect(() => {
+    loadHealth();
+  }, []);
 
   const handleManualTripToggle = (
     storeId: string,
@@ -135,9 +69,15 @@ function PetpoojaHealthPage() {
     setConfirmBreaker({ storeId, targetState });
   };
 
-  const executeBreakerToggle = () => {
+  const executeBreakerToggle = async () => {
     if (!confirmBreaker) return;
     const { storeId, targetState } = confirmBreaker;
+
+    if (targetState === "open") {
+      await petpoojaGateway.tripBreaker(storeId);
+    } else {
+      await petpoojaGateway.resetBreaker(storeId);
+    }
 
     setCircuitBreakers((prev) =>
       prev.map((cb) =>
@@ -152,35 +92,27 @@ function PetpoojaHealthPage() {
     );
 
     toast.success(
-      `Circuit breaker manually override. Status for ${storeId} is now ${targetState.toUpperCase()}`,
+      `Circuit breaker manually updated. Status for ${storeId} is now ${targetState.toUpperCase()}`,
     );
     setConfirmBreaker(null);
   };
 
-  const handleFlushCache = () => {
-    toast.info("Eraser thread dispatched to Redis pool...");
-    setTimeout(() => {
-      setCacheMetrics((prev) => ({
-        ...prev,
-        keys: 0,
-        hits: 0,
-        misses: 0,
-      }));
-      toast.success("Global Redis cache sweep successful. Invalidation complete.");
-    }, 1200);
+  const handleFlushCache = async () => {
+    toast.info("Flushing Petpooja local cache...");
+    const res = await petpoojaGateway.flushCache();
+    setCacheMetrics((prev) => ({
+      ...prev,
+      keys: 0,
+      hits: 0,
+      misses: 0,
+    }));
+    toast.success(res.message);
   };
 
   const handleTestHandshake = () => {
-    toast.info("Sending echo requests to all cluster endpoints...");
-    setTimeout(() => {
-      setHealths((prev) =>
-        prev.map((h) => ({
-          ...h,
-          latencyMs: Math.max(1, h.latencyMs + Math.floor(Math.random() * 20) - 10),
-        })),
-      );
-      toast.success("Connection echo tests completed.");
-    }, 800);
+    toast.info("Testing gateway health endpoints...");
+    loadHealth();
+    toast.success("Health check refresh complete.");
   };
 
   return (
@@ -190,7 +122,7 @@ function PetpoojaHealthPage() {
         {/* Connection status panels */}
         <AdminCard
           title="Cluster Endpoint Handshakes"
-          subtitle="Real-time check on critical database, queue, and API nodes"
+          subtitle="Status on database, queue, and API gateway nodes"
           extra={
             <AdminButton variant="outline" size="sm" onClick={handleTestHandshake}>
               <RefreshCw size={12} className="mr-1" />
@@ -199,7 +131,7 @@ function PetpoojaHealthPage() {
           }
         >
           <div className="space-y-4">
-            {healths.map((h, idx) => (
+            {services.map((h, idx) => (
               <div
                 key={idx}
                 className="p-4 rounded-xl border border-gray-100 dark:border-gray-800/80 bg-gray-50/50 dark:bg-gray-900/10 flex items-center justify-between gap-4 font-sans"
@@ -209,13 +141,16 @@ function PetpoojaHealthPage() {
                     className={`h-9 w-9 rounded-xl flex items-center justify-center ${
                       h.status === "healthy"
                         ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400"
-                        : "bg-red-50 text-red-600"
+                        : h.status === "standby"
+                          ? "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+                          : "bg-red-50 text-red-600"
                     }`}
                   >
                     {h.service.includes("Database") && <Database size={16} />}
                     {h.service.includes("Redis") && <Cpu size={16} />}
                     {h.service.includes("API") && <Server size={16} />}
                     {h.service.includes("Webhook") && <Network size={16} />}
+                    {h.service.includes("Sync") && <Clock size={16} />}
                   </div>
 
                   <div>
@@ -227,12 +162,16 @@ function PetpoojaHealthPage() {
                 </div>
 
                 <div className="text-right font-mono">
-                  <div className="text-[11px] font-black text-[#0E4825] dark:text-emerald-400 flex items-center justify-end gap-1">
-                    <CheckCircle size={10} />
-                    <span>{h.latencyMs}ms</span>
-                  </div>
-                  <span className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-wider block">
-                    OPERATIONAL
+                  <span
+                    className={`text-[9px] font-extrabold uppercase tracking-wider block ${
+                      h.status === "healthy"
+                        ? "text-emerald-600"
+                        : h.status === "standby"
+                          ? "text-amber-600"
+                          : "text-red-600"
+                    }`}
+                  >
+                    {h.status.toUpperCase()}
                   </span>
                 </div>
               </div>
@@ -242,8 +181,8 @@ function PetpoojaHealthPage() {
 
         {/* Redis Cache registry stats */}
         <AdminCard
-          title="Redis Cache & Invalidation Center"
-          subtitle="Cache distribution layer, memory utilization and hit indices"
+          title="Cache & Invalidation Center"
+          subtitle="Cache distribution layer and utilization indices"
         >
           <div className="space-y-5 font-sans">
             <div className="grid grid-cols-2 gap-4">
@@ -268,32 +207,30 @@ function PetpoojaHealthPage() {
 
             <div className="p-4 rounded-xl border border-gray-100 dark:border-gray-800/80 space-y-3">
               <span className="block text-[10px] font-black text-gray-400 uppercase tracking-wider">
-                Cache Performance Telemetry (Ratio)
+                Cache Status
               </span>
 
               <div className="flex justify-between items-center text-xs font-bold text-gray-700 dark:text-gray-300">
-                <span>Hit Count / Miss Count</span>
-                <span className="font-mono">
-                  {cacheMetrics.hits} hits / {cacheMetrics.misses} misses
+                <span>Ingestion Pipeline</span>
+                <span className="font-mono text-amber-600 dark:text-amber-400">
+                  Standby — Local Invalidation Ready
                 </span>
               </div>
 
               {/* Progress visual bar */}
               <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex">
-                <div className="bg-[#0E4825] h-full" style={{ width: "95.6%" }} />
-                <div className="bg-amber-500 h-full" style={{ width: "4.4%" }} />
+                <div className="bg-emerald-600 h-full" style={{ width: "100%" }} />
               </div>
 
               <div className="flex justify-between text-[10px] font-extrabold font-mono text-gray-400 uppercase">
-                <span>Cache Efficiency: 95.6%</span>
-                <span>Average TTL: {cacheMetrics.ttl}</span>
+                <span>Cache State: Ready</span>
+                <span>Standby mode</span>
               </div>
             </div>
 
             <div className="pt-2 border-t border-gray-50 dark:border-gray-800/50 flex justify-between items-center">
               <p className="text-[10px] font-semibold text-gray-400 leading-relaxed max-w-xs">
-                Sweeping the cache instantly purges all menu indices, category trees, and merchant
-                credentials.
+                Sweeping the cache purges local memory indices and cached catalog structures.
               </p>
               <DangerButton size="sm" onClick={() => setConfirmFlush(true)}>
                 <Flame size={12} className="mr-1" />
@@ -307,7 +244,7 @@ function PetpoojaHealthPage() {
       {/* Circuit Breaker override states */}
       <AdminCard
         title="Circuit Breakers Override Matrix"
-        subtitle="Manage and trip active POS connection locks manually to protect endpoint limits"
+        subtitle="Manage and trip simulated POS connection locks manually"
       >
         <div className="overflow-x-auto no-scrollbar rounded-xl border border-gray-100 dark:border-gray-800">
           <table className="w-full text-left border-collapse font-sans text-xs">
@@ -357,7 +294,7 @@ function PetpoojaHealthPage() {
                     >
                       {cb.failureCount}
                     </span>{" "}
-                    / {cb.maxFailures} consecutive timeouts
+                    / {cb.maxFailures} timeouts
                   </td>
                   <td className="py-4 px-4 text-right">
                     <AdminButton
@@ -386,12 +323,12 @@ function PetpoojaHealthPage() {
           isOpen={true}
           onClose={() => setConfirmFlush(false)}
           onConfirm={() => {
-            handleFlushCache();
+            void handleFlushCache();
             setConfirmFlush(false);
           }}
-          title="Flush Global Cache Store?"
-          description="DANGEROUS: Force purging Redis state removes cached catalogs for all 8 locations. Users loading store selectors will experience sudden load spikes during database regeneration."
-          confirmLabel="Flush Redis Cache"
+          title="Flush Gateway Cache Store?"
+          description="Force purging local cache removes cached catalog structures and temporary memory records."
+          confirmLabel="Flush Cache"
         />
       )}
 
@@ -400,16 +337,18 @@ function PetpoojaHealthPage() {
         <ConfirmDialog
           isOpen={true}
           onClose={() => setConfirmBreaker(null)}
-          onConfirm={executeBreakerToggle}
+          onConfirm={() => {
+            void executeBreakerToggle();
+          }}
           title={
             confirmBreaker.targetState === "open"
               ? "Emergency Trip Circuit Breaker?"
-              : "Force Closed Circuit Breaker?"
+              : "Force Reset Circuit Breaker?"
           }
           description={
             confirmBreaker.targetState === "open"
-              ? "WARNING: Manually opening the connection breaker trips all API calls for this terminal immediately and ignores customer orders. Replays are required."
-              : "This manually forces a breaker closed. Active polling starts immediately and might trip again if connection is still degrading."
+              ? "Manually opening the connection breaker simulates a faulted terminal link."
+              : "This resets the breaker back to closed (healthy) status."
           }
           confirmLabel="Execute State Transition"
         />

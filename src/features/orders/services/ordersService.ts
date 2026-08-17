@@ -30,6 +30,7 @@ import type {
   OrderTrackingSnapshot,
 } from "@/features/orders/models";
 import type { Fulfillment } from "@/features/stores/models/Store";
+import { advanceOrder } from "../../../../netlify/functions/lib/order-status";
 
 // -- Status catalog ---------------------------------------------------
 //
@@ -145,37 +146,17 @@ function nextStatusCode(
 /**
  * Advance the status of the mock order based on elapsed time — one step
  * every ~30s. Deterministic so re-opening the app after a while shows
- * realistic progress.
+ * realistic progress. Delegates pure status progression to advanceOrder.
  */
 function tickOrder(order: Order): Order {
-  if (order.status.terminal) return order;
-  const placedAtMs = new Date(order.placedAt).getTime();
-  const elapsedSec = (Date.now() - placedAtMs) / 1000;
-  // How many "steps forward" the mock has virtually advanced.
-  const stepsForward = Math.floor(elapsedSec / 30);
-  const recipe = TIMELINE_RECIPES[order.fulfillment];
-  const currentIdx = recipe.findIndex((s) => s.code === order.status.code);
-  const targetIdx = Math.min(recipe.length - 1, Math.max(currentIdx, stepsForward));
-  if (targetIdx === currentIdx) return order;
-
   const times = progression.get(order.id) ?? {};
-  for (let i = currentIdx + 1; i <= targetIdx; i++) {
-    const code = recipe[i].code;
-    if (!times[code]) {
-      times[code] = new Date(placedAtMs + i * 30_000).toISOString();
-    }
+  const result = advanceOrder(order, Date.now(), times as Record<string, string>, 30);
+  if (!result.advanced) {
+    return order;
   }
-  progression.set(order.id, times);
-
-  const newCode = recipe[targetIdx].code;
-  const newStatus = resolveStatus(newCode);
-  const updated: Order = {
-    ...order,
-    status: newStatus,
-    completedAt: newStatus.terminal ? times[newCode] : undefined,
-  };
-  orders.set(order.id, updated);
-  return updated;
+  progression.set(order.id, result.timestamps as Partial<Record<OrderStatusCode, string>>);
+  orders.set(order.id, result.order as Order);
+  return result.order as Order;
 }
 
 function shortCode(id: string): string {
@@ -236,6 +217,7 @@ export const ordersService = {
       promo: input.promo ?? null,
       notes: input.notes,
       fulfillmentInstructions: input.fulfillmentInstructions,
+      tableNumber: input.tableNumber,
       payment: input.payment,
       petpoojaStatus: "Pending",
       placedAt: nowIso,
@@ -243,8 +225,8 @@ export const ordersService = {
     };
 
     try {
-      const { petpoojaAdapter } = await import("@/core/integrations/petpooja");
-      const pushResult = await petpoojaAdapter.pushOrder(id, order);
+      const { petpoojaGateway } = await import("@/core/integrations/petpooja");
+      const pushResult = await petpoojaGateway.pushOrder(id, order);
 
       // Record PETPOOJA acknowledgement KOT id.
       const demoStore = useDemoStore.getState();
@@ -281,14 +263,14 @@ export const ordersService = {
       const { auth, db } = await import("@/core/config/firebase");
       const { collection, getDocs, query: fsQuery, where } = await import("firebase/firestore");
       const user = auth.currentUser;
-      
+
       if (user) {
         const ordersRef = collection(db, "orders");
         const q = fsQuery(ordersRef, where("userId", "==", user.uid));
         const snapshot = await getDocs(q);
-        
+
         const fsOrders: Order[] = [];
-        snapshot.forEach(doc => {
+        snapshot.forEach((doc) => {
           const data = doc.data() as any;
           // Ensure we don't accidentally leak userId in the frontend Order model
           const { userId, ...orderData } = data;
@@ -392,6 +374,7 @@ export const ordersService = {
       steps,
       etaMinutes: order.status.terminal ? 0 : etaMinutes,
       deliveryPartner: order.deliveryPartner,
+      tableNumber: order.tableNumber,
       refreshedAt: new Date().toISOString(),
     });
   },
