@@ -54,17 +54,17 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
               onSelect(c.id);
             }}
             className={cn(
-              "group relative flex-none whitespace-nowrap rounded-full px-4.5 py-2.5 type-label-large transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85",
-              "min-h-[44px] border overflow-hidden flex items-center justify-center cursor-pointer",
+              "group relative flex-none whitespace-nowrap rounded-full px-4.5 py-2 type-label-large transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85",
+              "min-h-[40px] border overflow-hidden flex items-center justify-center cursor-pointer",
               active
-                ? "text-primary border-white"
-                : "bg-transparent text-white/90 border-white/20 hover:border-white/60",
+                ? "text-primary-foreground border-primary bg-primary shadow-sm"
+                : "border-divider bg-surface text-text-secondary hover:text-text-primary hover:border-primary/40",
             )}
           >
             {active && (
               <motion.div
                 layoutId="activeCategoryBg"
-                className="absolute inset-0 bg-white shadow-low"
+                className="absolute inset-0 bg-primary shadow-sm"
                 transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 style={{ zIndex: 0 }}
               />
@@ -72,7 +72,7 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
             <span className="relative z-10 flex items-center">
               {c.name}
               {typeof c.itemCount === "number" && c.itemCount > 0 && (
-                <span className={cn("ml-1.5 type-caption opacity-70")}>({c.itemCount})</span>
+                <span className={cn("ml-1.5 type-caption", active ? "opacity-90" : "opacity-60")}>({c.itemCount})</span>
               )}
             </span>
           </button>

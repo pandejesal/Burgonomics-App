@@ -52,7 +52,7 @@ export function OfferCard({
       elevation="flat"
       padded
       className={cn(
-        "border border-dashed border-primary/50 bg-primary/5",
+        "border border-dashed border-accent/40 bg-surface",
         applied && "border-solid border-success bg-success/10",
         !isEligibleStatus && "opacity-70",
       )}
@@ -61,7 +61,7 @@ export function OfferCard({
         <div
           className={cn(
             "grid h-11 w-11 shrink-0 place-items-center rounded-full",
-            applied ? "bg-success/15 text-success" : "bg-primary/15 text-primary",
+            applied ? "bg-success/15 text-success" : "bg-accent/15 text-accent",
           )}
           aria-hidden
         >
@@ -73,7 +73,7 @@ export function OfferCard({
             <Text variant="titleMedium" className="truncate">
               {offer.title}
             </Text>
-            <AppBadge tone={applied ? "success" : "primary"}>{offer.discount.label}</AppBadge>
+            <AppBadge tone={applied ? "success" : "warning"}>{offer.discount.label}</AppBadge>
             {isAutomatic && !applied && <AppBadge tone="neutral">Auto-applied</AppBadge>}
           </div>
 
@@ -83,7 +83,7 @@ export function OfferCard({
 
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 type-caption text-text-secondary">
             {offer.code && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-primary/60 px-1.5 py-0.5 font-mono uppercase tracking-wider text-primary">
+              <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-accent/60 px-1.5 py-0.5 font-mono uppercase tracking-wider text-accent font-bold">
                 {offer.code}
               </span>
             )}
@@ -120,7 +120,7 @@ export function OfferCard({
               <AppBadge tone="success">Applied automatically</AppBadge>
             ) : (
               <AppButton
-                variant="primary"
+                variant="cta"
                 size="sm"
                 disabled={disabled || !isEligibleStatus}
                 loading={busy}

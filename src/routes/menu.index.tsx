@@ -18,7 +18,6 @@ import { useDemoStore } from "@/features/demo/state/demoStore";
 import { CategoryTabs } from "@/features/menu/components/CategoryTabs";
 import { MenuProductCard } from "@/features/menu/components/MenuProductCard";
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
-import { PullToRefresh } from "@/features/home/components/PullToRefresh";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import type { Product } from "@/features/menu/models";
@@ -140,127 +139,125 @@ function MenuPage() {
         </Link>
       }
     >
-      <PullToRefresh onRefresh={() => load(store.id, { refresh: true })} disabled={initialLoading}>
-        <div className="mx-auto max-w-[720px]">
-          {!online && (
-            <div className="px-4 pt-3">
-              <div
-                role="status"
-                className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium text-warning-foreground"
-              >
-                You are offline. Menu may be out of date.
-              </div>
+      <div className="mx-auto max-w-[720px]">
+        {!online && (
+          <div className="px-4 pt-3">
+            <div
+              role="status"
+              className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium text-warning-foreground"
+            >
+              You are offline. Menu may be out of date.
             </div>
-          )}
+          </div>
+        )}
 
-          {initialLoading ? (
-            <MenuSkeleton />
-          ) : status === "error" && !categories.length ? (
-            <FailureState
-              title="We couldn't load the menu"
-              message={error ?? "Please try again in a moment."}
-              onRetry={() => load(store.id, { refresh: true })}
-            />
-          ) : status === "empty" || categories.length === 0 ? (
-            !simulationMode ? (
-              <PetpoojaSyncPlaceholder storeId={store.id} />
-            ) : (
-              <EmptyState
-                title="No menu available"
-                description={
-                  store.isOpen === false
-                    ? "This store is currently closed. Try again during opening hours."
-                    : "The menu for this store hasn't been published yet."
-                }
-                actionLabel="Change store"
-                onAction={() => navigate({ to: "/stores" })}
-              />
-            )
+        {initialLoading ? (
+          <MenuSkeleton />
+        ) : status === "error" && !categories.length ? (
+          <FailureState
+            title="We couldn't load the menu"
+            message={error ?? "Please try again in a moment."}
+            onRetry={() => load(store.id, { refresh: true })}
+          />
+        ) : status === "empty" || categories.length === 0 ? (
+          !simulationMode ? (
+            <PetpoojaSyncPlaceholder storeId={store.id} />
           ) : (
-            <>
-              <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 -mx-0 bg-primary/95 backdrop-blur-md shadow-low border-b border-white/10">
-                <CategoryTabs
-                  categories={categories}
-                  activeId={activeCategoryId}
-                  onSelect={setActiveCategory}
-                />
-                <div className="flex items-center justify-between px-4 py-2">
-                  <Text variant="bodyMedium" className="text-white/80">
-                    {bucket?.total ? `${bucket.total} items` : ""}
-                  </Text>
-                  <div className="flex items-center gap-1" role="group" aria-label="View mode">
-                    <button
-                      type="button"
-                      aria-label="List view"
-                      aria-pressed={viewMode === "list"}
-                      onClick={() => setViewMode("list")}
-                      className={cn(
-                        "grid h-9 w-9 place-items-center rounded-full",
-                        viewMode === "list" ? "bg-white/20 text-white" : "text-white/60 hover:text-white",
-                      )}
-                    >
-                      <ListIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Grid view"
-                      aria-pressed={viewMode === "grid"}
-                      onClick={() => setViewMode("grid")}
-                      className={cn(
-                        "grid h-9 w-9 place-items-center rounded-full",
-                        viewMode === "grid" ? "bg-white/20 text-white" : "text-white/60 hover:text-white",
-                      )}
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </button>
-                  </div>
+            <EmptyState
+              title="No menu available"
+              description={
+                store.isOpen === false
+                  ? "This store is currently closed. Try again during opening hours."
+                  : "The menu for this store hasn't been published yet."
+              }
+              actionLabel="Change store"
+              onAction={() => navigate({ to: "/stores" })}
+            />
+          )
+        ) : (
+          <>
+            <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 -mx-0 bg-surface/95 backdrop-blur-md shadow-low border-b border-divider">
+              <CategoryTabs
+                categories={categories}
+                activeId={activeCategoryId}
+                onSelect={setActiveCategory}
+              />
+              <div className="flex items-center justify-between px-4 py-2 border-t border-divider/40">
+                <Text variant="bodyMedium" tone="secondary">
+                  {bucket?.total ? `${bucket.total} items` : ""}
+                </Text>
+                <div className="flex items-center gap-1" role="group" aria-label="View mode">
+                  <button
+                    type="button"
+                    aria-label="List view"
+                    aria-pressed={viewMode === "list"}
+                    onClick={() => setViewMode("list")}
+                    className={cn(
+                      "grid h-9 w-9 place-items-center rounded-full transition-colors",
+                      viewMode === "list" ? "bg-primary/10 text-primary font-bold" : "text-text-secondary hover:text-text-primary",
+                    )}
+                  >
+                    <ListIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Grid view"
+                    aria-pressed={viewMode === "grid"}
+                    onClick={() => setViewMode("grid")}
+                    className={cn(
+                      "grid h-9 w-9 place-items-center rounded-full transition-colors",
+                      viewMode === "grid" ? "bg-primary/10 text-primary font-bold" : "text-text-secondary hover:text-text-primary",
+                    )}
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
+            </div>
 
-              <section aria-live="polite" className="px-4 py-4">
-                {bucket?.loading && !bucket.items.length ? (
-                  <MenuSkeleton rows={5} />
-                ) : bucket?.error && !bucket.items.length ? (
-                  <FailureState
-                    title="We couldn't load this category"
-                    message={bucket.error}
-                    onRetry={() => activeCategoryId && loadMore(activeCategoryId)}
-                  />
-                ) : bucket && bucket.items.length === 0 ? (
-                  <EmptyState
-                    title="Nothing here yet"
-                    description="This category has no available items right now."
-                  />
-                ) : (
-                  <div className={cn(viewMode === "grid" ? "grid grid-cols-2 gap-3" : "space-y-3")}>
-                    {bucket?.items.map((p) => (
-                      <MenuProductCard
-                        key={p.id}
-                        product={p}
-                        layout={viewMode === "grid" ? "grid" : "row"}
-                        onAdd={handleAdd}
-                      />
-                    ))}
-                  </div>
-                )}
+            <section aria-live="polite" className="px-4 py-4">
+              {bucket?.loading && !bucket.items.length ? (
+                <MenuSkeleton rows={5} />
+              ) : bucket?.error && !bucket.items.length ? (
+                <FailureState
+                  title="We couldn't load this category"
+                  message={bucket.error}
+                  onRetry={() => activeCategoryId && loadMore(activeCategoryId)}
+                />
+              ) : bucket && bucket.items.length === 0 ? (
+                <EmptyState
+                  title="Nothing here yet"
+                  description="This category has no available items right now."
+                />
+              ) : (
+                <div className={cn(viewMode === "grid" ? "grid grid-cols-2 gap-3" : "space-y-3")}>
+                  {bucket?.items.map((p) => (
+                    <MenuProductCard
+                      key={p.id}
+                      product={p}
+                      layout={viewMode === "grid" ? "grid" : "row"}
+                      onAdd={handleAdd}
+                    />
+                  ))}
+                </div>
+              )}
 
-                {bucket?.hasMore && (
-                  <div ref={sentinelRef} className="py-6 text-center">
-                    <span className="type-caption text-text-secondary">
-                      {bucket.loading ? "Loading more…" : "Scroll for more"}
-                    </span>
-                  </div>
-                )}
-                {bucket && !bucket.hasMore && bucket.items.length > 0 && (
-                  <p className="py-6 text-center type-caption text-text-secondary">
-                    You've reached the end.
-                  </p>
-                )}
-              </section>
-            </>
-          )}
-        </div>
-      </PullToRefresh>
+              {bucket?.hasMore && (
+                <div ref={sentinelRef} className="py-6 text-center">
+                  <span className="type-caption text-text-secondary">
+                    {bucket.loading ? "Loading more…" : "Scroll for more"}
+                  </span>
+                </div>
+              )}
+              {bucket && !bucket.hasMore && bucket.items.length > 0 && (
+                <p className="py-6 text-center type-caption text-text-secondary">
+                  You've reached the end.
+                </p>
+              )}
+            </section>
+          </>
+        )}
+      </div>
     </AppShell>
   );
 }

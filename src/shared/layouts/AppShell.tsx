@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { BottomTabBar } from "@/shared/navigation/BottomTabBar";
 import { TopBar } from "@/shared/navigation/TopBar";
@@ -29,6 +30,8 @@ export function AppShell({
   contentClassName,
   bottomSlot,
 }: AppShellProps) {
+  const isMounted = typeof document !== "undefined";
+
   return (
     <div className="app-shell" vaul-drawer-wrapper="">
       <OfflineBanner />
@@ -44,8 +47,9 @@ export function AppShell({
       >
         <PageTransition>{children}</PageTransition>
       </main>
-      {bottomSlot}
-      {showTabs && <BottomTabBar />}
+      {bottomSlot && (isMounted ? createPortal(bottomSlot, document.body) : bottomSlot)}
+      {showTabs && isMounted && createPortal(<BottomTabBar />, document.body)}
     </div>
   );
 }
+

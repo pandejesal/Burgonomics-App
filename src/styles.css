@@ -111,30 +111,30 @@
 }
 
 :root {
-  /* Default = 60% White / Light Theme for Swiggy-like clean mobile-first ordering experience. */
-  --background: #f8faf9; /* Soft premium off-white */
-  --foreground: #0e4825; /* Primary Green */
+  /* Default = 60% White / 30% Green / 10% Orange Light Theme for Swiggy-like clean mobile-first ordering experience. */
+  --background: #ffffff; /* Pure white canvas */
+  --foreground: #16281d; /* Near-black text — green reserved for accents */
   --surface: #ffffff; /* Pure White Card */
   --surface-elevated: #ffffff;
-  --bg-secondary: #f1f5f3;
+  --bg-secondary: #f2f5f3; /* Very light green-grey tint */
 
-  --primary: #0e4825; /* Primary Green */
+  --primary: #0e4825; /* Primary Green — the 30%: buttons, active tab, key CTAs */
   --primary-foreground: #ffffff;
   --secondary: #ffffff;
   --secondary-foreground: #0e4825;
-  --accent: #ff6600; /* Accent Orange */
+  --accent: #ff6600; /* Accent Orange — the 10%: offers, badges, highlights */
   --accent-foreground: #ffffff;
   --brand: #0e4825;
   --brand-foreground: #ffffff;
 
-  --text-primary: #1a2f22; /* High-contrast deep dark forest charcoal */
+  --text-primary: #16281d; /* High-contrast deep dark near-black */
   --text-secondary: #586b60; /* Muted green-grey */
   --text-inverse: #ffffff;
   --text-disabled: #9ca3af;
 
---divider: #e3eae5;
-  --border: #e3eae5;
-  --input: #f1f5f3;
+  --divider: #e7ede9;
+  --border: #e7ede9;
+  --input: #f2f5f3;
   --ring: #ff6600;
 
   --success: #10b981;
@@ -402,6 +402,11 @@
 }
 
 /* Phone-first app shell */
+#root {
+  overscroll-behavior-y: none;
+  touch-action: pan-y;
+}
+
 .app-shell {
   margin-inline: auto;
   width: 100%;
@@ -410,6 +415,8 @@
   min-height: 100dvh;
   background: transparent;
   position: relative;
+  overscroll-behavior-y: none;
+  touch-action: pan-y;
 }
 
 @media (max-width: 768px) {

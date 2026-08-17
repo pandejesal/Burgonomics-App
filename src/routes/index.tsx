@@ -41,26 +41,26 @@ function Splash() {
     <div
       role="status"
       aria-live="polite"
-      className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-brand-gradient px-6 text-primary-foreground perspective-1000"
+      className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-background px-6 text-foreground perspective-1000"
     >
-      {/* Ambient orange glow */}
+      {/* Ambient glows */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-24 left-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-primary/20 blur-3xl"
+        className="pointer-events-none absolute -top-24 left-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-accent/10 blur-3xl"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute bottom-0 left-1/2 h-[280px] w-[280px] -translate-x-1/2 translate-y-1/3 rounded-full bg-secondary/60 blur-3xl"
+        className="pointer-events-none absolute bottom-0 left-1/2 h-[280px] w-[280px] -translate-x-1/2 translate-y-1/3 rounded-full bg-primary/10 blur-3xl"
       />
 
       <div ref={containerRef} className="relative flex flex-col items-center gap-8 text-center">
         <BrandMascot size={180} float />
         <div className="flex flex-col items-center gap-2">
-          <h1 className="type-display-large tracking-[0.12em] text-primary-foreground drop-shadow-lg">
+          <h1 className="type-display-large tracking-[0.12em] text-primary drop-shadow-sm">
             {APP.name}
           </h1>
           <span className="h-px w-16 bg-accent" />
-          <p className="type-title-medium uppercase tracking-[0.15em] text-accent font-bold drop-shadow-md">
+          <p className="type-title-medium uppercase tracking-[0.15em] text-accent font-bold">
             {APP.tagline}
           </p>
         </div>

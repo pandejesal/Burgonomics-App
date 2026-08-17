@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Search, WifiOff } from "lucide-react";
+import { Search, WifiOff, RefreshCw } from "lucide-react";
 
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -110,9 +110,47 @@ function OrderHistoryPage() {
     setLoadingMore(false);
   };
 
+  const handleRefresh = async () => {
+    setLoading(true);
+    setError(null);
+    const res = await orderRepository.listOrders({
+      bucket,
+      sort,
+      search,
+      page: 1,
+      pageSize: PAGE_SIZE,
+    });
+    if (res.success) {
+      setOrders(res.data.items);
+      setHasMore(res.data.hasMore);
+      setPage(1);
+    } else {
+      setError(res.error.message);
+    }
+    setLoading(false);
+  };
+
   return (
     <ProtectedRoute>
-      <AppShell title="Orders" backTo="/profile" showTabs showTopBar>
+      <AppShell
+        title="Orders"
+        backTo="/profile"
+        showTabs
+        showTopBar
+        rightSlot={
+          <button
+            type="button"
+            onClick={() => void handleRefresh()}
+            aria-label="Refresh orders"
+            className="grid h-11 w-11 place-items-center rounded-full text-white hover:bg-white/10 active:scale-95 transition-all"
+          >
+            <RefreshCw
+              className={cn("h-5 w-5", loading && "animate-spin")}
+              aria-hidden
+            />
+          </button>
+        }
+      >
         <div className="mx-auto max-w-[560px] px-4 py-4">
           {/* Bucket tabs */}
           <div

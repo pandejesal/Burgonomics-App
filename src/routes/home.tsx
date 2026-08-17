@@ -26,7 +26,6 @@ import { SectionHeader } from "@/features/home/components/SectionHeader";
 import { ComboCard } from "@/features/home/components/ComboCard";
 import { QuickReorderRail } from "@/features/home/components/QuickReorderRail";
 import { StoreHeaderCard } from "@/features/home/components/StoreHeaderCard";
-import { PullToRefresh } from "@/features/home/components/PullToRefresh";
 import { HomeSkeleton } from "@/features/home/components/HomeSkeleton";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useGsapReveal } from "@/shared/hooks/useGsapReveal";
@@ -162,52 +161,51 @@ function HomePage() {
         </Link>
       }
     >
-      <PullToRefresh onRefresh={handleRefresh} disabled={isLoading}>
-        <div className="mx-auto max-w-[520px]">
-          {/* Green Header Block */}
-          <div className="bg-gradient-brand text-white rounded-b-[2rem] shadow-medium pb-6 pt-3 relative z-10">
-            {/* Store header + fulfillment chip */}
-            <div className="space-y-2 px-4">
-              <StoreHeaderCard store={store} fulfillment={fulfillment} />
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <FulfillmentChip value={fulfillment} onClick={() => setFulfillmentOpen(true)} />
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-success">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
-                    <span className="type-caption font-medium">100% Pure Veg</span>
-                  </span>
-                </div>
-                {fulfillment === "delivery" && (
-                  <Text variant="caption" className="text-white/80">
-                    ETA {store.etaMinutes} min
-                  </Text>
-                )}
-                {fulfillment === "takeaway" && (
-                  <Text variant="caption" className="text-white/80">
-                    Ready in {store.pickupEtaMinutes ?? Math.max(8, Math.floor(store.etaMinutes / 2))}{" "}
-                    min
-                  </Text>
-                )}
-                {fulfillment === "dinein" && (
-                  <Text variant="caption" className="text-white/80">
-                    {store.isOpen ? "Open now" : "Closed"}
-                  </Text>
-                )}
+      <div className="mx-auto max-w-[520px]">
+        {/* Clean Light Header Block */}
+        <div className="bg-surface border-b border-divider shadow-low pb-5 pt-3 relative z-10">
+          {/* Store header + fulfillment chip */}
+          <div className="space-y-2 px-4">
+            <StoreHeaderCard store={store} fulfillment={fulfillment} />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <FulfillmentChip value={fulfillment} onClick={() => setFulfillmentOpen(true)} />
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-success">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
+                  <span className="type-caption font-medium">100% Pure Veg</span>
+                </span>
               </div>
+              {fulfillment === "delivery" && (
+                <Text variant="caption" tone="secondary">
+                  ETA {store.etaMinutes} min
+                </Text>
+              )}
+              {fulfillment === "takeaway" && (
+                <Text variant="caption" tone="secondary">
+                  Ready in {store.pickupEtaMinutes ?? Math.max(8, Math.floor(store.etaMinutes / 2))}{" "}
+                  min
+                </Text>
+              )}
+              {fulfillment === "dinein" && (
+                <Text variant="caption" tone="secondary">
+                  {store.isOpen ? "Open now" : "Closed"}
+                </Text>
+              )}
             </div>
-
-            {/* Search */}
-            <section className="mt-4 px-4">
-              <Link
-                to="/search"
-                aria-label="Search the menu"
-                className="flex h-11 items-center gap-2 rounded-full glass-panel px-4 hover:border-white/60 transition-colors shadow-low float-interactive"
-              >
-                <Search className="h-5 w-5 text-white/90" aria-hidden />
-                <span className="type-body-large text-white/80">Search the menu…</span>
-              </Link>
-            </section>
           </div>
+
+          {/* Search */}
+          <section className="mt-3 px-4">
+            <Link
+              to="/search"
+              aria-label="Search the menu"
+              className="flex h-11 items-center gap-2 rounded-full border border-divider bg-bg-secondary px-4 hover:border-primary/40 transition-colors shadow-low float-interactive"
+            >
+              <Search className="h-5 w-5 text-text-secondary" aria-hidden />
+              <span className="type-body-large text-text-secondary">Search the menu…</span>
+            </Link>
+          </section>
+        </div>
 
           {/* Offline strip */}
           {!online && (
@@ -411,7 +409,6 @@ function HomePage() {
             </div>
           )}
         </div>
-      </PullToRefresh>
 
       <FulfillmentSheet
         open={fulfillmentOpen}
