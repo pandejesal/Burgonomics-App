@@ -113,18 +113,18 @@
 }
 
 :root {
-  /* Default = 60% White / 30% Green / 10% Orange Light Theme for Swiggy-like clean mobile-first ordering experience. */
-  --background: #ffffff; /* Pure white canvas */
+  /* Default = 60% White / 30% Green / 10% Orange Light Theme for clean mobile-first ordering experience. */
+  --background: #ffffff; /* 60% Pure white canvas */
   --foreground: #16281d; /* Near-black text — green reserved for accents */
-  --surface: #ffffff; /* Pure White Card */
+  --surface: #ffffff; /* 60% Pure White Card */
   --surface-elevated: #ffffff;
-  --bg-secondary: #f2f5f3; /* Very light green-grey tint */
+  --bg-secondary: #f4f7f5; /* Very light green-grey tint */
 
-  --primary: #0e4825; /* Primary Green — the 30%: buttons, active tab, key CTAs */
+  --primary: #0e4825; /* 30% Primary Green: buttons, active tab, key CTAs */
   --primary-foreground: #ffffff;
   --secondary: #ffffff;
   --secondary-foreground: #0e4825;
-  --accent: #ff6600; /* Accent Orange — the 10%: offers, badges, highlights */
+  --accent: #ff6600; /* 10% Accent Orange: offers, badges, highlights */
   --accent-foreground: #ffffff;
   --brand: #0e4825;
   --brand-foreground: #ffffff;
@@ -134,9 +134,9 @@
   --text-inverse: #ffffff;
   --text-disabled: #9ca3af;
 
-  --divider: #e7ede9;
-  --border: #e7ede9;
-  --input: #f2f5f3;
+  --divider: #e5ede7;
+  --border: #e5ede7;
+  --input: #f4f7f5;
   --ring: #ff6600;
 
   --success: #10b981;
@@ -167,21 +167,34 @@
 }
 
 .dark {
-  /* Dark class adjustments for contrast */
-  --background: oklch(0.19 0.04 155);
-  --foreground: oklch(0.98 0.005 100);
-  --surface: oklch(0.25 0.045 155);
-  --surface-elevated: oklch(0.3 0.045 155);
-  --bg-secondary: oklch(0.22 0.045 155);
-  --text-primary: oklch(0.95 0.01 155);
-  --text-secondary: oklch(0.75 0.02 155);
-  --border: oklch(0.28 0.04 155);
-  --divider: oklch(0.28 0.04 155);
-  --input: oklch(0.22 0.04 155);
-  --primary: #10b981; /* Lighter emerald for contrast on dark background */
-  --primary-foreground: #022c1e; /* Dark text for contrast on light emerald */
-  --brand: #10b981;
-  --brand-foreground: #022c1e;
+  /* 1:1 Dark Mode mirror with consistent semantic layout and contrast */
+  --background: #111a14; /* Deep dark forest obsidian canvas */
+  --foreground: #f3f5f4;
+  --surface: #18241c; /* Slightly raised dark surface card */
+  --surface-elevated: #1e2e24;
+  --bg-secondary: #152219;
+  --text-primary: #f3f5f4;
+  --text-secondary: #9cb1a4;
+  --text-inverse: #111a14;
+  --text-disabled: #607366;
+  --border: #233529;
+  --divider: #233529;
+  --input: #152219;
+  --primary: #1b6339; /* Rich dark mode emerald green */
+  --primary-foreground: #ffffff; /* White text on primary buttons */
+  --secondary: #18241c;
+  --secondary-foreground: #f3f5f4;
+  --accent: #ff771a; /* Lighter vivid orange accent for dark contrast */
+  --accent-foreground: #ffffff;
+  --brand: #1b6339;
+  --brand-foreground: #ffffff;
+  --ring: #ff771a;
+  --card: #18241c;
+  --card-foreground: #f3f5f4;
+  --popover: #18241c;
+  --popover-foreground: #f3f5f4;
+  --muted: #152219;
+  --muted-foreground: #9cb1a4;
 }
 
 @layer base {
@@ -213,13 +226,12 @@
        which was making the mobile app look enlarged. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    overscroll-behavior-y: none;
     touch-action: manipulation;
   }
 
   html,
   body {
-    height: 100%;
+    min-height: 100%;
     /* Avoid horizontal scrolling from stray overflow at any breakpoint. */
     overflow-x: hidden;
     /* Disable web text selection globally for native app experience */

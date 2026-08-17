@@ -43,8 +43,8 @@ export function useGsapReveal(
           ease: "power3.out",
           scrollTrigger: {
             trigger: el,
-            start: "top 85%", // Trigger when top of element hits 85% of viewport
-            toggleActions: "play none none reverse",
+            start: "top 90%", // Trigger when top of element hits 90% of viewport
+            once: true,
           },
         },
       );

@@ -27,7 +27,7 @@ export function OfferCard({ code, title, description, onApply, className }: Offe
         <Ticket className="h-5 w-5" aria-hidden />
       </div>
       <div className="min-w-0 flex-1">
-        <Text variant="titleMedium" className="text-primary font-bold">
+        <Text variant="titleMedium" className="text-text-primary font-bold">
           {title}
         </Text>
         <Text
@@ -44,7 +44,7 @@ export function OfferCard({ code, title, description, onApply, className }: Offe
           <button
             type="button"
             onClick={() => onApply?.(code)}
-            className="rounded-full bg-accent text-white px-4 py-1.5 text-xs font-bold shadow-sm hover:brightness-110 active:scale-95 transition-all duration-200"
+            className="rounded-full bg-accent text-accent-foreground px-4 py-1.5 text-xs font-bold shadow-sm hover:brightness-110 active:scale-95 transition-all duration-200"
           >
             APPLY
           </button>

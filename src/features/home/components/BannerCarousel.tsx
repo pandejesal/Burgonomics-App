@@ -67,7 +67,7 @@ export function BannerCarousel({ banners, className }: Props) {
       <div
         ref={scrollerRef}
         className={cn(
-          "flex snap-x snap-mandatory overflow-x-auto scroll-smooth [overscroll-behavior-x:contain] touch-pan-x no-scrollbar",
+          "flex snap-x snap-mandatory overflow-x-auto scroll-smooth [overscroll-behavior-x:contain] no-scrollbar",
         )}
       >
         {banners.map((b, idx) => (

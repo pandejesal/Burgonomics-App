@@ -56,7 +56,7 @@ export function BottomTabBar() {
                     "group relative flex min-h-[48px] w-full flex-col items-center justify-center gap-1",
                     "transition-all duration-200 ease-out",
                     "active:scale-95",
-                    active ? "text-accent" : "text-primary hover:text-primary/80",
+                    active ? "text-accent" : "text-text-secondary hover:text-text-primary",
                   )}
                 >
                   <div className="relative">
@@ -94,7 +94,7 @@ export function BottomTabBar() {
                           transition={{ type: "spring", stiffness: 600, damping: 20 }}
                           aria-label={`${cartCount} items in cart`}
                           className={cn(
-                            "absolute -right-2.5 -top-1.5 grid h-4.5 min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-extrabold text-white",
+                            "absolute -right-2.5 -top-1.5 grid h-4.5 min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-extrabold text-accent-foreground",
                           )}
                         >
                           {cartCount}
@@ -110,7 +110,7 @@ export function BottomTabBar() {
                         ? ios
                           ? "font-semibold text-accent"
                           : "font-bold text-accent"
-                        : "font-medium text-primary/70",
+                        : "font-medium text-text-secondary",
                     )}
                   >
                     {label}

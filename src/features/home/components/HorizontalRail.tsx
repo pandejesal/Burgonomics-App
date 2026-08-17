@@ -19,7 +19,7 @@ export function HorizontalRail({ children, className, itemClassName, ariaLabel }
       role={ariaLabel ? "list" : undefined}
       aria-label={ariaLabel}
       className={cn(
-        "flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 [overscroll-behavior-x:contain] touch-pan-x scroll-smooth no-scrollbar",
+        "flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 [overscroll-behavior-x:contain] scroll-smooth no-scrollbar",
         className,
       )}
     >
