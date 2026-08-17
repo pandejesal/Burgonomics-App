@@ -18,7 +18,8 @@
     "cap:open:android": "npx cap open android",
     "cap:open:ios": "npx cap open ios",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.0",
@@ -119,6 +120,7 @@
     "tsx": "^4.23.12",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.10"
   }
 }

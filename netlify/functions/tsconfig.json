@@ -10,5 +10,5 @@
     "moduleResolution": "node",
     "noEmit": true
   },
-  "include": ["payments.ts"]
+  "include": ["*.ts", "lib/**/*.ts"]
 }

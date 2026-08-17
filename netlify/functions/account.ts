@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import express, { Request, Response } from "express";
 import serverless from "serverless-http";
+import { getOrderScrubUpdatePayload } from "./lib/account-scrub";
 
 // Initialize Firebase Admin SDK (mirrors payments.ts)
 if (!admin.apps.length) {
@@ -69,15 +70,11 @@ async function anonymizeUserOrders(uid: string): Promise<number> {
 }
 
 async function scrubOrder(ref: admin.firestore.DocumentReference) {
-  await ref.update({
-    anonymized: true,
-    anonymizedAt: admin.firestore.FieldValue.serverTimestamp(),
-    address: admin.firestore.FieldValue.delete(),
-    deliveryPartner: admin.firestore.FieldValue.delete(),
-    notes: admin.firestore.FieldValue.delete(),
-    fulfillmentInstructions: admin.firestore.FieldValue.delete(),
-    meta: admin.firestore.FieldValue.delete(),
-  });
+  const updatePayload = getOrderScrubUpdatePayload(
+    admin.firestore.FieldValue.serverTimestamp(),
+    admin.firestore.FieldValue.delete(),
+  );
+  await ref.update(updatePayload);
 }
 
 /**
@@ -119,7 +116,9 @@ async function deletePersonalData(uid: string): Promise<{ addresses: number; tok
 export async function handleDeleteAccount(req: Request, res: Response) {
   const decodedToken = await authenticateRequest(req);
   if (!decodedToken || !decodedToken.uid) {
-    res.status(401).send({ status: "error", message: "Unauthorized. Valid Firebase ID token is required." });
+    res
+      .status(401)
+      .send({ status: "error", message: "Unauthorized. Valid Firebase ID token is required." });
     return;
   }
   const uid = decodedToken.uid;
@@ -130,7 +129,7 @@ export async function handleDeleteAccount(req: Request, res: Response) {
     await admin.auth().deleteUser(uid);
 
     console.info(
-      `[Netlify Account] Account deleted for ${uid}: ${ordersAnonymized} orders anonymized, ${addresses} addresses and ${tokens} device tokens removed.`
+      `[Netlify Account] Account deleted for ${uid}: ${ordersAnonymized} orders anonymized, ${addresses} addresses and ${tokens} device tokens removed.`,
     );
     res.status(200).send({
       status: "success",
@@ -162,6 +161,9 @@ app.use((req: Request, res: Response, next: any) => {
 app.use(express.json());
 
 // Routes supporting relative, /account, and full Netlify function paths
-app.post(["/deleteAccount", "/account/deleteAccount", "/.netlify/functions/account/deleteAccount"], handleDeleteAccount);
+app.post(
+  ["/deleteAccount", "/account/deleteAccount", "/.netlify/functions/account/deleteAccount"],
+  handleDeleteAccount,
+);
 
 export const handler = serverless(app);

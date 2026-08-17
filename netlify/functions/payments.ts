@@ -2,6 +2,7 @@ import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 import express, { Request, Response } from "express";
 import serverless from "serverless-http";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const Razorpay = require("razorpay");
 
 // Initialize Firebase Admin SDK
@@ -30,7 +31,7 @@ function getRazorpayInstance() {
 
   if (!keyId || !keySecret) {
     throw new Error(
-      "Razorpay credentials are not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables."
+      "Razorpay credentials are not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables.",
     );
   }
 
@@ -57,48 +58,19 @@ async function authenticateRequest(req: Request): Promise<admin.auth.DecodedIdTo
   }
 }
 
+import { computeServerPrice } from "./lib/server-price";
+
 /**
- * Server-Authoritative Price Engine (SEC-3 / PAY-4).
- * Recalculates order subtotal, taxes, delivery fee, and grand total from Firestore catalog.
+ * Resolves live product price from Firestore catalog.
  */
-async function computeServerPrice(
-  items: Array<{ id: string; quantity: number; customizations?: Array<{ price: number }> }>,
-  fulfillment?: string,
-): Promise<{ subtotal: number; tax: number; deliveryFee: number; grandTotal: number }> {
-  let subtotal = 0;
-
-  if (Array.isArray(items) && items.length > 0) {
-    for (const item of items) {
-      const qty = Math.max(1, Number(item.quantity) || 1);
-      let itemBasePrice = 0;
-
-      if (item.id) {
-        const prodSnap = await db.collection("petpooja_products").doc(item.id).get();
-        if (prodSnap.exists) {
-          const prodData = prodSnap.data();
-          itemBasePrice = Number(prodData?.price || prodData?.min_price || 0);
-        }
-      }
-
-      // Add custom addon prices if present
-      let addonTotal = 0;
-      if (Array.isArray(item.customizations)) {
-        for (const addon of item.customizations) {
-          addonTotal += Number(addon.price || 0);
-        }
-      }
-
-      subtotal += (itemBasePrice + addonTotal) * qty;
-    }
+async function resolveProductPrice(productId: string): Promise<number> {
+  if (!productId) return 0;
+  const prodSnap = await db.collection("petpooja_products").doc(productId).get();
+  if (prodSnap.exists) {
+    const prodData = prodSnap.data();
+    return Number(prodData?.price || prodData?.min_price || 0);
   }
-
-  // Calculate standard 5% GST
-  const tax = Math.round(subtotal * 0.05 * 100) / 100;
-  // Delivery fee if delivery fulfillment
-  const deliveryFee = fulfillment === "delivery" ? (subtotal > 499 ? 0 : 40) : 0;
-  const grandTotal = Math.round((subtotal + tax + deliveryFee) * 100) / 100;
-
-  return { subtotal, tax, deliveryFee, grandTotal };
+  return 0;
 }
 
 /**
@@ -122,12 +94,21 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
   // 1. Authenticate caller (SEC-3: Strictly require valid Firebase ID token)
   const decodedToken = await authenticateRequest(req);
   if (!decodedToken || !decodedToken.uid) {
-    res.status(401).send({ status: "error", message: "Unauthorized. Valid Firebase ID token is required." });
+    res
+      .status(401)
+      .send({ status: "error", message: "Unauthorized. Valid Firebase ID token is required." });
     return;
   }
   const userId = decodedToken.uid;
 
-  const { currency = "INR", receipt, storeId, fulfillment, checkoutToken, checkoutSnapshot } = req.body;
+  const {
+    currency = "INR",
+    receipt,
+    storeId,
+    fulfillment,
+    checkoutToken,
+    checkoutSnapshot,
+  } = req.body;
 
   try {
     // 2. Server-Authoritative Price Engine (PAY-4: 100% computed from catalog; no client amount bypass)
@@ -137,11 +118,14 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       return;
     }
 
-    const serverPrice = await computeServerPrice(items, fulfillment);
+    const serverPrice = await computeServerPrice(items, fulfillment, resolveProductPrice);
     const grandTotal = serverPrice.grandTotal;
 
     if (grandTotal <= 0) {
-      res.status(400).send({ status: "error", message: "Server-calculated order amount must be greater than zero." });
+      res.status(400).send({
+        status: "error",
+        message: "Server-calculated order amount must be greater than zero.",
+      });
       return;
     }
 
@@ -163,20 +147,23 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
     const rzpOrder = await rzp.orders.create(orderOptions);
 
     // Save authoritative pre-order snapshot in Firestore
-    await db.collection("payment_orders").doc(rzpOrder.id).set({
-      orderId: rzpOrder.id,
-      userId,
-      amount: grandTotal,
-      amountInPaise,
-      currency: rzpOrder.currency || "INR",
-      receipt: rzpOrder.receipt,
-      status: "PENDING_PAYMENT",
-      storeId: storeId || checkoutSnapshot?.store?.id || null,
-      fulfillment: fulfillment || checkoutSnapshot?.fulfillment || null,
-      snapshot: checkoutSnapshot || null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    });
+    await db
+      .collection("payment_orders")
+      .doc(rzpOrder.id)
+      .set({
+        orderId: rzpOrder.id,
+        userId,
+        amount: grandTotal,
+        amountInPaise,
+        currency: rzpOrder.currency || "INR",
+        receipt: rzpOrder.receipt,
+        status: "PENDING_PAYMENT",
+        storeId: storeId || checkoutSnapshot?.store?.id || null,
+        fulfillment: fulfillment || checkoutSnapshot?.fulfillment || null,
+        snapshot: checkoutSnapshot || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      });
 
     res.status(200).send({
       orderId: rzpOrder.id,
@@ -192,7 +179,9 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
     });
   } catch (err: any) {
     console.error("[Netlify Payments] Error creating Razorpay order:", err);
-    res.status(500).send({ status: "error", message: err.message || "Failed to create payment order" });
+    res
+      .status(500)
+      .send({ status: "error", message: err.message || "Failed to create payment order" });
   }
 }
 
@@ -216,7 +205,9 @@ export async function handleVerifyPayment(req: Request, res: Response) {
 
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (!keySecret) {
-    res.status(500).send({ status: "error", message: "Razorpay secret key not configured on server." });
+    res
+      .status(500)
+      .send({ status: "error", message: "Razorpay secret key not configured on server." });
     return;
   }
 
@@ -247,7 +238,10 @@ export async function handleVerifyPayment(req: Request, res: Response) {
     try {
       rzpPayment = await rzp.payments.fetch(paymentId);
     } catch (e: any) {
-      console.error(`[Netlify Payments] Razorpay payment fetch failed for ${paymentId}:`, e?.message);
+      console.error(
+        `[Netlify Payments] Razorpay payment fetch failed for ${paymentId}:`,
+        e?.message,
+      );
       res.status(502).send({
         status: "error",
         message: `Failed to verify payment with gateway: ${e?.message || "Gateway unreachable"}`,
@@ -256,7 +250,9 @@ export async function handleVerifyPayment(req: Request, res: Response) {
     }
 
     if (!rzpPayment) {
-      res.status(400).send({ status: "error", message: "Gateway payment record could not be retrieved." });
+      res
+        .status(400)
+        .send({ status: "error", message: "Gateway payment record could not be retrieved." });
       return;
     }
 
@@ -265,7 +261,9 @@ export async function handleVerifyPayment(req: Request, res: Response) {
       console.error(
         `[Netlify Payments] Amount mismatch: expected ${expectedPaise} paise, Razorpay recorded ${rzpPayment.amount} paise`,
       );
-      res.status(400).send({ status: "error", message: "Paid amount does not match required order total." });
+      res
+        .status(400)
+        .send({ status: "error", message: "Paid amount does not match required order total." });
       return;
     }
 
@@ -321,14 +319,18 @@ export async function handleVerifyPayment(req: Request, res: Response) {
       });
     }
 
-    console.info(`[Netlify Payments] Successfully verified payment ${paymentId} for order ${orderId}`);
+    console.info(
+      `[Netlify Payments] Successfully verified payment ${paymentId} for order ${orderId}`,
+    );
     res.status(200).send({
       verified: true,
       confirmedOrderId: orderId,
     });
   } catch (err: any) {
     console.error("[Netlify Payments] Error finalizing verified payment:", err);
-    res.status(500).send({ status: "error", message: err.message || "Failed to finalize payment." });
+    res
+      .status(500)
+      .send({ status: "error", message: err.message || "Failed to finalize payment." });
   }
 }
 
@@ -383,7 +385,9 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
   );
 
   if (!orderId) {
-    console.warn(`[Netlify Payments] Captured payment ${paymentId} without orderId; flagged as ORPHAN_CAPTURED`);
+    console.warn(
+      `[Netlify Payments] Captured payment ${paymentId} without orderId; flagged as ORPHAN_CAPTURED`,
+    );
     await paymentsRef.update({
       status: "ORPHAN_CAPTURED",
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -392,17 +396,15 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
   }
 
   const paymentOrderSnap = await db.collection("payment_orders").doc(orderId).get();
-  let expectedAmountPaise = paymentOrderSnap.exists ? paymentOrderSnap.data()?.amountInPaise || 0 : 0;
+  let expectedAmountPaise = paymentOrderSnap.exists
+    ? paymentOrderSnap.data()?.amountInPaise || 0
+    : 0;
 
   let orderRef = db.collection("orders").doc(orderId);
   let orderSnap = await orderRef.get();
 
   if (!orderSnap.exists) {
-    const orderQuery = await db
-      .collectionGroup("orders")
-      .where("id", "==", orderId)
-      .limit(1)
-      .get();
+    const orderQuery = await db.collectionGroup("orders").where("id", "==", orderId).limit(1).get();
     if (!orderQuery.empty) {
       orderRef = orderQuery.docs[0].ref;
       orderSnap = orderQuery.docs[0];
@@ -498,7 +500,9 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
       convertedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    console.info(`[Netlify Payments] Rescued and created orphan order ${orderId} from checkout snapshot`);
+    console.info(
+      `[Netlify Payments] Rescued and created orphan order ${orderId} from checkout snapshot`,
+    );
   } else {
     console.warn(
       `[Netlify Payments] Payment ${paymentId} captured for unknown orderId ${orderId} without snapshot. Flagged as ORPHAN_CAPTURED.`,
@@ -528,7 +532,9 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
 
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("[Netlify Payments] Razorpay webhook secret is not configured; rejecting request");
+    console.error(
+      "[Netlify Payments] Razorpay webhook secret is not configured; rejecting request",
+    );
     res.status(500).send({ status: "error", message: "Webhook not configured" });
     return;
   }
@@ -627,7 +633,11 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
           }
         }
       }
-    } else if (event === "refund.created" || event === "refund.processed" || event === "refund.failed") {
+    } else if (
+      event === "refund.created" ||
+      event === "refund.processed" ||
+      event === "refund.failed"
+    ) {
       const refundEntity = payload.payload?.refund?.entity;
       if (!refundEntity) {
         console.warn("[Netlify Payments] Missing refund entity in Razorpay payload");
@@ -636,12 +646,22 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
       }
 
       const refundStatus =
-        event === "refund.processed" ? "COMPLETED" : event === "refund.created" ? "PENDING" : "FAILED";
+        event === "refund.processed"
+          ? "COMPLETED"
+          : event === "refund.created"
+            ? "PENDING"
+            : "FAILED";
       const refundsRef = db.collection("refunds").doc(refundEntity.id);
       const refundSnap = await refundsRef.get();
 
-      if (event === "refund.processed" && refundSnap.exists && refundSnap.data()?.status === "COMPLETED") {
-        console.info(`[Netlify Payments] Deduplicated replayed refund.processed for ${refundEntity.id}`);
+      if (
+        event === "refund.processed" &&
+        refundSnap.exists &&
+        refundSnap.data()?.status === "COMPLETED"
+      ) {
+        console.info(
+          `[Netlify Payments] Deduplicated replayed refund.processed for ${refundEntity.id}`,
+        );
         res.status(200).send({ status: "success", dedup: true });
         return;
       }
@@ -683,7 +703,9 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
       const settlementRef = db.collection("settlements").doc(settlementEntity.id);
       const settlementSnap = await settlementRef.get();
       if (settlementSnap.exists) {
-        console.info(`[Netlify Payments] Deduplicated replayed settlement.processed for ${settlementEntity.id}`);
+        console.info(
+          `[Netlify Payments] Deduplicated replayed settlement.processed for ${settlementEntity.id}`,
+        );
         res.status(200).send({ status: "success", dedup: true });
         return;
       }
@@ -739,12 +761,25 @@ app.use(
     verify: (req: any, _res, buf) => {
       req.rawBody = buf;
     },
-  })
+  }),
 );
 
 // Routes supporting relative, /payments, and full Netlify function paths
-app.post(["/createPaymentOrder", "/payments/createPaymentOrder", "/.netlify/functions/payments/createPaymentOrder"], handleCreatePaymentOrder);
-app.post(["/verifyPayment", "/payments/verifyPayment", "/.netlify/functions/payments/verifyPayment"], handleVerifyPayment);
-app.post(["/razorpayWebhook", "/payments/razorpayWebhook", "/.netlify/functions/payments/razorpayWebhook"], handleRazorpayWebhook);
+app.post(
+  [
+    "/createPaymentOrder",
+    "/payments/createPaymentOrder",
+    "/.netlify/functions/payments/createPaymentOrder",
+  ],
+  handleCreatePaymentOrder,
+);
+app.post(
+  ["/verifyPayment", "/payments/verifyPayment", "/.netlify/functions/payments/verifyPayment"],
+  handleVerifyPayment,
+);
+app.post(
+  ["/razorpayWebhook", "/payments/razorpayWebhook", "/.netlify/functions/payments/razorpayWebhook"],
+  handleRazorpayWebhook,
+);
 
 export const handler = serverless(app);
