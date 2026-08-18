@@ -2,7 +2,7 @@
  * CartService — Pure pricing calculation engine and cart validation logic.
  *
  * Encapsulates all line item calculations, fee additions, GST taxes,
- * packing charges, and promo evaluation.
+ * packing charges, and promo evaluation via the canonical pricing engine.
  */
 import type { ApiResult } from "@/core/network/http";
 import { ok, delay } from "@/core/network/http";
@@ -13,80 +13,57 @@ import type {
   CartValidation,
   Fulfillment,
 } from "@/features/cart/models";
-
-// ── Fee Schedule Defaults (INR) ─────────────────────────────────────────────
-const GST_TAX_RATE = 0.05; // 5% GST standard rate for food service
-const PACKING_CHARGE_PER_ITEM = 5; // Packing charge per item in order
-const FLAT_DELIVERY_FEE = 29; // Standard flat delivery fee for delivery orders
+import {
+  calculateOrderTotals,
+  computeItemUnitPrice,
+  computeItemLineTotal,
+  DEFAULT_PRICING_CONFIG,
+  type PricingConfig,
+} from "@/shared/pricing/pricingEngine";
 
 /**
  * Computes the unit price of a single line item including all selected modifiers.
  */
 export function computeLineUnitPrice(line: CartLine): number {
-  if (!line) return 0;
-  const basePrice = Number.isFinite(line.unitPrice) && line.unitPrice >= 0 ? line.unitPrice : 0;
-  const modifierList = Array.isArray(line.modifiers) ? line.modifiers : [];
-
-  const modifiersTotal = modifierList.reduce((accumulated, modifier) => {
-    const priceDelta = modifier && Number.isFinite(modifier.priceDelta) ? modifier.priceDelta : 0;
-    return accumulated + priceDelta;
-  }, 0);
-
-  return basePrice + modifiersTotal;
+  return computeItemUnitPrice(line);
 }
 
 /**
  * Computes the total line price for a item taking quantity into account.
  */
 export function computeLineTotal(line: CartLine): number {
-  if (!line) return 0;
-  const validQuantity = Number.isInteger(line.quantity) && line.quantity > 0 ? line.quantity : 0;
-  return computeLineUnitPrice(line) * validQuantity;
+  return computeItemLineTotal(line);
 }
 
 export interface CalculateInput {
   lines: CartLine[];
   fulfillment: Fulfillment;
   promo?: AppliedPromo | null;
+  pricingConfig?: PricingConfig | null;
 }
 
 /**
  * Calculates complete order totals breakdown (subtotal, discounts, GST, fees, grand total).
  */
 export function calculateTotals(input: CalculateInput): CartTotals {
-  const { lines = [], fulfillment, promo } = input;
+  const { lines = [], fulfillment, promo, pricingConfig } = input;
+  const config = pricingConfig || DEFAULT_PRICING_CONFIG;
 
-  const subtotal = lines.reduce((runningTotal, line) => {
-    return runningTotal + computeLineTotal(line);
-  }, 0);
-
-  const itemDiscount = 0;
-  const promoDiscount = promo?.discount ?? 0;
-
-  const taxableAmount = Math.max(0, subtotal - itemDiscount - promoDiscount);
-  const taxes = Math.round(taxableAmount * GST_TAX_RATE);
-
-  const totalItemCount = lines.reduce((count, line) => {
-    const qty = Number.isInteger(line.quantity) && line.quantity > 0 ? line.quantity : 0;
-    return count + qty;
-  }, 0);
-
-  const packingFee = lines.length ? totalItemCount * PACKING_CHARGE_PER_ITEM : 0;
-  const deliveryFee = lines.length && fulfillment === "delivery" ? FLAT_DELIVERY_FEE : 0;
-
-  const grandTotal = Math.max(
-    0,
-    subtotal - itemDiscount - promoDiscount + taxes + packingFee + deliveryFee,
-  );
+  const totals = calculateOrderTotals({
+    items: lines,
+    fulfillment,
+    promoDiscount: promo?.discount ?? 0,
+    config,
+  });
 
   return {
-    subtotal,
-    itemDiscount,
-    promoDiscount,
-    taxes,
-    deliveryFee,
-    packingFee,
-    grandTotal,
+    subtotal: totals.subtotal,
+    itemDiscount: totals.itemDiscount,
+    promoDiscount: totals.promoDiscount,
+    taxes: totals.taxes,
+    deliveryFee: totals.deliveryFee,
+    packingFee: totals.packingFee,
+    grandTotal: totals.grandTotal,
     currency: "INR",
   };
 }

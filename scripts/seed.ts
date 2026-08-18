@@ -79,6 +79,16 @@ async function run() {
     await productsRef.doc(prod.id).set(prod);
   }
 
+  console.log("Seeding Global Pricing Configuration (app_settings/pricing)...");
+  await db.collection("app_settings").doc("pricing").set({
+    gstRate: 0.05,
+    packingChargePerItem: 5,
+    deliveryFeeFlat: 40,
+    freeDeliveryThreshold: 499,
+    minOrderAmount: 0,
+    updatedAt: new Date().toISOString(),
+  });
+
   console.log("Seeding Stores & Admin Stores (17 Outlets)...");
   const adminStoresRef = db.collection("admin_stores");
   const storesRef = db.collection("stores");
@@ -105,6 +115,14 @@ async function run() {
       minPrepMinutes: 15,
       deliveryRadiusKm: 7,
       distanceKm: 0,
+      deliveryFee: 40,
+      pricing: {
+        gstRate: 0.05,
+        packingChargePerItem: 5,
+        deliveryFeeFlat: 40,
+        freeDeliveryThreshold: 499,
+        minOrderAmount: 0,
+      },
       turnOnAt: null,
       petpoojaRestId: (store as any).petpoojaRestId || null,
       supports: { delivery: true, takeaway: true, dineIn: true },
@@ -118,7 +136,7 @@ async function run() {
   await seedDemoData(db);
 
   console.log(
-    "Successfully seeded all categories, products, 17 admin stores, and demo data to Firestore!",
+    "Successfully seeded all categories, products, 17 admin stores, pricing config, and demo data to Firestore!",
   );
   process.exit(0);
 }

@@ -93,49 +93,45 @@ npx cap open ios
 
 ---
 
-## 3. Post-Demo Production Transition (Flip to Live)
+## 3. Production Deployment & Live Stack Architecture
 
-When moving from demo sandbox mode to live production with real Petpooja and Razorpay accounts, set the following production environment variables with zero code changes required:
+Burgonomics runs on a serverless architecture powered by Netlify Functions (`payments.ts`, `account.ts`) and Firebase Firestore.
 
-### 1. Razorpay Live Configuration
+### 1. Netlify Functions Environment Variables
+
+Set the following production environment variables in Netlify Dashboard (**Site configuration → Environment variables**):
 
 ```bash
-# Frontend / Client Runtime (.env.production)
+# Razorpay Live Credentials
+RAZORPAY_KEY_ID="rzp_live_..."
+RAZORPAY_KEY_SECRET="YOUR_LIVE_RAZORPAY_SECRET"
+RAZORPAY_WEBHOOK_SECRET="YOUR_LIVE_WEBHOOK_SECRET"
+
+# Firebase Admin SDK Credentials
+FIREBASE_PROJECT_ID="burgonomics-7faa8"
+FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
+```
+
+### 2. Client Application (.env.production)
+
+```bash
+VITE_APP_ENV="production"
 VITE_RAZORPAY_KEY_ID="rzp_live_..."
-
-# Backend Cloud Functions Environment
-firebase functions:config:set \
-  razorpay.key_id="rzp_live_..." \
-  razorpay.key_secret="YOUR_LIVE_RAZORPAY_SECRET" \
-  razorpay.webhook_secret="YOUR_LIVE_WEBHOOK_SECRET"
+VITE_PAYMENTS_API_BASE_URL="/.netlify/functions/payments"
 ```
 
-### 2. Petpooja POS Live Configuration
+### 3. Deploy Firestore Security Rules
 
 ```bash
-# Backend Cloud Functions Environment
-firebase functions:config:set \
-  petpooja.env="production" \
-  petpooja.app_key="YOUR_LIVE_PETPOOJA_APP_KEY" \
-  petpooja.app_secret="YOUR_LIVE_PETPOOJA_APP_SECRET" \
-  petpooja.access_token="YOUR_LIVE_PETPOOJA_ACCESS_TOKEN" \
-  petpooja.save_order_url="https://api.petpooja.com/V1/save_order"
-```
-
-### 3. Deploy Functions & Rules
-
-```bash
-npm --prefix functions run build
-firebase deploy --only functions,firestore:rules
+firebase deploy --only firestore:rules
 ```
 
 ---
 
-## 4. End-to-End Demo Smoke Test Chain
+## 4. End-to-End Smoke Test Chain
 
 1. **Menu Loading**: `petpooja_products` loads canonical burgers and prices (read-only for clients).
-2. **Cart & Pricing**: Customer adds items; `createPaymentOrder` calculates subtotal, 5% GST, and delivery fees server-side and locks amount in `payment_orders/{orderId}`.
-3. **Razorpay Checkout**: Test modal appears with `RAZORPAY TEST MODE` banner.
+2. **Cart & Pricing**: Customer adds items; `createPaymentOrder` calculates subtotal, 5% GST, and delivery fees server-side based on the store's pricing configuration document and locks the amount in `payment_orders/{orderId}`.
+3. **Razorpay Checkout**: Test modal appears with `RAZORPAY TEST MODE` banner (or live modal in production).
 4. **Verification**: `verifyPayment` validates the cryptographic signature and amount integrity, updating `payment_orders` to `PAID` and `orders/{orderId}` to `Paid`.
-5. **POS Sandbox Sync**: `pushOrderToPetpooja` triggers, compiles valid V2.1.0 payload with header credentials, outputs `KOT-...`, advances order to `"CONFIRMED"`, and updates live tracking.
-6. **Rule Protection**: Any direct attempt by client SDK to write `paymentStatus: "Paid"` is rejected by Firestore security rules.
+5. **Rule Protection**: Direct attempts by client SDK to write `paymentStatus: "Paid"` or forge paid orders in subcollections are strictly rejected by Firestore security rules.

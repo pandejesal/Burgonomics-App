@@ -130,11 +130,13 @@ export class CartRepository {
 
   async calculateTotals(): Promise<ApiResult<CartTotals>> {
     const s = useCartStore.getState();
+    const sel = useStoreSelection.getState();
     return ok(
       calculateTotals({
         lines: s.lines,
         fulfillment: this.getFulfillment(),
         promo: s.promo,
+        pricingConfig: sel.activeStore?.pricing || undefined,
       }),
     );
   }

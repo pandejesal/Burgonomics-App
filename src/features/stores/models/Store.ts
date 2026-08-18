@@ -51,6 +51,14 @@ export interface Store {
   petpoojaRestId?: string | null;
   /** Delivery radius in km. */
   deliveryRadiusKm?: number;
+  /** Store-specific pricing configuration overrides */
+  pricing?: {
+    gstRate?: number;
+    packingChargePerItem?: number;
+    deliveryFeeFlat?: number;
+    freeDeliveryThreshold?: number;
+    minOrderAmount?: number;
+  } | null;
 }
 
 /**

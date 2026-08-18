@@ -25,9 +25,10 @@ function mapStoreDoc(data: any, id: string): Store {
     supports: data.supports || { delivery: true, takeaway: true, dineIn: true },
     etaMinutes: data.etaMinutes || data.minPrepMinutes || 25,
     pickupEtaMinutes: data.pickupEtaMinutes || 15,
-    deliveryFee: data.deliveryFee ?? 29,
+    deliveryFee: data.pricing?.deliveryFeeFlat ?? data.deliveryFee ?? 40,
     petpoojaRestId: data.petpoojaRestId || null,
     deliveryRadiusKm: data.deliveryRadiusKm ?? 7,
+    pricing: data.pricing || null,
   };
 }
 

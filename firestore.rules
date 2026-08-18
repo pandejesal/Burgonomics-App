@@ -20,7 +20,21 @@ service cloud.firestore {
 
       match /orders/{orderId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-        allow create: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null
+          && request.auth.uid == userId
+          && (
+            !('paymentStatus' in request.resource.data) ||
+            request.resource.data.paymentStatus in ['Pending', 'Payment_Pending', 'CASH_PENDING', 'PAY_AT_STORE']
+          )
+          && (
+            !('payment' in request.resource.data) ||
+            !('status' in request.resource.data.payment) ||
+            request.resource.data.payment.status in ['pending', 'CASH_PENDING', 'PAY_AT_STORE']
+          )
+          && (
+            !('petpoojaStatus' in request.resource.data) ||
+            request.resource.data.petpoojaStatus in ['Pending', 'Not_Synced', 'Bypassed']
+          );
         allow update, delete: if false;
       }
     }
@@ -48,11 +62,18 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Menu data: public read; writes ONLY via Cloud Functions (admin SDK) — SEC-1
+    // Stores catalog & configuration: Public read; Admin writes only — SEC-1 / SEC-4
     match /stores/{storeId} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAdmin();
     }
+
+    // Global application settings (pricing, feature flags): Public read; Admin write only — SEC-4
+    match /app_settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /petpooja_categories/{docId} {
       allow read: if true;
       allow write: if false;
@@ -109,18 +130,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
-
-
     // Webhook logs: Admin read-only monitoring; client writes denied — SEC-7
     match /petpooja_webhook_logs/{docId} {
       allow read: if isAdmin();
       allow write: if false;
     }
 
-    // Admin/internal collections: Deny all client writes
+    // Admin/internal store configurations: Public read for client checkout requirements; Admin write only — SEC-1
     match /admin_stores/{docId} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAdmin();
     }
     match /admins/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;

@@ -210,7 +210,7 @@ function HomePage() {
           <div className="mt-4 px-4">
             <div
               role="status"
-              className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium text-warning-foreground"
+              className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium font-medium text-amber-900 dark:text-amber-200"
             >
               You are offline. Showing the latest available content.
             </div>

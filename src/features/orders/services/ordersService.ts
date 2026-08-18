@@ -30,7 +30,7 @@ import type {
   OrderTrackingSnapshot,
 } from "@/features/orders/models";
 import type { Fulfillment } from "@/features/stores/models/Store";
-import { advanceOrder } from "../../../../netlify/functions/lib/order-status";
+import { advanceOrder } from "@/features/orders/utils/orderStatusEngine";
 
 // -- Status catalog ---------------------------------------------------
 //

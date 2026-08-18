@@ -35,7 +35,7 @@ export function CompletionRing({ percent, size = 56, stroke = 5, label }: Props)
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="hsl(var(--divider))"
+          stroke="var(--divider)"
           strokeWidth={stroke}
           fill="none"
         />
@@ -43,7 +43,7 @@ export function CompletionRing({ percent, size = 56, stroke = 5, label }: Props)
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="hsl(var(--primary))"
+          stroke="var(--primary)"
           strokeWidth={stroke}
           strokeLinecap="round"
           fill="none"

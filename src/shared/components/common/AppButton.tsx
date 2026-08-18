@@ -15,11 +15,11 @@ type Variant = "primary" | "secondary" | "outlined" | "ghost" | "danger" | "cta"
 type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-primary text-white shadow-[var(--shadow-low)] hover:brightness-105",
+  primary: "bg-primary text-primary-foreground shadow-[var(--shadow-low)] hover:brightness-105",
   secondary:
-    "bg-white text-primary border-2 border-primary shadow-[var(--shadow-low)] hover:bg-primary/5",
-  outlined: "bg-transparent text-primary border-2 border-primary hover:bg-primary/5",
-  ghost: "bg-transparent text-primary hover:bg-primary/5",
+    "bg-surface text-primary-text border-2 border-primary shadow-[var(--shadow-low)] hover:bg-primary/5 dark:bg-surface-elevated",
+  outlined: "bg-transparent text-primary-text border-2 border-primary hover:bg-primary/5",
+  ghost: "bg-transparent text-primary-text hover:bg-primary/5",
   danger: "bg-error text-white shadow-[var(--shadow-low)] hover:brightness-110",
   cta: "bg-accent text-accent-foreground shadow-[var(--shadow-brand)] hover:brightness-110",
 };

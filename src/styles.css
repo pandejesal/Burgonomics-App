@@ -43,6 +43,7 @@
 
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);
@@ -50,10 +51,14 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
 
+  --color-text: var(--text-primary);
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-secondary);
   --color-text-inverse: var(--text-inverse);
   --color-text-disabled: var(--text-disabled);
+
+  --color-surface-variant: var(--surface-elevated);
 
   --color-divider: var(--divider);
   --color-border: var(--border);
@@ -122,6 +127,7 @@
 
   --primary: #0e4825; /* 30% Primary Green: buttons, active tab, key CTAs */
   --primary-foreground: #ffffff;
+  --primary-text: #1b6339; /* Brand primary green for high-contrast text on light surfaces (~8:1) */
   --secondary: #ffffff;
   --secondary-foreground: #0e4825;
   --accent: #ff6600; /* 10% Accent Orange: offers, badges, highlights */
@@ -182,6 +188,7 @@
   --input: #152219;
   --primary: #1b6339; /* Rich dark mode emerald green */
   --primary-foreground: #ffffff; /* White text on primary buttons */
+  --primary-text: #4ade80; /* Accessible vibrant emerald green for text against dark obsidian (WCAG AAA) */
   --secondary: #18241c;
   --secondary-foreground: #f3f5f4;
   --accent: #ff771a; /* Lighter vivid orange accent for dark contrast */
@@ -627,4 +634,8 @@
     animation: none !important;
     transform: none !important;
   }
+}
+
+@utility bg-orange-gradient {
+  background: linear-gradient(135deg, #ff802b 0%, #ff6600 60%, #e05900 100%);
 }

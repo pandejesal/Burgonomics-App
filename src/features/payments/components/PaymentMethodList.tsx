@@ -91,7 +91,7 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
                 "grid h-12 w-12 shrink-0 place-items-center rounded-xl border transition-colors duration-200",
                 selected
                   ? "bg-primary text-white border-primary"
-                  : cn("bg-surface-variant text-text-secondary", accentClass),
+                  : cn("bg-muted text-text-secondary", accentClass),
               )}
             >
               {id === "online" && !isOnline ? (
@@ -107,13 +107,13 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
                   variant="titleMedium"
                   className={cn(
                     "font-semibold leading-snug",
-                    selected ? "text-primary" : "text-text",
+                    selected ? "text-primary-text" : "text-text-primary",
                   )}
                 >
                   {title}
                 </Text>
                 {id === "online" && !isOnline && (
-                  <span className="inline-flex items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 text-[10px] font-bold text-warning-foreground uppercase tracking-wider">
+                  <span className="inline-flex items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
                     Offline
                   </span>
                 )}

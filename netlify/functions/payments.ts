@@ -58,7 +58,7 @@ async function authenticateRequest(req: Request): Promise<admin.auth.DecodedIdTo
   }
 }
 
-import { computeServerPrice } from "./lib/server-price";
+import { computeServerPrice, resolveStorePricingConfig } from "./lib/server-price";
 
 /**
  * Resolves live product price from Firestore catalog.
@@ -111,15 +111,44 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
     checkoutSnapshot,
   } = req.body;
 
+  const effectiveStoreId = storeId || checkoutSnapshot?.store?.id;
+  if (!effectiveStoreId) {
+    res.status(400).send({
+      status: "error",
+      code: "MISSING_STORE_ID",
+      message: "storeId is required to create a payment order.",
+    });
+    return;
+  }
+
   try {
-    // 2. Server-Authoritative Price Engine (PAY-4: 100% computed from catalog; no client amount bypass)
+    // 2. Resolve store-level pricing config strictly (fail-closed if unseeded/unreachable)
+    let pricingConfig;
+    try {
+      pricingConfig = await resolveStorePricingConfig(db, effectiveStoreId);
+    } catch (pricingErr: any) {
+      console.error("[Netlify Payments] Strict pricing config resolution failed:", pricingErr);
+      res.status(503).send({
+        status: "error",
+        code: "PRICING_CONFIG_UNAVAILABLE",
+        message: "Store pricing configuration is currently unavailable. Please try again shortly.",
+      });
+      return;
+    }
+
+    // 3. Server-Authoritative Price Engine (PAY-4: 100% computed from catalog; no client amount bypass)
     const items = checkoutSnapshot?.items || req.body?.items || [];
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).send({ status: "error", message: "Order items list cannot be empty." });
       return;
     }
 
-    const serverPrice = await computeServerPrice(items, fulfillment, resolveProductPrice);
+    const serverPrice = await computeServerPrice(
+      items,
+      fulfillment,
+      resolveProductPrice,
+      pricingConfig,
+    );
     const grandTotal = serverPrice.grandTotal;
 
     if (grandTotal <= 0) {
@@ -139,7 +168,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       receipt: receipt || `rcpt_${Date.now()}`,
       notes: {
         userId,
-        storeId: storeId || checkoutSnapshot?.store?.id || "",
+        storeId: effectiveStoreId,
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment || "",
         checkoutToken: checkoutToken || "",
       },
@@ -159,9 +188,10 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         currency: rzpOrder.currency || "INR",
         receipt: rzpOrder.receipt,
         status: "PENDING_PAYMENT",
-        storeId: storeId || checkoutSnapshot?.store?.id || null,
+        storeId: effectiveStoreId,
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment || null,
         snapshot: checkoutSnapshot || null,
+        pricingConfig,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       });
@@ -173,7 +203,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       currency: rzpOrder.currency,
       receipt: rzpOrder.receipt,
       meta: {
-        storeId: storeId || checkoutSnapshot?.store?.id,
+        storeId: effectiveStoreId,
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment,
         checkoutToken,
       },
