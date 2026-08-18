@@ -194,8 +194,14 @@ describe("Parity Test Suite: Client vs Server Engines (BND-4 / BND-5)", () => {
       const clientBelow = calculateTotals({
         lines: itemsBelow as any,
         fulfillment: "delivery",
+        pricingConfig: DEFAULT_PRICING_CONFIG,
       });
-      const serverBelow = await computeServerPrice(itemsBelow, "delivery");
+      const serverBelow = await computeServerPrice(
+        itemsBelow,
+        "delivery",
+        undefined,
+        DEFAULT_PRICING_CONFIG,
+      );
 
       expect(clientBelow.deliveryFee).toBe(40);
       expect(serverBelow.deliveryFee).toBe(40);
@@ -215,6 +221,7 @@ describe("Parity Test Suite: Client vs Server Engines (BND-4 / BND-5)", () => {
           discount: 100,
           type: "flat",
         },
+        pricingConfig: DEFAULT_PRICING_CONFIG,
       });
 
       // Subtotal 500, discount 100 -> Taxable 400
@@ -225,6 +232,17 @@ describe("Parity Test Suite: Client vs Server Engines (BND-4 / BND-5)", () => {
       expect(clientPromo.taxes).toBe(20);
       expect(clientPromo.packingFee).toBe(5);
       expect(clientPromo.grandTotal).toBe(425);
+    });
+
+    it("verifies strict-mode rejection on missing pricing configuration", () => {
+      const items = [{ productId: "p1", unitPrice: 500, quantity: 1 }];
+      expect(() =>
+        calculateTotals({
+          lines: items as any,
+          fulfillment: "delivery",
+          pricingConfig: null as any,
+        }),
+      ).toThrowError(/PRICING_CONFIG_UNAVAILABLE/);
     });
   });
 });

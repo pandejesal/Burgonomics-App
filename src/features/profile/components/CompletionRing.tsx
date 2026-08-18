@@ -43,7 +43,7 @@ export function CompletionRing({ percent, size = 56, stroke = 5, label }: Props)
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="var(--primary)"
+          stroke="var(--primary-text)"
           strokeWidth={stroke}
           strokeLinecap="round"
           fill="none"

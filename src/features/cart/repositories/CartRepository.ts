@@ -131,14 +131,37 @@ export class CartRepository {
   async calculateTotals(): Promise<ApiResult<CartTotals>> {
     const s = useCartStore.getState();
     const sel = useStoreSelection.getState();
-    return ok(
-      calculateTotals({
+    const pricingConfig = sel.activeStore?.pricing;
+
+    if (!pricingConfig) {
+      return {
+        success: false,
+        error: {
+          code: "PRICING_CONFIG_UNAVAILABLE",
+          message:
+            "Store pricing configuration is currently unavailable. Please select your store or retry.",
+        },
+      };
+    }
+
+    try {
+      const totals = calculateTotals({
         lines: s.lines,
         fulfillment: this.getFulfillment(),
         promo: s.promo,
-        pricingConfig: sel.activeStore?.pricing || undefined,
-      }),
-    );
+        pricingConfig,
+      });
+      return ok(totals);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        error: {
+          code: "PRICING_CALCULATION_ERROR",
+          message: msg,
+        },
+      };
+    }
   }
 
   // -- Promo / offers --------------------------------------------------
@@ -152,29 +175,55 @@ export class CartRepository {
     codeOrInput: string | { code?: string; offerId?: string },
   ): Promise<ApiResult<AppliedPromo>> {
     const s = useCartStore.getState();
-    const totals = calculateTotals({
-      lines: s.lines,
-      fulfillment: this.getFulfillment(),
-      promo: null,
-    });
-    const payload = typeof codeOrInput === "string" ? { code: codeOrInput } : codeOrInput;
-    const res = await offerRepository.apply({
-      ...payload,
-      storeId: s.storeId ?? undefined,
-      fulfillment: this.getFulfillment(),
-      subtotal: totals.subtotal,
-    });
-    if (!res.success) return res;
-    const applied: AppliedPromo = {
-      offerId: res.data.offerId,
-      code: res.data.code,
-      description: res.data.title,
-      discount: res.data.discount,
-      savingsLabel: res.data.savingsLabel,
-      type: res.data.type,
-    };
-    s.setPromo(applied);
-    return ok(applied);
+    const sel = useStoreSelection.getState();
+    const pricingConfig = sel.activeStore?.pricing;
+
+    if (!pricingConfig) {
+      return {
+        success: false,
+        error: {
+          code: "PRICING_CONFIG_UNAVAILABLE",
+          message:
+            "Store pricing configuration is currently unavailable. Please select your store or retry.",
+        },
+      };
+    }
+
+    try {
+      const totals = calculateTotals({
+        lines: s.lines,
+        fulfillment: this.getFulfillment(),
+        promo: null,
+        pricingConfig,
+      });
+      const payload = typeof codeOrInput === "string" ? { code: codeOrInput } : codeOrInput;
+      const res = await offerRepository.apply({
+        ...payload,
+        storeId: s.storeId ?? undefined,
+        fulfillment: this.getFulfillment(),
+        subtotal: totals.subtotal,
+      });
+      if (!res.success) return res;
+      const applied: AppliedPromo = {
+        offerId: res.data.offerId,
+        code: res.data.code,
+        description: res.data.title,
+        discount: res.data.discount,
+        savingsLabel: res.data.savingsLabel,
+        type: res.data.type,
+      };
+      s.setPromo(applied);
+      return ok(applied);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        error: {
+          code: "PRICING_CALCULATION_ERROR",
+          message: msg,
+        },
+      };
+    }
   }
 
   async removePromo(): Promise<ApiResult<void>> {

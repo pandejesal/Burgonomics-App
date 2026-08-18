@@ -80,14 +80,16 @@ async function run() {
   }
 
   console.log("Seeding Global Pricing Configuration (app_settings/pricing)...");
-  await db.collection("app_settings").doc("pricing").set({
-    gstRate: 0.05,
-    packingChargePerItem: 5,
-    deliveryFeeFlat: 40,
-    freeDeliveryThreshold: 499,
-    minOrderAmount: 0,
+  // PLACEHOLDER_UNTIL_PETPOOJA: Structural stand-in values until live Petpooja credentials arrive at app finalization
+  const PLACEHOLDER_UNTIL_PETPOOJA_GLOBAL_PRICING = {
+    gstRate: 0.05, // PLACEHOLDER_UNTIL_PETPOOJA: 5% GST stand-in
+    packingChargePerItem: 5, // PLACEHOLDER_UNTIL_PETPOOJA: ₹5/item packing charge stand-in
+    deliveryFeeFlat: 40, // PLACEHOLDER_UNTIL_PETPOOJA: ₹40 flat delivery fee stand-in
+    freeDeliveryThreshold: 499, // PLACEHOLDER_UNTIL_PETPOOJA: ₹499 free delivery threshold stand-in
+    minOrderAmount: 0, // PLACEHOLDER_UNTIL_PETPOOJA: minimum order amount stand-in
     updatedAt: new Date().toISOString(),
-  });
+  };
+  await db.collection("app_settings").doc("pricing").set(PLACEHOLDER_UNTIL_PETPOOJA_GLOBAL_PRICING);
 
   console.log("Seeding Stores & Admin Stores (17 Outlets)...");
   const adminStoresRef = db.collection("admin_stores");
@@ -115,13 +117,14 @@ async function run() {
       minPrepMinutes: 15,
       deliveryRadiusKm: 7,
       distanceKm: 0,
-      deliveryFee: 40,
+      deliveryFee: 40, // PLACEHOLDER_UNTIL_PETPOOJA: fallback delivery fee
+      // PLACEHOLDER_UNTIL_PETPOOJA: Per-store pricing override stand-ins until store sync via Petpooja
       pricing: {
-        gstRate: 0.05,
-        packingChargePerItem: 5,
-        deliveryFeeFlat: 40,
-        freeDeliveryThreshold: 499,
-        minOrderAmount: 0,
+        gstRate: 0.05, // PLACEHOLDER_UNTIL_PETPOOJA: 5% GST
+        packingChargePerItem: 5, // PLACEHOLDER_UNTIL_PETPOOJA: ₹5/item
+        deliveryFeeFlat: 40, // PLACEHOLDER_UNTIL_PETPOOJA: ₹40 flat delivery
+        freeDeliveryThreshold: 499, // PLACEHOLDER_UNTIL_PETPOOJA: ₹499 threshold
+        minOrderAmount: 0, // PLACEHOLDER_UNTIL_PETPOOJA: min order
       },
       turnOnAt: null,
       petpoojaRestId: (store as any).petpoojaRestId || null,

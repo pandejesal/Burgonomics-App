@@ -101,6 +101,12 @@ export async function runMobileStressTest(iterations = 50000): Promise<ExtendedS
           discount: 50,
           type: "flat",
         },
+        pricingConfig: {
+          gstRate: 0.05,
+          packingChargePerItem: 5,
+          deliveryFeeFlat: 40,
+          freeDeliveryThreshold: 499,
+        },
       });
 
       if (

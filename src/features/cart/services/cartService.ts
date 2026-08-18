@@ -17,8 +17,8 @@ import {
   calculateOrderTotals,
   computeItemUnitPrice,
   computeItemLineTotal,
-  DEFAULT_PRICING_CONFIG,
   type PricingConfig,
+  type StorePricingConfig,
 } from "@/shared/pricing/pricingEngine";
 
 /**
@@ -39,21 +39,26 @@ export interface CalculateInput {
   lines: CartLine[];
   fulfillment: Fulfillment;
   promo?: AppliedPromo | null;
-  pricingConfig?: PricingConfig | null;
+  pricingConfig: PricingConfig | StorePricingConfig;
 }
 
 /**
  * Calculates complete order totals breakdown (subtotal, discounts, GST, fees, grand total).
+ * Strict mode: Throws if pricingConfig is missing, ensuring no invented numbers on the client.
  */
 export function calculateTotals(input: CalculateInput): CartTotals {
   const { lines = [], fulfillment, promo, pricingConfig } = input;
-  const config = pricingConfig || DEFAULT_PRICING_CONFIG;
+  if (!pricingConfig) {
+    throw new Error(
+      "PRICING_CONFIG_UNAVAILABLE: Store pricing configuration is required to calculate totals.",
+    );
+  }
 
   const totals = calculateOrderTotals({
     items: lines,
     fulfillment,
     promoDiscount: promo?.discount ?? 0,
-    config,
+    config: pricingConfig,
   });
 
   return {

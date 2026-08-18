@@ -23,15 +23,35 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   minOrderAmount: 0,
 };
 
+export type StorePricingConfig = Partial<PricingConfig>;
+
+export interface PricingCustomization {
+  groupId?: string;
+  groupName?: string;
+  optionId?: string;
+  optionName?: string;
+  name?: string;
+  price?: number;
+  priceDelta?: number;
+}
+
 export interface PricingLineItem {
   id?: string;
   productId?: string;
+  lineId?: string;
+  name?: string;
   price?: number;
   unitPrice?: number;
   quantity?: number;
-  customizations?: Array<{ price?: number }>;
-  modifiers?: Array<{ priceDelta?: number }>;
-  [key: string]: any;
+  customizations?: PricingCustomization[];
+  modifiers?: PricingCustomization[];
+  notes?: string;
+  veg?: boolean;
+  imageUrl?: string;
+  fallbackImageUrl?: string;
+  availability?: string;
+  unavailableReason?: string;
+  meta?: Record<string, unknown>;
 }
 
 export interface PricingCalculationInput {
@@ -39,7 +59,7 @@ export interface PricingCalculationInput {
   fulfillment?: "delivery" | "takeaway" | "dinein" | string;
   promoDiscount?: number;
   itemDiscount?: number;
-  config: PricingConfig;
+  config: PricingConfig | StorePricingConfig;
 }
 
 export interface CalculatedOrderTotals {
@@ -64,12 +84,20 @@ export function computeItemUnitPrice(item: PricingLineItem): number {
   let addons = 0;
   if (Array.isArray(item.customizations) && item.customizations.length > 0) {
     for (const c of item.customizations) {
-      const p = Number(c?.price || 0);
+      const p = Number(
+        (c as { price?: number; priceDelta?: number })?.price ??
+          (c as { price?: number; priceDelta?: number })?.priceDelta ??
+          0,
+      );
       if (Number.isFinite(p)) addons += p;
     }
   } else if (Array.isArray(item.modifiers) && item.modifiers.length > 0) {
     for (const m of item.modifiers) {
-      const d = Number(m?.priceDelta || 0);
+      const d = Number(
+        (m as { price?: number; priceDelta?: number })?.priceDelta ??
+          (m as { price?: number; priceDelta?: number })?.price ??
+          0,
+      );
       if (Number.isFinite(d)) addons += d;
     }
   }
