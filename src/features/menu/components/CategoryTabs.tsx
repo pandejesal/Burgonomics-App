@@ -56,7 +56,7 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
               onSelect(c.id);
             }}
             className={cn(
-              "group relative flex-none shrink-0 whitespace-nowrap rounded-full px-4 py-2 type-label-large transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85",
+              "group relative flex-none shrink-0 whitespace-nowrap rounded-full overflow-hidden px-4 py-2 type-label-large transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85 touch-pan-y",
               "min-h-[40px] border flex items-center justify-center cursor-pointer",
               active
                 ? "text-primary-foreground border-primary bg-primary shadow-sm"
@@ -66,7 +66,7 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
             {active && (
               <motion.div
                 layoutId="activeCategoryBg"
-                className="absolute inset-0 bg-primary shadow-sm"
+                className="absolute inset-0 rounded-full bg-primary shadow-sm"
                 transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 style={{ zIndex: 0 }}
               />

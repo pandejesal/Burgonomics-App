@@ -107,12 +107,12 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
         className={cn(
           "w-full rounded-[var(--radius-medium)] border bg-surface transition-all duration-150 relative overflow-hidden",
           selected
-            ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
-            : "border-divider hover:border-primary/40 hover:bg-bg-secondary/40 shadow-none",
+            ? "border-primary bg-surface shadow-sm ring-2 ring-primary/20"
+            : "border-divider bg-surface hover:border-primary/40 hover:bg-bg-secondary/40 shadow-none",
           className,
         )}
       >
-        <div className="flex items-center justify-between p-3 gap-3">
+        <div className="flex items-center justify-between px-3 py-2.5 gap-2">
           {/* Main Tappable Row Area */}
           <button
             type="button"
@@ -122,24 +122,28 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
             }}
             aria-label={label}
             aria-pressed={selected || undefined}
-            className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer focus:outline-none select-none active:opacity-80"
+            className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer focus:outline-none select-none active:opacity-80"
           >
-            {/* 48px Circular Store Initial / Icon */}
-            <div className="h-12 w-12 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-lg shadow-sm">
+            {/* 36px Circular Store Initial / Icon */}
+            <div className="h-9 w-9 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm shadow-xs">
               {store.name.charAt(0) || "🍔"}
             </div>
 
             {/* 2-line Content */}
             <div className="min-w-0 flex-1">
-              {/* Line 1: Store Name + Open/Closed status */}
-              <div className="flex items-center gap-2 min-w-0">
+              {/* Line 1: Store Name */}
+              <div className="flex items-center gap-1.5 min-w-0">
                 <Text
                   as="h3"
                   variant="titleMedium"
-                  className={cn("truncate font-bold text-text-primary", selected && "text-primary")}
+                  className="truncate font-bold text-text-primary text-[14px] leading-tight tracking-tight"
                 >
                   {store.name}
                 </Text>
+              </div>
+
+              {/* Line 2: Badges · Distance · Delivery in N min */}
+              <div className="mt-0.5 flex items-center gap-1.5 min-w-0 text-text-secondary text-xs truncate">
                 <AppBadge
                   tone={store.isOpen ? "success" : "neutral"}
                   className="text-[10px] px-1.5 py-0 shrink-0 font-semibold"
@@ -147,15 +151,10 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                   {store.isOpen ? (closingSoon ? "Closes Soon" : "Open") : "Closed"}
                 </AppBadge>
                 {selected && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-bold text-emerald-700 shrink-0">
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/15 border border-accent/30 px-1.5 py-0 text-[10px] font-bold text-accent shrink-0">
                     <Check className="h-3 w-3" /> Selected
                   </span>
                 )}
-              </div>
-
-              {/* Line 2: Area · Distance · Delivery in N min */}
-              <div className="mt-0.5 flex items-center gap-1.5 min-w-0 text-text-secondary text-xs truncate">
-                <span className="truncate">{store.area}</span>
                 {store.distanceKm !== undefined && (
                   <>
                     <span>·</span>
@@ -167,7 +166,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 {store.supports.delivery && (
                   <>
                     <span>·</span>
-                    <span className="whitespace-nowrap text-text-secondary">
+                    <span className="whitespace-nowrap text-text-secondary truncate">
                       Delivery in {store.etaMinutes} min
                     </span>
                   </>
@@ -177,7 +176,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
           </button>
 
           {/* Right-side Actions: Info button & Chevron */}
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             <button
               type="button"
               onClick={(e) => {
@@ -187,7 +186,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
               }}
               title="Store info & actions"
               aria-label={`View info and actions for ${store.name}`}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-primary transition-colors cursor-pointer"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-primary transition-colors cursor-pointer"
             >
               <Info className="h-4 w-4" />
             </button>
@@ -199,7 +198,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
               }}
               aria-hidden="true"
               tabIndex={-1}
-              className="flex h-9 w-6 items-center justify-center text-text-secondary/60 cursor-pointer"
+              className="flex h-8 w-5 items-center justify-center text-text-secondary/50 cursor-pointer"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

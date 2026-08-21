@@ -123,11 +123,11 @@
   --foreground: #16281d; /* Near-black text — green reserved for accents */
   --surface: #ffffff; /* 60% Pure White Card */
   --surface-elevated: #ffffff;
-  --bg-secondary: #f4f7f5; /* Very light green-grey tint */
+  --bg-secondary: #f8f9f8; /* Light neutral canvas surface */
 
   --primary: #0e4825; /* 30% Primary Green: buttons, active tab, key CTAs */
   --primary-foreground: #ffffff;
-  --primary-text: #1b6339; /* Brand primary green for high-contrast text on light surfaces (~8:1) */
+  --primary-text: #0e4825; /* Brand primary green for high-contrast text on light surfaces */
   --secondary: #ffffff;
   --secondary-foreground: #0e4825;
   --accent: #ff6600; /* 10% Accent Orange: offers, badges, highlights */
@@ -136,14 +136,21 @@
   --brand-foreground: #ffffff;
 
   --text-primary: #16281d; /* High-contrast deep dark near-black */
-  --text-secondary: #586b60; /* Muted green-grey */
+  --text-secondary: #586b60; /* Muted neutral */
   --text-inverse: #ffffff;
   --text-disabled: #9ca3af;
 
   --divider: #e5ede7;
   --border: #e5ede7;
-  --input: #f4f7f5;
+  --input: #f8f9f8;
   --ring: #ff6600;
+
+  --card: #ffffff;
+  --card-foreground: #16281d;
+  --popover: #ffffff;
+  --popover-foreground: #16281d;
+  --muted: #f8f9f8;
+  --muted-foreground: #586b60;
 
   --success: #10b981;
   --success-foreground: #ffffff;
@@ -173,35 +180,37 @@
 }
 
 .dark {
-  /* 1:1 Dark Mode mirror with consistent semantic layout and contrast */
-  --background: #111a14; /* Deep dark forest obsidian canvas */
+  /* Dark Mode: 60% Black / 30% Dark Green / 10% Dark Orange */
+  --background: #0a0a0a; /* 60% True black/dark canvas */
   --foreground: #f3f5f4;
-  --surface: #18241c; /* Slightly raised dark surface card */
-  --surface-elevated: #1e2e24;
-  --bg-secondary: #152219;
+  --surface: #1a1a1a; /* Lifted neutral dark surface card */
+  --surface-elevated: #1e1e1e;
+  --bg-secondary: #141414;
   --text-primary: #f3f5f4;
-  --text-secondary: #9cb1a4;
-  --text-inverse: #111a14;
-  --text-disabled: #607366;
-  --border: #233529;
-  --divider: #233529;
-  --input: #152219;
-  --primary: #1b6339; /* Rich dark mode emerald green */
+  --text-secondary: #a0a0a0;
+  --text-inverse: #0a0a0a;
+  --text-disabled: #666666;
+  --border: #262626;
+  --divider: #262626;
+  --input: #141414;
+  --primary: #0e4825; /* 30% Dark Green: brand anchor */
   --primary-foreground: #ffffff; /* White text on primary buttons */
-  --primary-text: #4ade80; /* Accessible vibrant emerald green for text against dark obsidian (WCAG AAA) */
-  --secondary: #18241c;
+  --primary-text: #4ade80; /* Accessible vibrant emerald green for text against black (WCAG AAA) */
+  --secondary: #1a1a1a;
   --secondary-foreground: #f3f5f4;
-  --accent: #ff771a; /* Lighter vivid orange accent for dark contrast */
+  --accent: #cc5200; /* 10% Dark Orange: dark variant of #ff6600 for dark BG */
   --accent-foreground: #ffffff;
-  --brand: #1b6339;
+  --brand: #0e4825;
   --brand-foreground: #ffffff;
-  --ring: #ff771a;
-  --card: #18241c;
+  --ring: #cc5200;
+  --warning: #cc5200;
+  --warning-foreground: #ffffff;
+  --card: #1a1a1a;
   --card-foreground: #f3f5f4;
-  --popover: #18241c;
+  --popover: #1a1a1a;
   --popover-foreground: #f3f5f4;
-  --muted: #152219;
-  --muted-foreground: #9cb1a4;
+  --muted: #141414;
+  --muted-foreground: #a0a0a0;
 }
 
 @layer base {
@@ -272,10 +281,14 @@
     display: none; /* Chrome, Safari, Opera */
   }
 
-  body {
+  html,
+  body,
+  #app {
     background: var(--color-background);
-    background-attachment: fixed;
     color: var(--color-text-primary);
+  }
+
+  body {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -537,8 +550,8 @@
 }
 
 .dark .glass-panel {
-  background: rgba(40, 45, 42, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(26, 26, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Base interactive hover scale for floating cards */
