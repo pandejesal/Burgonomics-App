@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Text } from "@/shared/components/common/Text";
 import { SafeImage } from "@/shared/components/common/SafeImage";
 import { useMenuStore } from "@/features/menu/state/menuStore";
+import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll";
 import type { MenuCategory } from "@/features/menu/services/menuService";
 
 interface Props {
@@ -19,11 +20,16 @@ interface Props {
 export function CategoryGrid({ categories, className }: Props) {
   const navigate = useNavigate();
   const setActiveCategory = useMenuStore((s) => s.setActiveCategory);
+  const listRef = React.useRef<HTMLUListElement>(null);
+  useDirectionalScroll(listRef);
 
   if (categories.length === 0) return null;
   return (
     <nav aria-label="Menu categories" className={cn("px-4", className)}>
-      <ul className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 scroll-smooth [touch-action:pan-x_pan-y] no-scrollbar">
+      <ul
+        ref={listRef}
+        className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 touch-pan-y no-scrollbar"
+      >
         {categories.map((c) => {
           const initial = c.name.trim().charAt(0).toUpperCase() || "•";
           return (

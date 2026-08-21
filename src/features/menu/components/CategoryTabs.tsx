@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import type { MenuCategoryModel } from "@/features/menu/models";
 import { motion } from "motion/react";
 import { HapticService } from "@/core/services/haptics";
+import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll";
 
 interface Props {
   categories: MenuCategoryModel[];
@@ -18,6 +19,7 @@ interface Props {
  */
 export function CategoryTabs({ categories, activeId, onSelect, className }: Props) {
   const listRef = React.useRef<HTMLDivElement>(null);
+  useDirectionalScroll(listRef);
 
   React.useEffect(() => {
     if (!activeId || !listRef.current) return;
@@ -36,7 +38,7 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
       aria-label="Menu categories"
       ref={listRef}
       className={cn(
-        "flex gap-2 overflow-x-auto no-scrollbar [touch-action:pan-x_pan-y] px-4 py-2",
+        "flex gap-2 overflow-x-auto no-scrollbar touch-pan-y px-4 py-2",
         className,
       )}
     >

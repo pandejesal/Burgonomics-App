@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/features/home/models";
 import { SafeImage } from "@/shared/components/common/SafeImage";
+import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll";
 
 const AUTOPLAY_MS = 5000;
 
@@ -21,6 +22,7 @@ export function BannerCarousel({ banners, className }: Props) {
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const [active, setActive] = React.useState(0);
   const [paused, setPaused] = React.useState(false);
+  useDirectionalScroll(scrollerRef);
 
   // Track active slide from scroll position.
   React.useEffect(() => {
@@ -67,7 +69,7 @@ export function BannerCarousel({ banners, className }: Props) {
       <div
         ref={scrollerRef}
         className={cn(
-          "flex overflow-x-auto scroll-smooth [touch-action:pan-x_pan-y] no-scrollbar",
+          "flex overflow-x-auto touch-pan-y no-scrollbar",
         )}
       >
         {banners.map((b, idx) => (

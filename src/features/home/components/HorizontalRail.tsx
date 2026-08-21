@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll";
 
 interface Props {
   children: React.ReactNode;
@@ -14,12 +15,16 @@ interface Props {
  */
 export function HorizontalRail({ children, className, itemClassName, ariaLabel }: Props) {
   const items = React.Children.toArray(children);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  useDirectionalScroll(containerRef);
+
   return (
     <div
+      ref={containerRef}
       role={ariaLabel ? "list" : undefined}
       aria-label={ariaLabel}
       className={cn(
-        "flex gap-3 overflow-x-auto px-4 pb-1 scroll-smooth [touch-action:pan-x_pan-y] no-scrollbar",
+        "flex gap-3 overflow-x-auto px-4 pb-1 touch-pan-y no-scrollbar",
         className,
       )}
     >
