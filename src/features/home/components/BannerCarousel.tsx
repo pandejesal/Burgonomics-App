@@ -67,7 +67,7 @@ export function BannerCarousel({ banners, className }: Props) {
       <div
         ref={scrollerRef}
         className={cn(
-          "flex snap-x snap-mandatory overflow-x-auto scroll-smooth [overscroll-behavior-x:contain] no-scrollbar",
+          "flex overflow-x-auto scroll-smooth [touch-action:pan-x_pan-y] no-scrollbar",
         )}
       >
         {banners.map((b, idx) => (
@@ -79,7 +79,7 @@ export function BannerCarousel({ banners, className }: Props) {
             aria-roledescription="slide"
             aria-hidden={idx !== active}
             className={cn(
-              "relative w-full shrink-0 snap-center px-4",
+              "relative w-full shrink-0 px-4",
               "focus-visible:outline-none",
             )}
           >

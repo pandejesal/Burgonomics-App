@@ -36,7 +36,7 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
       aria-label="Menu categories"
       ref={listRef}
       className={cn(
-        "flex gap-2 overflow-x-auto no-scrollbar px-4 py-2 [overscroll-behavior-x:contain]",
+        "flex gap-2 overflow-x-auto no-scrollbar [touch-action:pan-x_pan-y] px-4 py-2",
         className,
       )}
     >
