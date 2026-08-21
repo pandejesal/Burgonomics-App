@@ -233,7 +233,6 @@
        which was making the mobile app look enlarged. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    touch-action: manipulation;
   }
 
   html,
@@ -282,8 +281,6 @@
     text-rendering: optimizeLegibility;
     /* Respect notches / status bar on native shells. */
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    /* Prevent iOS rubber-band from exposing the page behind. */
-    overscroll-behavior-y: none;
   }
 
   /* Keyboard-open: drop bottom safe-area padding so inputs stay visible. */
@@ -423,11 +420,6 @@
 }
 
 /* Phone-first app shell */
-#root {
-  overscroll-behavior-y: none;
-  touch-action: pan-y;
-}
-
 .app-shell {
   margin-inline: auto;
   width: 100%;
@@ -436,8 +428,6 @@
   min-height: 100dvh;
   background: transparent;
   position: relative;
-  overscroll-behavior-y: none;
-  touch-action: pan-y;
 }
 
 @media (max-width: 768px) {
