@@ -42,7 +42,7 @@ export function CategoryGrid({ categories, className }: Props) {
                 }}
                 aria-label={`Browse ${c.name}, ${c.itemCount} items`}
                 className={cn(
-                  "group flex w-16 flex-col items-center gap-1.5 rounded-[var(--radius-large)] text-left cursor-pointer",
+                  "group flex w-16 flex-col items-center gap-1.5 rounded-[var(--radius-large)] text-left cursor-pointer touch-pan-y",
                   "border border-transparent bg-surface p-2",
                   "hover:border-divider hover:shadow-[var(--shadow-low)]",
                   "transition-all duration-200 active:scale-[0.97]",

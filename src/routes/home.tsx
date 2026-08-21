@@ -244,7 +244,7 @@ function HomePage() {
             />
           )
         ) : (
-          <div ref={sectionsRef} className="mt-5 space-y-7 pb-6">
+          <div ref={sectionsRef} className="mt-5 space-y-7 pb-6 touch-pan-y">
             {/* Banners */}
             {bundle.banners.length > 0 && <BannerCarousel banners={bundle.banners} />}
 

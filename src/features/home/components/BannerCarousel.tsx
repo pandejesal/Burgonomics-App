@@ -60,7 +60,7 @@ export function BannerCarousel({ banners, className }: Props) {
     <section
       aria-roledescription="carousel"
       aria-label="Promotional banners"
-      className={cn("relative", className)}
+      className={cn("relative touch-pan-y", className)}
       onPointerEnter={() => setPaused(true)}
       onPointerLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -81,14 +81,14 @@ export function BannerCarousel({ banners, className }: Props) {
             aria-roledescription="slide"
             aria-hidden={idx !== active}
             className={cn(
-              "relative w-full shrink-0 px-4",
+              "relative w-full shrink-0 px-4 touch-pan-y",
               "focus-visible:outline-none",
             )}
           >
             <div
               className={cn(
                 "relative flex min-h-[148px] items-center gap-4 overflow-hidden rounded-[var(--radius-large)]",
-                "bg-gradient-to-br text-primary-foreground p-4 text-left",
+                "bg-gradient-to-br text-primary-foreground p-4 text-left touch-pan-y",
                 "shadow-[var(--shadow-medium)] transition-all duration-150 ease-out select-none",
                 "active:scale-[0.97] active:opacity-85",
                 b.gradient,
