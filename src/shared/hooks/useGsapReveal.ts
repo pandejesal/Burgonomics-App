@@ -27,25 +27,19 @@ export function useGsapReveal(
       gsap.fromTo(
         children,
         {
-          y: options.yOffset ?? 40,
+          y: options.yOffset ?? 20,
           opacity: 0,
-          rotateX: 5,
-          scale: 0.98,
+          scale: 0.99,
         },
         {
           y: 0,
           opacity: 1,
-          rotateX: 0,
           scale: 1,
-          duration: options.duration ?? 0.8,
-          stagger: options.stagger ?? 0.1,
+          duration: options.duration ?? 0.4,
+          stagger: options.stagger ?? 0.06,
           delay: options.delay ?? 0,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: el,
-            start: "top 90%", // Trigger when top of element hits 90% of viewport
-            once: true,
-          },
+          ease: "power2.out",
+          clearProps: "opacity,transform",
         },
       );
     }, el);
