@@ -3,8 +3,8 @@
  *
  * Every user-observable moment the product cares about is declared here
  * as a discriminated union so call sites cannot fire misspelled or
- * malformed events. A provider (Segment, GA4, Amplitude, custom) is
- * registered in a later prompt via `analytics.setProvider(...)`; until
+ * malformed events. A provider (Segment, GA4, Amplitude, custom) can be
+ * registered via `analytics.setProvider(...)`; until
  * then events are buffered and dropped in production, logged in dev.
  */
 import { logger } from "@/core/logging";

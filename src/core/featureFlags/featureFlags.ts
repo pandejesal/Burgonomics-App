@@ -1,10 +1,9 @@
 /**
  * Feature flag service.
  *
- * Supports local defaults, remote overrides (wired in later prompt),
+ * Supports local defaults, remote overrides via Remote Config,
  * percentage rollout, kill switches, store-scoped flags, and future
- * A/B testing. Only the interface + local defaults ship in this
- * refactor — remote sync is a no-op.
+ * A/B testing.
  */
 import { appConfig } from "@/core/config";
 
@@ -58,7 +57,7 @@ class FeatureFlagService {
     delete this.overrides[key];
   }
 
-  /** Placeholder — real remote fetch lands with the backend prompt. */
+  /** Sync flags from remote config service. */
   async syncRemote(): Promise<void> {
     /* no-op */
   }

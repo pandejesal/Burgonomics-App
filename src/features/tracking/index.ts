@@ -1,2 +1,2 @@
-// Feature placeholder — implementation lands in a dedicated prompt.
+// Feature placeholder — live GPS tracking integration.
 export {};

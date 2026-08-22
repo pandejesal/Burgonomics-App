@@ -40,7 +40,7 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
   const [aiChat, setAiChat] = useState<{ role: "user" | "assistant"; text: string }[]>([
     {
       role: "assistant",
-      text: "Welcome to BURGONOMICS Mission Control AI. I have full read-only access to live systems (BullMQ, Redis, Prometheus Metrics, API gateways, database logs). How can I assist you with debugging, performance auditing, or systems management today?",
+      text: "Welcome to BURGONOMICS Mission Control System Diagnostics. I have full read-only access to live systems (BullMQ, Redis, Prometheus Metrics, API gateways, database logs). How can I assist you with debugging, performance auditing, or systems management today?",
     },
   ]);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -68,7 +68,7 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
     setIsAiLoading(true);
 
     try {
-      // Call the server-side developer AI endpoint
+      // Call the server-side developer diagnostics endpoint
       const response = await fetch("/api/developer/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,14 +82,14 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
           ...prev,
           {
             role: "assistant",
-            text: `AI Error: ${data.error?.message || "Failed to process prompt."}`,
+            text: `System Diagnostics: ${data.error?.message || "Failed to process query."}`,
           },
         ]);
       }
     } catch (err) {
       setAiChat((prev) => [
         ...prev,
-        { role: "assistant", text: "Network connection error while reaching the AI Agent." },
+        { role: "assistant", text: "Network connection error while reaching the diagnostics service." },
       ]);
     } finally {
       setIsAiLoading(false);
@@ -164,8 +164,8 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
                 : "bg-[#0E4825]/20 hover:bg-[#0E4825]/40 text-emerald-400 border border-emerald-900/40"
             }`}
           >
-            <Bot size={14} className={isAiOpen ? "animate-bounce" : ""} />
-            <span>AI Assistant</span>
+            <Terminal size={14} className={isAiOpen ? "animate-bounce" : ""} />
+            <span>Diagnostics</span>
           </button>
         </div>
       </div>
@@ -233,22 +233,22 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
           </div>
         </div>
 
-        {/* Collapsible Slide-out AI Developer Assistant Panel */}
+        {/* Collapsible Slide-out Diagnostics Panel */}
         <div
           className={`absolute top-0 right-0 h-full w-[360px] max-w-full border-l border-gray-800 bg-[#080d09] shadow-2xl flex flex-col z-30 transition-transform duration-300 ${
             isAiOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >
-          {/* AI Panel Header */}
+          {/* Panel Header */}
           <div className="p-4 border-b border-gray-800 bg-[#0c140e] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <Bot size={18} className="text-emerald-400 animate-pulse" />
+              <Terminal size={18} className="text-emerald-400 animate-pulse" />
               <div>
                 <span className="block text-xs font-bold text-white uppercase tracking-wider font-mono">
-                  MISSION CONTROL AI
+                  MISSION CONTROL DIAGNOSTICS
                 </span>
                 <span className="block text-[9px] text-[#FF6600] font-black uppercase tracking-widest">
-                  Live System Intelligence
+                  Live System Telemetry
                 </span>
               </div>
             </div>
@@ -260,7 +260,7 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
             </button>
           </div>
 
-          {/* AI Chat History */}
+          {/* Chat History */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs leading-relaxed custom-scrollbar bg-[#060a07]">
             {aiChat.map((chat, idx) => (
               <div
@@ -268,7 +268,7 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
                 className={`flex flex-col ${chat.role === "user" ? "items-end" : "items-start"}`}
               >
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-500 mb-1">
-                  <span>{chat.role === "user" ? "DEVELOPER" : "CORE_AI"}</span>
+                  <span>{chat.role === "user" ? "OPERATOR" : "SYSTEM_CORE"}</span>
                 </div>
                 <div
                   className={`p-3 rounded-2xl max-w-[90%] border ${
@@ -284,7 +284,7 @@ export const SystemOperationsLayout: React.FC<SystemOperationsLayoutProps> = ({ 
             {isAiLoading && (
               <div className="flex items-center gap-2 text-[10px] text-emerald-400 uppercase tracking-widest animate-pulse font-bold p-2 font-mono">
                 <Sparkles size={12} className="animate-spin" />
-                <span>AI analyzing system state...</span>
+                <span>Analyzing telemetry state...</span>
               </div>
             )}
           </div>

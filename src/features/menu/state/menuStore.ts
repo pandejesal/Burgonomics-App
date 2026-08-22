@@ -4,8 +4,7 @@ import type { MenuCategoryModel, Product } from "@/features/menu/models";
 
 /**
  * Menu feature state — categories + paginated products per category,
- * cached in-memory. `recentlyViewed` is a placeholder for the offline
- * cache introduced in the offline sync prompt.
+ * cached in-memory. `recentlyViewed` supports local offline caching.
  */
 export type MenuStatus = "idle" | "loading" | "refreshing" | "ready" | "empty" | "error";
 

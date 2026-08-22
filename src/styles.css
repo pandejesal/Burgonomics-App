@@ -85,7 +85,7 @@
   --color-muted: var(--bg-secondary);
   --color-muted-foreground: var(--text-secondary);
 
-  /* Elevation - Antigravity Spatial Depth */
+  /* Elevation - Spatial Depth Tokens */
   --shadow-flat: none;
   --shadow-low: 0 4px 12px -2px rgba(14, 72, 37, 0.05), 0 2px 4px -2px rgba(14, 72, 37, 0.03);
   --shadow-medium: 0 16px 32px -4px rgba(14, 72, 37, 0.1), 0 8px 16px -4px rgba(14, 72, 37, 0.05);
@@ -541,7 +541,7 @@
   perspective: 1000px;
 }
 
-/* Antigravity Glassmorphism */
+/* Glassmorphism Surface Tokens */
 @utility glass-panel {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(16px);

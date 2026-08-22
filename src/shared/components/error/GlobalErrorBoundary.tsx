@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { classifyError, type ClassifiedErrorDetails } from "@/core/errors/errorClassifier";
 import { logger } from "@/core/logging/logger";
-import { reportLovableError } from "@/lib/lovable-error-reporting";
+import { reportAppError } from "@/lib/error-reporting";
 import { BrandMascot } from "@/shared/components/common/BrandMascot";
 
 export interface GlobalErrorFallbackProps {
@@ -295,7 +295,7 @@ export class GlobalErrorBoundary extends Component<
     logger.error("GlobalErrorBoundary.caught", error, {
       componentStack: errorInfo.componentStack,
     });
-    reportLovableError(error, {
+    reportAppError(error, {
       boundary: "GlobalErrorBoundary",
       componentStack: errorInfo.componentStack,
     });

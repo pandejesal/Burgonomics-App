@@ -3,8 +3,8 @@
  *
  * Feature and infrastructure code MUST use this instead of `console.*`
  * directly. The default sink writes to the browser console in
- * development and no-ops in production; future prompts will register
- * additional sinks (Sentry, Crashlytics, backend log ingest) via
+ * development and no-ops in production; production logging sinks
+ * (Sentry, Crashlytics, backend log ingest) register via
  * `logger.addSink(...)` without any changes to call sites.
  */
 import { appConfig, isDev } from "@/core/config";

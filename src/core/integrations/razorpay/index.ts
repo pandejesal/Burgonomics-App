@@ -2,7 +2,7 @@
  * Razorpay integration adapter (contract only).
  *
  * The SDK bootstrap, order creation, and signature verification are
- * wired in the payments prompt. This file declares the interface every
+ * wired in the payments module. This file declares the interface every
  * checkout flow will consume.
  */
 export interface RazorpayOrderIntent {

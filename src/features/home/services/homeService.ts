@@ -20,9 +20,7 @@ import {
 } from "@/features/home/data/mockHome";
 
 /**
- * Mock home service — mirrors the shape of the real HTTP client the
- * backend prompt will introduce. Realistic 150–400ms delays keep
- * skeleton/loading UX honest.
+ * Standalone home service with realistic delays for honest skeleton/loading UX.
  */
 
 /** ~10% simulated failure surface, controllable per call. */

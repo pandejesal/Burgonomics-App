@@ -197,4 +197,4 @@ firestore-root/
 
 ---
 
-*Authored by the Google DeepMind Antigravity Team for BURGONOMICS.*
+*BURGONOMICS Core Systems & Product Engineering Architecture.*

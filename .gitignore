@@ -29,12 +29,18 @@ dist-ssr
 google-services.json
 GoogleService-Info.plist
 
-# Internal Audit Reports & Agent Traces
+# Internal Audit Reports & Development Traces
 audit-report.md
 docs/audit-report.md
 docs/ios-audit.md
+implementation_plan.md
+walkthrough.md
+device_audit_report.json
 .swarm/
 .antg/
+.lovable/
+.cursor/
+.v0/
 
 # Wrangler / Cloudflare
 .wrangler/

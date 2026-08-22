@@ -2,8 +2,7 @@
  * Firebase integration adapter (contract only).
  *
  * Auth, push (FCM), Remote Config, and Crashlytics wire into this
- * interface. No SDK is imported here — that lands with the notifications
- * / analytics prompts.
+ * interface. No SDK is imported directly here.
  */
 export interface FirebaseAuthResult {
   uid: string;

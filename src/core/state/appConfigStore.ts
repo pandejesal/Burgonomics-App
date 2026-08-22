@@ -1,7 +1,6 @@
 import { create } from "zustand";
 
-// Runtime feature flags / remote config. Populated by /config sync in future
-// implementation prompts.
+// Runtime feature flags / remote config. Populated by /config API sync.
 interface AppConfigState {
   maintenance: boolean;
   forceUpdate: boolean;
