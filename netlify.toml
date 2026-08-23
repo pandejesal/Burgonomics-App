@@ -10,6 +10,10 @@
   PETPOOJA_ACCESS_TOKEN = ""
   PETPOOJA_REST_ID = ""
 
+# Scheduled Nightly Reconciliation:
+# Netlify Scheduled Functions trigger (e.g. schedule = "@daily" in functions directory or via Netlify cron plugin)
+# Runs /.netlify/functions/reconcile to audit payment discrepancies and retry pending Petpooja orders.
+
 [[plugins]]
   package = "@netlify/plugin-functions-install-core"
 
@@ -21,6 +25,16 @@
 [[redirects]]
   from = "/payments/*"
   to = "/.netlify/functions/payments/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/reconcile"
+  to = "/.netlify/functions/reconcile"
+  status = 200
+
+[[redirects]]
+  from = "/reconcile"
+  to = "/.netlify/functions/reconcile"
   status = 200
 
 [[redirects]]

@@ -78,7 +78,16 @@ Format:
 - risks: Live Petpooja POS API interaction deferred until live credentials provided by user.
 - verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (58 pass, 100%) / npm run test:rules (18/18 pass) / grep "walletBalance|kitchen_orders|ioredis|bull" src/ (0).
 
-## PROMPT_05 — verdict: PENDING
+## PROMPT_05 — Webhook & Nightly Gateway Reconciliation — verdict: PASS — date: 2026-08-23
+- files_touched: [netlify/functions/reconcile.ts, netlify.toml, tests/reconcile/reconcile.test.ts, docs/antigravity/HANDOFF_LOG.md]
+- key_decisions: 
+  - Implemented netlify/functions/reconcile.ts: audits recent orders against paymentAudits and Razorpay gateway status.
+  - Automatically identifies gateway captured payments stuck as Pending in Firestore -> writes payment_discrepancies/{orderId}, fixes orders/{orderId} status to Paid, and records idempotent paymentAudits (kind: "reconcile_fix", keyed by reconcile_{orderId}_{dateKey}).
+  - Reprocesses pending_petpooja_retry queue items where nextRetryAt <= now.
+  - Added ?dryRun=1 support returning {ordersChecked, discrepanciesFound, fixesWouldApply, petpoojaRetried} with 0 database writes.
+  - Added Netlify scheduled function config and /api/reconcile endpoint redirect in netlify.toml.
+- risks: None. Unit test suite 64/64 passed; emulator rules tests 18/18 green.
+- verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (64 pass, 100%) / npm run test:rules (18/18 pass) / grep "walletBalance|kitchen_orders|ioredis|bull" src/ (0).
 
 ## PROMPT_06 — verdict: PENDING
 
