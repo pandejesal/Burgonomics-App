@@ -28,9 +28,23 @@ Format:
 - verification: npx tsc --noEmit (0 errors) / npm run build (pass, 0 admin chunks) / npm run lint (0 errors) / npm run test (32 pass) / grep -r "from '@/admin" src/ (0) / grep -r "/admin" src/ (0)
 - notes: Unblocks 07b (partner intake in burgonomics-partner).
 
-## PROMPT_07b — PARTNER intake admin — verdict: PENDING — in burgonomics-partner/docs/ANTIGRAVITY_ADMIN_INTAKE.md + grill mirror ANTIGRAVITY_GRILL_DECISIONS.md
+## PROMPT_07b — PARTNER intake admin — verdict: PASS — date: 2026-08-23
+- files_touched: [burgonomics-partner/src/admin/ (85 files), burgonomics-partner/src/pages/admin/AdminRoutes.tsx, burgonomics-partner/src/App.tsx, burgonomics-partner/docs/HANDOFF_LOG.md]
+- key_decisions: Intaked full 44-page admin portal into burgonomics-partner; converted to react-router-dom@7 with AdminPortalLayout, PetpoojaOperationsLayout, SystemOperationsLayout; wired /admin/* in App.tsx. System tabs remain Firestore-emulated docs (0 Redis/Bull).
+- risks: None. Clean build and 0 typecheck errors.
+- verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / grep -r "createFileRoute" src/ (0) / src/admin (85 files).
 
-## PROMPT_08 — CRM hierarchy + rules — verdict: PENDING — see 08_CRM_RULES_FINAL_SPEC.md (P0 after 07b)
+## PROMPT_03+08 — CRM hierarchy + RULES_MATRIX + 4 indexes — verdict: PASS — date: 2026-08-23
+- files_touched: [firestore.rules, firestore.indexes.json, docs/antigravity/RULES_MATRIX.md, tests/rules/firestore.rules.test.ts, scripts/test-rules.mjs, firebase.json, package.json, docs/antigravity/HANDOFF_LOG.md]
+- key_decisions: 
+  - Rewrote firestore.rules implementing full CRM RBAC matrix (isBrandOwner, isBranchOwner, ownsBranch, isChatParticipant).
+  - Enforced Customer loyalty global read/locked mutation, Orders branch-scoped reads/updates, Branches upcoming creation Brand Owner only (isBrandOwner()), Chats 1:1 pair isolation, PaymentAudits append-only.
+  - Created firestore.indexes.json with 4 composite indexes for orders + 1 for paymentAudits.
+  - Created docs/antigravity/RULES_MATRIX.md documenting 13 collections, query latency performance (2-4s), and known gaps.
+  - Added 18 emulator rules tests under tests/rules/firestore.rules.test.ts covering anon DENY, branch scoping, brand full access, global loyalty, upcoming branch creation guard, and chat pair isolation.
+- risks: None. Emulator rules tests 18/18 green.
+- verification: firebase emulators:exec --only firestore "npx vitest run tests/rules --reporter=verbose" (18/18 pass) / npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (32 pass) / grep "kitchen_orders|walletBalance|ioredis|bull" src/ (0).
+
 
 ## PROMPT_01 — verdict: PENDING — now after 08 per GRILL 14
 
