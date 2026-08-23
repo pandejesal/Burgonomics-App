@@ -145,7 +145,9 @@ export const useCartStore = create<CartState>()(
           let newAvailability = line.availability;
 
           if (prod.price !== line.unitPrice) {
-            messages.push(`Price for ${line.name} updated from ₹${line.unitPrice} to ₹${prod.price}.`);
+            messages.push(
+              `Price for ${line.name} updated from ₹${line.unitPrice} to ₹${prod.price}.`,
+            );
             newPrice = prod.price;
             lineChanged = true;
           }
@@ -231,7 +233,10 @@ export const useCartStore = create<CartState>()(
             storeId: (anyPersisted.storeId as string | null) ?? null,
             lines,
             promo: (anyPersisted.promo as AppliedPromo | null) ?? null,
-            priceLockExpiresAt: typeof anyPersisted.priceLockExpiresAt === "number" ? anyPersisted.priceLockExpiresAt : null,
+            priceLockExpiresAt:
+              typeof anyPersisted.priceLockExpiresAt === "number"
+                ? anyPersisted.priceLockExpiresAt
+                : null,
           } as Partial<CartState>;
         }
         return persisted as Partial<CartState>;

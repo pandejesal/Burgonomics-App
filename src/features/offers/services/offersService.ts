@@ -4,6 +4,8 @@ import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import type { AppliedOffer, Offer, OfferBundle } from "@/features/offers/models";
 import type { Fulfillment } from "@/features/stores/models/Store";
 
+import { SAMPLE_OFFERS } from "../data/sampleOffers";
+
 const REFRESH_INTERVAL_SECONDS = 300;
 
 export interface ListOffersInput {
@@ -26,11 +28,11 @@ async function fetchOffersFromFirebase(): Promise<Offer[]> {
     snap.forEach((docSnap) => {
       offers.push(docSnap.data() as Offer);
     });
-    return offers;
+    if (offers.length > 0) return offers;
   } catch (error) {
     console.error("Failed to fetch offers from Firebase:", error);
-    return [];
   }
+  return SAMPLE_OFFERS;
 }
 
 function mockComputeDiscount(offer: Offer, subtotal: number): number {

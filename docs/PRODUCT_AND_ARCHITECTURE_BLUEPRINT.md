@@ -1,4 +1,5 @@
 # 🍔 BURGONOMICS — Product & Architecture Blueprint
+
 ### Complete Specification for Multi-Outlet Mobile Ordering, Real-Time Petpooja POS Synchronization, and Native iOS / Android Distribution
 
 ---
@@ -37,6 +38,7 @@ The application follows the **60-30-10 Visual Rule** tailored for clean, appetit
 ```
 
 ### Typography Hierarchy
+
 - **`MonstroSolid`** (`--font-display`): Brand identity, logo lockup, section hero headers, and promotional banner titles.
 - **`Montserrat`** (`--font-sans`, weights 300–900): All UI content, product titles, descriptions, modifier options, prices, navigation items, and body copy.
 
@@ -95,6 +97,7 @@ flowchart TD
 ```
 
 ### Ingestion & Sync Rules
+
 1. **Near-Instant Menu Ingestion (< 5 Seconds)**:
    - When menu changes (price updates, new items, category adjustments) are saved in Petpooja, a `push_menu` HTTP webhook is posted to `/api/webhooks/petpooja/menu`.
    - The webhook parses the datagram and batch-writes updates to Firestore (`petpooja_products`, `petpooja_categories`, `petpooja_addons`).
@@ -114,11 +117,11 @@ flowchart TD
 
 Burgonomics supports three distinct fulfillment modes across all 17+ outlets:
 
-| Fulfillment Mode | Online Payment (Razorpay) | Counter / Delivery Payment | Operational Details |
-| :--- | :--- | :--- | :--- |
-| **Delivery** | Credit/Debit Cards, UPI, NetBanking, Wallets (`PREPAID`) | **Pay on Delivery (Cash/UPI)** (`COD`) | GPS validates delivery address is within the store's delivery radius (e.g. 5–7 km). Dispatches delivery rider KOT to POS. |
-| **Takeaway** | Credit/Debit Cards, UPI, NetBanking, Wallets (`PREPAID`) | **Pay at Counter** (`UNPAID`) | Generates customer pickup token (e.g. `BG-4921`). Kitchen prepares order for counter pickup. |
-| **Dine-In** | Credit/Debit Cards, UPI, NetBanking, Wallets (`PREPAID`) | **Pay at Table / Counter** (`UNPAID` KOT) | Requires manual **Table Number** entry. Kitchen prints KOT mapped directly to that specific table. |
+| Fulfillment Mode | Online Payment (Razorpay)                                | Counter / Delivery Payment                | Operational Details                                                                                                       |
+| :--------------- | :------------------------------------------------------- | :---------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| **Delivery**     | Credit/Debit Cards, UPI, NetBanking, Wallets (`PREPAID`) | **Pay on Delivery (Cash/UPI)** (`COD`)    | GPS validates delivery address is within the store's delivery radius (e.g. 5–7 km). Dispatches delivery rider KOT to POS. |
+| **Takeaway**     | Credit/Debit Cards, UPI, NetBanking, Wallets (`PREPAID`) | **Pay at Counter** (`UNPAID`)             | Generates customer pickup token (e.g. `BG-4921`). Kitchen prepares order for counter pickup.                              |
+| **Dine-In**      | Credit/Debit Cards, UPI, NetBanking, Wallets (`PREPAID`) | **Pay at Table / Counter** (`UNPAID` KOT) | Requires manual **Table Number** entry. Kitchen prints KOT mapped directly to that specific table.                        |
 
 ---
 
@@ -162,6 +165,8 @@ Burgonomics supports three distinct fulfillment modes across all 17+ outlets:
 
 ## 8. 🛡️ Admin Operations Console
 
+> **Admin portal moved to burgonomics-partner** — see [07_ADMIN_PORTAL_EXTRACTION.md](file:///c:/Users/DELL/Desktop/Burgonomics/burgonomics-foundation-core/docs/antigravity/07_ADMIN_PORTAL_EXTRACTION.md)
+
 The Admin Console provides centralized control over the 17+ outlets and Petpooja gateway:
 
 - **Connected Stores**: Overview of all outlets, online/busy toggles, manual menu sync trigger, webhook replay, cache flush, and circuit breaker reset.
@@ -197,4 +202,4 @@ firestore-root/
 
 ---
 
-*BURGONOMICS Core Systems & Product Engineering Architecture.*
+_BURGONOMICS Core Systems & Product Engineering Architecture._

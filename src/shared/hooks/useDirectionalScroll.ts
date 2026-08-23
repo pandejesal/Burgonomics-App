@@ -12,10 +12,7 @@ import * as React from "react";
  *
  * Prevents dead zones and ensures vertical scrolling always wins unless strong horizontal gesture.
  */
-export function useDirectionalScroll(
-  ref: React.RefObject<HTMLElement | null>,
-  threshold = 12,
-) {
+export function useDirectionalScroll(ref: React.RefObject<HTMLElement | null>, threshold = 12) {
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -106,11 +103,7 @@ export function useDirectionalScroll(
               vx *= Math.pow(0.92, delta / 16.6);
 
               const maxScroll = el.scrollWidth - el.clientWidth;
-              if (
-                Math.abs(vx) > 0.05 &&
-                el.scrollLeft > 0 &&
-                el.scrollLeft < maxScroll
-              ) {
+              if (Math.abs(vx) > 0.05 && el.scrollLeft > 0 && el.scrollLeft < maxScroll) {
                 animId = requestAnimationFrame(stepX);
               } else {
                 animId = null;
@@ -129,13 +122,8 @@ export function useDirectionalScroll(
               });
               vy *= Math.pow(0.92, delta / 16.6);
 
-              const maxScroll =
-                document.documentElement.scrollHeight - window.innerHeight;
-              if (
-                Math.abs(vy) > 0.05 &&
-                window.scrollY > 0 &&
-                window.scrollY < maxScroll
-              ) {
+              const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+              if (Math.abs(vy) > 0.05 && window.scrollY > 0 && window.scrollY < maxScroll) {
                 animId = requestAnimationFrame(stepY);
               } else {
                 animId = null;

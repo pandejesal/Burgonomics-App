@@ -29,17 +29,10 @@ interface ConsumerRouteTransitionProps {
 export function ConsumerRouteTransition({ children }: ConsumerRouteTransitionProps) {
   const location = useLocation();
   const pathname = location.pathname;
-  const isAdmin = pathname.startsWith("/admin");
 
   const [transitionClass, setTransitionClass] = React.useState<string>("");
 
   React.useEffect(() => {
-    if (isAdmin) {
-      setTransitionClass("");
-      lastPathname = pathname;
-      return;
-    }
-
     if (isFirstLoad) {
       isFirstLoad = false;
       lastPathname = pathname;
@@ -53,11 +46,7 @@ export function ConsumerRouteTransition({ children }: ConsumerRouteTransitionPro
       lastPathname = pathname;
       setTransitionClass(direction);
     }
-  }, [pathname, isAdmin]);
-
-  if (isAdmin) {
-    return <>{children}</>;
-  }
+  }, [pathname]);
 
   return (
     <div key={pathname} className={`route-transition-container ${transitionClass}`.trim()}>

@@ -15,7 +15,7 @@
  */
 import { ok, type ApiResult } from "@/core/network/http";
 import { ordersService } from "@/features/orders/services/ordersService";
-import { useOrdersStore } from "@/features/orders/state/ordersStore";
+import { useOrdersStore, selectAllOrders } from "@/features/orders/state/ordersStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useCartStore } from "@/features/cart/state/cartStore";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
@@ -69,7 +69,30 @@ export class OrderRepository {
   // -- History ---------------------------------------------------------
 
   async listOrders(query: OrderListQuery = {}): Promise<ApiResult<OrderListResult>> {
-    return this.service.listOrders(query);
+    const res = await this.service.listOrders(query);
+    if (res.success && res.data.items.length === 0) {
+      const localOrders = selectAllOrders(useOrdersStore.getState());
+      if (localOrders.length > 0) {
+        let filtered = localOrders;
+        if (query.bucket) {
+          filtered = filtered.filter((o: Order) => {
+            if (query.bucket === "ongoing")
+              return o.status.kind === "upcoming" || o.status.kind === "in_progress";
+            if (query.bucket === "cancelled")
+              return o.status.kind === "cancelled" || o.status.kind === "failed";
+            return o.status.kind === "completed";
+          });
+        }
+        return ok({
+          items: filtered,
+          page: 1,
+          pageSize: query.pageSize ?? 20,
+          total: filtered.length,
+          hasMore: false,
+        });
+      }
+    }
+    return res;
   }
 
   async getOrder(id: string): Promise<ApiResult<Order | null>> {

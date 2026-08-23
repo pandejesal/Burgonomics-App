@@ -208,7 +208,7 @@ function OtpScreen() {
             </Text>
           )}
         </div>
-        
+
         {/* reCAPTCHA container for Firebase Phone Auth resend */}
         <div id="recaptcha-container" className="flex justify-center my-2" />
       </div>

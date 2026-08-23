@@ -11,7 +11,6 @@
  * bypasses a repository.
  */
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
 import {
   useDemoStore,
   isDebugAllowed,
@@ -94,20 +93,6 @@ function DebugPanelInner() {
       <div className="max-h-[54vh] overflow-y-auto px-3 py-2 text-[11px] leading-relaxed">
         {tab === "state" && (
           <div className="space-y-3">
-            <div className="rounded-xl bg-[#0E4825]/20 border border-[#0E4825]/40 p-2.5 flex items-center justify-between gap-3">
-              <div>
-                <div className="font-bold text-emerald-400 text-xs">Admin Access Gateway</div>
-                <div className="text-[10px] text-white/60">
-                  Configure systems, sync menu catalogs, and manage orders
-                </div>
-              </div>
-              <Link
-                to="/admin"
-                className="rounded-lg bg-[#0E4825] px-2.5 py-1.5 font-bold text-xs text-white hover:bg-[#0B3A1D] transition-all shrink-0 shadow-sm border border-white/10"
-              >
-                Go to Admin
-              </Link>
-            </div>
             <Row label="Simulation mode">
               <Toggle value={demo.simulationMode} onChange={demo.setSimulationMode} />
             </Row>
