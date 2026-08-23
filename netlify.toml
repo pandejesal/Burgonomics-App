@@ -9,6 +9,12 @@
   PETPOOJA_APP_SECRET = ""
   PETPOOJA_ACCESS_TOKEN = ""
   PETPOOJA_REST_ID = ""
+  PORTER_API_KEY = ""
+  PORTER_CUSTOMER_ID = ""
+  PORTER_CITY = "Ahmedabad"
+  PORTER_WEBHOOK_SECRET = ""
+  FCM_ENABLED = "false"
+  VITE_FCM_VAPID_KEY = ""
 
 # Scheduled Nightly Reconciliation:
 # Netlify Scheduled Functions trigger (e.g. schedule = "@daily" in functions directory or via Netlify cron plugin)
@@ -50,6 +56,16 @@
 [[redirects]]
   from = "/api/petpooja/queue/*"
   to = "/.netlify/functions/petpooja-queue/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/porter/create"
+  to = "/.netlify/functions/create-porter-order"
+  status = 200
+
+[[redirects]]
+  from = "/api/porter/webhook"
+  to = "/.netlify/functions/porter-webhook"
   status = 200
 
 [[redirects]]

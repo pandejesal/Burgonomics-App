@@ -104,3 +104,14 @@ Format:
 - smoke_status: PASS (see docs/antigravity/SMOKE_REPORT.md)
 - known_gaps: Live Petpooja POS API creds pending owner delivery (safe fallback & queue active); release keystore pending (OPS-4)
 - next_horizon: Week 2 Prompt 09 — Porter Delivery (api.porter.in behind features.porterEnabled=false default stub) & FCM push notifications.
+
+## PROMPT_09_STUB — Porter Production Delivery (api.porter.in) + FCM 5 Topics Stub — verdict: PASS — date: 2026-08-23
+- files_touched: [netlify/functions/create-porter-order.ts, netlify/functions/porter-webhook.ts, netlify/functions/lib/notify.ts, public/firebase-messaging-sw.js, netlify.toml, .env.example, scripts/seed.ts, tests/porter/porter-stub.test.ts, docs/antigravity/HANDOFF_LOG.md]
+- key_decisions: 
+  - Implemented netlify/functions/create-porter-order.ts: gated behind branches/{id}.features.porterEnabled===true and PORTER_API_KEY. Defaults to returning {skipped: true, reason: "porter_disabled"} with 0 external calls when disabled.
+  - Added ?dryRun=1 preview query support in create-porter-order returning {wouldCreate: true, payload} with 0 DB writes.
+  - Implemented netlify/functions/porter-webhook.ts with constant-time HMAC signature verification (timingSafeEqual) and automatic updates to orders delivery.porter.status + delivery_logs.
+  - Implemented netlify/functions/lib/notify.ts with 5-topic FCM routing (order_{id}, branch_{id}, brand, chat_{pairId}, upcoming_{branchId}) gated by FCM_ENABLED===true.
+  - Created public/firebase-messaging-sw.js service worker stub and updated scripts/seed.ts to initialize branches with features.porterEnabled=false.
+- risks: Live Porter and live FCM keys deferred to production launch; full test suite passes with 0 credentials.
+- verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (70 pass, 100%) / npm run test:rules (18 pass) / node scripts/smoke.mjs (0 exit code).
