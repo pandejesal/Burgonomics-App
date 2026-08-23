@@ -89,6 +89,18 @@ Format:
 - risks: None. Unit test suite 64/64 passed; emulator rules tests 18/18 green.
 - verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (64 pass, 100%) / npm run test:rules (18/18 pass) / grep "walletBalance|kitchen_orders|ioredis|bull" src/ (0).
 
-## PROMPT_06 — verdict: PENDING
+## PROMPT_06 — Smoke & Role Verification Gate — verdict: PASS — date: 2026-08-23
+- files_touched: [scripts/smoke.sh, scripts/smoke.mjs, docs/antigravity/SMOKE_REPORT.md, docs/antigravity/HANDOFF_LOG.md]
+- key_decisions: 
+  - Created automated smoke verification suites (scripts/smoke.sh & scripts/smoke.mjs) testing TypeScript compilation, production build, decoupling from @/admin, permanent architecture prohibitions (kitchen_orders, walletBalance, ioredis, bull, socket.io), 64 unit/flow tests, 18 Firestore emulator security rules tests, Capacitor appIds, composite indexes, and Netlify dry-run endpoints.
+  - Authored comprehensive docs/antigravity/SMOKE_REPORT.md with complete gate breakdown.
+- risks: None. 100% automated gates green.
+- verification: bash scripts/smoke.sh (0 exit code) / node scripts/smoke.mjs (0 exit code) / npx tsc --noEmit (0) / npm run build (0) / npm run test (64 pass) / npm run test:rules (18 pass) / grep DON'T WANTs (0).
 
-## WEEK1 EXIT — PENDING
+## WEEK1 EXIT — PASS — date: 2026-08-23
+- branch: chore/remove-admin-portal (burgonomics-foundation-core)
+- total_prompts_completed: 6/6 (PROMPT_03+08, PROMPT_01, PROMPT_02+09, PROMPT_04+09, PROMPT_05, PROMPT_06)
+- total_automated_tests: 82 passed (64 Vitest unit/flow + 18 Firestore emulator rules)
+- smoke_status: PASS (see docs/antigravity/SMOKE_REPORT.md)
+- known_gaps: Live Petpooja POS API creds pending owner delivery (safe fallback & queue active); release keystore pending (OPS-4)
+- next_horizon: Week 2 Prompt 09 — Porter Delivery (api.porter.in behind features.porterEnabled=false default stub) & FCM push notifications.
