@@ -46,7 +46,16 @@ Format:
 - verification: firebase emulators:exec --only firestore "npx vitest run tests/rules --reporter=verbose" (18/18 pass) / npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (32 pass) / grep "kitchen_orders|walletBalance|ioredis|bull" src/ (0).
 
 
-## PROMPT_01 — verdict: PENDING — now after 08 per GRILL 14
+## PROMPT_01 — Payments: Razorpay HMAC + idempotency + COD auto-refund — verdict: PASS — date: 2026-08-23
+- files_touched: [netlify/functions/payments.ts, netlify/functions/lib/verifySignature.ts, tests/payments/verify-signature.test.ts, tests/payments/payments-flow.test.ts, docs/antigravity/HANDOFF_LOG.md]
+- key_decisions: 
+  - Created canonical netlify/functions/lib/verifySignature.ts using crypto.timingSafeEqual for constant-time HMAC verification; eliminated duplicate inline HMAC across handlers.
+  - Enforced Idempotency & Dedup via paymentAudits collection; replays return 200 { status: 'already_processed', dedup: true }.
+  - Enforced Server-Authoritative pricing recompute (5% GST, ₹0 packing charge default, ₹40 delivery / free > ₹499); detected underpaid amounts with 400 AMOUNT_MISMATCH and logged to payment_discrepancies.
+  - Implemented Cash on Delivery (COD) order initiation with payment.status: 'pending_cod' and append-only paymentAudits kind: 'cod'.
+  - Implemented pre-delivery Auto-Refund (/refundOrder) calling Razorpay API, recording refunds & paymentAudits kind: 'refund' with branchId scoping.
+- risks: None. Unit test suite 46/46 passed; emulator rules tests 18/18 green.
+- verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (46 pass, 100% payments suite) / npm run test:rules (18/18 pass) / grep "walletBalance" src/ (0).
 
 ## PROMPT_02 — verdict: PENDING
 
