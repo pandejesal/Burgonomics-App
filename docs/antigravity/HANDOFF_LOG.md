@@ -115,3 +115,10 @@ Format:
   - Created public/firebase-messaging-sw.js service worker stub and updated scripts/seed.ts to initialize branches with features.porterEnabled=false.
 - risks: Live Porter and live FCM keys deferred to production launch; full test suite passes with 0 credentials.
 - verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (70 pass, 100%) / npm run test:rules (18 pass) / node scripts/smoke.mjs (0 exit code).
+
+## MERGE WEEK1→main — PASS & TAGGED — date: 2026-08-24
+- branch: main (merged from chore/remove-admin-portal 55ad5dc)
+- tag: `week1-exit-2026-08-24`
+- partner_app_status: `burgonomics-partner` at `e147e3d` (07b PASS, partner appId com.glassdoorsstudio.burgonomics.partner, 44 pages intaked)
+- verification_on_main: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (70/70 pass) / npm run test:rules (18/18 pass) / node scripts/smoke.mjs (8/8 pass) / grep DON'T WANTs (0).
+- status: 100% GREEN. Ready for live credentials and Week 2 roadmap.

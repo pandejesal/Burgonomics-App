@@ -1,10 +1,10 @@
 # BURGONOMICS — QA Smoke & Role Verification Report (Week 1 Final Gate)
 
-**Date:** 2026-08-23  
-**Branch:** `chore/remove-admin-portal`  
+**Date:** 2026-08-24  
+**Branch:** `main`  
 **Repository:** `burgonomics-foundation-core`  
 **Executor:** Antigravity  
-**Status:** **100% PASS — WEEK 1 EXIT APPROVED**
+**Status:** **100% PASS — WEEK 1 EXIT APPROVED & MERGED TO MAIN**
 
 ---
 
@@ -16,13 +16,14 @@
 | **2** | **Production Build** | `npm run build` | **PASS** | Vite static bundle generated cleanly in `dist/mobile` |
 | **3** | **Admin Decoupling** | `grep -r "from '@/admin" src/` | **PASS** | 0 references to legacy admin code in customer app |
 | **4** | **Permanent Prohibitions (DON'T WANTs)** | `grep "kitchen_orders\|walletBalance\|ioredis\|bull\|socket.io"` | **PASS** | 0 occurrences in source codebase |
-| **5** | **Unit & Feature Test Suite** | `npm run test` | **64/64 PASS** | 100% pass across pricing, payments, petpooja, parity, reconcile |
+| **5** | **Unit & Feature Test Suite** | `npm run test` | **70/70 PASS** | 100% pass across pricing, payments, petpooja, parity, reconcile, porter/fcm |
 | **6** | **Firestore Security Rules Matrix** | `npm run test:rules` | **18/18 PASS** | Anonymous DENY, loyalty lock, branch scoping, chat pairs verified |
 | **7** | **Capacitor App Identifiers** | `capacitor.config.ts` | **PASS** | Core: `com.glassdoorsstudio.burgonomics`<br>Partner: `com.glassdoorsstudio.burgonomics.partner` |
 | **8** | **Composite Indexes** | `firestore.indexes.json` | **PASS** | 5 composite indexes configured (4 orders + 1 paymentAudits) |
 | **9** | **Pricing Engine & Dry Run** | `?dryRun=1` / `dryRun: true` | **PASS** | Strict > ₹499 free delivery (₹499 pays ₹40, ₹500 pays ₹0); 0 writes on dry run |
 | **10** | **Petpooja Health & Outage Fallback** | `GET /api/petpooja/health` | **PASS** | Standby when disabled; clean Firestore fallback |
 | **11** | **Nightly Reconciliation** | `GET /api/reconcile?dryRun=1` | **PASS** | Idempotent `reconcile_fix` audit logs + auto-repair for captured orders |
+| **12** | **Porter & FCM Gated Stubs** | `create-porter-order` / `notify` | **PASS** | Gated by `features.porterEnabled=false` & `FCM_ENABLED=false` |
 
 ---
 
