@@ -24,6 +24,21 @@
   status = 200
 
 [[redirects]]
+  from = "/api/petpooja/health"
+  to = "/.netlify/functions/petpooja-health"
+  status = 200
+
+[[redirects]]
+  from = "/api/petpooja/webhook"
+  to = "/.netlify/functions/petpooja-webhook"
+  status = 200
+
+[[redirects]]
+  from = "/api/petpooja/queue/*"
+  to = "/.netlify/functions/petpooja-queue/:splat"
+  status = 200
+
+[[redirects]]
   from = "/api/account/*"
   to = "/.netlify/functions/account/:splat"
   status = 200

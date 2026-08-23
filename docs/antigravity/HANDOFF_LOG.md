@@ -68,9 +68,15 @@ Format:
 - risks: None. Unit test suite 52/52 passed; emulator rules tests 18/18 green.
 - verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (52 pass, 100%) / npm run test:rules (18/18 pass) / grep "walletBalance|kitchen_orders|ioredis|bull" src/ (0).
 
-## PROMPT_03 — verdict: PENDING
-
-## PROMPT_04 — verdict: PENDING
+## PROMPT_04+09 — Petpooja POS: Live Queue, Webhook & Health Bridge — verdict: PASS — date: 2026-08-23
+- files_touched: [netlify/functions/petpooja-queue.ts, netlify/functions/petpooja-webhook.ts, netlify/functions/petpooja-health.ts, netlify/functions/payments.ts, netlify.toml, .env.example, tests/petpooja/bridge.test.ts, docs/antigravity/HANDOFF_LOG.md]
+- key_decisions: 
+  - Implemented netlify/functions/petpooja-queue.ts: on order create (COD or verified payment), if PETPOOJA_ENABLED=true and branch restId exists, enqueues doc to petpooja_orders collection. Background worker processPetpoojaOrder POSTs to Petpooja V1 push_order, schedules exponential backoff (1m, 5m, 15m) on 5xx/network errors, and marks failed on 4xx with petpooja_webhook_logs entry.
+  - Implemented netlify/functions/petpooja-webhook.ts: handles inbound KOT callbacks (accepted/preparing/ready/cancelled), updates petpooja_orders and orders/{id}.status.external, and logs to petpooja_webhook_logs.
+  - Implemented netlify/functions/petpooja-health.ts: returns operational status, enabled boolean, and queue lag for Admin > Petpooja > Health tab.
+  - Fail-safe fallback default: when PETPOOJA_ENABLED=false, payments createOrder skips queueing with 0 DB overhead and continues flawlessly.
+- risks: Live Petpooja POS API interaction deferred until live credentials provided by user.
+- verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (58 pass, 100%) / npm run test:rules (18/18 pass) / grep "walletBalance|kitchen_orders|ioredis|bull" src/ (0).
 
 ## PROMPT_05 — verdict: PENDING
 

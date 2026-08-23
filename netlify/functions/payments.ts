@@ -11,6 +11,7 @@ import {
   resolveStorePricingConfig,
   resolveStorePricingConfigWithMetadata,
 } from "./lib/server-price";
+import { enqueuePetpoojaOrder } from "./petpooja-queue";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Razorpay = require("razorpay");
@@ -284,6 +285,17 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
+      // Enqueue to Petpooja queue (if Petpooja is enabled)
+      await enqueuePetpoojaOrder(db, generatedOrderId, effectiveStoreId, {
+        id: generatedOrderId,
+        items,
+        totals: serverPrice,
+        address: checkoutSnapshot?.address || null,
+        store: checkoutSnapshot?.store || { id: effectiveStoreId, name: "Burgonomics" },
+        payment: { method: "cod" },
+        notes: checkoutSnapshot?.notes || "",
+      });
+
       res.status(200).send({
         status: "success",
         orderId: generatedOrderId,
@@ -520,6 +532,19 @@ export async function handleVerifyPayment(req: Request, res: Response) {
         validatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Enqueue to Petpooja queue (if enabled)
+    const storeIdForPetpooja = paymentOrderData?.storeId || paymentOrderData?.snapshot?.store?.id;
+    if (storeIdForPetpooja) {
+      await enqueuePetpoojaOrder(db, orderId, storeIdForPetpooja, {
+        id: orderId,
+        items: paymentOrderData?.snapshot?.items || [],
+        totals: { grandTotal: paymentOrderData?.amount || 0 },
+        address: paymentOrderData?.snapshot?.address || null,
+        store: paymentOrderData?.snapshot?.store || { id: storeIdForPetpooja, name: "Burgonomics" },
+        payment: { method: "online" },
       });
     }
 
