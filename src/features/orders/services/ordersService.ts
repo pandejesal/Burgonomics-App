@@ -267,7 +267,12 @@ export const ordersService = {
       if (user) {
         const ordersRef = collection(db, "orders");
         const q = fsQuery(ordersRef, where("userId", "==", user.uid));
-        const snapshot = await getDocs(q);
+        const snapshot = await Promise.race([
+          getDocs(q),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Firestore timeout")), 1500),
+          ),
+        ]);
 
         const fsOrders: Order[] = [];
         snapshot.forEach((doc) => {

@@ -37,10 +37,7 @@ export function CategoryTabs({ categories, activeId, onSelect, className }: Prop
       role="tablist"
       aria-label="Menu categories"
       ref={listRef}
-      className={cn(
-        "flex gap-2 overflow-x-auto no-scrollbar touch-pan-y px-4 py-2",
-        className,
-      )}
+      className={cn("flex gap-2 overflow-x-auto no-scrollbar touch-pan-y px-4 py-2", className)}
     >
       {categories.map((c) => {
         const active = c.id === activeId;

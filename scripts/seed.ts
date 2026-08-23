@@ -129,6 +129,7 @@ async function run() {
       turnOnAt: null,
       petpoojaRestId: (store as any).petpoojaRestId || null,
       supports: { delivery: true, takeaway: true, dineIn: true },
+      features: { porterEnabled: false },
       updatedAt: new Date().toISOString(),
     };
     await adminStoresRef.doc(store.id).set(storeData);

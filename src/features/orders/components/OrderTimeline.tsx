@@ -79,12 +79,25 @@ export function OrderTimeline({ steps, cancelled, className }: Props) {
             </motion.div>
           </div>
 
-          {/* Quick labels */}
-          <div className="flex justify-between type-caption text-text-secondary text-[10px] px-1 font-semibold uppercase tracking-wider">
-            <span>Placed</span>
-            <span>Kitchen</span>
-            <span>In Transit</span>
-            <span>Arrived</span>
+          {/* Milestone labels */}
+          <div className="flex justify-between items-center text-[10px] font-semibold uppercase tracking-wider text-text-secondary px-1">
+            {steps.map((s, idx) => (
+              <span
+                key={idx}
+                className={cn(
+                  "truncate max-w-[65px] text-center",
+                  idx <= currentStepIndex
+                    ? "text-primary font-bold"
+                    : "text-text-secondary opacity-75",
+                )}
+              >
+                {s.code === "READY_FOR_PICKUP"
+                  ? "Ready"
+                  : s.code === "OUT_FOR_DELIVERY"
+                    ? "Transit"
+                    : s.title}
+              </span>
+            ))}
           </div>
         </div>
       )}

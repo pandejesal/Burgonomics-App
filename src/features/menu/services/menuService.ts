@@ -1,6 +1,16 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { db } from "@/core/config/firebase";
-import { collection, getDocs, doc, getDoc, query, where, limit, onSnapshot, type Unsubscribe } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  query,
+  where,
+  limit,
+  onSnapshot,
+  type Unsubscribe,
+} from "firebase/firestore";
 import type {
   CustomizationGroup,
   CustomizationOption,
@@ -70,12 +80,20 @@ function mapProductDoc(data: any, docId: string): Product {
   const finalImageUrl = heroUrl || standardUrl;
 
   const badges = Array.isArray(data.badges) ? [...data.badges] : [];
-  if (data.isBestseller || data.bestseller || (Array.isArray(data.tags) && data.tags.includes("bestseller"))) {
+  if (
+    data.isBestseller ||
+    data.bestseller ||
+    (Array.isArray(data.tags) && data.tags.includes("bestseller"))
+  ) {
     if (!badges.some((b: any) => b.id === "bestseller")) {
       badges.push({ id: "bestseller", label: "Bestseller", tone: "warning" });
     }
   }
-  if (data.isChefsSpecial || data.chefsSpecial || (Array.isArray(data.tags) && data.tags.includes("chef_special"))) {
+  if (
+    data.isChefsSpecial ||
+    data.chefsSpecial ||
+    (Array.isArray(data.tags) && data.tags.includes("chef_special"))
+  ) {
     if (!badges.some((b: any) => b.id === "chefs_special")) {
       badges.push({ id: "chefs_special", label: "Chef's Special", tone: "primary" });
     }

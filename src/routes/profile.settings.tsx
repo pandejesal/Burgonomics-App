@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
@@ -12,7 +12,6 @@ import { settingsRepository } from "@/features/settings/repositories/SettingsRep
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { toast } from "sonner";
 import { APP } from "@/core/constants/app";
-import { Shield } from "lucide-react";
 
 export const Route = createFileRoute("/profile/settings")({
   head: () => ({
@@ -121,30 +120,6 @@ function Body() {
               value={settings.personalizedAdsOptIn}
               onChange={(v) => void settingsRepository.update({ personalizedAdsOptIn: v })}
             />
-          </div>
-        </AppCard>
-
-        {/* Administrative Gateway */}
-        <AppCard padded>
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0E4825]/10 text-[#0E4825]">
-              <Shield size={20} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <Text variant="titleMedium" className="mb-1 text-[#0E4825] font-bold">
-                Administrative Gateway
-              </Text>
-              <Text variant="caption" tone="secondary" className="mb-4 block leading-relaxed">
-                Log in to the BURGONOMICS Mission Control and POS coordination console. Designed for
-                system administrators, developers, and store managers.
-              </Text>
-              <Link
-                to="/admin/login"
-                className="inline-flex items-center justify-center rounded-xl bg-[#0E4825] px-4 py-2.5 text-xs font-bold text-white transition-all hover:bg-[#0B3A1D] hover:shadow-[0_4px_12px_rgba(14,72,37,0.15)] shadow-sm active:scale-95"
-              >
-                Launch Admin Portal
-              </Link>
-            </div>
           </div>
         </AppCard>
 

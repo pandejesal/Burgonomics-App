@@ -66,12 +66,7 @@ export function BannerCarousel({ banners, className }: Props) {
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
     >
-      <div
-        ref={scrollerRef}
-        className={cn(
-          "flex overflow-x-auto touch-pan-y no-scrollbar",
-        )}
-      >
+      <div ref={scrollerRef} className={cn("flex overflow-x-auto touch-pan-y no-scrollbar")}>
         {banners.map((b, idx) => (
           <button
             key={b.id}

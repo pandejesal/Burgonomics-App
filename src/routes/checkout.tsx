@@ -440,7 +440,8 @@ function CheckoutPage() {
               <span>10-Min Price Lock Active</span>
             </div>
             <span className="font-mono font-bold text-accent">
-              {Math.floor(remainingLockSeconds / 60)}:{(remainingLockSeconds % 60).toString().padStart(2, "0")} left
+              {Math.floor(remainingLockSeconds / 60)}:
+              {(remainingLockSeconds % 60).toString().padStart(2, "0")} left
             </span>
           </div>
         )}
@@ -636,7 +637,10 @@ function CheckoutPage() {
                 </div>
                 <div className="rounded-[var(--radius-medium)] bg-bg-secondary p-3.5 space-y-3">
                   <div>
-                    <label htmlFor="table-number-input" className="block text-xs font-bold text-text-primary mb-1">
+                    <label
+                      htmlFor="table-number-input"
+                      className="block text-xs font-bold text-text-primary mb-1"
+                    >
                       Table Number <span className="text-accent">*</span>
                     </label>
                     <input

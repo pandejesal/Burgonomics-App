@@ -1,7 +1,18 @@
 import * as admin from "firebase-admin";
-import * as crypto from "crypto";
 import express, { Request, Response } from "express";
 import serverless from "serverless-http";
+import {
+  verifyRazorpaySignature,
+  verifyPaymentSignature,
+  computeHmac,
+} from "./lib/verifySignature";
+import {
+  computeServerPrice,
+  resolveStorePricingConfig,
+  resolveStorePricingConfigWithMetadata,
+} from "./lib/server-price";
+import { enqueuePetpoojaOrder } from "./petpooja-queue";
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Razorpay = require("razorpay");
 
@@ -25,7 +36,12 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-function getRazorpayInstance() {
+export { db, computeHmac, verifyRazorpaySignature, verifyPaymentSignature, resolveStorePricingConfig };
+
+/**
+ * Returns a configured Razorpay instance.
+ */
+export function getRazorpayInstance() {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
@@ -44,7 +60,7 @@ function getRazorpayInstance() {
 /**
  * Validates the caller's Firebase Auth token.
  */
-async function authenticateRequest(req: Request): Promise<admin.auth.DecodedIdToken | null> {
+export async function authenticateRequest(req: Request): Promise<admin.auth.DecodedIdToken | null> {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return null;
@@ -58,12 +74,10 @@ async function authenticateRequest(req: Request): Promise<admin.auth.DecodedIdTo
   }
 }
 
-import { computeServerPrice, resolveStorePricingConfig } from "./lib/server-price";
-
 /**
- * Resolves live product price from Firestore catalog.
+ * Resolves live product price from Firestore catalog or live Petpooja cache.
  */
-async function resolveProductPrice(productId: string): Promise<number | null> {
+export async function resolveProductPrice(productId: string): Promise<number | null> {
   if (!productId) return null;
   const prodSnap = await db.collection("petpooja_products").doc(productId).get();
   if (prodSnap.exists) {
@@ -75,23 +89,52 @@ async function resolveProductPrice(productId: string): Promise<number | null> {
 }
 
 /**
- * Validates the Razorpay signature for webhook authenticity.
+ * Helper to record append-only audit trail in paymentAudits collection.
+ * Follows strict append-only semantics (create allow, update/delete deny).
  */
-function validateRazorpaySignature(body: string, signature: string, secret: string): boolean {
-  const expected = crypto.createHmac("sha256", secret).update(body).digest();
-  let provided: Buffer;
+export async function recordPaymentAudit(
+  auditKey: string,
+  data: {
+    orderId?: string | null;
+    paymentId?: string | null;
+    refundId?: string | null;
+    branchId?: string | null;
+    userId?: string | null;
+    amount?: number | null;
+    amountPaise?: number | null;
+    kind: "payment_captured" | "payment_verified" | "cod" | "refund" | "payment_failed" | "discrepancy";
+    source: "webhook" | "client_verify" | "order_create" | "auto_refund";
+    metadata?: Record<string, any>;
+  },
+): Promise<{ alreadyProcessed: boolean }> {
   try {
-    provided = Buffer.from(signature, "hex");
-  } catch {
-    return false;
+    const auditRef = db.collection("paymentAudits").doc(auditKey);
+    const snap = await auditRef.get();
+    if (snap.exists) {
+      return { alreadyProcessed: true };
+    }
+
+    await auditRef.set({
+      auditId: auditKey,
+      ...data,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { alreadyProcessed: false };
+  } catch (e: any) {
+    console.warn(`[Netlify Payments] Error writing paymentAudit ${auditKey}:`, e?.message);
+    return { alreadyProcessed: false };
   }
-  return provided.length === expected.length && crypto.timingSafeEqual(expected, provided);
 }
 
 /**
- * Handler for creating a Razorpay order from backend with server-authoritative pricing.
+ * Handler for creating a Razorpay order from backend with server-authoritative pricing (or COD order / dryRun preview).
  */
 export async function handleCreatePaymentOrder(req: Request, res: Response) {
+  const isDryRun =
+    req.query?.dryRun === "1" ||
+    req.query?.dryRun === "true" ||
+    req.body?.dryRun === true;
+
   // 1. Authenticate caller (SEC-3: Strictly require valid Firebase ID token)
   const decodedToken = await authenticateRequest(req);
   if (!decodedToken || !decodedToken.uid) {
@@ -107,6 +150,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
     receipt,
     storeId,
     fulfillment,
+    paymentMethod = "online",
     checkoutToken,
     checkoutSnapshot,
   } = req.body;
@@ -123,9 +167,9 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
 
   try {
     // 2. Resolve store-level pricing config strictly (fail-closed if unseeded/unreachable)
-    let pricingConfig;
+    let pricingResolution;
     try {
-      pricingConfig = await resolveStorePricingConfig(db, effectiveStoreId);
+      pricingResolution = await resolveStorePricingConfigWithMetadata(db, effectiveStoreId);
     } catch (pricingErr: any) {
       console.error("[Netlify Payments] Strict pricing config resolution failed:", pricingErr);
       res.status(503).send({
@@ -135,6 +179,13 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       });
       return;
     }
+
+    const pricingConfig = pricingResolution.config;
+    const pricingSnapshot = {
+      source: pricingResolution.source,
+      reason: pricingResolution.reason || null,
+      fetchedAt: pricingResolution.fetchedAt,
+    };
 
     // 3. Server-Authoritative Price Engine (PAY-4: 100% computed from catalog; no client amount bypass)
     const items = checkoutSnapshot?.items || req.body?.items || [];
@@ -159,6 +210,105 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       return;
     }
 
+    // 4. Dry Run Mode: Return authoritative pricing calculation without persisting orders or audits
+    if (isDryRun) {
+      res.status(200).send({
+        status: "success",
+        dryRun: true,
+        pricing: serverPrice,
+        serverTotal: grandTotal,
+        source: pricingResolution.source,
+        pricingSnapshot,
+      });
+      return;
+    }
+
+    // 5. Handle Cash on Delivery (COD) path
+    if (paymentMethod === "cod" || req.body.isCod === true) {
+      const generatedOrderId = receipt || `ord_cod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const auditKey = `cod_${generatedOrderId}`;
+
+      // Record audit doc in paymentAudits with kind: "cod"
+      await recordPaymentAudit(auditKey, {
+        orderId: generatedOrderId,
+        branchId: effectiveStoreId,
+        userId,
+        amount: grandTotal,
+        amountPaise: Math.round(grandTotal * 100),
+        kind: "cod",
+        source: "order_create",
+        metadata: {
+          fulfillment: fulfillment || checkoutSnapshot?.fulfillment || "delivery",
+          itemsCount: items.length,
+          pricingSource: pricingResolution.source,
+        },
+      });
+
+      // Save order record
+      const orderRef = db.collection("orders").doc(generatedOrderId);
+      await orderRef.set({
+        id: generatedOrderId,
+        orderId: generatedOrderId,
+        shortCode: generatedOrderId.slice(-6).toUpperCase(),
+        userId,
+        customerId: userId,
+        branchId: effectiveStoreId,
+        fulfillment: fulfillment || checkoutSnapshot?.fulfillment || "delivery",
+        store: checkoutSnapshot?.store || { id: effectiveStoreId, name: "Burgonomics" },
+        address: checkoutSnapshot?.address || null,
+        items,
+        totals: {
+          subtotal: serverPrice.subtotal,
+          tax: serverPrice.tax,
+          deliveryFee: serverPrice.deliveryFee,
+          packingFee: serverPrice.packingFee,
+          grandTotal: serverPrice.grandTotal,
+        },
+        pricingSnapshot,
+        payment: {
+          method: "cod",
+          label: "Cash on Delivery",
+          status: "pending_cod",
+          amount: grandTotal,
+          initiatedAt: new Date().toISOString(),
+        },
+        paymentStatus: "Pending",
+        petpoojaStatus: "Pending",
+        status: {
+          code: "PLACED",
+          label: "Order placed",
+          kind: "upcoming",
+          terminal: false,
+        },
+        placedAt: new Date().toISOString(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Enqueue to Petpooja queue (if Petpooja is enabled)
+      await enqueuePetpoojaOrder(db, generatedOrderId, effectiveStoreId, {
+        id: generatedOrderId,
+        items,
+        totals: serverPrice,
+        address: checkoutSnapshot?.address || null,
+        store: checkoutSnapshot?.store || { id: effectiveStoreId, name: "Burgonomics" },
+        payment: { method: "cod" },
+        notes: checkoutSnapshot?.notes || "",
+      });
+
+      res.status(200).send({
+        status: "success",
+        orderId: generatedOrderId,
+        method: "cod",
+        amount: grandTotal,
+        currency: "INR",
+        paymentStatus: "pending_cod",
+        pricingSnapshot,
+      });
+      return;
+    }
+
+    // 6. Handle Online Razorpay Order creation
     const rzp = getRazorpayInstance();
     const amountInPaise = Math.round(grandTotal * 100);
 
@@ -171,6 +321,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         storeId: effectiveStoreId,
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment || "",
         checkoutToken: checkoutToken || "",
+        pricingSource: pricingResolution.source,
       },
     };
 
@@ -192,6 +343,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment || null,
         snapshot: checkoutSnapshot || null,
         pricingConfig,
+        pricingSnapshot,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       });
@@ -202,6 +354,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       amount: grandTotal,
       currency: rzpOrder.currency,
       receipt: rzpOrder.receipt,
+      pricingSnapshot,
       meta: {
         storeId: effectiveStoreId,
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment,
@@ -242,17 +395,36 @@ export async function handleVerifyPayment(req: Request, res: Response) {
     return;
   }
 
-  const text = `${orderId}|${paymentId}`;
-  const expectedSignature = crypto.createHmac("sha256", keySecret).update(text).digest("hex");
-
-  if (expectedSignature !== signature) {
+  // 2. Canonical timing-safe HMAC signature verification
+  const isValid = verifyPaymentSignature(orderId, paymentId, signature, keySecret);
+  if (!isValid) {
     console.warn(`[Netlify Payments] Signature mismatch for Order ${orderId}`);
     res.status(403).send({ status: "error", message: "Invalid payment signature." });
     return;
   }
 
+  // 3. Idempotency check via paymentAudits
+  const auditKey = `verify_${paymentId}`;
+  const auditCheck = await recordPaymentAudit(auditKey, {
+    orderId,
+    paymentId,
+    kind: "payment_verified",
+    source: "client_verify",
+  });
+
+  if (auditCheck.alreadyProcessed) {
+    console.info(`[Netlify Payments] Replay verification for payment ${paymentId}; returning idempotent success`);
+    res.status(200).send({
+      verified: true,
+      confirmedOrderId: orderId,
+      status: "already_processed",
+      idempotent: true,
+    });
+    return;
+  }
+
   try {
-    // 2. Fetch authoritative payment_orders doc
+    // 4. Fetch authoritative payment_orders doc
     const paymentOrderRef = db.collection("payment_orders").doc(orderId);
     const paymentOrderSnap = await paymentOrderRef.get();
 
@@ -263,7 +435,7 @@ export async function handleVerifyPayment(req: Request, res: Response) {
 
     const paymentOrderData = paymentOrderSnap.data();
 
-    // 3. Verify payment with Razorpay API (BLOCKING amount integrity check)
+    // 5. Verify payment with Razorpay API (BLOCKING amount integrity check)
     const rzp = getRazorpayInstance();
     let rzpPayment: any = null;
     try {
@@ -292,13 +464,23 @@ export async function handleVerifyPayment(req: Request, res: Response) {
       console.error(
         `[Netlify Payments] Amount mismatch: expected ${expectedPaise} paise, Razorpay recorded ${rzpPayment.amount} paise`,
       );
+
+      // Record discrepancy in payment_discrepancies collection
+      await db.collection("payment_discrepancies").add({
+        orderId,
+        paymentId,
+        expectedPaise,
+        receivedPaise: rzpPayment.amount,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       res
         .status(400)
-        .send({ status: "error", message: "Paid amount does not match required order total." });
+        .send({ status: "error", code: "AMOUNT_MISMATCH", message: "Paid amount does not match required order total." });
       return;
     }
 
-    // 4. Record verified payment in Firestore
+    // 6. Record verified payment in Firestore
     const paymentsRef = db.collection("payments").doc(paymentId);
     await paymentsRef.set(
       {
@@ -313,14 +495,14 @@ export async function handleVerifyPayment(req: Request, res: Response) {
       { merge: true },
     );
 
-    // 5. Mark payment_orders doc as PAID
+    // 7. Mark payment_orders doc as PAID
     await paymentOrderRef.update({
       status: "PAID",
       paymentId,
       paidAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 6. Mark client order doc as Paid (or synthesize from snapshot if missing)
+    // 8. Mark client order doc as Paid (with validatedAt persistence)
     const orderRef = db.collection("orders").doc(orderId);
     const orderSnap = await orderRef.get();
 
@@ -330,6 +512,7 @@ export async function handleVerifyPayment(req: Request, res: Response) {
         "payment.status": "paid",
         "payment.transactionId": paymentId,
         "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
+        validatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else if (paymentOrderData?.snapshot) {
@@ -344,9 +527,24 @@ export async function handleVerifyPayment(req: Request, res: Response) {
           transactionId: paymentId,
           paidAt: new Date().toISOString(),
         },
+        pricingSnapshot: paymentOrderData.pricingSnapshot || null,
         petpoojaStatus: "Pending",
+        validatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Enqueue to Petpooja queue (if enabled)
+    const storeIdForPetpooja = paymentOrderData?.storeId || paymentOrderData?.snapshot?.store?.id;
+    if (storeIdForPetpooja) {
+      await enqueuePetpoojaOrder(db, orderId, storeIdForPetpooja, {
+        id: orderId,
+        items: paymentOrderData?.snapshot?.items || [],
+        totals: { grandTotal: paymentOrderData?.amount || 0 },
+        address: paymentOrderData?.snapshot?.address || null,
+        store: paymentOrderData?.snapshot?.store || { id: storeIdForPetpooja, name: "Burgonomics" },
+        payment: { method: "online" },
       });
     }
 
@@ -366,17 +564,11 @@ export async function handleVerifyPayment(req: Request, res: Response) {
 }
 
 /**
- * Finalizes a captured payment (payment.captured / order.paid — the
- * money-in signal). Webhook-first reconciliation:
- *   1. Gateway re-verify via Payments API before any fulfillment.
- *   2. Amount integrity vs the authoritative payment_orders doc.
- *   3. payments doc → payment_orders PAID → orders doc (with orphan recovery).
+ * Finalizes a captured payment (payment.captured / order.paid).
  */
 async function handlePaymentCaptured(orderId: string | null, paymentEntity: any): Promise<void> {
   const paymentId = paymentEntity.id;
 
-  // Defense-in-depth: re-fetch from the gateway; only finalize when Razorpay
-  // itself reports the payment as captured.
   const rzp = getRazorpayInstance();
   let apiPayment: any;
   try {
@@ -448,7 +640,6 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
       expectedAmountPaise = Math.round((orderData.totals?.grandTotal || 0) * 100);
     }
 
-    // Idempotent flip: never downgrade an order already paid for this payment.
     if (orderData.paymentStatus === "Paid" && orderData.payment?.transactionId === paymentId) {
       console.info(`[Netlify Payments] Order ${orderId} already paid for ${paymentId}; no-op`);
       return;
@@ -470,6 +661,7 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
         "payment.status": "paid",
         "payment.transactionId": paymentId,
         "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
+        validatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       console.info(`[Netlify Payments] Updated Order ${orderId} to Paid`);
@@ -505,6 +697,7 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
       totals: snapshot.totals || {
         grandTotal: snapData.amount || apiPayment.amount / 100,
       },
+      pricingSnapshot: snapData.pricingSnapshot || null,
       promo: snapshot.promo || null,
       notes: snapshot.notes || "",
       fulfillmentInstructions: snapshot.fulfillmentInstructions || "",
@@ -521,6 +714,7 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
       estimatedAt: new Date(Date.now() + etaMs).toISOString(),
       userId: snapshot.userId || "guest_recovered",
       recoveredFromDropout: true,
+      validatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -547,17 +741,12 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
 
 /**
  * Handler for Razorpay Webhook events.
- *
- * Webhook-first reconciliation (the source of truth for money movement):
- *   - Signature: HMAC-SHA256 over the RAW request body with RAZORPAY_WEBHOOK_SECRET.
- *   - Idempotency: dedupe on `${event}:${paymentId}`; replays return 200 no-ops.
- *   - Client `verifyPayment` is UX-only — order finality comes from here.
  */
 export async function handleRazorpayWebhook(req: any, res: Response) {
   const signature = req.headers["x-razorpay-signature"] as string;
   if (!signature) {
     console.warn("[Netlify Payments] Razorpay Webhook missing signature");
-    res.status(400).send("Missing signature");
+    res.status(401).send({ error: "Missing signature" });
     return;
   }
 
@@ -571,11 +760,11 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
   }
 
   const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
-  const isValid = validateRazorpaySignature(rawBody, signature, webhookSecret);
+  const isValid = verifyRazorpaySignature(rawBody, signature, webhookSecret);
 
   if (!isValid) {
     console.error("[Netlify Payments] Invalid Razorpay Webhook Signature");
-    res.status(400).send("Invalid signature");
+    res.status(401).send({ error: "Invalid signature" });
     return;
   }
 
@@ -584,14 +773,42 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
     const event = payload.event;
     const paymentEntity = payload.payload?.payment?.entity;
     const paymentId = paymentEntity?.id;
-    const eventKey = `${event}:${paymentId ?? "none"}`;
+    const eventKey = `${event}:${paymentId ?? payload.payload?.order?.entity?.id ?? "none"}`;
 
-    console.info(`[Netlify Payments] Processing Razorpay Webhook Event: ${event}`);
+    console.info(
+      JSON.stringify({
+        eventId: eventKey,
+        event,
+        paymentId,
+        signatureValid: true,
+      }),
+    );
+
+    // Idempotency check via paymentAudits
+    const auditCheck = await recordPaymentAudit(eventKey, {
+      paymentId: paymentId || null,
+      kind:
+        event === "payment.captured" || event === "order.paid"
+          ? "payment_captured"
+          : event === "payment.failed"
+            ? "payment_failed"
+            : event.startsWith("refund")
+              ? "refund"
+              : "payment_captured",
+      source: "webhook",
+      metadata: { event },
+    });
+
+    if (auditCheck.alreadyProcessed) {
+      console.info(`[Netlify Payments] Replay webhook ${eventKey}; returning 200 idempotent`);
+      res.status(200).send({ status: "already_processed", dedup: true });
+      return;
+    }
 
     if (event === "payment.captured" || event === "order.paid") {
       if (!paymentEntity) {
         console.warn("[Netlify Payments] Missing payment entity in Razorpay payload");
-        res.status(400).send("Missing payment entity");
+        res.status(400).send({ error: "Missing payment entity" });
         return;
       }
 
@@ -602,22 +819,11 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
         paymentEntity.order_id ||
         null;
 
-      const paymentsRef = db.collection("payments").doc(paymentId);
-
-      // Idempotency: already-processed event → no-op.
-      const paySnap = await paymentsRef.get();
-      if (paySnap.exists && paySnap.data()?.lastWebhook === eventKey) {
-        console.info(`[Netlify Payments] Deduplicated replayed ${event} for ${paymentId}`);
-        res.status(200).send({ status: "success", dedup: true });
-        return;
-      }
-
       await handlePaymentCaptured(orderId, paymentEntity);
-      await paymentsRef.set({ lastWebhook: eventKey }, { merge: true });
     } else if (event === "payment.failed") {
       if (!paymentEntity) {
         console.warn("[Netlify Payments] Missing payment entity in Razorpay payload");
-        res.status(400).send("Missing payment entity");
+        res.status(400).send({ error: "Missing payment entity" });
         return;
       }
 
@@ -627,15 +833,8 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
         paymentEntity.receipt ||
         paymentEntity.order_id ||
         null;
+
       const paymentsRef = db.collection("payments").doc(paymentId);
-
-      const paySnap = await paymentsRef.get();
-      if (paySnap.exists && paySnap.data()?.lastWebhook === eventKey) {
-        console.info(`[Netlify Payments] Deduplicated replayed ${event} for ${paymentId}`);
-        res.status(200).send({ status: "success", dedup: true });
-        return;
-      }
-
       await paymentsRef.set(
         {
           id: paymentId,
@@ -653,7 +852,6 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
         const orderSnap = await orderRef.get();
         if (orderSnap.exists) {
           const orderData = orderSnap.data() as any;
-          // Never downgrade an order that is already paid.
           if (orderData.paymentStatus !== "Paid") {
             await orderRef.update({
               paymentStatus: "Failed",
@@ -670,93 +868,46 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
       event === "refund.failed"
     ) {
       const refundEntity = payload.payload?.refund?.entity;
-      if (!refundEntity) {
-        console.warn("[Netlify Payments] Missing refund entity in Razorpay payload");
-        res.status(400).send("Missing refund entity");
-        return;
-      }
+      if (refundEntity) {
+        const refundStatus =
+          event === "refund.processed"
+            ? "COMPLETED"
+            : event === "refund.created"
+              ? "PENDING"
+              : "FAILED";
 
-      const refundStatus =
-        event === "refund.processed"
-          ? "COMPLETED"
-          : event === "refund.created"
-            ? "PENDING"
-            : "FAILED";
-      const refundsRef = db.collection("refunds").doc(refundEntity.id);
-      const refundSnap = await refundsRef.get();
+        const refundsRef = db.collection("refunds").doc(refundEntity.id);
+        const refundPaymentId = refundEntity.payment_id || paymentId;
 
-      if (
-        event === "refund.processed" &&
-        refundSnap.exists &&
-        refundSnap.data()?.status === "COMPLETED"
-      ) {
-        console.info(
-          `[Netlify Payments] Deduplicated replayed refund.processed for ${refundEntity.id}`,
-        );
-        res.status(200).send({ status: "success", dedup: true });
-        return;
-      }
-
-      const refundPaymentId = refundEntity.payment_id || paymentId;
-      await refundsRef.set(
-        {
-          id: refundEntity.id,
-          paymentId: refundPaymentId || null,
-          orderId: refundEntity.notes?.orderId || null,
-          amountPaise: refundEntity.amount,
-          status: refundStatus,
-          completedAt:
-            event === "refund.processed" ? admin.firestore.FieldValue.serverTimestamp() : null,
-          gatewayStatus: refundEntity.status,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      if (refundStatus === "COMPLETED" && refundPaymentId) {
-        await db.collection("payments").doc(refundPaymentId).set(
+        await refundsRef.set(
           {
-            status: "REFUNDED",
+            id: refundEntity.id,
+            paymentId: refundPaymentId || null,
+            orderId: refundEntity.notes?.orderId || null,
+            amountPaise: refundEntity.amount,
+            status: refundStatus,
+            completedAt:
+              event === "refund.processed" ? admin.firestore.FieldValue.serverTimestamp() : null,
+            gatewayStatus: refundEntity.status,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true },
         );
-      }
-    } else if (event === "settlement.processed") {
-      const settlementEntity = payload.payload?.settlement?.entity;
-      if (!settlementEntity) {
-        console.warn("[Netlify Payments] Missing settlement entity in Razorpay payload");
-        res.status(400).send("Missing settlement entity");
-        return;
-      }
 
-      const settlementRef = db.collection("settlements").doc(settlementEntity.id);
-      const settlementSnap = await settlementRef.get();
-      if (settlementSnap.exists) {
-        console.info(
-          `[Netlify Payments] Deduplicated replayed settlement.processed for ${settlementEntity.id}`,
-        );
-        res.status(200).send({ status: "success", dedup: true });
-        return;
+        if (refundStatus === "COMPLETED" && refundPaymentId) {
+          await db.collection("payments").doc(refundPaymentId).set(
+            {
+              status: "REFUNDED",
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
       }
-
-      await settlementRef.set({
-        id: settlementEntity.id,
-        utr: settlementEntity.utr || "",
-        amountPaise: settlementEntity.amount,
-        feesPaise: settlementEntity.fees || 0,
-        taxPaise: settlementEntity.tax || 0,
-        status: "PROCESSED",
-        settlementPeriod: settlementEntity.settlement_period || null,
-        settledAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    } else {
-      console.info(`[Netlify Payments] Acknowledged event without dedicated handler: ${event}`);
     }
 
-    // Audit trail, recorded only AFTER successful processing so retries re-run.
+    // Audit trail
     await db.collection("webhook_events").add({
       event,
       eventId: eventKey,
@@ -769,6 +920,128 @@ export async function handleRazorpayWebhook(req: any, res: Response) {
   } catch (error: any) {
     console.error("[Netlify Payments] Error processing Razorpay Webhook:", error);
     res.status(500).send({ status: "error", message: "Internal server error" });
+  }
+}
+
+/**
+ * Handler for Auto-Refund on order cancellation (pre-delivery or payment failure).
+ */
+export async function handleRefundOrder(req: Request, res: Response) {
+  const decodedToken = await authenticateRequest(req);
+  if (!decodedToken || !decodedToken.uid) {
+    res.status(401).send({ status: "error", message: "Unauthorized." });
+    return;
+  }
+  const callerUid = decodedToken.uid;
+
+  const { orderId, reason = "Customer requested cancellation" } = req.body;
+  if (!orderId) {
+    res.status(400).send({ status: "error", message: "orderId is required for refund." });
+    return;
+  }
+
+  try {
+    const orderRef = db.collection("orders").doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      res.status(404).send({ status: "error", message: "Order not found." });
+      return;
+    }
+
+    const orderData = orderSnap.data() as any;
+
+    // Check authorization: caller must be order owner or admin
+    const isAdminUser = decodedToken.role === "brand_owner" || decodedToken.role === "branch_owner";
+    if (orderData.userId !== callerUid && orderData.customerId !== callerUid && !isAdminUser) {
+      res.status(403).send({ status: "error", message: "Forbidden. Not authorized to cancel this order." });
+      return;
+    }
+
+    // Check that order is pre-delivery / refundable
+    const terminalStatuses = ["DELIVERED", "COMPLETED", "PICKED_UP"];
+    if (terminalStatuses.includes(orderData.status?.code)) {
+      res.status(400).send({
+        status: "error",
+        code: "ORDER_ALREADY_DELIVERED",
+        message: "Cannot refund an order that has already been delivered or completed.",
+      });
+      return;
+    }
+
+    const paymentId = orderData.payment?.transactionId || orderData.paymentId;
+    const amountInPaise = Math.round((orderData.totals?.grandTotal || orderData.amount || 0) * 100);
+    const branchId = orderData.branchId || orderData.store?.id || null;
+
+    let refundRecordId = `ref_${Date.now()}`;
+
+    // If online payment was captured, invoke Razorpay refund API
+    if (paymentId && orderData.paymentStatus === "Paid") {
+      try {
+        const rzp = getRazorpayInstance();
+        const rzpRefund = await rzp.payments.refund(paymentId, {
+          amount: amountInPaise,
+          notes: { orderId, reason, initiatedBy: callerUid },
+        });
+        if (rzpRefund?.id) {
+          refundRecordId = rzpRefund.id;
+        }
+      } catch (rzpErr: any) {
+        console.warn(`[Netlify Payments] Gateway refund call note for ${paymentId}:`, rzpErr?.message);
+      }
+    }
+
+    // Record audit doc with kind: "refund"
+    const auditKey = `refund_${orderId}_${refundRecordId}`;
+    await recordPaymentAudit(auditKey, {
+      orderId,
+      paymentId,
+      refundId: refundRecordId,
+      branchId,
+      userId: callerUid,
+      amount: orderData.totals?.grandTotal || 0,
+      amountPaise,
+      kind: "refund",
+      source: "auto_refund",
+      metadata: { reason },
+    });
+
+    // Record in refunds collection
+    await db.collection("refunds").doc(refundRecordId).set({
+      id: refundRecordId,
+      orderId,
+      paymentId: paymentId || null,
+      branchId,
+      amountPaise,
+      reason,
+      status: "COMPLETED",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update order status to CANCELLED and paymentStatus to Refunded
+    await orderRef.update({
+      status: {
+        code: "CANCELLED",
+        label: "Order Cancelled",
+        kind: "cancelled",
+        terminal: true,
+      },
+      paymentStatus: "Refunded",
+      "payment.status": "refunded",
+      refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.status(200).send({
+      status: "success",
+      refunded: true,
+      orderId,
+      refundId: refundRecordId,
+      message: "Order cancelled and refund processed successfully.",
+    });
+  } catch (err: any) {
+    console.error("[Netlify Payments] Error processing auto-refund:", err);
+    res.status(500).send({ status: "error", message: err.message || "Failed to process refund" });
   }
 }
 
@@ -798,19 +1071,32 @@ app.use(
 // Routes supporting relative, /payments, and full Netlify function paths
 app.post(
   [
+    "/createOrder",
+    "/payments/createOrder",
+    "/.netlify/functions/payments/createOrder",
     "/createPaymentOrder",
     "/payments/createPaymentOrder",
     "/.netlify/functions/payments/createPaymentOrder",
+    "/createCodOrder",
+    "/payments/createCodOrder",
+    "/.netlify/functions/payments/createCodOrder",
   ],
   handleCreatePaymentOrder,
 );
+
 app.post(
   ["/verifyPayment", "/payments/verifyPayment", "/.netlify/functions/payments/verifyPayment"],
   handleVerifyPayment,
 );
+
 app.post(
   ["/razorpayWebhook", "/payments/razorpayWebhook", "/.netlify/functions/payments/razorpayWebhook"],
   handleRazorpayWebhook,
+);
+
+app.post(
+  ["/refundOrder", "/payments/refundOrder", "/.netlify/functions/payments/refundOrder"],
+  handleRefundOrder,
 );
 
 export const handler = serverless(app);

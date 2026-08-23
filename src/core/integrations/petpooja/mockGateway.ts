@@ -405,10 +405,10 @@ petpooja_api_latency_seconds_count{store_id="all"} 0
 # TYPE petpooja_gateway_status gauge
 petpooja_gateway_status 0
 
-# HELP bullmq_queue_waiting Active BullMQ queue size
-# TYPE bullmq_queue_waiting gauge
-bullmq_queue_waiting{queue="petpooja-menu-sync"} 0
-bullmq_queue_waiting{queue="petpooja-webhook-handler"} 0`,
+# HELP firestore_queue_waiting Active Firestore queue size
+# TYPE firestore_queue_waiting gauge
+firestore_queue_waiting{queue="petpooja-menu-sync"} 0
+firestore_queue_waiting{queue="petpooja-webhook-handler"} 0`,
       simulated: true,
     };
   }
