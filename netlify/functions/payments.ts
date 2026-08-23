@@ -6,7 +6,11 @@ import {
   verifyPaymentSignature,
   computeHmac,
 } from "./lib/verifySignature";
-import { computeServerPrice, resolveStorePricingConfig } from "./lib/server-price";
+import {
+  computeServerPrice,
+  resolveStorePricingConfig,
+  resolveStorePricingConfigWithMetadata,
+} from "./lib/server-price";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Razorpay = require("razorpay");
@@ -31,7 +35,7 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-export { db, computeHmac, verifyRazorpaySignature, verifyPaymentSignature };
+export { db, computeHmac, verifyRazorpaySignature, verifyPaymentSignature, resolveStorePricingConfig };
 
 /**
  * Returns a configured Razorpay instance.
@@ -70,7 +74,7 @@ export async function authenticateRequest(req: Request): Promise<admin.auth.Deco
 }
 
 /**
- * Resolves live product price from Firestore catalog.
+ * Resolves live product price from Firestore catalog or live Petpooja cache.
  */
 export async function resolveProductPrice(productId: string): Promise<number | null> {
   if (!productId) return null;
@@ -122,9 +126,14 @@ export async function recordPaymentAudit(
 }
 
 /**
- * Handler for creating a Razorpay order from backend with server-authoritative pricing (or COD order).
+ * Handler for creating a Razorpay order from backend with server-authoritative pricing (or COD order / dryRun preview).
  */
 export async function handleCreatePaymentOrder(req: Request, res: Response) {
+  const isDryRun =
+    req.query?.dryRun === "1" ||
+    req.query?.dryRun === "true" ||
+    req.body?.dryRun === true;
+
   // 1. Authenticate caller (SEC-3: Strictly require valid Firebase ID token)
   const decodedToken = await authenticateRequest(req);
   if (!decodedToken || !decodedToken.uid) {
@@ -157,9 +166,9 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
 
   try {
     // 2. Resolve store-level pricing config strictly (fail-closed if unseeded/unreachable)
-    let pricingConfig;
+    let pricingResolution;
     try {
-      pricingConfig = await resolveStorePricingConfig(db, effectiveStoreId);
+      pricingResolution = await resolveStorePricingConfigWithMetadata(db, effectiveStoreId);
     } catch (pricingErr: any) {
       console.error("[Netlify Payments] Strict pricing config resolution failed:", pricingErr);
       res.status(503).send({
@@ -169,6 +178,13 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       });
       return;
     }
+
+    const pricingConfig = pricingResolution.config;
+    const pricingSnapshot = {
+      source: pricingResolution.source,
+      reason: pricingResolution.reason || null,
+      fetchedAt: pricingResolution.fetchedAt,
+    };
 
     // 3. Server-Authoritative Price Engine (PAY-4: 100% computed from catalog; no client amount bypass)
     const items = checkoutSnapshot?.items || req.body?.items || [];
@@ -193,7 +209,20 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       return;
     }
 
-    // 4. Handle Cash on Delivery (COD) path
+    // 4. Dry Run Mode: Return authoritative pricing calculation without persisting orders or audits
+    if (isDryRun) {
+      res.status(200).send({
+        status: "success",
+        dryRun: true,
+        pricing: serverPrice,
+        serverTotal: grandTotal,
+        source: pricingResolution.source,
+        pricingSnapshot,
+      });
+      return;
+    }
+
+    // 5. Handle Cash on Delivery (COD) path
     if (paymentMethod === "cod" || req.body.isCod === true) {
       const generatedOrderId = receipt || `ord_cod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const auditKey = `cod_${generatedOrderId}`;
@@ -210,6 +239,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         metadata: {
           fulfillment: fulfillment || checkoutSnapshot?.fulfillment || "delivery",
           itemsCount: items.length,
+          pricingSource: pricingResolution.source,
         },
       });
 
@@ -233,6 +263,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
           packingFee: serverPrice.packingFee,
           grandTotal: serverPrice.grandTotal,
         },
+        pricingSnapshot,
         payment: {
           method: "cod",
           label: "Cash on Delivery",
@@ -260,11 +291,12 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         amount: grandTotal,
         currency: "INR",
         paymentStatus: "pending_cod",
+        pricingSnapshot,
       });
       return;
     }
 
-    // 5. Handle Online Razorpay Order creation
+    // 6. Handle Online Razorpay Order creation
     const rzp = getRazorpayInstance();
     const amountInPaise = Math.round(grandTotal * 100);
 
@@ -277,6 +309,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         storeId: effectiveStoreId,
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment || "",
         checkoutToken: checkoutToken || "",
+        pricingSource: pricingResolution.source,
       },
     };
 
@@ -298,6 +331,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment || null,
         snapshot: checkoutSnapshot || null,
         pricingConfig,
+        pricingSnapshot,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       });
@@ -308,6 +342,7 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       amount: grandTotal,
       currency: rzpOrder.currency,
       receipt: rzpOrder.receipt,
+      pricingSnapshot,
       meta: {
         storeId: effectiveStoreId,
         fulfillment: fulfillment || checkoutSnapshot?.fulfillment,
@@ -480,6 +515,7 @@ export async function handleVerifyPayment(req: Request, res: Response) {
           transactionId: paymentId,
           paidAt: new Date().toISOString(),
         },
+        pricingSnapshot: paymentOrderData.pricingSnapshot || null,
         petpoojaStatus: "Pending",
         validatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -636,6 +672,7 @@ async function handlePaymentCaptured(orderId: string | null, paymentEntity: any)
       totals: snapshot.totals || {
         grandTotal: snapData.amount || apiPayment.amount / 100,
       },
+      pricingSnapshot: snapData.pricingSnapshot || null,
       promo: snapshot.promo || null,
       notes: snapshot.notes || "",
       fulfillmentInstructions: snapshot.fulfillmentInstructions || "",
@@ -1009,6 +1046,9 @@ app.use(
 // Routes supporting relative, /payments, and full Netlify function paths
 app.post(
   [
+    "/createOrder",
+    "/payments/createOrder",
+    "/.netlify/functions/payments/createOrder",
     "/createPaymentOrder",
     "/payments/createPaymentOrder",
     "/.netlify/functions/payments/createPaymentOrder",

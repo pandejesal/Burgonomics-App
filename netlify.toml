@@ -3,6 +3,13 @@
   command = "npm run build"
   functions = "netlify/functions"
 
+[functions.environment]
+  PETPOOJA_ENABLED = "false"
+  PETPOOJA_APP_KEY = ""
+  PETPOOJA_APP_SECRET = ""
+  PETPOOJA_ACCESS_TOKEN = ""
+  PETPOOJA_REST_ID = ""
+
 [[plugins]]
   package = "@netlify/plugin-functions-install-core"
 

@@ -57,7 +57,16 @@ Format:
 - risks: None. Unit test suite 46/46 passed; emulator rules tests 18/18 green.
 - verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (46 pass, 100% payments suite) / npm run test:rules (18/18 pass) / grep "walletBalance" src/ (0).
 
-## PROMPT_02 — verdict: PENDING
+## PROMPT_02+09 — Pricing: Petpooja MRP truth + Firestore fallback — verdict: PASS — date: 2026-08-23
+- files_touched: [netlify/functions/lib/server-price.ts, netlify/functions/payments.ts, src/features/cart/components/OrderSummary.tsx, src/core/integrations/petpooja/mockGateway.ts, netlify.toml, .env.example, tests/pricing/pricing-fallback.test.ts, docs/antigravity/HANDOFF_LOG.md]
+- key_decisions: 
+  - Implemented resolveStorePricingConfigWithMetadata with Petpooja truth (V1 API) when PETPOOJA_ENABLED=true and clean fallback to Firestore (branches/{id}.pricingOverrides || app_settings/pricing) when disabled/unreachable with 60s cache.
+  - Fail-closed strict mode: throws PRICING_CONFIG_UNAVAILABLE when unseeded and unreachable.
+  - Added ?dryRun=1 preview query support to createOrder / createPaymentOrder (returns {pricing, serverTotal, source} without DB writes).
+  - Persisted pricingSnapshot ({ source, reason, fetchedAt }) to orders and payment_orders docs; added "Prices from cache — Petpooja unavailable" chip to OrderSummary.
+  - Documented 3 Brand Owners equal privileges seeding (Yash, Nehh, Antigravity Dev) and updated netlify.toml [functions.environment].
+- risks: None. Unit test suite 52/52 passed; emulator rules tests 18/18 green.
+- verification: npx tsc --noEmit (0 errors) / npm run build (0 errors) / npm run test (52 pass, 100%) / npm run test:rules (18/18 pass) / grep "walletBalance|kitchen_orders|ioredis|bull" src/ (0).
 
 ## PROMPT_03 — verdict: PENDING
 
