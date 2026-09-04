@@ -245,6 +245,16 @@ export const ordersService = {
           ...order,
           userId: user.uid,
           petpoojaStatus: "Pending",
+          // Query-compatible mirrors for the Partner app (additive only —
+          // customer readers ignore unknown fields):
+          // - Partner useCustomer queries where('customerId','==',…)
+          // - Partner lists/analytics order/filter by 'createdAt'
+          customerId: user.uid,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          // Partner branch scoping + server KOT restID resolution read this.
+          // Set by ops as stores/{id}.partnerBranchId when outlets are linked.
+          branchId: input.store.partnerBranchId ?? null,
         });
       }
     } catch (err) {

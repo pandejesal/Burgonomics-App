@@ -27,6 +27,7 @@ function mapStoreDoc(data: any, id: string): Store {
     pickupEtaMinutes: data.pickupEtaMinutes || 15,
     deliveryFee: data.pricing?.deliveryFeeFlat ?? data.deliveryFee ?? 40,
     petpoojaRestId: data.petpoojaRestId || null,
+    partnerBranchId: data.partnerBranchId || null,
     deliveryRadiusKm: data.deliveryRadiusKm ?? 7,
     pricing: data.pricing || null,
   };
@@ -60,9 +61,11 @@ async function fetchFirestoreStores(): Promise<Store[]> {
       return stores;
     }
   } catch (err) {
-    console.warn("storesService: Firestore fetch error, using built-in catalog:", err);
+    console.warn("storesService: Firestore fetch error:", err);
   }
-  return MOCK_STORES;
+  // Dev-only built-in catalog (Runbook §8) — production shows no outlets
+  // rather than invented stores when the backend is empty/unreachable.
+  return import.meta.env.DEV ? MOCK_STORES : [];
 }
 
 export const storesService = {

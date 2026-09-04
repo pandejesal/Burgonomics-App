@@ -14,65 +14,60 @@ import {
   Utensils,
   ShieldCheck,
   CreditCard,
-  Coins,
+  Sparkles,
   Timer,
+  Wallet,
+  Coins,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-
+import { toast } from "sonner";
 import { AppShell } from "@/shared/layouts/AppShell";
-import { AppButton } from "@/shared/components/common/AppButton";
-import { AppBadge } from "@/shared/components/common/AppBadge";
-import { Text } from "@/shared/components/common/Text";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { formatINR } from "@/core/utils/format";
 import { HapticService } from "@/core/services/haptics";
 import { AudioService } from "@/core/services/audio";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 import {
   cartRepository,
   useCartStore,
   selectItemCount,
-  OrderSummary,
   PromoInput,
 } from "@/features/cart";
 import type { CartTotals } from "@/features/cart/models";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import {
-  CheckoutSection,
-  ReviewItemsList,
-  NotesEditor,
-  checkoutRepository,
   useCheckoutStore,
+  AddressSelector,
+  FulfillmentDetailsCard,
+  PaymentMethodSelector,
+  calculateHaversineKm,
 } from "@/features/checkout";
-import { useAddressStore, selectSelectedAddress, AddressCard } from "@/features/addresses";
+import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
+import { useAddressStore, selectAddresses, selectSelectedAddress } from "@/features/addresses";
 import {
-  PaymentMethodList,
-  SecurePaymentBadge,
   usePaymentStore,
   paymentRepository,
   razorpayAdapter,
 } from "@/features/payments";
 import type { PaymentMethod, PaymentResult } from "@/features/payments/models";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
+import { QuickAuthSheet } from "@/features/checkout/components/QuickAuthSheet";
 
 export const Route = createFileRoute("/checkout")({
   head: () => ({
     meta: [
-      { title: "Checkout — Burgonomics" },
-      { name: "description", content: "Complete your Burgonomics order securely." },
+      { title: "Checkout — Burgonomics (100% Pure Vegetarian)" },
+      { name: "description", content: "Review fulfillment, delivery address, and complete your Burgonomics order securely." },
     ],
   }),
   component: CheckoutPage,
 });
 
-type Step = 1 | 2 | 3;
-
-function CheckoutPage() {
+export function CheckoutPage() {
   const navigate = useNavigate();
   const hydrated = useHydrated();
 
@@ -86,54 +81,56 @@ function CheckoutPage() {
   const setFulfillment = useStoreSelection((s) => s.setFulfillment);
 
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
-  const authStatus = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
 
   const orderNotes = useCheckoutStore((s) => s.orderNotes);
   const setOrderNotes = useCheckoutStore((s) => s.setOrderNotes);
-  const tableNumber = useCheckoutStore((s) => s.tableNumber);
-  const setTableNumber = useCheckoutStore((s) => s.setTableNumber);
+  const tableNumber = useCheckoutStore((s) => s.tableNumber ?? "");
+  const setTableNumber = useCheckoutStore((s) => s.setTableNumber ?? (() => {}));
+  
+  const addresses = useAddressStore(selectAddresses);
   const selectedAddress = useAddressStore(selectSelectedAddress);
+  const selectAddress = useAddressStore((s) => s.select);
 
   const paymentMethod = usePaymentStore((s) => s.method);
   const setPaymentMethod = usePaymentStore((s) => s.setMethod);
-  const paymentStatus = usePaymentStore((s) => s.status);
   const setPaymentStatus = usePaymentStore((s) => s.setStatus);
   const setPaymentFailure = usePaymentStore((s) => s.setFailure);
   const setPaymentOrder = usePaymentStore((s) => s.setOrder);
   const setPaymentVerification = usePaymentStore((s) => s.setVerification);
 
-  const [step, setStep] = React.useState<Step>(1);
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
-  const [orderNotePresets, setOrderNotePresets] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [validationError, setValidationError] = React.useState<string | null>(null);
+  const [authSheetOpen, setAuthSheetOpen] = React.useState(false);
+  const [redeemPoints, setRedeemPoints] = React.useState(false);
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
+
+  const loyaltyBalance = useLoyaltyStore((s) => s.balance);
+  // 1 point = Rs.1, capped at 50% of subtotal
+  const maxPointsDiscount = Math.min(loyaltyBalance, Math.floor((totals?.subtotal ?? 0) * 0.5));
+  const pointsDiscount = redeemPoints ? maxPointsDiscount : 0;
 
   // 10-Minute Price Lock Countdown Timer
   React.useEffect(() => {
     if (!priceLockExpiresAt) {
-      setRemainingLockSeconds(null);
+      setRemainingLockSeconds(600);
       return;
     }
     const updateCountdown = () => {
       const remaining = Math.max(0, Math.floor((priceLockExpiresAt - Date.now()) / 1000));
       setRemainingLockSeconds(remaining);
-      if (remaining === 0) {
-        // Auto-revalidate cart when price lock expires
-        void cartRepository.validateAndRefreshPriceLock().then((res) => {
-          if (res.success && res.data.revalidated && res.data.messages.length > 0) {
-            toast.warning("Price Lock Expired", {
-              description: res.data.messages.join(" "),
-            });
-            void recompute();
-          }
-        });
-      }
     };
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
   }, [priceLockExpiresAt]);
+
+  const formatCountdown = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   const recompute = React.useCallback(async () => {
     const res = await cartRepository.calculateTotals();
@@ -145,86 +142,68 @@ function CheckoutPage() {
     void recompute();
   }, [hydrated, lines, fulfillment, promo, recompute]);
 
-  React.useEffect(() => {
-    let mounted = true;
-    void checkoutRepository.orderNotePresets().then((r) => {
-      if (mounted && r.success) setOrderNotePresets(r.data);
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  if (!hydrated) {
+    return (
+      <AppShell title="Checkout" backTo="/cart" showTabs={false} showTopBar>
+        <div className="mx-auto max-w-[520px] p-4 space-y-4">
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+        </div>
+      </AppShell>
+    );
+  }
 
-  if (!hydrated) return <CheckoutSkeleton />;
-
-  // Empty cart — return to menu.
   if (lines.length === 0) {
     return (
       <AppShell title="Checkout" backTo="/cart" showTabs={false} showTopBar>
         <EmptyState
-          icon={<ShoppingBag className="h-8 w-8" aria-hidden />}
-          title="Nothing to checkout"
-          description="Add items to your cart before continuing."
+          icon={<ShoppingBag className="h-8 w-8 text-primary" />}
+          title="Your cart is empty"
+          description="Add some delicious 100% Pure Veg burgers before checking out."
           actionLabel="Browse menu"
-          onAction={() => void navigate({ to: "/menu" })}
+          onAction={() => navigate({ to: "/menu" })}
         />
       </AppShell>
     );
   }
 
-  const grandTotal = totals?.grandTotal ?? 0;
   const isDelivery = fulfillment === "delivery";
   const isTakeaway = fulfillment === "takeaway";
   const isDineIn = fulfillment === "dinein";
 
-  // Step 1 Validation
-  const validateStep1 = (): string | null => {
-    if (!activeStore) return "Please choose a kitchen location.";
-    if (!fulfillment) return "Please select delivery, takeaway, or dine-in.";
-    if (isDelivery && !selectedAddress) {
-      return "Please add or select a delivery address.";
-    }
-    if (isDineIn && !tableNumber.trim()) {
-      return "Please enter your Table Number for Dine-In.";
-    }
-    const unavailable = lines.find((l) => l.availability === "unavailable");
-    if (unavailable) return `${unavailable.name} is unavailable — please edit your cart.`;
-    return null;
-  };
-
-  const handleStep1Continue = () => {
-    const err = validateStep1();
-    if (err) {
-      setValidationError(err);
-      if (isDelivery && !selectedAddress) {
-        void navigate({
-          to: "/addresses/create",
-          search: { returnTo: "/checkout" },
-        });
-      }
-      return;
-    }
-    setValidationError(null);
-    void HapticService.impact("light");
-    setStep(2);
-  };
-
-  const handleStep2Continue = () => {
-    setValidationError(null);
-    void HapticService.impact("light");
-    setStep(3);
-  };
+  const rawGrandTotal = totals?.grandTotal ?? 0;
+  const finalPayable = Math.max(0, rawGrandTotal - pointsDiscount);
 
   const handlePlaceOrder = async () => {
     setValidationError(null);
 
-    // Guest gate
+    // Guest check -> In-place frictionless Auth Sheet
     if (!isAuthenticated) {
-      void navigate({
-        to: "/auth/login",
-        search: { redirect: "/checkout" },
-      });
+      void HapticService.selection();
+      setAuthSheetOpen(true);
       return;
+    }
+
+    if (isDelivery && !selectedAddress) {
+      setValidationError("Please select or add a delivery address.");
+      toast.error("Please add a delivery address.");
+      void navigate({ to: "/profile/addresses" });
+      return;
+    }
+
+    // Geofence check if Delivery mode
+    if (isDelivery && selectedAddress && activeStore) {
+      const userLat = selectedAddress.lat ?? activeStore.lat + 0.015;
+      const userLng = selectedAddress.lng ?? activeStore.lng + 0.015;
+      const dist = calculateHaversineKm(userLat, userLng, activeStore.lat, activeStore.lng);
+      if (dist > (activeStore.deliveryRadiusKm ?? 8.0)) {
+        setValidationError(
+          `This address is ${dist} km away, which exceeds our ${activeStore.deliveryRadiusKm ?? 8.0} km delivery zone. Please switch to Takeaway.`
+        );
+        toast.error("Address is outside delivery range.");
+        return;
+      }
     }
 
     setBusy(true);
@@ -233,20 +212,19 @@ function CheckoutPage() {
     const validation = await cartRepository.validateCart();
     if (!validation.success || !validation.data.valid) {
       setBusy(false);
-      setValidationError(
-        validation.success
-          ? (validation.data.issues[0]?.message ??
-              "Some items in your cart are no longer available.")
-          : validation.error.message,
-      );
+      const msg = validation.success
+        ? (validation.data.issues[0]?.message ?? "Some items in your cart are no longer available.")
+        : validation.error.message;
+      setValidationError(msg);
+      toast.error(msg);
       return;
     }
 
-    // 2. Offline Cash Flow (Cash on Delivery / Pay at Store)
+    // 2. Cash on Delivery / Pay at Counter Flow
     if (paymentMethod === "cash") {
       try {
         const orderStatus: PaymentDisplayStatus = isDelivery ? "CASH_PENDING" : "PAY_AT_STORE";
-        const paymentLabel = isDelivery ? "Cash on Delivery" : "Pay at Store";
+        const paymentLabel = isDelivery ? "Cash on Delivery" : isTakeaway ? "Pay at Pickup Counter" : "Pay at Dine-In Counter";
 
         const created = await orderRepository.createFromCurrentContext({
           paymentMethod: "cash",
@@ -263,9 +241,12 @@ function CheckoutPage() {
 
         AudioService.playSuccess();
         void HapticService.notification("success");
+        if (redeemPoints && pointsDiscount > 0) {
+          useLoyaltyStore.getState().redeem(pointsDiscount);
+        }
         void cartRepository.clear();
         void navigate({
-          to: "/order-confirmation/$orderId",
+          to: "/orders/$orderId/track",
           params: { orderId: created.data.id },
           replace: true,
         });
@@ -323,14 +304,17 @@ function CheckoutPage() {
               setPaymentStatus("success");
               AudioService.playSuccess();
               void HapticService.notification("success");
+              if (redeemPoints && pointsDiscount > 0) {
+                useLoyaltyStore.getState().redeem(pointsDiscount);
+              }
               void cartRepository.clear();
               const orderId = created.success ? created.data.id : verify.data.confirmedOrderId;
               void navigate({
-                to: "/order-confirmation/$orderId",
+                to: "/orders/$orderId/track",
                 params: { orderId },
                 replace: true,
               });
-            } catch (vErr) {
+            } catch {
               setBusy(false);
               setPaymentStatus("failed");
               toast.error("Verification error occurred.");
@@ -357,512 +341,260 @@ function CheckoutPage() {
     }
   };
 
-  const stepsHeader = [
-    { num: 1, label: "Fulfillment & Address" },
-    { num: 2, label: "Payment Method" },
-    { num: 3, label: "Review & Pay" },
-  ];
-
   return (
     <AppShell
       title="Checkout"
-      backTo={step === 1 ? "/cart" : undefined}
+      backTo="/cart"
       showTabs={false}
       showTopBar
-      contentClassName="pb-[calc(140px+env(safe-area-inset-bottom,0px))]"
-    >
-      <div className="mx-auto max-w-[560px] space-y-4 px-4 py-3">
-        {/* Step Progress Indicator */}
-        <div className="rounded-[var(--radius-large)] border border-divider bg-surface p-3.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            {stepsHeader.map((s, idx) => {
-              const isActive = step === s.num;
-              const isPast = step > s.num;
-              return (
-                <React.Fragment key={s.num}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isPast) {
-                        void HapticService.impact("light");
-                        setStep(s.num as Step);
-                      }
-                    }}
-                    disabled={!isPast}
-                    className={cn(
-                      "flex items-center gap-2 text-left focus:outline-none transition-all",
-                      isPast && "cursor-pointer",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all",
-                        isActive && "bg-primary text-white ring-2 ring-primary/30",
-                        isPast && "bg-primary/20 text-primary font-bold",
-                        !isActive &&
-                          !isPast &&
-                          "bg-bg-secondary text-text-secondary border border-divider",
-                      )}
-                    >
-                      {isPast ? "✓" : s.num}
-                    </div>
-                    <span
-                      className={cn(
-                        "text-xs font-semibold hidden sm:inline truncate max-w-[120px]",
-                        isActive ? "text-text-primary font-bold" : "text-text-secondary",
-                      )}
-                    >
-                      {s.label}
-                    </span>
-                  </button>
-                  {idx < stepsHeader.length - 1 && (
-                    <div
-                      className={cn(
-                        "h-0.5 flex-1 mx-2 transition-all",
-                        step > idx + 1 ? "bg-primary" : "bg-divider",
-                      )}
-                    />
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </div>
-          <div className="sm:hidden mt-2 text-center text-xs font-bold text-primary">
-            Step {step} of 3: {stepsHeader[step - 1]?.label}
+      bottomSlot={
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
+          <div className="mx-auto flex max-w-[520px] items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] uppercase font-bold text-text-secondary">To Pay</p>
+              <p className="font-mono text-xl font-black text-text">
+                {formatINR(finalPayable)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handlePlaceOrder}
+              disabled={busy}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <Lock className="h-4 w-4 stroke-[2.5px]" />
+              <span>{busy ? "Processing Order..." : `PAY ${formatINR(finalPayable)} SECURELY`}</span>
+            </button>
           </div>
         </div>
-
-        {/* 10-Minute Price Lock Indicator */}
-        {remainingLockSeconds !== null && remainingLockSeconds > 0 && (
-          <div className="flex items-center justify-between rounded-xl bg-orange-500/10 border border-orange-500/20 px-3.5 py-2 text-xs">
-            <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300 font-semibold">
-              <Timer className="h-4 w-4 animate-pulse text-accent" />
-              <span>10-Min Price Lock Active</span>
+      }
+    >
+      <div className="mx-auto max-w-[520px] space-y-4 px-4 py-3 pb-28">
+        {/* Price Lock Banner */}
+        {remainingLockSeconds !== null && (
+          <div className="flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-500/25 px-3.5 py-2 text-amber-800 dark:text-amber-300 shadow-xs">
+            <div className="flex items-center gap-2 text-xs font-semibold">
+              <Timer className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <span>Checkout Price Locked</span>
             </div>
-            <span className="font-mono font-bold text-accent">
-              {Math.floor(remainingLockSeconds / 60)}:
-              {(remainingLockSeconds % 60).toString().padStart(2, "0")} left
-            </span>
+            <span className="font-mono text-xs font-black">{formatCountdown(remainingLockSeconds)}</span>
           </div>
         )}
 
-        {/* Validation Alert */}
         {validationError && (
-          <div
-            role="alert"
-            className="rounded-[var(--radius-medium)] border border-error/30 bg-error/10 p-3"
-          >
-            <Text variant="bodyMedium" tone="error" className="font-semibold">
-              {validationError}
-            </Text>
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs">
+            {validationError}
           </div>
         )}
 
-        {/* STEP 1: Fulfillment + Address */}
-        {step === 1 && (
-          <div className="space-y-4">
-            {/* Fulfillment Toggle Segmented Bar */}
-            <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
-              <Text
-                variant="caption"
-                tone="secondary"
-                className="font-semibold uppercase tracking-wider text-[11px]"
-              >
-                Choose Fulfillment Method
-              </Text>
+        {/* 1. Fulfillment Mode Details */}
+        <FulfillmentDetailsCard
+          fulfillment={fulfillment ?? "delivery"}
+          store={activeStore}
+          selectedAddress={selectedAddress}
+          tableNumber={tableNumber}
+          onTableNumberChange={(t) => setTableNumber(t)}
+        />
 
-              <div className="grid grid-cols-3 gap-1.5 p-1 bg-bg-secondary rounded-[var(--radius-medium)] border border-divider">
-                <button
-                  type="button"
-                  onClick={() => {
-                    void HapticService.impact("light");
-                    setFulfillment("delivery");
-                    setValidationError(null);
-                  }}
-                  className={cn(
-                    "flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
-                    isDelivery
-                      ? "bg-primary text-white shadow-sm"
-                      : "text-text-secondary hover:text-text-primary",
-                  )}
-                >
+        {/* Address Selection with Geofencing (Delivery Mode Only) — Standard Delivery only */}
+        {isDelivery && (
+          <div className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-3">
+            <AddressSelector
+              addresses={addresses}
+              selectedAddress={selectedAddress}
+              activeStore={activeStore}
+              onSelectAddress={(addr) => selectAddress(addr.id)}
+              onSwitchToTakeaway={() => setFulfillment("takeaway")}
+            />
+
+            <div className="pt-2 border-t border-divider">
+              <div className="flex items-center gap-2.5 rounded-xl border border-[#0E4825]/30 bg-[#0E4825]/5 p-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0E4825] text-white">
                   <Bike className="h-4 w-4" />
-                  <span>Delivery</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void HapticService.impact("light");
-                    setFulfillment("takeaway");
-                    setValidationError(null);
-                  }}
-                  className={cn(
-                    "flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
-                    isTakeaway
-                      ? "bg-primary text-white shadow-sm"
-                      : "text-text-secondary hover:text-text-primary",
-                  )}
-                >
-                  <StoreIcon className="h-4 w-4" />
-                  <span>Takeaway</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void HapticService.impact("light");
-                    setFulfillment("dinein");
-                    setValidationError(null);
-                  }}
-                  className={cn(
-                    "flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-[var(--radius-small)] text-xs font-bold transition-all cursor-pointer",
-                    isDineIn
-                      ? "bg-primary text-white shadow-sm"
-                      : "text-text-secondary hover:text-text-primary",
-                  )}
-                >
-                  <Utensils className="h-4 w-4" />
-                  <span>Dine-In</span>
-                </button>
-              </div>
-
-              {/* Kitchen info */}
-              <div className="flex items-start gap-2.5 pt-1 text-xs text-text-secondary">
-                <StoreIcon className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold text-text-primary">{activeStore?.name}</span>
-                  <span className="block text-[11px]">{activeStore?.address}</span>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-text">Standard Delivery</p>
+                  <p className="text-[11px] text-text-secondary">Delivered hot in 25-35 mins • No scheduling needed</p>
                 </div>
-              </div>
-            </section>
-
-            {/* Delivery Address Section (Delivery Mode Only) */}
-            {isDelivery && (
-              <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
-                <div className="flex items-center justify-between">
-                  <Text variant="titleMedium" className="font-bold">
-                    Delivery Address
-                  </Text>
-                  {selectedAddress && (
-                    <Link
-                      to="/addresses/create"
-                      search={{ returnTo: "/checkout" }}
-                      className="text-xs font-bold text-primary hover:underline flex items-center gap-0.5"
-                    >
-                      <Pencil className="h-3 w-3" /> Change
-                    </Link>
-                  )}
-                </div>
-
-                {selectedAddress ? (
-                  <div
-                    onClick={() => {
-                      void navigate({
-                        to: "/addresses/create",
-                        search: { editId: selectedAddress.id, returnTo: "/checkout" },
-                      });
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <AddressCard address={selectedAddress} />
-                  </div>
-                ) : (
-                  <div className="rounded-[var(--radius-medium)] border-2 border-dashed border-divider p-4 text-center space-y-3 bg-bg-secondary/40">
-                    <MapPin className="h-8 w-8 text-primary mx-auto" />
-                    <div>
-                      <p className="text-sm font-bold text-text-primary">
-                        No delivery address selected
-                      </p>
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        Add an address to proceed with food delivery
-                      </p>
-                    </div>
-                    <AppButton
-                      size="sm"
-                      variant="outlined"
-                      onClick={() =>
-                        void navigate({
-                          to: "/addresses/create",
-                          search: { returnTo: "/checkout" },
-                        })
-                      }
-                      iconRight={<ChevronRight className="h-4 w-4" />}
-                      className="mx-auto"
-                    >
-                      Add Delivery Address
-                    </AppButton>
-                  </div>
-                )}
-
-                {/* Delivery fee & radius info */}
-                <div className="flex items-center justify-between rounded-[var(--radius-medium)] bg-bg-secondary p-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Bike className="h-4 w-4 text-text-secondary" />
-                    <span>Store delivery radius</span>
-                  </div>
-                  <span className="font-bold text-text-primary">
-                    ~{activeStore?.deliveryRadiusKm || 7} km (~{activeStore?.etaMinutes || 30} mins)
-                  </span>
-                </div>
-              </section>
-            )}
-
-            {/* Takeaway Mode Information */}
-            {isTakeaway && (
-              <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
-                <div className="flex items-center gap-2">
-                  <StoreIcon className="h-5 w-5 text-primary" />
-                  <Text variant="titleMedium" className="font-bold">
-                    Store Pickup Details
-                  </Text>
-                </div>
-                <div className="rounded-[var(--radius-medium)] bg-bg-secondary p-3.5 space-y-1">
-                  <p className="text-sm font-bold text-text-primary">{activeStore?.name}</p>
-                  <p className="text-xs text-text-secondary">{activeStore?.address}</p>
-                  <div className="pt-2 flex items-center gap-2 text-xs font-semibold text-emerald-600">
-                    <Clock className="h-4 w-4" />
-                    <span>Ready for pickup in ~15 minutes</span>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {/* Dine-In Mode Information & Table Number Input */}
-            {isDineIn && (
-              <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
-                <div className="flex items-center gap-2">
-                  <Utensils className="h-5 w-5 text-primary" />
-                  <Text variant="titleMedium" className="font-bold">
-                    Dine-In Table Details
-                  </Text>
-                </div>
-                <div className="rounded-[var(--radius-medium)] bg-bg-secondary p-3.5 space-y-3">
-                  <div>
-                    <label
-                      htmlFor="table-number-input"
-                      className="block text-xs font-bold text-text-primary mb-1"
-                    >
-                      Table Number <span className="text-accent">*</span>
-                    </label>
-                    <input
-                      id="table-number-input"
-                      type="text"
-                      placeholder="e.g. 4 or T-12"
-                      value={tableNumber}
-                      onChange={(e) => {
-                        setTableNumber(e.target.value);
-                        setValidationError(null);
-                      }}
-                      className="w-full rounded-xl border border-divider bg-surface px-3.5 py-2.5 text-sm font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                    />
-                    <p className="text-[11px] text-text-secondary mt-1">
-                      Enter the table number on your table stand or coaster.
-                    </p>
-                  </div>
-                  <div className="pt-1 flex items-center gap-2 text-xs font-semibold text-emerald-600">
-                    <Clock className="h-4 w-4" />
-                    <span>Kitchen serves fresh KOT directly to your table</span>
-                  </div>
-                </div>
-              </section>
-            )}
-          </div>
-        )}
-
-        {/* STEP 2: Payment Method */}
-        {step === 2 && (
-          <div className="space-y-4">
-            <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-sm space-y-3">
-              <div>
-                <Text variant="titleLarge" className="font-bold">
-                  How would you like to pay?
-                </Text>
-                <Text variant="bodySmall" tone="secondary" className="mt-0.5">
-                  Select your preferred payment method below.
-                </Text>
-              </div>
-
-              <PaymentMethodList
-                value={paymentMethod}
-                onChange={(m) => {
-                  void HapticService.impact("light");
-                  setPaymentMethod(m);
-                }}
-              />
-            </section>
-
-            <SecurePaymentBadge />
-          </div>
-        )}
-
-        {/* STEP 3: Review & Pay */}
-        {step === 3 && (
-          <div className="space-y-4">
-            {/* Fulfillment & Payment context recap */}
-            <div className="rounded-[var(--radius-large)] border border-divider bg-surface p-3.5 shadow-sm flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 min-w-0">
-                {isDelivery ? (
-                  <Bike className="h-4 w-4 text-primary shrink-0" />
-                ) : isDineIn ? (
-                  <Utensils className="h-4 w-4 text-primary shrink-0" />
-                ) : (
-                  <StoreIcon className="h-4 w-4 text-primary shrink-0" />
-                )}
-                <span className="truncate font-semibold text-text-primary">
-                  {isDelivery
-                    ? `Delivery: ${selectedAddress?.line1 || "Selected address"}`
-                    : isDineIn
-                      ? `Dine-In: Table ${tableNumber || "Unassigned"}`
-                      : `Pickup: ${activeStore?.name}`}
+                <span className="shrink-0 rounded-full bg-[#0E4825] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+                  ASAP
                 </span>
               </div>
-              <AppBadge tone="primary" className="shrink-0 font-bold capitalize">
-                {paymentMethod === "online"
-                  ? "Online Pay"
-                  : isDelivery
-                    ? "COD"
-                    : isDineIn
-                      ? "Pay at Table"
-                      : "Pay at Counter"}
-              </AppBadge>
             </div>
-
-            {/* Items summary */}
-            <CheckoutSection
-              title={`Your order (${itemCount} item${itemCount === 1 ? "" : "s"})`}
-              action={
-                <Link
-                  to="/cart"
-                  className="inline-flex items-center gap-1 type-label-large text-primary hover:underline text-xs font-bold"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Link>
-              }
-            >
-              <ReviewItemsList lines={lines} />
-            </CheckoutSection>
-
-            {/* Order notes */}
-            <CheckoutSection title="Special instructions">
-              <NotesEditor
-                label="Order instructions"
-                value={orderNotes}
-                presets={orderNotePresets}
-                maxLength={240}
-                placeholder="Any special cooking or delivery notes for the kitchen?"
-                onChange={setOrderNotes}
-                helperText="Shared directly with the kitchen staff."
-              />
-            </CheckoutSection>
-
-            {/* Coupon / Promo */}
-            <CheckoutSection title="Offers & promos">
-              <PromoInput applied={promo} onChanged={() => void recompute()} />
-            </CheckoutSection>
-
-            {/* Bill breakdown */}
-            {totals && <OrderSummary totals={totals} itemCount={itemCount} />}
           </div>
         )}
-      </div>
 
-      {/* Sticky Bottom Bar for Wizard Navigation */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-divider bg-surface/95 backdrop-blur-md pb-[calc(10px+env(safe-area-inset-bottom,0px))] shadow-high">
-        <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3 px-4 py-3">
-          {/* Step 1 Bar */}
-          {step === 1 && (
-            <>
+        {/* 2. Order Review & Cooking Notes */}
+        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-divider pb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[#0E4825]/10 text-[#0E4825] dark:text-[#4ADE80] flex items-center justify-center">
+                <ShoppingBag className="h-4 w-4" />
+              </div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-text">
+                2. Order Review ({itemCount} {itemCount === 1 ? "Item" : "Items"})
+              </h2>
+            </div>
+            <Link to="/cart" className="text-xs font-bold text-[#FF6600] hover:underline">
+              Edit Cart
+            </Link>
+          </div>
+
+          <div className="space-y-2 divide-y divide-divider/50">
+            {lines.map((line) => (
+              <div key={line.lineId} className="flex items-center justify-between pt-2 first:pt-0 select-none">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border border-emerald-600 p-[1px]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                  </span>
+                  <p className="text-xs font-bold text-text truncate">
+                    <span className="text-[#FF6600] mr-1">{line.quantity}x</span> {line.name}
+                  </p>
+                </div>
+                <span className="text-xs font-mono font-bold text-text shrink-0">
+                  {formatINR(line.unitPrice * line.quantity)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-2">
+            <label className="block text-[11px] font-bold text-text-secondary mb-1">
+              Cooking / Delivery Instructions
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Leave package at door, extra napkins, less spicy..."
+              value={orderNotes}
+              onChange={(e) => setOrderNotes(e.target.value)}
+              className="w-full min-h-[44px] rounded-xl border border-divider bg-bg-secondary px-3.5 py-2 text-xs text-text outline-none focus:border-primary transition-colors"
+            />
+          </div>
+        </section>
+
+        {/* 3. Coupons & Loyalty Rewards */}
+        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-3">
+          <div className="flex items-center gap-2 border-b border-divider pb-2">
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-text">
+              3. Coupons & Loyalty Points
+            </h2>
+          </div>
+
+          <PromoInput applied={promo} onChanged={() => void recompute()} />
+
+          {/* Loyalty Points redemption toggle — 1 pt = Rs.1, max 50% of subtotal */}
+          <div className="flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3.5 select-none">
+            <div className="flex items-center gap-2.5">
+              <Coins className="h-5 w-5 text-amber-600 shrink-0" />
               <div>
-                <p className="text-[11px] text-text-secondary font-medium">Estimated Total</p>
-                <p className="type-title-large tabular-nums font-bold text-text-primary">
-                  {formatINR(grandTotal)}
+                <p className="text-xs font-bold text-text">
+                  Redeem Loyalty Points
+                </p>
+                <p className="text-[11px] text-text-secondary">
+                  Balance: {loyaltyBalance} pts ({formatINR(maxPointsDiscount)} max off)
                 </p>
               </div>
-              <AppButton
-                size="lg"
-                variant="cta"
-                onClick={handleStep1Continue}
-                iconRight={<ChevronRight className="h-4 w-4" />}
-                className="font-bold shadow-brand"
-              >
-                Continue to Payment
-              </AppButton>
-            </>
-          )}
+            </div>
+            <button
+              type="button"
+              disabled={maxPointsDiscount <= 0}
+              onClick={() => {
+                void HapticService.selection();
+                setRedeemPoints(!redeemPoints);
+              }}
+              className={`rounded-full px-3.5 py-1.5 min-h-[36px] text-xs font-bold transition-all cursor-pointer disabled:opacity-40 ${
+                redeemPoints
+                  ? "bg-[#0E4825] text-white shadow-xs"
+                  : "bg-surface border border-divider text-text hover:border-primary"
+              }`}
+            >
+              {redeemPoints ? "Applied" : "Redeem"}
+            </button>
+          </div>
+        </section>
 
-          {/* Step 2 Bar */}
-          {step === 2 && (
-            <>
-              <AppButton
-                size="md"
-                variant="outlined"
-                onClick={() => setStep(1)}
-                iconLeft={<ArrowLeft className="h-4 w-4" />}
-                className="font-semibold"
-              >
-                Back
-              </AppButton>
-              <AppButton
-                size="lg"
-                variant="cta"
-                onClick={handleStep2Continue}
-                iconRight={<ChevronRight className="h-4 w-4" />}
-                className="font-bold shadow-brand"
-              >
-                Review Order
-              </AppButton>
-            </>
-          )}
+        {/* 4. Bill Summary */}
+        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-2.5">
+          <div className="flex items-center gap-2 border-b border-divider pb-2">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-text">
+              4. Bill Breakdown
+            </h2>
+          </div>
 
-          {/* Step 3 Bar */}
-          {step === 3 && (
-            <>
-              <AppButton
-                size="md"
-                variant="outlined"
-                onClick={() => setStep(2)}
-                iconLeft={<ArrowLeft className="h-4 w-4" />}
-                className="font-semibold"
-              >
-                Back
-              </AppButton>
-              <div className="text-right">
-                <p className="text-[11px] text-text-secondary font-medium">To Pay</p>
-                <p className="type-title-large tabular-nums font-bold text-text-primary">
-                  {formatINR(grandTotal)}
-                </p>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between text-text-secondary">
+              <span>Item Total</span>
+              <span className="font-mono font-bold text-text">{formatINR(totals?.subtotal ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-text-secondary">
+              <span>Govt. GST (5%)</span>
+              <span className="font-mono font-bold text-text">{formatINR(totals?.taxes ?? 0)}</span>
+            </div>
+            <div className="flex justify-between text-text-secondary">
+              <span>Restaurant Packaging</span>
+              <span className="font-mono font-bold text-text">
+                {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : formatINR(totals?.packingFee ?? 15)}
+              </span>
+            </div>
+            <div className="flex justify-between text-text-secondary">
+              <span>Delivery Fee</span>
+              <span className="font-mono font-bold text-text">
+                {totals?.deliveryFee === 0 || !isDelivery ? (
+                  <span className="font-bold text-[#4ADE80] uppercase text-[10px]">FREE</span>
+                ) : (
+                  formatINR(totals?.deliveryFee ?? 35)
+                )}
+              </span>
+            </div>
+
+            {totals?.promoDiscount ? (
+              <div className="flex justify-between text-[#4ADE80] font-semibold">
+                <span>Coupon Discount ({promo?.code ?? "PROMO"})</span>
+                <span className="font-mono font-bold">-{formatINR(totals.promoDiscount)}</span>
               </div>
-              <AppButton
-                size="lg"
-                variant="cta"
-                onClick={() => void handlePlaceOrder()}
-                loading={busy}
-                iconLeft={!isAuthenticated ? <Lock className="h-4 w-4" /> : undefined}
-                className="font-bold shadow-brand"
-              >
-                {!isAuthenticated
-                  ? "Sign In to Pay"
-                  : paymentMethod === "online"
-                    ? "Pay Online"
-                    : isDelivery
-                      ? "Place COD Order"
-                      : "Place Order"}
-              </AppButton>
-            </>
-          )}
-        </div>
+            ) : null}
+
+            {redeemPoints && pointsDiscount > 0 && (
+              <div className="flex justify-between text-[#4ADE80] font-semibold">
+                <span>Loyalty Points Redeemed</span>
+                <span className="font-mono font-bold">-{formatINR(pointsDiscount)}</span>
+              </div>
+            )}
+
+            <div className="border-t border-divider pt-2.5 flex justify-between text-sm sm:text-base font-black text-text">
+              <span>Grand Total</span>
+              <span className="font-mono text-[#FF6600] font-black text-lg">{formatINR(finalPayable)}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* 5. Payment Method Selector */}
+        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs">
+          <PaymentMethodSelector
+            selectedMethod={paymentMethod}
+            onSelectMethod={(method) => setPaymentMethod(method)}
+            isDelivery={isDelivery}
+            isTakeaway={isTakeaway}
+          />
+        </section>
       </div>
+
+      {/* In-Place Frictionless Phone+OTP Authentication Sheet */}
+      <QuickAuthSheet
+        isOpen={authSheetOpen}
+        onClose={() => setAuthSheetOpen(false)}
+        onSuccess={() => {
+          setAuthSheetOpen(false);
+          setTimeout(() => {
+            void handlePlaceOrder();
+          }, 300);
+        }}
+      />
     </AppShell>
   );
 }
 
-function CheckoutSkeleton() {
-  return (
-    <AppShell title="Checkout" backTo="/cart" showTabs={false} showTopBar>
-      <div className="mx-auto max-w-[560px] space-y-3 px-4 py-4">
-        <Skeleton className="h-16 w-full rounded-2xl" />
-        <Skeleton className="h-32 w-full rounded-2xl" />
-        <Skeleton className="h-40 w-full rounded-2xl" />
-      </div>
-    </AppShell>
-  );
-}
+export default CheckoutPage;

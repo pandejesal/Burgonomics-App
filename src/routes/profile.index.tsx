@@ -20,6 +20,7 @@ import { profileRepository } from "@/features/profile/repositories/ProfileReposi
 import { favoritesRepository } from "@/features/favorites/repositories/FavoritesRepository";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
 import { ProfileHeader } from "@/features/profile/components/ProfileHeader";
+import { GrillCoinsWalletCard } from "@/features/profile/components/GrillCoinsWalletCard";
 import {
   ProfileMenuList,
   type ProfileMenuItem,
@@ -27,13 +28,12 @@ import {
 import { GuestProfilePrompt } from "@/features/profile/components/GuestProfilePrompt";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { useHydrated } from "@/shared/hooks/useHydrated";
-import { AppBadge } from "@/shared/components/common/AppBadge";
 
 export const Route = createFileRoute("/profile/")({
   head: () => ({
     meta: [
-      { title: "Profile — Burgonomics" },
-      { name: "description", content: "Manage your account, addresses, favourites and orders." },
+      { title: "Profile — Burgonomics (100% Pure Vegetarian)" },
+      { name: "description", content: "Manage your Burgonomics account, saved addresses, favorites and loyalty points." },
     ],
   }),
   component: Page,
@@ -59,8 +59,7 @@ function Page() {
     useProfileStore.getState().clear();
     profileRepository.clearCache();
     favoritesRepository.clear();
-    // Cart, store selection, fulfillment method and addresses are
-    // intentionally preserved — see PRD "LOGOUT" section.
+    // Cart, store selection, fulfillment method and addresses are preserved
     void navigate({ to: "/home", replace: true });
   };
 
@@ -72,7 +71,7 @@ function Page() {
           phone: authUser.phone,
           fullName: authUser.name ?? "Burger Lover",
           email: `${authUser.phone}@burgonomics.in`,
-          membershipTier: "silver",
+          membershipTier: "Gold",
           createdAt: new Date().toISOString(),
         }
       : null);
@@ -123,7 +122,11 @@ function Page() {
       description: "Offers and order updates",
       to: "/profile/notifications",
       Icon: Bell,
-      trailing: unreadCount > 0 ? <AppBadge tone="primary">{unreadCount}</AppBadge> : undefined,
+      trailing: unreadCount > 0 ? (
+        <span className="px-2 py-0.5 rounded-full bg-[#FF6600] text-white text-[10px] font-black">
+          {unreadCount}
+        </span>
+      ) : undefined,
     },
   ];
 
@@ -149,10 +152,11 @@ function Page() {
     <AppShell title="Profile" showTabs showTopBar>
       <div className="mx-auto max-w-[520px] space-y-4 px-4 py-4">
         <ProfileHeader profile={activeProfile} completion={completion} />
+        <GrillCoinsWalletCard />
         <ProfileMenuList title="Account" items={accountItems} />
         <ProfileMenuList title="More" items={helpItems} />
         <ProfileMenuList items={dangerItems} />
-        <p className="pt-2 text-center type-caption text-text-secondary">
+        <p className="pt-2 text-center text-xs text-text-secondary">
           Burgonomics — 100% Pure Vegetarian
         </p>
       </div>
@@ -169,3 +173,5 @@ function Page() {
     </AppShell>
   );
 }
+
+export default Page;

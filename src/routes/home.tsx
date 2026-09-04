@@ -1,43 +1,32 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Bell, Search } from "lucide-react";
-import { toast } from "sonner";
-import { HapticService } from "@/core/services/haptics";
 
 import { AppShell } from "@/shared/layouts/AppShell";
-import { Text } from "@/shared/components/common/Text";
-import { ProductCard } from "@/shared/components/common/ProductCard";
-import { OfferCard } from "@/shared/components/common/OfferCard";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { FulfillmentSheet } from "@/features/stores/components/FulfillmentSheet";
-import { FulfillmentChip } from "@/features/stores/components/FulfillmentChip";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useDemoStore } from "@/features/demo/state/demoStore";
 
 import { useHomeStore } from "@/features/home";
+import { CategoryPills } from "@/features/menu/components/CategoryPills";
+import { LaPinozHeader } from "@/features/home/components/LaPinozHeader";
 import { BannerCarousel } from "@/features/home/components/BannerCarousel";
 import { CategoryGrid } from "@/features/home/components/CategoryGrid";
 import { HorizontalRail } from "@/features/home/components/HorizontalRail";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { BestSellerCard } from "@/features/home/components/BestSellerCard";
 import { ComboCard } from "@/features/home/components/ComboCard";
 import { QuickReorderRail } from "@/features/home/components/QuickReorderRail";
-import { StoreHeaderCard } from "@/features/home/components/StoreHeaderCard";
 import { HomeSkeleton } from "@/features/home/components/HomeSkeleton";
+import { FloatingCartBar } from "@/features/cart/components/FloatingCartBar";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
-import { cartRepository } from "@/features/cart/repositories/CartRepository";
-import { isNative } from "@/shared/platform/platform";
 import type { Product } from "@/features/menu/models";
 
-/**
- * SCR-005 Home. Requires a selected store — the store determines all
- * downstream content (menu, offers, ETA). If none is set (e.g. deep
- * link, storage cleared) the user is bounced to Store Selection.
- */
 export const Route = createFileRoute("/home")({
   head: () => ({
     meta: [
@@ -79,50 +68,12 @@ function HomePage() {
     }
   }, [isHydrated, store, navigate]);
 
-  // Fulfillment gate — must be chosen before the user can browse Home.
-  useEffect(() => {
-    if (store && !fulfillment) setFulfillmentOpen(true);
-  }, [store, fulfillment]);
-
   // Load / reload on store change.
   useEffect(() => {
     if (store) {
       void load(store.id, user?.id);
     }
   }, [store, user?.id, load]);
-
-  const handleAddToCart = useCallback(
-    (product: Product) => {
-      if (product.customizable) {
-        void navigate({ to: "/menu/product/$productId", params: { productId: product.id } });
-        return;
-      }
-      if (!store) return;
-      void cartRepository.addItem({
-        storeId: store.id,
-        productId: product.id,
-        name: product.name,
-        imageUrl: product.imageUrl,
-        fallbackImageUrl: product.fallbackImageUrl,
-        veg: product.veg,
-        unitPrice: product.price,
-        quantity: 1,
-      });
-
-      void HapticService.impact("medium");
-
-      toast(`✓ ${product.name} added`, {
-        action: {
-          label: "View Cart",
-          onClick: () => {
-            void navigate({ to: "/cart" });
-          },
-        },
-        duration: 3500,
-      });
-    },
-    [store, navigate],
-  );
 
   const handleCardClick = useCallback(
     (productId: string) => {
@@ -145,61 +96,22 @@ function HomePage() {
     <AppShell
       title="BURGONOMICS"
       showTabs
-      showTopBar
-      rightSlot={
-        <Link
-          to="/profile/notifications"
-          aria-label="Notifications"
-          className="grid h-11 w-11 place-items-center rounded-full hover:bg-bg-secondary"
-        >
-          <Bell className="h-5 w-5" aria-hidden />
-        </Link>
-      }
+      showTopBar={false}
     >
-      <div className="mx-auto max-w-[520px]">
-        {/* Clean Light Header Block */}
-        <div className="bg-surface border-b border-divider shadow-low pb-5 pt-3 relative z-10">
-          {/* Store header + fulfillment chip */}
-          <div className="space-y-2 px-4">
-            <StoreHeaderCard store={store} fulfillment={fulfillment} />
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <FulfillmentChip value={fulfillment} onClick={() => setFulfillmentOpen(true)} />
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-success">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
-                  <span className="type-caption font-medium">100% Pure Veg</span>
-                </span>
-              </div>
-              {fulfillment === "delivery" && (
-                <Text variant="caption" tone="secondary">
-                  ETA {store.etaMinutes} min
-                </Text>
-              )}
-              {fulfillment === "takeaway" && (
-                <Text variant="caption" tone="secondary">
-                  Ready in {store.pickupEtaMinutes ?? Math.max(8, Math.floor(store.etaMinutes / 2))}{" "}
-                  min
-                </Text>
-              )}
-              {fulfillment === "dinein" && (
-                <Text variant="caption" tone="secondary">
-                  {store.isOpen ? "Open now" : "Closed"}
-                </Text>
-              )}
-            </div>
-          </div>
+      <div className="mx-auto max-w-[520px] pb-10">
+        {/* Full-bleed Header — single fulfillment switch inside (Delivery / Takeaway / Dine-In) */}
+        <LaPinozHeader onSearchClick={() => void navigate({ to: "/search" })} />
 
-          {/* Search */}
-          <section className="mt-3 px-4">
-            <Link
-              to="/search"
-              aria-label="Search the menu"
-              className="flex h-11 items-center gap-2 rounded-full border border-divider bg-bg-secondary px-4 hover:border-primary/40 transition-colors shadow-low float-interactive"
-            >
-              <Search className="h-5 w-5 text-text-secondary" aria-hidden />
-              <span className="type-body-large text-text-secondary">Search the menu…</span>
-            </Link>
-          </section>
+        {/* Category shortcut pills — POS category list */}
+        <div className="px-4 mt-3">
+          <CategoryPills
+            selectedCategory="all"
+            onSelectCategory={(catId) => {
+              if (catId === "all") void navigate({ to: "/menu" });
+              else void navigate({ to: "/menu", search: { category: catId } });
+            }}
+            className="mt-3"
+          />
         </div>
 
         {/* Offline strip */}
@@ -207,20 +119,20 @@ function HomePage() {
           <div className="mt-4 px-4">
             <div
               role="status"
-              className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium font-medium text-amber-900 dark:text-amber-200"
+              className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs font-medium text-amber-900 dark:text-amber-200"
             >
-              You are offline. Showing the latest available content.
+              You are offline. Showing the latest cached content.
             </div>
           </div>
         )}
 
-        {/* Body */}
+        {/* Body Content */}
         {isLoading ? (
           <div className="mt-4">
             <HomeSkeleton />
           </div>
         ) : status === "error" && !bundle ? (
-          <div className="mt-6">
+          <div className="mt-6 px-4">
             <FailureState
               title="We couldn't load Home"
               message={error ?? "Please try again in a moment."}
@@ -229,108 +141,78 @@ function HomePage() {
           </div>
         ) : status === "empty" || !bundle ? (
           !simulationMode ? (
-            <div className="mt-4">
+            <div className="mt-4 px-4">
               <PetpoojaSyncPlaceholder storeId={store.id} />
             </div>
           ) : (
-            <EmptyState
-              title="Nothing to show yet"
-              description="Menu and offers for this store will appear here soon."
-              actionLabel="Browse menu"
-              onAction={() => navigate({ to: "/menu" })}
-            />
+            <div className="mt-6 px-4">
+              <EmptyState
+                title="Nothing to show yet"
+                description="Menu and offers for this store will appear here soon."
+                actionLabel="Browse menu"
+                onAction={() => navigate({ to: "/menu" })}
+              />
+            </div>
           )
         ) : (
-          <div className="mt-5 space-y-7 pb-6 touch-pan-y">
-            {/* Banners */}
+          <div className="mt-4 space-y-6">
+            {/* POS-driven Promo Banner Carousel — single source of truth */}
             {bundle.banners.length > 0 && <BannerCarousel banners={bundle.banners} />}
 
-            {/* Categories */}
+            {/* 3-Column Explore Menu Grid */}
             {bundle.categories.length > 0 && (
               <section aria-labelledby="cats-heading">
                 <SectionHeader
-                  title="What's on your plate?"
-                  subtitle="Browse by category"
-                  actionLabel="See menu"
+                  title="Explore Menu"
+                  subtitle="100% Pure Veg QSR favorites"
+                  actionLabel="View all"
                   actionTo="/menu"
                 />
                 <CategoryGrid categories={bundle.categories} />
               </section>
             )}
 
-            {/* Featured offers */}
-            {bundle.featuredOffers.length > 0 && (
-              <section aria-labelledby="offers-heading">
-                <SectionHeader
-                  title="Featured offers"
-                  subtitle="Save on today's favourites"
-                  actionLabel="All offers"
-                  actionTo="/offers"
-                />
-                <HorizontalRail ariaLabel="Featured offers">
-                  {bundle.featuredOffers.map((o) => (
-                    <OfferCard
-                      key={o.id}
-                      code={o.code ?? ""}
-                      title={o.title}
-                      description={o.description}
-                      className="w-[280px]"
-                    />
-                  ))}
-                </HorizontalRail>
-              </section>
-            )}
-
-            {/* Quick reorder */}
+            {/* Quick Reorder Rail (for authenticated users) */}
             {isAuthenticated && bundle.quickReorder.length > 0 && (
               <section aria-labelledby="reorder-heading">
                 <SectionHeader
-                  title="Reorder in one tap"
-                  subtitle="From your recent orders"
-                  actionLabel="View orders"
+                  title="Reorder in 1-Tap"
+                  subtitle="From your previous favorites"
+                  actionLabel="View all orders"
                   actionTo="/orders"
                 />
                 <QuickReorderRail items={bundle.quickReorder} />
               </section>
             )}
 
-            {/* Best sellers */}
+            {/* Bestsellers Snap-Scroll Rail with BestSellerCard */}
             {bundle.bestSellers.length > 0 && (
               <section aria-labelledby="best-heading">
                 <SectionHeader
-                  title="Best sellers"
-                  subtitle="Most loved at this store"
-                  actionLabel="See all"
+                  title="Bestsellers"
+                  subtitle="Top customer favorites"
+                  actionLabel="Full menu"
                   actionTo="/menu"
                 />
                 <HorizontalRail ariaLabel="Best selling items">
                   {bundle.bestSellers.map((it) => (
-                    <ProductCard
+                    <BestSellerCard
                       key={it.id}
-                      id={it.id}
-                      name={it.name}
-                      description={it.description}
-                      price={it.price}
-                      veg={it.veg}
-                      imageUrl={it.imageUrl}
-                      fallbackImageUrl={it.fallbackImageUrl}
-                      inStock={it.inStock}
-                      onAdd={() => handleAddToCart(it)}
-                      onClickCard={() => handleCardClick(it.id)}
-                      className="w-[200px]"
+                      product={it as unknown as Product}
+                      onCardClick={() => handleCardClick(it.id)}
                     />
                   ))}
                 </HorizontalRail>
               </section>
             )}
 
-            {/* Popular combos */}
+            {/* Curated Value Combos Rail — POS cat_combos only */}
             {bundle.popularCombos.length > 0 && (
               <section aria-labelledby="combos-heading">
                 <SectionHeader
-                  title="Popular combos"
-                  subtitle="Bundle up and save more"
-                  actionLabel="See all"
+                  title="Value Combos"
+                  subtitle="Pre-bundled savings straight from POS"
+                  actionLabel="See all combos"
                   actionTo="/menu"
                 />
                 <HorizontalRail ariaLabel="Popular combos">
@@ -341,75 +223,21 @@ function HomePage() {
               </section>
             )}
 
-            {/* Recommendations */}
-            {bundle.recommendations.length > 0 && (
-              <section aria-labelledby="recs-heading">
-                <SectionHeader
-                  title="Recommended for you"
-                  subtitle="Picked from what you'll likely enjoy"
-                />
-                <HorizontalRail ariaLabel="Recommended items">
-                  {bundle.recommendations.map((it) => (
-                    <ProductCard
-                      key={it.id}
-                      id={it.id}
-                      name={it.name}
-                      description={it.reason ?? it.description}
-                      price={it.price}
-                      veg={it.veg}
-                      imageUrl={it.imageUrl}
-                      fallbackImageUrl={it.fallbackImageUrl}
-                      inStock={it.inStock}
-                      onAdd={() => handleAddToCart(it)}
-                      onClickCard={() => handleCardClick(it.id)}
-                      className="w-[200px]"
-                    />
-                  ))}
-                </HorizontalRail>
-              </section>
-            )}
-
-            {/* Recently viewed — only when populated */}
-            {bundle.recentlyViewed.length > 0 && (
-              <section aria-labelledby="recent-heading">
-                <SectionHeader title="Recently viewed" subtitle="Pick up where you left off" />
-                <HorizontalRail ariaLabel="Recently viewed items">
-                  {bundle.recentlyViewed.map((it) => (
-                    <ProductCard
-                      key={it.id}
-                      id={it.id}
-                      name={it.name}
-                      description={it.description}
-                      price={it.price}
-                      veg={it.veg}
-                      imageUrl={it.imageUrl}
-                      fallbackImageUrl={it.fallbackImageUrl}
-                      inStock={it.inStock}
-                      onAdd={() => handleAddToCart(it)}
-                      onClickCard={() => handleCardClick(it.id)}
-                      className="w-[200px]"
-                    />
-                  ))}
-                </HorizontalRail>
-              </section>
-            )}
-
-            {/* Footer spacing so the last rail clears the tab bar. */}
-            <div className="h-2" aria-hidden />
             {isRefreshing && (
-              <p role="status" className="type-caption text-center text-text-secondary">
-                Refreshing…
+              <p role="status" className="type-caption text-center text-text-secondary pt-2">
+                Refreshing menu…
               </p>
             )}
           </div>
         )}
       </div>
 
+      {/* Floating Mini Cart Bar */}
+      <FloatingCartBar />
+
       <FulfillmentSheet
         open={fulfillmentOpen}
         onOpenChange={(o) => {
-          // Don't allow dismissing without a choice — the user must
-          // pick a method before browsing.
           if (!o && !fulfillment) return;
           setFulfillmentOpen(o);
         }}

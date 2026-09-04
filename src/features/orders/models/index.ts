@@ -83,6 +83,8 @@ export interface OrderStoreSnapshot {
   address: string;
   addressLine1?: string;
   petpoojaRestId?: string;
+  /** Linked Partner branch id (if the outlet was linked by ops). */
+  partnerBranchId?: string | null;
   area: string;
   city: string;
   phone: string;
@@ -217,5 +219,6 @@ export function toStoreSnapshot(store: Store): OrderStoreSnapshot {
     phone: store.phone,
     lat: store.lat,
     lng: store.lng,
+    partnerBranchId: store.partnerBranchId ?? null,
   };
 }

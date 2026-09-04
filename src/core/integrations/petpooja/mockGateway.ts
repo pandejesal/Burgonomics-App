@@ -490,4 +490,5 @@ firestore_queue_waiting{queue="petpooja-webhook-handler"} 0`,
   }
 }
 
-export const petpoojaGateway = new MockPetpoojaGateway();
+/** Mock singleton (used by the gateway factory when live is disabled). */
+export const mockPetpoojaGateway = new MockPetpoojaGateway();

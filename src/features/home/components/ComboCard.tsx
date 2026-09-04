@@ -61,8 +61,10 @@ export function ComboCard({ combo, className }: Props) {
               alt={combo.name}
               className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
             />
-          ) : (
+          ) : combo.visual ? (
             <span>{combo.visual}</span>
+          ) : (
+            <span className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Burgonomics</span>
           )}
         </div>
         <div className="p-3 bg-surface">

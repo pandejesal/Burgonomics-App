@@ -80,9 +80,11 @@ export function mapOrderToPetpoojaSaveOrder(
     deviceType?: "Web" | "Mobile";
   },
 ): PetpoojaSaveOrderPayload {
-  const app_key = options?.appKey || "mock_petpooja_app_key";
-  const app_secret = options?.appSecret || "mock_petpooja_app_secret";
-  const access_token = options?.accessToken || "mock_petpooja_access_token";
+  // Secrets are NEVER hardcoded here. The server proxy injects live
+  // credentials; empty strings mean "fill in server-side".
+  const app_key = options?.appKey || "";
+  const app_secret = options?.appSecret || "";
+  const access_token = options?.accessToken || "";
 
   // Customer information
   const customerName = options?.customerName || order.address?.name || "John Doe";

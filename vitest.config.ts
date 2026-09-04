@@ -5,7 +5,14 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   test: {
-    include: ["tests/**/*.test.ts"],
+    include: [
+      "tests/**/*.test.ts",
+      "src/core/**/*.test.ts",
+      "src/features/**/*.test.tsx",
+      "src/features/**/*.test.ts",
+      "src/routes/**/*.test.tsx",
+      "src/routes/**/*.test.ts",
+    ],
     environment: "node",
   },
 });

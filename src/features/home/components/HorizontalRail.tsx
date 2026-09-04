@@ -23,7 +23,7 @@ export function HorizontalRail({ children, className, itemClassName, ariaLabel }
       ref={containerRef}
       role={ariaLabel ? "list" : undefined}
       aria-label={ariaLabel}
-      className={cn("flex gap-3 overflow-x-auto px-4 pb-1 touch-pan-y no-scrollbar", className)}
+      className={cn("flex gap-3 overflow-x-auto px-4 pb-1 touch-pan-y overscroll-x-contain no-scrollbar", className)}
     >
       {items.map((child, i) => (
         <div

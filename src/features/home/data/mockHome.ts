@@ -1,6 +1,6 @@
 /**
  * Home fixtures for BURGONOMICS.
- * Populated dynamically using the new PDF-based menu data for full fidelity.
+ * Populated dynamically using authentic Burgonomics QSR food photography.
  */
 import type { MenuCategory, MenuItem } from "@/features/menu/services/menuService";
 import type { Offer } from "@/features/offers/models";
@@ -16,36 +16,55 @@ export const MOCK_BANNERS: Banner[] = [
     title: "THE HOUSE OF DAMN GOOD BURGERS",
     subtitle: "100% Pure Veg, freshly prepared, and absolutely mouth-watering!",
     ctaLabel: "Browse Burgers",
-    ctaHref: "/menu",
-    gradient: "from-[#0e4825] to-[#175e33]",
-    visual: "🍔",
-    imageUrl: "/damn-good-burger.png",
-    fallbackImageUrl:
-      "https://images.unsplash.com/photo-1571091718767-18b5b1457add?auto=format&fit=crop&w=350&h=350&q=80",
+    ctaHref: "/menu/product/prd_hero",
+    gradient: "bg-gradient-to-br from-[#0E4825] via-[#155A30] to-[#0A331A] text-white",
+    visual: "",
+    imageUrl: "/images/menu/banners/hero-burger-banner.jpg",
+    fallbackImageUrl: "/images/menu/classic-burgers/hero-burger.jpg",
+  },
+  {
+    id: "ban_big_bang_meal",
+    title: "BIG BANG COMBO FEAST",
+    subtitle: "Giant 5-inch burger + Golden Fries + Chilled Beverage at irresistible prices.",
+    ctaLabel: "Order Combo",
+    ctaHref: "/menu/product/prd_combo_big_bang_meal",
+    gradient: "bg-gradient-to-br from-[#CC5200] via-[#B34700] to-[#9A3412] text-white",
+    visual: "",
+    imageUrl: "/images/menu/banners/big-bang-meal-banner.jpg",
+    fallbackImageUrl: "/images/menu/combos/big-bang-meal.jpg",
+  },
+  {
+    id: "ban_sizzling_burger",
+    title: "IT'S FULL-ON BURGONOMICS!",
+    subtitle: "Try our Veg Sizzling Burger cooked and served on a piping hot sizzling plate.",
+    ctaLabel: "Order Sizzling",
+    ctaHref: "/menu/product/prd_veg_sizzling",
+    gradient: "bg-gradient-to-br from-[#0E4825] via-[#1B5934] to-[#CC5200] text-white",
+    visual: "",
+    imageUrl: "/images/menu/sizzling-burgers/veg-sizzling-burger.jpg",
+    fallbackImageUrl: "/images/menu/sizzling-burgers/cheese-supreme-burger.jpg",
   },
   {
     id: "ban_fries",
     title: "ZINDAGI HO YA FRIES...",
     subtitle: "...bas crispy honi chahiye! Grab our seasoned Peri Peri golden fries.",
     ctaLabel: "Order Fries",
-    ctaHref: "/menu",
-    gradient: "from-[#ff6600] to-[#ff802b]",
-    visual: "🍟",
-    imageUrl: "/fries-benefits.png",
-    fallbackImageUrl:
-      "https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?auto=format&fit=crop&w=350&h=350&q=80",
+    ctaHref: "/menu/product/prd_peri_peri_fries",
+    gradient: "bg-gradient-to-br from-[#CC5200] via-[#B34700] to-[#9A3412] text-white",
+    visual: "",
+    imageUrl: "/images/menu/banners/peri-peri-fries-banner.jpg",
+    fallbackImageUrl: "/images/menu/fries/peri-peri-fries.jpg",
   },
   {
-    id: "ban_sizzling_burger",
-    title: "IT'S FULL-ON BURGONOMICS!",
-    subtitle: "Try our Veg Sizzling Burger cooked and served on a sizzling hot plate.",
-    ctaLabel: "Order Sizzling Burgers",
-    ctaHref: "/menu",
-    gradient: "from-[#0c5129] to-[#ff6600]",
-    visual: "🔥",
-    imageUrl: "/drooling-burger.png",
-    fallbackImageUrl:
-      "https://images.unsplash.com/photo-1553979459-d2229ba7433b?auto=format&fit=crop&w=350&h=350&q=80",
+    id: "ban_myob",
+    title: "MAKE YOUR OWN BURGER",
+    subtitle: "Custom-craft your dream burger with gourmet patties, molten cheeses & sauces!",
+    ctaLabel: "Customize Now",
+    ctaHref: "/menu/product/prd_hero",
+    gradient: "bg-gradient-to-br from-[#0E4825] via-[#155A30] to-[#0A331A] text-white",
+    visual: "",
+    imageUrl: "/images/menu/banners/myob-banner.png",
+    fallbackImageUrl: "/images/menu/banners/myob.png",
   },
 ];
 
@@ -61,17 +80,17 @@ export const MOCK_FEATURED_OFFERS: Offer[] = SAMPLE_OFFERS;
 
 // 4. Bestsellers - pulling popular items
 export const MOCK_BEST_SELLERS: MenuItem[] = SAMPLE_PRODUCTS.filter((p) =>
-  p.tags?.includes("popular"),
+  p.tags?.includes("popular") || p.badges?.some((b) => b.id === "bestseller"),
 ).slice(0, 8);
 
-// 5. Mapped Combos from Page 6 of the PDF
+// 5. Mapped Combos from authentic meals data
 export const MOCK_COMBOS: Combo[] = SAMPLE_PRODUCTS.filter(
   (p) => p.categoryId === "cat_combos",
 ).map((p) => {
-  // Extract combo details or use placeholder mappings
   let originalPrice = p.price + 38;
   if (p.id === "prd_combo_classic_meal") originalPrice = 179;
   if (p.id === "prd_combo_big_bang_meal") originalPrice = 289;
+  if (p.id === "prd_combo_cheese_burst") originalPrice = 259;
 
   return {
     id: p.id,
@@ -79,11 +98,11 @@ export const MOCK_COMBOS: Combo[] = SAMPLE_PRODUCTS.filter(
     description: p.description ?? "",
     price: p.price,
     originalPrice,
-    visual: "🍱",
+    visual: "",
     imageUrl: p.imageUrl,
     fallbackImageUrl: p.fallbackImageUrl,
-    gradient: p.id.includes("big_bang")
-      ? "linear-gradient(135deg, #ff802b 0%, #ff6600 100%)"
+    gradient: p.id.includes("big_bang") || p.id.includes("red_hot")
+      ? "linear-gradient(135deg, #cc5200 0%, #b34700 100%)"
       : "linear-gradient(135deg, #0e4825 0%, #175e33 100%)",
   };
 });

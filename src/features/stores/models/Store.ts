@@ -49,6 +49,13 @@ export interface Store {
   distanceKm?: number;
   /** Petpooja Restaurant ID, nullable for now. */
   petpoojaRestId?: string | null;
+  /**
+   * Linked Partner `branches/*` doc id, set by ops when the outlet is
+   * matched on both sides (Firestore `stores/{id}.partnerBranchId`).
+   * Written onto order docs as top-level `branchId` so Partner scoping and
+   * server KOT restID resolution work. Null until linked.
+   */
+  partnerBranchId?: string | null;
   /** Delivery radius in km. */
   deliveryRadiusKm?: number;
   /** Store-specific pricing configuration overrides */

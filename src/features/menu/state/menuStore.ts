@@ -1,6 +1,23 @@
 import { create } from "zustand";
 import { menuRepository } from "@/features/menu/repositories/MenuRepository";
 import type { MenuCategoryModel, Product } from "@/features/menu/models";
+import { SAMPLE_PRODUCTS } from "@/features/menu/data/petpoojaSampleData";
+
+const SAMPLE_BY_ID = new Map(SAMPLE_PRODUCTS.map((p) => [p.id, p]));
+const SAMPLE_BY_NAME = new Map(SAMPLE_PRODUCTS.map((p) => [p.name.toLowerCase(), p]));
+
+function enrichProduct(p: Product): Product {
+  if (p.imageUrl && p.imageUrl.trim().length > 0) return p;
+  const byId = SAMPLE_BY_ID.get(p.id);
+  if (byId?.imageUrl) {
+    return { ...p, imageUrl: byId.imageUrl, imageUrls: byId.imageUrls ?? (byId.imageUrl ? [byId.imageUrl] : []), fallbackImageUrl: byId.fallbackImageUrl ?? byId.imageUrl };
+  }
+  const byName = SAMPLE_BY_NAME.get(p.name.toLowerCase());
+  if (byName?.imageUrl) {
+    return { ...p, imageUrl: byName.imageUrl, imageUrls: byName.imageUrls ?? (byName.imageUrl ? [byName.imageUrl] : []), fallbackImageUrl: byName.fallbackImageUrl ?? byName.imageUrl };
+  }
+  return p;
+}
 
 /**
  * Menu feature state — categories + paginated products per category,
@@ -75,7 +92,7 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
 
     const unsubProd = menuRepository.subscribeProducts(storeId, undefined, (res) => {
       if (res.success) {
-        const allProducts = res.data.items;
+        const allProducts = res.data.items.map(enrichProduct);
         const newBuckets: Record<string, CategoryBucket> = {};
         allProducts.forEach((p) => {
           if (!newBuckets[p.categoryId]) {
@@ -180,7 +197,7 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
       return;
     }
 
-    const page = res.data;
+    const page = { ...res.data, items: res.data.items.map(enrichProduct) };
     const merged = [...(bucket?.items ?? []), ...page.items];
     const hasMore = merged.length < page.total && page.items.length > 0;
     set((s) => ({
