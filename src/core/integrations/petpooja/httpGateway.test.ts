@@ -39,6 +39,7 @@ describe("petpooja gateway wiring", () => {
       store: { id: "str_001", name: "S", address: "A" },
       totals: {},
       payment: { method: "upi" },
+      address: { phone: "+91 98765 43210" },
     } as any);
     expect(res.acknowledged).toBe(true);
     expect(res.kotNumber).toBe("KOT-123");
@@ -60,6 +61,7 @@ describe("petpooja gateway wiring", () => {
       store: { id: "str_001", name: "S", address: "A" },
       totals: {},
       payment: { method: "upi" },
+      address: { phone: "+91 98765 43210" },
     } as any);
     expect(res.acknowledged).toBe(false);
 
@@ -74,6 +76,23 @@ describe("petpooja gateway wiring", () => {
     const replay = await gw.replayWebhook("any");
     expect(replay.acknowledged).toBe(true);
     expect((await gw.getQueues()).waitingJobsCount).toBe(0);
+  });
+
+  it("refuses to push without a customer phone instead of inventing one", async () => {
+    const gw = new HttpPetpoojaGateway({
+      functionsBaseUrl: "https://proxy.test/api",
+      fetchImpl: okFetch({ success: true }),
+      outboxKey: "test.outbox.nophone",
+    });
+    await expect(
+      gw.pushOrder("ord_x", {
+        id: "ord_x",
+        items: [],
+        store: { id: "str_001", name: "S", address: "A" },
+        totals: {},
+        payment: { method: "upi" },
+      } as any)
+    ).rejects.toThrow("Customer phone is required");
   });
 
   it("circuit breaker opens after the threshold and surfaces in metrics", async () => {

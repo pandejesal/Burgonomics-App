@@ -86,10 +86,16 @@ export function mapOrderToPetpoojaSaveOrder(
   const app_secret = options?.appSecret || "";
   const access_token = options?.accessToken || "";
 
-  // Customer information
-  const customerName = options?.customerName || order.address?.name || "John Doe";
-  const customerPhone = options?.customerPhone || order.address?.phone || "9876543210";
-  const customerEmail = options?.customerEmail || "customer@example.com";
+  // Customer information — checkout requires login, so a phone must exist.
+  // Never invent one: a fake number books riders/KOTs nobody can contact.
+  const customerPhone =
+    options?.customerPhone || order.address?.phone || order.address?.contactPhone;
+  if (!customerPhone) {
+    throw new Error("Customer phone is required to push the order to Petpooja");
+  }
+  const customerName =
+    options?.customerName || order.address?.name || order.address?.contactName || "Customer";
+  const customerEmail = options?.customerEmail || "customer@burgonomics.com";
   const customerAddress = order.address
     ? `${order.address.line1}, ${order.address.line2 || ""}, ${order.address.city}, ${order.address.state} - ${order.address.pincode}`
     : "Dine-in / Takeaway at Store";
