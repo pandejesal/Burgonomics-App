@@ -28,6 +28,8 @@ export interface MenuCategoryModel {
 export interface Product {
   id: Id;
   categoryId: Id;
+  /** Human category label from the canonical product doc (not a separate collection). */
+  categoryName?: string;
   name: string;
   description?: string;
   price: Money;

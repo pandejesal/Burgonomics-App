@@ -24,6 +24,15 @@ import type {
 export type MenuCategory = MenuCategoryModel & { itemCount: number };
 export type MenuItem = Product;
 
+/**
+ * Canonical menu source: the `products` collection (written by server
+ * Petpooja sync). Partner filters by `branchId`, Delivery by `restId`
+ * (stores/{id}.petpoojaRestId, equal to the branch restId once outlets are
+ * linked — Runbook §5). `petpoojaItemId` is the join key for 86-ing.
+ * Legacy `petpooja_products` / `petpooja_categories` collections are
+ * deprecated and intentionally not read here.
+ */
+
 // Helper to paginate a local array
 function paginate<T>(items: T[], page: number, pageSize: number) {
   const start = (page - 1) * pageSize;
@@ -69,15 +78,16 @@ function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
 
 function mapProductDoc(data: any, docId: string): Product {
   const veg =
-    data.veg !== undefined
-      ? Boolean(data.veg)
-      : data.dietaryTag === "veg" || data.item_attributeid === "1";
+    data.isVeg !== undefined
+      ? Boolean(data.isVeg)
+      : data.veg !== undefined
+        ? Boolean(data.veg)
+        : data.dietaryTag === "veg" || data.item_attributeid === "1";
 
   const customizations = mapToCustomizationGroups(data.customizations || []);
 
-  const heroUrl = data.heroImageUrl || data.heroImage;
-  const standardUrl = data.imageUrl || data.itemimage_url || undefined;
-  const finalImageUrl = heroUrl || standardUrl;
+  const imageUrl =
+    data.imageUrl || data.image || data.image_url || data.itemimage_url || undefined;
 
   const badges = Array.isArray(data.badges) ? [...data.badges] : [];
   if (
@@ -106,17 +116,23 @@ function mapProductDoc(data: any, docId: string): Product {
 
   return {
     id: docId,
-    categoryId: data.categoryId || "",
+    categoryId: data.categoryId || "uncategorized",
+    categoryName: data.categoryName || data.categoryname || undefined,
     name: data.name || data.itemname || "Product",
     description: data.description || data.itemdescription || "",
     price: typeof data.price === "number" ? data.price : parseFloat(data.price) || 0,
     compareAtPrice: data.compareAtPrice,
     discountPercentage: data.discountPercentage,
     veg,
-    imageUrl: finalImageUrl,
-    imageUrls: data.imageUrls || (finalImageUrl ? [finalImageUrl] : []),
+    imageUrl,
+    imageUrls: data.imageUrls || (imageUrl ? [imageUrl] : []),
     fallbackImageUrl: data.fallbackImageUrl,
-    inStock: data.isAvailable !== undefined ? Boolean(data.isAvailable) : data.inStock !== false,
+    inStock:
+      data.inStock !== undefined
+        ? Boolean(data.inStock)
+        : data.isAvailable !== undefined
+          ? Boolean(data.isAvailable)
+          : true,
     customizable: customizations.length > 0 || Boolean(data.customizable),
     prepTimeMinutes: data.prepTimeMinutes || 15,
     badges,
@@ -125,44 +141,57 @@ function mapProductDoc(data: any, docId: string): Product {
   };
 }
 
+/** Delivery store id → Petpooja restID (equal once outlets are linked). */
+async function resolveRestId(storeId: string | undefined): Promise<string | undefined> {
+  if (!storeId) return undefined;
+  try {
+    const snap = await getDoc(doc(db, "stores", storeId));
+    const restId = (snap.data() as any)?.petpoojaRestId;
+    if (typeof restId === "string" && restId.length > 0) return restId;
+  } catch {
+    // store lookup failure — fall through to raw store id
+  }
+  return storeId;
+}
+
+async function fetchStoreProducts(restId: string | undefined): Promise<Product[]> {
+  const q = restId
+    ? query(collection(db, "products"), where("restId", "==", restId))
+    : query(collection(db, "products"), limit(100));
+  const snap = await getDocs(q);
+  const all: Product[] = [];
+  snap.forEach((d) => {
+    all.push(mapProductDoc(d.data(), d.id));
+  });
+  return all;
+}
+
+function deriveCategories(all: Product[]): MenuCategory[] {
+  const seen = new Map<string, MenuCategory>();
+  for (const p of all) {
+    const id = p.categoryId || "uncategorized";
+    const existing = seen.get(id);
+    if (existing) {
+      existing.itemCount += 1;
+    } else {
+      seen.set(id, {
+        id,
+        name: p.categoryName || id,
+        order: seen.size + 1,
+        itemCount: 1,
+        imageUrl: p.imageUrl,
+      });
+    }
+  }
+  return [...seen.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
 export const menuService = {
   async listCategories(storeId?: string): Promise<ApiResult<MenuCategory[]>> {
     try {
-      let q = query(collection(db, "petpooja_categories"));
-      if (storeId) {
-        q = query(collection(db, "petpooja_categories"), where("restId", "==", storeId));
-      }
-      const snap = await getDocs(q);
-      const categories: MenuCategory[] = [];
-      snap.forEach((d) => {
-        const data = d.data() as any;
-        categories.push({
-          id: d.id,
-          name: data.name || data.categoryname || "Category",
-          slug: data.slug,
-          order: data.sortOrder ?? data.order ?? 0,
-          itemCount: data.itemCount || 0,
-          imageUrl: data.imageUrl || data.categoryimage_url || undefined,
-        });
-      });
-
-      // If store-specific query returned 0, fallback to general categories
-      if (categories.length === 0 && storeId) {
-        const fallbackSnap = await getDocs(collection(db, "petpooja_categories"));
-        fallbackSnap.forEach((d) => {
-          const data = d.data() as any;
-          categories.push({
-            id: d.id,
-            name: data.name || data.categoryname || "Category",
-            slug: data.slug,
-            order: data.sortOrder ?? data.order ?? 0,
-            itemCount: data.itemCount || 0,
-            imageUrl: data.imageUrl || data.categoryimage_url || undefined,
-          });
-        });
-      }
-
-      return ok(categories.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+      const restId = await resolveRestId(storeId);
+      const all = await fetchStoreProducts(restId);
+      return ok(deriveCategories(all));
     } catch (e: any) {
       console.error("Failed to list categories", e);
       return fail("MENU_FETCH_FAILED", "Could not load menu categories.");
@@ -176,36 +205,11 @@ export const menuService = {
     pageSize = 20,
   ): Promise<ApiResult<ProductPage>> {
     try {
-      let q = query(collection(db, "petpooja_products"));
-      if (storeId && categoryId) {
-        q = query(
-          collection(db, "petpooja_products"),
-          where("restId", "==", storeId),
-          where("categoryId", "==", categoryId),
-        );
-      } else if (categoryId) {
-        q = query(collection(db, "petpooja_products"), where("categoryId", "==", categoryId));
-      } else if (storeId) {
-        q = query(collection(db, "petpooja_products"), where("restId", "==", storeId));
+      const restId = await resolveRestId(storeId);
+      let all = await fetchStoreProducts(restId);
+      if (categoryId) {
+        all = all.filter((p) => p.categoryId === categoryId);
       }
-
-      const snap = await getDocs(q);
-      const all: Product[] = [];
-      snap.forEach((d) => {
-        all.push(mapProductDoc(d.data(), d.id));
-      });
-
-      // If store-filtered query returned 0, fallback to general products query
-      if (all.length === 0 && storeId) {
-        const fallbackQ = categoryId
-          ? query(collection(db, "petpooja_products"), where("categoryId", "==", categoryId))
-          : collection(db, "petpooja_products");
-        const fallbackSnap = await getDocs(fallbackQ);
-        fallbackSnap.forEach((d) => {
-          all.push(mapProductDoc(d.data(), d.id));
-        });
-      }
-
       return ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length });
     } catch (e: any) {
       console.error("Failed to list products", e);
@@ -215,10 +219,19 @@ export const menuService = {
 
   async getProduct(id: string, _storeId?: string): Promise<ApiResult<ProductDetails | null>> {
     try {
-      const snap = await getDoc(doc(db, "petpooja_products", id));
-      if (!snap.exists()) return ok(null);
-      const data = snap.data();
-      const baseProduct = mapProductDoc(data, snap.id);
+      const direct = await getDoc(doc(db, "products", id));
+      let data: any = direct.exists() ? direct.data() : undefined;
+      let docId = id;
+      if (data === undefined) {
+        // Fall back to Petpooja item-id lookup (doc ids are prod_{itemid}).
+        const alt = await getDocs(
+          query(collection(db, "products"), where("petpoojaItemId", "==", id), limit(1))
+        );
+        if (alt.empty) return ok(null);
+        data = alt.docs[0].data();
+        docId = alt.docs[0].id;
+      }
+      const baseProduct = mapProductDoc(data, docId);
       const customizations = mapToCustomizationGroups(data.customizations || []);
 
       const details: ProductDetails = {
@@ -247,29 +260,11 @@ export const menuService = {
 
   async listRelatedProducts(productId: string, storeId?: string): Promise<ApiResult<Product[]>> {
     try {
-      const snap = await getDoc(doc(db, "petpooja_products", productId));
-      if (!snap.exists()) return ok([]);
-      const categoryId = snap.data().categoryId;
-
-      let relQ = query(
-        collection(db, "petpooja_products"),
-        where("categoryId", "==", categoryId),
-        limit(6),
-      );
-      if (storeId) {
-        relQ = query(
-          collection(db, "petpooja_products"),
-          where("restId", "==", storeId),
-          where("categoryId", "==", categoryId),
-          limit(6),
-        );
-      }
-      const relSnap = await getDocs(relQ);
-      const related: Product[] = [];
-      relSnap.forEach((d) => {
-        if (d.id !== productId) related.push(mapProductDoc(d.data(), d.id));
-      });
-      return ok(related);
+      const current = await this.getProduct(productId);
+      if (!current.success || !current.data) return ok([]);
+      const restId = await resolveRestId(storeId);
+      const all = await fetchStoreProducts(restId);
+      return ok(all.filter((p) => p.id !== productId && p.categoryId === current.data!.categoryId).slice(0, 6));
     } catch (e: any) {
       return ok([]);
     }
@@ -277,23 +272,11 @@ export const menuService = {
 
   async listPopular(storeId?: string): Promise<ApiResult<Product[]>> {
     try {
-      let q = query(
-        collection(db, "petpooja_products"),
-        where("tags", "array-contains", "popular"),
-        limit(8),
-      );
-      if (storeId) {
-        q = query(
-          collection(db, "petpooja_products"),
-          where("restId", "==", storeId),
-          where("tags", "array-contains", "popular"),
-          limit(8),
-        );
-      }
-      const snap = await getDocs(q);
-      const products: Product[] = [];
-      snap.forEach((d) => products.push(mapProductDoc(d.data(), d.id)));
-      return ok(products);
+      // Server products carry no popularity tags yet — serve in-stock first.
+      const restId = await resolveRestId(storeId);
+      const all = await fetchStoreProducts(restId);
+      const inStock = all.filter((p) => p.inStock !== false);
+      return ok((inStock.length > 0 ? inStock : all).slice(0, 8));
     } catch (e) {
       return ok([]);
     }
@@ -301,23 +284,10 @@ export const menuService = {
 
   async listFeatured(storeId?: string): Promise<ApiResult<Product[]>> {
     try {
-      let q = query(
-        collection(db, "petpooja_products"),
-        where("tags", "array-contains", "featured"),
-        limit(8),
-      );
-      if (storeId) {
-        q = query(
-          collection(db, "petpooja_products"),
-          where("restId", "==", storeId),
-          where("tags", "array-contains", "featured"),
-          limit(8),
-        );
-      }
-      const snap = await getDocs(q);
-      const products: Product[] = [];
-      snap.forEach((d) => products.push(mapProductDoc(d.data(), d.id)));
-      return ok(products);
+      const restId = await resolveRestId(storeId);
+      const all = await fetchStoreProducts(restId);
+      const inStock = all.filter((p) => p.inStock !== false);
+      return ok((inStock.length > 0 ? inStock : all).slice(0, 8));
     } catch (e) {
       return ok([]);
     }
@@ -333,18 +303,11 @@ export const menuService = {
       const term = searchQuery.trim().toLowerCase();
       if (!term) return ok({ items: [], page, pageSize, total: 0 });
 
-      let q = query(collection(db, "petpooja_products"));
-      if (storeId) {
-        q = query(collection(db, "petpooja_products"), where("restId", "==", storeId));
-      }
-      const snap = await getDocs(q);
-      const hits: Product[] = [];
-      snap.forEach((d) => {
-        const p = mapProductDoc(d.data(), d.id);
+      const restId = await resolveRestId(storeId);
+      const all = await fetchStoreProducts(restId);
+      const hits = all.filter((p) => {
         const haystack = [p.name, p.description ?? "", ...(p.tags ?? [])].join(" ");
-        if (fuzzyMatch(haystack, term)) {
-          hits.push(p);
-        }
+        return fuzzyMatch(haystack, term);
       });
       return ok({ items: paginate(hits, page, pageSize), page, pageSize, total: hits.length });
     } catch (e: any) {
@@ -387,45 +350,48 @@ export const menuService = {
   },
 
   /**
-   * Real-time listener for Petpooja menu categories (<5s sync).
+   * Real-time listener for the canonical `products` collection.
+   * Categories derive from the items (single source of truth).
    */
   subscribeCategories(
     storeId: string | undefined,
     callback: (result: ApiResult<MenuCategory[]>) => void,
   ): () => void {
-    let q = query(collection(db, "petpooja_categories"));
-    if (storeId) {
-      q = query(collection(db, "petpooja_categories"), where("restId", "==", storeId));
-    }
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const categories: MenuCategory[] = [];
-        snap.forEach((d) => {
-          const data = d.data() as any;
-          categories.push({
-            id: d.id,
-            name: data.name || data.categoryname || "Category",
-            slug: data.slug,
-            order: data.sortOrder ?? data.order ?? 0,
-            itemCount: data.itemCount || 0,
-            imageUrl: data.imageUrl || data.categoryimage_url || undefined,
-          });
-        });
-        callback(ok(categories.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))));
-      },
-      (err) => {
-        console.warn("menuService.subscribeCategories snapshot error:", err);
+    let innerUnsub: Unsubscribe | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const restId = await resolveRestId(storeId);
+        if (cancelled) return;
+        const q = restId
+          ? query(collection(db, "products"), where("restId", "==", restId))
+          : query(collection(db, "products"), limit(100));
+        innerUnsub = onSnapshot(
+          q,
+          (snap) => {
+            const all: Product[] = [];
+            snap.forEach((d) => all.push(mapProductDoc(d.data(), d.id)));
+            callback(ok(deriveCategories(all)));
+          },
+          (err) => {
+            console.warn("menuService.subscribeCategories snapshot error:", err);
+            callback(fail("MENU_SYNC_FAILED", "Failed to sync categories in real-time."));
+          }
+        );
+      } catch (err) {
+        console.warn("menuService.subscribeCategories setup error:", err);
         callback(fail("MENU_SYNC_FAILED", "Failed to sync categories in real-time."));
-      },
-    );
+      }
+    })();
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      if (innerUnsub) innerUnsub();
+    };
   },
 
   /**
-   * Real-time listener for Petpooja menu products & 86ing (<5s sync).
+   * Real-time listener for canonical products & 86ing (<5s sync).
    */
   subscribeProducts(
     storeId: string | undefined,
@@ -434,35 +400,40 @@ export const menuService = {
     page = 1,
     pageSize = 40,
   ): () => void {
-    let q = query(collection(db, "petpooja_products"));
-    if (storeId && categoryId) {
-      q = query(
-        collection(db, "petpooja_products"),
-        where("restId", "==", storeId),
-        where("categoryId", "==", categoryId),
-      );
-    } else if (categoryId) {
-      q = query(collection(db, "petpooja_products"), where("categoryId", "==", categoryId));
-    } else if (storeId) {
-      q = query(collection(db, "petpooja_products"), where("restId", "==", storeId));
-    }
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const all: Product[] = [];
-        snap.forEach((d) => {
-          all.push(mapProductDoc(d.data(), d.id));
-        });
-        callback(ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length }));
-      },
-      (err) => {
-        console.warn("menuService.subscribeProducts snapshot error:", err);
+    let innerUnsub: Unsubscribe | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const restId = await resolveRestId(storeId);
+        if (cancelled) return;
+        const q = restId
+          ? query(collection(db, "products"), where("restId", "==", restId))
+          : query(collection(db, "products"), limit(100));
+        innerUnsub = onSnapshot(
+          q,
+          (snap) => {
+            let all: Product[] = [];
+            snap.forEach((d) => {
+              all.push(mapProductDoc(d.data(), d.id));
+            });
+            if (categoryId) all = all.filter((p) => p.categoryId === categoryId);
+            callback(ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length }));
+          },
+          (err) => {
+            console.warn("menuService.subscribeProducts snapshot error:", err);
+            callback(fail("MENU_SYNC_FAILED", "Failed to sync products in real-time."));
+          },
+        );
+      } catch (err) {
+        console.warn("menuService.subscribeProducts setup error:", err);
         callback(fail("MENU_SYNC_FAILED", "Failed to sync products in real-time."));
-      },
-    );
+      }
+    })();
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      if (innerUnsub) innerUnsub();
+    };
   },
 
   /**
@@ -473,7 +444,7 @@ export const menuService = {
     callback: (result: ApiResult<ProductDetails | null>) => void,
   ): () => void {
     const unsub = onSnapshot(
-      doc(db, "petpooja_products", id),
+      doc(db, "products", id),
       (snap) => {
         if (!snap.exists()) {
           callback(ok(null));
