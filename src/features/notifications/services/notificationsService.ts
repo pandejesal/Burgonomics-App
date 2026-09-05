@@ -67,7 +67,9 @@ export const notificationsService = {
   },
 
   /**
-   * Associates the current device token with an authenticated user ID.
+   * Associates the current device token with an authenticated user ID —
+   * both on the token doc and on the user's `fcmTokens` array, which is
+   * what the server multicast sender actually reads for order updates.
    */
   async linkUserToDeviceToken(userId: string): Promise<ApiResult<null>> {
     const token = getCachedDeviceToken();
@@ -75,7 +77,9 @@ export const notificationsService = {
 
     try {
       const { db } = await import("@/core/config/firebase");
-      const { doc, setDoc, serverTimestamp } = await import("firebase/firestore");
+      const { doc, setDoc, updateDoc, arrayUnion, serverTimestamp } = await import(
+        "firebase/firestore"
+      );
 
       await setDoc(
         doc(db, "device_tokens", token),
@@ -85,6 +89,16 @@ export const notificationsService = {
         },
         { merge: true },
       );
+
+      try {
+        await updateDoc(doc(db, "users", userId), {
+          fcmTokens: arrayUnion(token),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (userErr: any) {
+        // Rules may forbid user-doc writes — token doc link above still holds.
+        logger.warn("notifications.linkUserTokensError", userErr);
+      }
 
       logger.info("notifications.userLinkedToToken", { userId });
       return ok(null);

@@ -33,6 +33,51 @@ function setCachedDeviceToken(token: string | null) {
   }
 }
 
+function navigateToDeeplink(url: string): void {
+  try {
+    window.history.pushState({}, "", url);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  } catch {
+    window.location.href = url;
+  }
+}
+
+function handleForegroundPush(title: string, body: string, data: Record<string, any>) {
+  const category = (data.category as "order" | "offer" | "general") || "general";
+  const deeplink =
+    data.deeplink || (data.orderId ? `/orders/${data.orderId}/track` : undefined);
+
+  useNotificationsStore.getState().push({
+    id: (data.messageId as string) || `notif_${Date.now()}`,
+    category,
+    title: title || "Burgonomics",
+    body: body || "",
+    createdAt: Date.now(),
+    read: false,
+    deeplink,
+    ctaLabel: (data.ctaLabel as string) || (data.orderId ? "Track order" : undefined),
+  });
+
+  toast(title || "Burgonomics", {
+    description: body,
+    action: deeplink
+      ? {
+          label: "View",
+          onClick: () => {
+            navigateToDeeplink(deeplink);
+          },
+        }
+      : undefined,
+  });
+}
+
+function vapidKey(): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+  return env.VITE_FCM_VAPID_KEY || env.VITE_PUSH_VAPID_PUBLIC_KEY || "";
+}
+
+let webPushInitialized = false;
+
 /**
  * Initializes listeners for incoming pushes and token registrations.
  * Safe to call on app startup.
@@ -92,7 +137,7 @@ export async function initPushNotifications(): Promise<void> {
           ? {
               label: "View",
               onClick: () => {
-                window.location.href = deeplink;
+                navigateToDeeplink(deeplink);
               },
             }
           : undefined,
@@ -109,7 +154,7 @@ export async function initPushNotifications(): Promise<void> {
 
       if (deeplink) {
         setTimeout(() => {
-          window.location.href = deeplink;
+          navigateToDeeplink(deeplink);
         }, 100);
       }
     });
@@ -125,12 +170,94 @@ export async function initPushNotifications(): Promise<void> {
 }
 
 /**
+ * Web push (FCM) for browsers. Safe to call on boot: only resumes when
+ * permission was already granted (never auto-prompts). Returns the token or null.
+ */
+export async function initWebPush(): Promise<string | null> {
+  if (isNative() || webPushInitialized) return getCachedDeviceToken();
+  webPushInitialized = true;
+
+  try {
+    if (typeof window === "undefined" || !("Notification" in window)) return null;
+    if (Notification.permission !== "granted") return null;
+    const key = vapidKey();
+    if (!key) {
+      logger.warn("push.webPushNoVapidKey");
+      return null;
+    }
+    const [{ getMessaging, getToken, isSupported, onMessage }, { app }] = await Promise.all([
+      import("firebase/messaging"),
+      import("@/core/config/firebase"),
+    ]);
+    if (!(await isSupported())) return null;
+
+    const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const messaging = getMessaging(app);
+    const token = await getToken(messaging, {
+      vapidKey: key,
+      serviceWorkerRegistration: registration,
+    });
+    if (!token) return null;
+    setCachedDeviceToken(token);
+    await notificationsService.registerDeviceToken(token);
+
+    onMessage(messaging, (payload) => {
+      logger.info("push.receivedForegroundWeb", { title: payload.notification?.title });
+      handleForegroundPush(
+        payload.notification?.title || "Burgonomics",
+        payload.notification?.body || "",
+        (payload.data as Record<string, any>) || {}
+      );
+    });
+    return token;
+  } catch (err: any) {
+    logger.warn("push.webInitFailed", { message: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
  * Contextually requests push notification permissions and registers with APNs/FCM.
  */
 export async function requestPushPermissions(): Promise<boolean> {
   if (!isNative()) {
-    logger.info("push.requestPermissions: web fallback");
-    return true;
+    // Web: explicit user gesture path (e.g. settings toggle) — may prompt.
+    try {
+      if (typeof window === "undefined" || !("Notification" in window)) return false;
+      const key = vapidKey();
+      if (!key) {
+        logger.warn("push.webPushNoVapidKey");
+        return false;
+      }
+      const [{ getMessaging, getToken, isSupported, onMessage }, { app }] = await Promise.all([
+        import("firebase/messaging"),
+        import("@/core/config/firebase"),
+      ]);
+      if (!(await isSupported())) return false;
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return false;
+      webPushInitialized = true;
+      const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      const messaging = getMessaging(app);
+      const token = await getToken(messaging, {
+        vapidKey: key,
+        serviceWorkerRegistration: registration,
+      });
+      if (!token) return false;
+      setCachedDeviceToken(token);
+      await notificationsService.registerDeviceToken(token);
+      onMessage(messaging, (payload) => {
+        handleForegroundPush(
+          payload.notification?.title || "Burgonomics",
+          payload.notification?.body || "",
+          (payload.data as Record<string, any>) || {}
+        );
+      });
+      return true;
+    } catch (err: any) {
+      logger.warn("push.webRequestFailed", { message: err?.message || String(err) });
+      return false;
+    }
   }
 
   try {

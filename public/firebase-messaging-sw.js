@@ -1,54 +1,52 @@
-// Firebase Cloud Messaging Service Worker (Stub)
-// Loaded in background when FCM is enabled via VITE_FCM_VAPID_KEY and FCM_ENABLED=true.
-
+/* Firebase Cloud Messaging service worker (live).
+ * Serves web-push background notifications. Firebase web config below is
+ * browser-public by design (same values as src/core/config/firebase.ts).
+ * Registered by the app only after the user grants notification permission.
+ */
 /* eslint-disable no-undef */
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js");
 
-// Initialize Firebase in the service worker with dummy/injected config
 try {
-  self.addEventListener("install", () => {
-    self.skipWaiting();
+  firebase.initializeApp({
+    apiKey: "AIzaSyAuoa6yU-S8bNR3QDI3DjTUvbKNyBu3_Fs",
+    authDomain: "burgonomics-7faa8.firebaseapp.com",
+    projectId: "burgonomics-7faa8",
+    storageBucket: "burgonomics-7faa8.firebasestorage.app",
+    messagingSenderId: "738930066637",
+    appId: "1:738930066637:web:fc1aa0f0e2a52a19df9584",
   });
 
-  self.addEventListener("activate", (event) => {
-    event.waitUntil(self.clients.claim());
+  var messaging = firebase.messaging();
+
+  messaging.onBackgroundMessage(function (payload) {
+    var title = (payload.notification && payload.notification.title) || "Burgonomics";
+    var options = {
+      body: (payload.notification && payload.notification.body) || "Order update available",
+      icon: "/burgonomics-logo.png",
+      badge: "/favicon.ico",
+      data: payload.data || {},
+    };
+    return self.registration.showNotification(title, options);
   });
 
-  // Handle background messages
-  self.addEventListener("push", (event) => {
-    if (!event.data) return;
-    try {
-      const payload = event.data.json();
-      const title = payload.notification?.title || "Burgonomics";
-      const options = {
-        body: payload.notification?.body || "Order update available",
-        icon: "/icons/icon-192.png",
-        badge: "/icons/badge-72.png",
-        data: payload.data || {},
-      };
-      event.waitUntil(self.registration.showNotification(title, options));
-    } catch {
-      // Ignored in stub mode
-    }
-  });
-
-  self.addEventListener("notificationclick", (event) => {
+  self.addEventListener("notificationclick", function (event) {
     event.notification.close();
-    const targetUrl = event.notification.data?.url || "/";
+    var data = event.notification.data || {};
+    var targetUrl = data.deeplink || (data.orderId ? "/orders/" + data.orderId + "/track" : "/");
     event.waitUntil(
-      self.clients.matchAll({ type: "window" }).then((clientList) => {
-        for (const client of clientList) {
-          if (client.url === targetUrl && "focus" in client) {
-            return client.focus();
+      self.clients.matchAll({ type: "window" }).then(function (clientList) {
+        for (var i = 0; i < clientList.length; i++) {
+          if (clientList[i].url === targetUrl && "focus" in clientList[i]) {
+            return clientList[i].focus();
           }
         }
         if (self.clients.openWindow) {
           return self.clients.openWindow(targetUrl);
         }
-      }),
+      })
     );
   });
 } catch (e) {
-  // Service worker initialization safe-fallback
+  // Service worker must never throw at install time.
 }

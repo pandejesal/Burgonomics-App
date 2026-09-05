@@ -35,7 +35,7 @@ const getPaymentBaseUrl = (): string => {
   if (appConfig.integrations.paymentsApiBaseUrl) {
     return appConfig.integrations.paymentsApiBaseUrl.replace(/\/$/, "");
   }
-  return "/.netlify/functions/payments";
+  return "https://asia-south1-burgonomics-7faa8.cloudfunctions.net/api/payments";
 };
 
 async function backendPost<T>(path: string, body: unknown): Promise<T> {
@@ -51,6 +51,13 @@ async function backendPost<T>(path: string, body: unknown): Promise<T> {
   };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+  try {
+    const { getAppCheckToken } = await import("@/core/config/firebase");
+    const appCheckToken = await getAppCheckToken();
+    if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
+  } catch {
+    // Attestation unavailable — server runs monitor mode until enforced.
   }
 
   // Adjust path if base already contains /payments

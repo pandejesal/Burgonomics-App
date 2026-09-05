@@ -154,6 +154,13 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     } catch {
       // unauthenticated — server decides
     }
+    try {
+      const { getAppCheckToken } = await import("@/core/config/firebase");
+      const appCheckToken = await getAppCheckToken();
+      if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
+    } catch {
+      // Attestation unavailable — server runs monitor mode until enforced.
+    }
     return headers;
   }
 

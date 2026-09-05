@@ -13,6 +13,8 @@ import { RouterProvider } from "@tanstack/react-router";
 import "./styles.css";
 import { getRouter } from "./router";
 import { bootstrapNativePlatform } from "./shared/platform/mobileBootstrap";
+import { initWebPush } from "./shared/platform/pushNotifications";
+import { initAppCheck } from "./core/config/firebase";
 
 import { GlobalErrorBoundary } from "./shared/components/feedback/GlobalErrorBoundary";
 
@@ -32,3 +34,9 @@ createRoot(rootEl).render(
 // Fire-and-forget: wires splash-screen hide, status bar, keyboard resize,
 // deep links and app lifecycle when running inside a Capacitor shell.
 void bootstrapNativePlatform();
+
+// Web push: resumes only when permission was already granted (never prompts).
+void initWebPush();
+
+// App Check attestation (web only; no-op without VITE_RECAPTCHA_SITE_KEY).
+void initAppCheck();
