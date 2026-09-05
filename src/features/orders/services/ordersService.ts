@@ -353,11 +353,16 @@ export const ordersService = {
     // If not in memory, try fetching from Firestore
     if (!orders.has(id)) {
       try {
-        const { db } = await import("@/core/config/firebase");
+        const { auth, db } = await import("@/core/config/firebase");
         const { doc, getDoc } = await import("firebase/firestore");
         const snap = await getDoc(doc(db, "orders", id));
         if (snap.exists()) {
-          const data = snap.data();
+          const data = snap.data() as Record<string, any>;
+          // Ownership check: never load or cache another user's order fetched
+          // by raw id (order ids are guessable). Mismatch reads as not-found.
+          const ownerId = data.userId ?? data.customerId;
+          const myUid = auth.currentUser?.uid;
+          if (ownerId && myUid && ownerId !== myUid) return ok(null);
           const { userId, ...orderData } = data;
           orders.set(id, orderData as Order);
           progression.set(id, { PLACED: orderData.placedAt });

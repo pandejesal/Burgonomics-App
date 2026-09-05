@@ -4,6 +4,7 @@ import { X, ShieldCheck, Sparkles, ArrowRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/state/authStore";
+import { sanitizePhone, validateOtp, validatePhone } from "@/features/auth/utils/validators";
 import { HapticService } from "@/core/services/haptics";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 
@@ -21,7 +22,6 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
   const requestOtp = useAuthStore((s) => s.requestOtp);
   const verifyOtp = useAuthStore((s) => s.verifyOtp);
-  const challenge = useAuthStore((s) => s.challenge);
 
   // Reset sheet state every time it opens so stale OTP/phone never leaks between attempts.
   React.useEffect(() => {
@@ -44,25 +44,24 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPhone = phone.replace(/\D/g, "");
-    if (cleanPhone.length < 10) {
-      toast.error("Please enter a valid 10-digit mobile number");
+    // Canonical validators (same as the login screen): rejects overlong
+    // input and non-[6-9]-series numbers instead of silently re-targeting
+    // with slice(-10) — which burned real SMS on invalid numbers.
+    const validation = validatePhone(phone);
+    if (!validation.valid) {
+      toast.error(validation.error ?? "Please enter a valid 10-digit mobile number");
       return;
     }
 
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await requestOtp(`+91${cleanPhone.slice(-10)}`, "whatsapp");
+    const res = await requestOtp(`+91${sanitizePhone(phone)}`, "whatsapp");
     setBusy(false);
 
     if (res.ok) {
       setStep("otp");
       toast.success("OTP sent to your number!");
-      // Auto-fill dev test code if provided
-      if (challenge?.code) {
-        setOtp(challenge.code);
-      }
     } else {
       toast.error(res.error ?? "Failed to send OTP. Please try again.");
     }
@@ -70,8 +69,9 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otp.length < 4) {
-      toast.error("Please enter the complete verification code");
+    const otpCheck = validateOtp(otp);
+    if (!otpCheck.valid) {
+      toast.error(otpCheck.error ?? "Please enter the complete verification code");
       return;
     }
 
@@ -212,7 +212,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
               <button
                 type="submit"
-                disabled={busy || otp.length < 4}
+                disabled={busy || otp.replace(/\D/g, "").length !== 6}
                 className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-full bg-primary py-3 text-xs font-bold text-white shadow-md hover:bg-primary-hover active:scale-[0.98] transition disabled:opacity-50 cursor-pointer"
               >
                 <ShieldCheck className="h-4 w-4" />

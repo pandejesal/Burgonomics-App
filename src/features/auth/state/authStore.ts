@@ -106,6 +106,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const user = JSON.parse(userJson) as AuthUser;
 
+      // The persisted tokens are real Firebase tokens, so a stolen
+      // localStorage copy alone must never restore a session: require a live
+      // Firebase session for the SAME uid before trusting anything stored.
+      const { auth: firebaseAuth } = await import("@/core/config/firebase");
+      try {
+        await firebaseAuth.authStateReady();
+      } catch {
+        // authStateReady failure — fall through to the currentUser check.
+      }
+      if (!firebaseAuth.currentUser || firebaseAuth.currentUser.uid !== user.id) {
+        await clearPersistedSession();
+        set({ status: "guest", isBootstrapped: true });
+        return;
+      }
+
       if (!isJwtExpired(accessToken)) {
         useProfileStore.getState().hydrateFromAuth(user);
         profileRepository.refresh().catch(console.error);
@@ -201,6 +216,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async resendOtp() {
     const { challenge } = get();
     if (!challenge) return { ok: false, error: "No active OTP request." };
+    // Store-enforced cooldown (the screen countdown is bypassable via direct
+    // store calls, second tabs, or remounts — each bypass burns a real SMS).
+    const elapsedSec = (Date.now() - challenge.requestedAt) / 1000;
+    const remainingSec = Math.ceil(challenge.resendAfterSec - elapsedSec);
+    if (remainingSec > 0) {
+      return { ok: false, error: `Please wait ${remainingSec}s before requesting a new code.` };
+    }
     return get().requestOtp(challenge.phone, challenge.deliveryMethod || "whatsapp");
   },
 

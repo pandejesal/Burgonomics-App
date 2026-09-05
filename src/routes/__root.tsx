@@ -154,6 +154,7 @@ function RootComponent() {
 
   // Rehydrate persisted Zustand stores + bootstrap auth session on the client only.
   useEffect(() => {
+    void import("@/core/network/authSetup").then(({ setupHttpAuth }) => setupHttpAuth());
     void useAuthStore.getState().bootstrap();
     void useCartStore.persist.rehydrate();
     void useStoreSelection.persist.rehydrate();
