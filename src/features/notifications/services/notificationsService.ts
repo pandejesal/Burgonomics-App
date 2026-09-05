@@ -109,20 +109,34 @@ export const notificationsService = {
   },
 
   /**
-   * Unlinks the user ID from the device token on logout.
+   * Unlinks the user ID from the device token on logout. Takes the uid
+   * explicitly — by logout time the auth session may already be gone.
    */
-  async unlinkUserFromDeviceToken(): Promise<ApiResult<null>> {
+  async unlinkUserFromDeviceToken(userId?: string): Promise<ApiResult<null>> {
     const token = getCachedDeviceToken();
     if (!token) return ok(null);
 
     try {
       const { db } = await import("@/core/config/firebase");
-      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      const { doc, updateDoc, arrayRemove, serverTimestamp } = await import("firebase/firestore");
 
       await updateDoc(doc(db, "device_tokens", token), {
         userId: null,
         updatedAt: serverTimestamp(),
       });
+
+      // Also drop the token from the user's fan-out list, or logged-out
+      // devices keep receiving that user's order pushes.
+      if (userId) {
+        try {
+          await updateDoc(doc(db, "users", userId), {
+            fcmTokens: arrayRemove(token),
+            updatedAt: serverTimestamp(),
+          });
+        } catch (inner: any) {
+          logger.warn("notifications.unlinkFcmTokensError", inner);
+        }
+      }
 
       logger.info("notifications.userUnlinkedFromToken");
       return ok(null);

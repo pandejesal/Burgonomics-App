@@ -126,6 +126,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await persistSession(user, refreshed.data.accessToken, refreshed.data.refreshToken);
         useProfileStore.getState().hydrateFromAuth(user);
         profileRepository.refresh().catch(console.error);
+        // Same linking as fresh login — otherwise refreshed sessions silently
+        // stop receiving order status pushes.
+        void notificationsService.linkUserToDeviceToken(user.id);
         set({
           status: "authenticated",
           user,
@@ -210,8 +213,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   async logout() {
-    const { refreshToken } = get();
-    void notificationsService.unlinkUserFromDeviceToken();
+    const { refreshToken, user: currentUser } = get();
+    void notificationsService.unlinkUserFromDeviceToken(currentUser?.id);
     await authRepository.logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();

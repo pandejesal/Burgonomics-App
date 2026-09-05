@@ -5,7 +5,7 @@
  * are never burdened by native dependencies. Integrates foreground in-app toasts,
  * deep-link action routing, and device token syncing with Firestore.
  */
-import { isNative } from "./platform";
+import { isNative, getPlatform } from "./platform";
 import { logger } from "@/core/logging/logger";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
@@ -93,7 +93,25 @@ export async function initPushNotifications(): Promise<void> {
     if (!pushModule || !pushModule.PushNotifications) return;
     const PushNotifications = pushModule.PushNotifications;
 
-    // 1. Listen for successful registration & device token
+    // 1. Create the Android channel the server targets (burgonomics_updates_channel).
+    // Without this, status-update pushes are silently dropped on Android.
+    if (getPlatform() === "android") {
+      try {
+        await PushNotifications.createChannel({
+          id: "burgonomics_updates_channel",
+          name: "Order Updates",
+          description: "Order status changes and offers",
+          importance: 4,
+          visibility: 1,
+          sound: "default",
+          vibration: true,
+        });
+      } catch (err: any) {
+        logger.warn("push.channelCreationWarning", { message: err?.message || String(err) });
+      }
+    }
+
+    // 2. Listen for successful registration & device token
     PushNotifications.addListener("registration", async (token: { value: string }) => {
       if (!token?.value) return;
       logger.info("push.registered", { token: token.value.slice(0, 10) + "..." });
