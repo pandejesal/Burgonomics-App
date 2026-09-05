@@ -1,3 +1,8 @@
+// CANONICAL Firestore rules — deployed by firebase.json at this root.
+// burgonomics-partner/firestore.rules and
+// burgonomics-foundation-core/firestore.rules are byte-identical MIRRORS for
+// the app-local emulators. NEVER edit a mirror: change this file, re-sync
+// both mirrors, and re-run the rules suite (core: node scripts/test-rules.mjs).
 rules_version = '2';
 
 service cloud.firestore {
@@ -20,35 +25,32 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-
-    function isBrandOwner() {
-      return isAdmin() && getAdminDoc().data.role == 'brand_owner';
-    }
-
-    function isBranchOwner() {
-      return isAdmin() && getAdminDoc().data.role == 'branch_owner';
-    }
-
-    function ownsBranch(branchId) {
-      return isBrandOwner() || (isBranchOwner() && getAdminDoc().data.branchId == branchId);
-    }
-
-    function hasPermission(perm) {
-      return isBrandOwner() || (
-        isAdmin() &&
-        'permissions' in getAdminDoc().data &&
-        perm in getAdminDoc().data.permissions
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token != null && (request.auth.token.role in ['brand_owner', 'developer', 'support', 'regional_manager', 'branch_owner', 'branch_staff']))
       );
     }
 
-    // Chat pair participant check: pairId format `${branchId}_${brandOwnerId}`
-    // Allowed if caller is brand_owner OR branch_owner owning the branch
-    function isChatParticipant(pairId) {
+    function isBrandOwner() {
+      return isAdmin() && (
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) && getAdminDoc().data.role in ['brand_owner', 'developer']) ||
+        (request.auth.token != null && (request.auth.token.role in ['brand_owner', 'developer']))
+      );
+    }
+
+    function isBranchOwner() {
+      return isAdmin() && (
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) && getAdminDoc().data.role in ['branch_owner', 'branch_staff']) ||
+        (request.auth.token != null && (request.auth.token.role in ['branch_owner', 'branch_staff']))
+      );
+    }
+
+    function ownsBranch(branchId) {
       return isBrandOwner() || (
-        isBranchOwner() &&
-        pairId.matches('^' + getAdminDoc().data.branchId + '_.*')
+        isBranchOwner() && (
+          (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) && getAdminDoc().data.branchId == branchId) ||
+          (request.auth.token != null && branchId in request.auth.token.branchIds)
+        )
       );
     }
 
@@ -57,11 +59,10 @@ service cloud.firestore {
     // =========================================================================
 
     match /customers/{customerId} {
-      // Global loyalty points & profile: customer reads own doc; admins read for CRM
       allow read: if isUser(customerId) || isAdmin();
       allow create: if isUser(customerId)
         && (!('loyaltyPoints' in request.resource.data) || request.resource.data.loyaltyPoints == 0);
-      allow update: if (isUser(customerId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loyaltyPoints']))
+      allow update: if (isUser(customerId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loyaltyPoints', 'role', 'isStaff']))
         || isBrandOwner();
       allow delete: if false;
 
@@ -71,14 +72,24 @@ service cloud.firestore {
       }
     }
 
-    // Legacy users collection (sub-customer mapping)
     match /users/{userId} {
       allow read: if isUser(userId) || isAdmin();
-      allow write: if isUser(userId);
+      allow create: if isUser(userId)
+        && !request.resource.data.keys().hasAny(['role', 'isStaff', 'isBrandAdmin', 'isSuperAdmin', 'grillCoins', 'loyaltyPoints']);
+      allow update: if isBrandOwner() || (
+        isUser(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isStaff', 'isBrandAdmin', 'isSuperAdmin', 'grillCoins', 'loyaltyPoints'])
+      );
+      allow delete: if false;
 
       match /addresses/{addressId} {
         allow read: if isUser(userId) || isAdmin();
         allow write: if isUser(userId);
+      }
+
+      match /notifications/{notifId} {
+        allow read: if isUser(userId) || isAdmin();
+        allow write: if isUser(userId) || isAdmin();
       }
 
       match /orders/{orderId} {
@@ -93,144 +104,69 @@ service cloud.firestore {
     // =========================================================================
 
     match /orders/{orderId} {
-      // Read: Customer reads own orders; Branch owner reads own branch; Brand owner reads all
       allow read: if isAuthenticated() && (
         resource.data.customerId == request.auth.uid ||
         resource.data.userId == request.auth.uid ||
         ownsBranch(resource.data.branchId)
       );
 
-      // Create: Authenticated customer creates own order with pending payment/pos status
       allow create: if isAuthenticated() && (
         request.resource.data.customerId == request.auth.uid ||
         request.resource.data.userId == request.auth.uid
-      ) && (
-        !('paymentStatus' in request.resource.data) ||
-        request.resource.data.paymentStatus in ['Pending', 'Payment_Pending', 'CASH_PENDING', 'PAY_AT_STORE', 'pending']
-      ) && (
-        !('payment' in request.resource.data) ||
-        !('status' in request.resource.data.payment) ||
-        request.resource.data.payment.status in ['pending', 'CASH_PENDING', 'PAY_AT_STORE']
-      ) && (
-        !('petpoojaStatus' in request.resource.data) ||
-        request.resource.data.petpoojaStatus in ['Pending', 'Not_Synced', 'Bypassed']
       );
 
-      // Update: Brand owner can update all; Branch owner can update status only (never totals or pricing)
       allow update: if isBrandOwner() || (
         isBranchOwner() &&
         ownsBranch(resource.data.branchId) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['totals', 'pricingSnapshot', 'pricing', 'customerId', 'userId', 'branchId'])
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'totals', 'pricingSnapshot', 'pricing', 'customerId', 'userId', 'branchId',
+          'paymentStatus', 'payment', 'refundStatus', 'refundId', 'refundAmount', 'routeTransferStatus'
+        ])
+      ) || (
+        // Customers may cancel their own pre-terminal orders only — status flip
+        // plus timestamps, nothing else. Terminal orders are immutable to them.
+        isAuthenticated() &&
+        (resource.data.customerId == request.auth.uid || resource.data.userId == request.auth.uid) &&
+        !(resource.data.status.terminal == true) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt', 'updatedAt']) &&
+        request.resource.data.status.code == 'CANCELLED'
       );
 
       allow delete: if false;
     }
 
     // =========================================================================
-    // BRANCHES & UPCOMING OUTLETS
+    // BRANCHES & PRODUCTS CATALOG
     // =========================================================================
 
     match /branches/{branchId} {
-      // Public read for customer ordering and discovery
       allow read: if true;
-      // Creation restricted strictly to Brand Owner (Branch Owner DENIED per Q10)
-      allow create: if isBrandOwner() || hasPermission('manage_upcoming');
-      // Update: Brand owner can edit all; Branch owner can update non-lifecycle fields of own branch
-      allow update: if isBrandOwner() || hasPermission('manage_upcoming') || (
+      allow create: if isBrandOwner();
+      allow update: if isBrandOwner() || (
         ownsBranch(branchId) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'expectedOpenDate'])
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'razorpayAccountId', 'petpooja', 'petpoojaStoreId', 'servicedRadiusKm'
+        ])
       );
       allow delete: if isBrandOwner();
     }
 
-    // Legacy stores & admin_stores aliases
-    match /stores/{storeId} {
+    // Canonical menu (both apps read; branch staff 86-ing writes).
+    // Staff may only touch availability fields — never prices or identity.
+    match /products/{productId} {
       allow read: if true;
-      allow write: if isBrandOwner();
-    }
-
-    match /admin_stores/{storeId} {
-      allow read: if true;
-      allow create: if isBrandOwner() || hasPermission('manage_upcoming');
-      allow update: if isBrandOwner() || ownsBranch(storeId);
-      allow delete: if isBrandOwner();
-    }
-
-    // Upcoming subscriptions ({uid}_{branchId})
-    match /upcoming_subscriptions/{subId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.uid ||
-        isBrandOwner()
-      );
-      allow create, update: if isAuthenticated() && request.auth.uid == request.resource.data.uid;
-      allow delete: if isAuthenticated() && request.auth.uid == resource.data.uid;
-    }
-
-    // =========================================================================
-    // CHATS & DIRECT MESSAGING (1:1 Branch Owner <-> Brand Owner)
-    // =========================================================================
-
-    match /chats/{pairId}/messages/{messageId} {
-      allow read: if isChatParticipant(pairId);
-      allow create: if isChatParticipant(pairId) && request.resource.data.senderId == request.auth.uid;
-      allow update, delete: if false; // Immutable chat history
-    }
-
-    // =========================================================================
-    // TICKETS (Unified customer & branch tickets)
-    // =========================================================================
-
-    match /tickets/{ticketId} {
-      allow read: if isBrandOwner() || (
-        isBranchOwner() && ownsBranch(resource.data.branchId)
-      ) || (
-        isAuthenticated() && resource.data.customerId == request.auth.uid
-      );
-      allow create: if isAuthenticated() && (
-        request.resource.data.customerId == request.auth.uid ||
-        (isBranchOwner() && ownsBranch(request.resource.data.branchId))
+      allow create: if isBrandOwner() || (
+        isBranchOwner() && ownsBranch(request.resource.data.branchId)
       );
       allow update: if isBrandOwner() || (
-        isBranchOwner() && ownsBranch(resource.data.branchId)
+        isBranchOwner() &&
+        ownsBranch(resource.data.branchId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'price', 'compareAtPrice', 'discountPercentage', 'name', 'description',
+          'categoryId', 'categoryName', 'branchId', 'restId', 'petpoojaItemId', 'id'
+        ])
       );
-      allow delete: if false;
-    }
-
-    // =========================================================================
-    // PAYMENT AUDIT TRAIL (Append-only)
-    // =========================================================================
-
-    match /paymentAudits/{auditId} {
-      // Read: Brand owner reads all; Branch owner reads own branch
-      allow read: if isBrandOwner() || (
-        isBranchOwner() && ownsBranch(resource.data.branchId)
-      );
-      // Append-only: create allowed for authenticated callers / cloud functions
-      allow create: if isAuthenticated();
-      allow update, delete: if false;
-    }
-
-    // =========================================================================
-    // ADMINS & PERMISSIONS
-    // =========================================================================
-
-    match /admins/{uid} {
-      allow read: if isUser(uid) || isBrandOwner();
-      allow write: if isBrandOwner();
-
-      match /sessions/{sessionId} {
-        allow read: if isUser(uid) || isBrandOwner();
-        allow write: if false;
-      }
-    }
-
-    // =========================================================================
-    // SETTINGS, CATALOG & METADATA (Public read, Brand Owner write)
-    // =========================================================================
-
-    match /app_settings/{docId} {
-      allow read: if true;
-      allow write: if isBrandOwner();
+      allow delete: if isBrandOwner();
     }
 
     match /menu_items/{docId} {
@@ -238,16 +174,32 @@ service cloud.firestore {
       allow write: if isBrandOwner();
     }
 
-    match /offers/{docId} {
+    // Per-branch synced menu (partner app: sync + availability toggles)
+    match /menu/{branchId}/categories/{docId} {
+      allow read: if true;
+      allow create, update: if isBrandOwner() || ownsBranch(branchId);
+      allow delete: if isBrandOwner();
+    }
+
+    match /menu/{branchId}/items/{itemId} {
+      allow read: if true;
+      allow create, update: if isBrandOwner() || ownsBranch(branchId);
+      allow delete: if isBrandOwner();
+    }
+
+    match /stores/{storeId} {
       allow read: if true;
       allow write: if isBrandOwner();
     }
 
-    match /coupons/{docId} {
+    match /admin_stores/{storeId} {
       allow read: if true;
-      allow write: if isBrandOwner();
+      allow create: if isBrandOwner() || isBranchOwner();
+      allow update: if isBrandOwner() || ownsBranch(storeId);
+      allow delete: if isBrandOwner();
     }
 
+    // Petpooja catalog — public read, server-side writes via Admin SDK
     match /petpooja_categories/{docId} {
       allow read: if true;
       allow write: if false;
@@ -263,48 +215,200 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Push notification device tokens
-    match /device_tokens/{token} {
-      allow read: if false;
-      allow create, update: if isAuthenticated() && (
-        !('userId' in request.resource.data) ||
-        request.resource.data.userId == request.auth.uid
-      );
-      allow delete: if isAuthenticated() && (
-        resource == null ||
-        !('userId' in resource.data) ||
-        resource.data.userId == request.auth.uid
-      );
+    match /petpooja_sync_logs/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
-    // Internal integration & server-only collections
-    match /petpooja_orders/{docId} {
+match /petpooja_webhook_logs/{docId} {
       allow read: if isAdmin();
-      allow write: if false;
+      allow create, update, delete: if false;
     }
-    match /payment_orders/{docId} {
+
+    // Branch launch announcements (partner useBranches broadcastLaunchAlert addDoc)
+    match /branch_announcements/{docId} {
+      allow read: if true;
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // SUPPORT TICKETING (support_tickets & tickets)
+    // =========================================================================
+
+    match /support_tickets/{ticketId} {
+      allow read: if isBrandOwner() || (
+        isBranchOwner() && ownsBranch(resource.data.branchId)
+      ) || (
+        isAuthenticated() && resource.data.customerId == request.auth.uid
+      );
+      allow create: if isAuthenticated()
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.branchId is string
+        && request.resource.data.branchId.size() > 0;
+      allow update: if isBrandOwner() || (
+        isBranchOwner() && ownsBranch(resource.data.branchId)
+      ) || (
+        isAuthenticated() && resource.data.customerId == request.auth.uid
+      );
+      allow delete: if false;
+    }
+
+    match /tickets/{ticketId} {
+      allow read: if isBrandOwner() || (
+        isBranchOwner() && ownsBranch(resource.data.branchId)
+      ) || (
+        isAuthenticated() && resource.data.customerId == request.auth.uid
+      );
+      allow create: if isAuthenticated()
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.branchId is string
+        && request.resource.data.branchId.size() > 0;
+      allow update: if isBrandOwner() || (
+        isBranchOwner() && ownsBranch(resource.data.branchId)
+      ) || (
+        isAuthenticated() && resource.data.customerId == request.auth.uid
+      );
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // PAYMENT AUDIT TRAIL & DEVELOPER ERROR SNAPSHOTS (Append-only / Admin read)
+    // =========================================================================
+
+    // Server-only append collections — Admin SDK bypasses rules; block all client direct writes
+    match /payment_audits/{auditId} {
       allow read: if isAdmin();
-      allow write: if false;
+      allow create, update, delete: if false;
     }
+
+    match /paymentAudits/{auditId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /dev_error_snapshots/{snapshotId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Payment ledger — partner admin app reads payments and manages refunds/discrepancies
     match /payments/{docId} {
       allow read: if isAdmin();
-      allow write: if false;
+      allow create, update, delete: if false; // server-only via Admin SDK
     }
-    match /refunds/{docId} {
+
+    match /refunds/{refundId} {
       allow read: if isAdmin();
-      allow write: if false;
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false;
     }
+
     match /payment_discrepancies/{docId} {
       allow read: if isAdmin();
-      allow write: if false;
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false;
     }
-    match /webhook_events/{docId} {
-      allow read: if isAdmin();
-      allow write: if false;
+
+    // =========================================================================
+    // CHATS & DIRECT MESSAGING
+    // =========================================================================
+
+    // Chat thread metadata — participants may read/update their own threads
+    match /chats/{chatId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && request.auth.uid in resource.data.participantIds
+      );
+      allow create: if isAuthenticated()
+        && request.auth.uid in request.resource.data.participantIds;
+      allow update: if isAdmin() || (
+        isAuthenticated() && request.auth.uid in resource.data.participantIds
+      );
+      allow delete: if false;
     }
-    match /petpooja_webhook_logs/{docId} {
-      allow read: if isAdmin();
-      allow write: if false;
+
+    // Message reads are participant- or brand-scoped — the old admin-only
+    // rule let ANY branch staffer (all admins) read EVERY branch's chats.
+    // Writers must stamp participantIds on the parent thread doc.
+    function chatParticipantIds(pairId) {
+      return get(/databases/$(database)/documents/chats/$(pairId)).data.get('participantIds', []);
+    }
+
+    match /chats/{pairId}/messages/{messageId} {
+      allow read: if isBrandOwner() || (
+        isAuthenticated() && request.auth.uid in chatParticipantIds(pairId)
+      );
+      allow create: if isAdmin() || (
+        isAuthenticated() && request.auth.uid in chatParticipantIds(pairId)
+      );
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // ADMINS & APP SETTINGS
+    // =========================================================================
+
+    match /admins/{uid} {
+      allow read: if isUser(uid) || isBrandOwner();
+      allow write: if isBrandOwner();
+    }
+
+    // Admin session tracking (partner adminAuthService/login) + session listing
+    match /admins/{uid}/sessions/{sessionId} {
+      allow read: if isUser(uid) || isBrandOwner();
+      allow create, update: if isUser(uid);
+      allow delete: if false;
+    }
+
+    // Top-level notifications (partner useNotifications reads/updates own by userId)
+    match /notifications/{notifId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /app_settings/{docId} {
+      allow read: if true;
+      allow write: if isBrandOwner();
+    }
+
+    match /device_tokens/{token} {
+      allow read: if false;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // =========================================================================
+    // FRANCHISE LEADS & COUPONS (India franchise pipeline + promo validation)
+    // =========================================================================
+
+    match /franchise_leads/{leadId} {
+      allow read: if isBrandOwner() || isBranchOwner();
+      allow create: if isAuthenticated();
+      allow update: if isBrandOwner() || (isAuthenticated() && resource.data.customerId == request.auth.uid);
+      allow delete: if isBrandOwner();
+    }
+
+    // Partner app uses 'franchise_inquiries' (useFranchiseLeads) — mirror franchise_leads
+    match /franchise_inquiries/{leadId} {
+      allow read: if isBrandOwner() || isBranchOwner();
+      allow create: if isAuthenticated();
+      allow update: if isBrandOwner() || (isAuthenticated() && resource.data.customerId == request.auth.uid);
+      allow delete: if isBrandOwner();
+    }
+
+    match /coupons/{couponCode} {
+      allow read: if true; // public coupon validation at checkout — unauth guest checkout needs read
+      allow write: if isBrandOwner();
+    }
+
+    // Admin audit trail — immutable append-only
+    match /admin_audit_logs/{logId} {
+      allow read: if isBrandOwner();
+      allow create, update, delete: if false; // server-only via Admin SDK
     }
   }
 }

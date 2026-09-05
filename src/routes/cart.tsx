@@ -201,14 +201,23 @@ function CartPage() {
 
   const subtotal = totals?.subtotal ?? lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const discountAmount = promo?.discount ? Math.abs(promo.discount) : (totals?.promoDiscount ?? 0);
-  const deliveryFee = totals?.deliveryFee ?? (fulfillment === "delivery" ? (subtotal >= 349 ? 0 : 35) : 0);
-  const packagingFee = totals?.packingFee ?? (fulfillment === "dinein" ? 0 : 15);
-  const gst = totals?.taxes ?? totals?.tax ?? Math.round(subtotal * 0.05);
+  // Fallback schedule (only when the pricing engine hasn't produced totals):
+  // matches the client pricing engine (free delivery over ₹499, ₹40 fee) so
+  // the preview never shows a third schedule. The old fallback (free over
+  // ₹349, ₹35 fee, integer GST on the PRE-discount subtotal) disagreed with
+  // both the engine and the server. Server re-prices authoritatively at
+  // checkout — previews are estimates, never the charge.
+  const taxableFallback = Math.max(0, subtotal - discountAmount);
+  const deliveryFee =
+    totals?.deliveryFee ??
+    (fulfillment === "delivery" ? (subtotal > 499 ? 0 : subtotal > 0 ? 40 : 0) : 0);
+  const packagingFee = totals?.packingFee ?? (fulfillment === "dinein" || lines.length === 0 ? 0 : 15);
+  const gst = totals?.taxes ?? totals?.tax ?? Math.round(taxableFallback * 0.05 * 100) / 100;
   const finalToPay = Math.max(
     0,
     subtotal - discountAmount - coinsRedeemed + gst + packagingFee + deliveryFee + tipAmount
   );
-  const freeDeliveryDelta = Math.max(0, 349 - subtotal);
+  const freeDeliveryDelta = Math.max(0, 499 - subtotal);
 
   return (
     <AppShell
@@ -300,12 +309,12 @@ function CartPage() {
                   ? "🎉 You've unlocked FREE Delivery!"
                   : `Add ${formatINR(freeDeliveryDelta)} more for FREE delivery`}
               </span>
-              <span className="font-mono font-bold text-text">{Math.min(100, Math.round((subtotal / 349) * 100))}%</span>
+              <span className="font-mono font-bold text-text">{Math.min(100, Math.round((subtotal / 499) * 100))}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-bg-secondary overflow-hidden">
               <div
                 className="h-full bg-[#0E4825] transition-all duration-500 rounded-full"
-                style={{ width: `${Math.min(100, (subtotal / 349) * 100)}%` }}
+                style={{ width: `${Math.min(100, (subtotal / 499) * 100)}%` }}
               />
             </div>
           </div>

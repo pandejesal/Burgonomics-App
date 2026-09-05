@@ -109,6 +109,13 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (18 Tests)", () => {
         gstRate: 0.05,
         packingCharge: 20,
       });
+
+      // 1:1 chat thread with stamped participants (writers must set these —
+      // message reads are participant-gated, not admin-wide)
+      await setDoc(doc(db, "chats", "branch_01_brand_owner_1"), {
+        participantIds: ["branch_owner_1", "brand_owner_1"],
+        branchId: "branch_01",
+      });
     });
   });
 
@@ -266,6 +273,10 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (18 Tests)", () => {
 
     const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
     await assertSucceeds(getDoc(doc(brandDb, "chats", pairId, "messages", "msg_001")));
+
+    // Participant staffer reads its own thread even without brand role.
+    const branch1ReaderDb = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(getDoc(doc(branch1ReaderDb, "chats", pairId, "messages", "msg_001")));
   });
 
   it("18. [CHAT-CROSS-DENY] Branch Owner 2 CANNOT access messages for Branch 1 pair", async () => {

@@ -1,7 +1,7 @@
 /**
  * OrderRepository — sole entry point for the UI to read or mutate
- * order state. Wraps the mock `ordersService` today; swap the injected
- * service for an httpClient-backed implementation to go live.
+ * order state. Wraps `ordersService`, which is live against Firestore
+ * (plus the Petpooja KOT gateway) — not a mock awaiting a swap.
  *
  * The tracking surface (`subscribeTracking`) is polling-based today but
  * exposes the exact shape a WebSocket / push-notification adapter will

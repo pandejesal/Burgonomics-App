@@ -1,18 +1,20 @@
 /**
- * OrdersService — mock repository transport for the orders module.
+ * OrdersService — order transport for the orders module (hybrid).
  *
- * Every function returns the same `ApiResult<T>` envelope as the future
- * PETPOOJA-backed implementation. When the backend ships, replace the
- * function bodies with `httpClient` calls — signatures and return
- * shapes MUST stay identical.
+ * Every function returns the same `ApiResult<T>` envelope. Bodies are NOT
+ * mock-only: createOrder/cancelOrder persist to Firestore `orders` (with the
+ * partner-query mirrors userId/customerId/createdAt/branchId), listOrders/
+ * getOrder live-read the same collection, and createOrder pushes the KOT via
+ * the Petpooja gateway. Do NOT "finish the migration" by ripping out the
+ * Firestore sync — the partner app reads these docs directly.
  *
- * Future backend map:
- *   POST   /v1/orders                          → createOrder
- *   GET    /v1/orders                          → listOrders
- *   GET    /v1/orders/:id                      → getOrder
- *   GET    /v1/orders/:id/track                → getTracking
- *   POST   /v1/orders/:id/cancel               → cancelOrder
- *   POST   /v1/orders/:id/reorder              → reorder
+ * Backend map (live):
+ *   Firestore `orders` (write + read)     → createOrder / listOrders /
+ *                                            getOrder / cancelOrder
+ *   Petpooja gateway push                  → createOrder (KOT, best-effort)
+ *   In-memory ticking                      → getTracking demo progression
+ *   POST   /v1/orders/:id/reorder          → reorder (placeholder: rebuilds
+ *                                            cart via menu, backend to follow)
  *
  * Push / WebSocket surfaces will layer on top of `getTracking` without
  * changing the repository interface (see `OrderRepository.subscribe`).
