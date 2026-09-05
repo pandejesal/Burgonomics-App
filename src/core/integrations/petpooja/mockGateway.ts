@@ -305,39 +305,47 @@ export class MockPetpoojaGateway implements PetpoojaGateway {
   ): () => void {
     let unsubscribe: () => void = () => {};
 
-    import("@/core/config/firebase").then(({ db }) => {
-      import("firebase/firestore").then(({ collection, query, orderBy, limit, onSnapshot }) => {
-        const q = query(
-          collection(db, "petpooja_webhook_logs"),
-          orderBy("timestamp", "desc"),
-          limit(50),
-        );
+    const forwardImportError = (err: unknown) => {
+      console.warn("MockPetpoojaGateway: subscription setup failed:", err);
+      onError?.(err instanceof Error ? err : new Error(String(err)));
+    };
 
-        unsubscribe = onSnapshot(
-          q,
-          (snapshot) => {
-            const logs = snapshot.docs.map((d) => {
-              const data = d.data();
-              return {
-                id: d.id,
-                timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : new Date(),
-                storeName: data.storeName || "Unknown Store",
-                storeId: data.storeId || "",
-                type: data.type || "unknown",
-                status: data.status || "success",
-                executionTimeMs: data.executionTimeMs ?? 0,
-                payload: data.payload || {},
-              };
-            });
-            onLogs(logs);
-          },
-          (err) => {
-            console.warn("MockPetpoojaGateway: webhook logs subscription error:", err);
-            onError?.(err);
-          },
-        );
-      });
-    });
+    import("@/core/config/firebase").then(({ db }) => {
+      import("firebase/firestore").then(
+        ({ collection, query, orderBy, limit, onSnapshot }) => {
+          const q = query(
+            collection(db, "petpooja_webhook_logs"),
+            orderBy("timestamp", "desc"),
+            limit(50),
+          );
+
+          unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+              const logs = snapshot.docs.map((d) => {
+                const data = d.data();
+                return {
+                  id: d.id,
+                  timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : new Date(),
+                  storeName: data.storeName || "Unknown Store",
+                  storeId: data.storeId || "",
+                  type: data.type || "unknown",
+                  status: data.status || "success",
+                  executionTimeMs: data.executionTimeMs ?? 0,
+                  payload: data.payload || {},
+                };
+              });
+              onLogs(logs);
+            },
+            (err) => {
+              console.warn("MockPetpoojaGateway: webhook logs subscription error:", err);
+              onError?.(err);
+            },
+          );
+        },
+        forwardImportError,
+      );
+    }, forwardImportError);
 
     return () => unsubscribe();
   }

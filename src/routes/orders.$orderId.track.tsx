@@ -1,32 +1,33 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, Phone, WifiOff, AlertCircle } from "lucide-react";
-
+import { RefreshCw, Phone, MessageSquare, Receipt, ChevronDown, ChevronUp } from "lucide-react";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
-import { AppButton } from "@/shared/components/common/AppButton";
-import { Text } from "@/shared/components/common/Text";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
-import { Spinner } from "@/shared/components/feedback/Spinner";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
+import { HapticService } from "@/core/services/haptics";
+import { formatINR } from "@/core/utils/format";
 
 import {
   orderRepository,
   useOrdersStore,
   selectOrderById,
   useOrderTracking,
-  OrderTimeline,
-  OrderStatusBadge,
-  FulfillmentPanel,
   type Order,
 } from "@/features/orders";
+import {
+  DeliveryStepTracker,
+  LiveOrderMap,
+  RiderContactCard,
+  usePorterLiveTracking,
+} from "@/features/tracking";
 
 export const Route = createFileRoute("/orders/$orderId/track")({
   head: () => ({
     meta: [
-      { title: "Track order — Burgonomics" },
-      { name: "description", content: "Live status of your order." },
+      { title: "Track Order — Burgonomics" },
+      { name: "description", content: "Live real-time status of your Burgonomics order with Porter GPS tracking." },
     ],
   }),
   component: TrackOrderPage,
@@ -40,29 +41,36 @@ function TrackOrderPage() {
   const cachedOrder = useOrdersStore(selectOrderById(orderId));
   const [order, setOrder] = React.useState<Order | null>(cachedOrder);
   const [loadingOrder, setLoadingOrder] = React.useState(!cachedOrder);
+  const [receiptOpen, setReceiptOpen] = React.useState(false);
 
-  const tracking = useOrderTracking(hydrated ? orderId : null);
+  const trackingHook = useOrderTracking(hydrated ? orderId : null);
+  const trackingState = usePorterLiveTracking(order);
 
   React.useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
-    void orderRepository.getOrder(orderId).then((res) => {
-      if (cancelled) return;
-      if (res.success) setOrder(res.data);
-      setLoadingOrder(false);
-    });
+    void orderRepository
+      .getOrder(orderId)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success) setOrder(res.data);
+        setLoadingOrder(false);
+      })
+      .catch(() => {
+        // Rejection must end loading — otherwise the skeleton spins forever.
+        if (!cancelled) setLoadingOrder(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [hydrated, orderId]);
 
-  // Reflect status updates from tracking back into local order copy.
   React.useEffect(() => {
-    if (!order || !tracking.snapshot) return;
-    if (tracking.snapshot.status.code !== order.status.code) {
-      setOrder({ ...order, status: tracking.snapshot.status });
+    if (!order || !trackingHook.snapshot) return;
+    if (trackingHook.snapshot.status.code !== order.status.code) {
+      setOrder({ ...order, status: trackingHook.snapshot.status });
     }
-  }, [order, tracking.snapshot]);
+  }, [order, trackingHook.snapshot]);
 
   if (!hydrated || loadingOrder) return <TrackSkeleton />;
 
@@ -81,120 +89,142 @@ function TrackOrderPage() {
     );
   }
 
-  const snapshot = tracking.snapshot;
-  const cancelled = order.status.kind === "cancelled" || order.status.kind === "failed";
+  // Developer simulation handler to advance status
+  const handleDevAdvanceStatus = () => {
+    void HapticService.impact("medium");
+    const statusSequence = [
+      { code: "ORDER_PLACED", label: "Order Placed & Confirmed" },
+      { code: "KITCHEN_PREPARING", label: "Grilling in Kitchen" },
+      { code: "OUT_FOR_DELIVERY", label: "Out for Delivery with Porter" },
+      { code: "DELIVERED", label: "Delivered & Enjoyed" },
+    ];
+    const currentIndex = statusSequence.findIndex((s) => s.code === order.status.code);
+    const nextIndex = (currentIndex + 1) % statusSequence.length;
+    const nextStatus = statusSequence[nextIndex];
+
+    setOrder({
+      ...order,
+      status: {
+        ...order.status,
+        code: nextStatus.code,
+        label: nextStatus.label,
+      },
+    });
+  };
+
+  const storePhone = order.store?.phone || "+91 98250 99881";
+  const shortOrderNum = order.shortCode || order.id.slice(-6).toUpperCase();
+  const addressText =
+    order.address?.line1 ||
+    order.address?.label ||
+    "Delivery Destination";
 
   return (
     <ProtectedRoute>
       <AppShell
-        title="Track order"
+        title={`Order #${shortOrderNum}`}
         backTo="/orders"
         showTabs={false}
         showTopBar
         rightSlot={
           <button
-            aria-label="Refresh"
-            onClick={() => void tracking.refresh()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-text-primary hover:bg-bg-secondary"
+            aria-label="Refresh status"
+            onClick={() => void trackingHook.refresh()}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-text-primary hover:bg-bg-secondary cursor-pointer"
           >
             <RefreshCw
-              className={`h-5 w-5 ${tracking.status === "refreshing" ? "animate-spin" : ""}`}
-              aria-hidden
+              className={`h-4.5 w-4.5 ${trackingHook.status === "refreshing" ? "animate-spin" : ""}`}
             />
           </button>
         }
       >
-        <div className="mx-auto max-w-[560px] space-y-4 px-4 py-4">
-          {/* Header */}
-          <section
-            aria-label="Order status"
-            className="rounded-[var(--radius-large)] border border-divider bg-surface p-4"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <Text variant="caption" tone="secondary" className="tabular-nums">
-                  {order.shortCode}
-                </Text>
-                <Text variant="titleLarge" className="mt-0.5">
-                  {order.status.label}
-                </Text>
+        <div className="mx-auto max-w-[540px] space-y-4 px-4 py-3 pb-16 select-none">
+          {/* 1. 4-Stage Visual Progress Stepper (Domino's Tracker Standard) */}
+          <DeliveryStepTracker
+            tracking={trackingState}
+            onAdvanceDevStatus={handleDevAdvanceStatus}
+          />
+
+          {/* 2. Live Porter GPS Map with Route Polyline */}
+          <LiveOrderMap
+            tracking={trackingState}
+            storeName={order.store?.name || "Burgonomics Outlet"}
+            customerAddressText={addressText}
+          />
+
+          {/* 3. Rider Contact Card & Support Escalation CTAs */}
+          <RiderContactCard
+            tracking={trackingState}
+            storePhone={storePhone}
+            onOpenSupport={() => void navigate({ to: "/support" })}
+          />
+
+          {/* 4. Expandable Itemized Invoice Accordion */}
+          <div className="rounded-3xl border border-neutral-800 bg-[#0D0D0D] shadow-md overflow-hidden">
+            <button
+              type="button"
+              onClick={() => {
+                void HapticService.selection();
+                setReceiptOpen(!receiptOpen);
+              }}
+              className="flex w-full items-center justify-between p-4 text-left hover:bg-neutral-900/50 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <Receipt className="h-4.5 w-4.5 text-emerald-400" />
+                <div>
+                  <h3 className="font-sans text-xs font-black text-white">
+                    View Itemized Tax Invoice
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    {order.items?.length ?? 1} Items • {formatINR(order.totals?.grandTotal ?? 0)}
+                  </p>
+                </div>
               </div>
-              <OrderStatusBadge status={order.status} />
-            </div>
-            {tracking.status === "tracking" && !order.status.terminal && (
-              <div
-                className="mt-3 flex items-center gap-2 text-text-secondary"
-                role="status"
-                aria-live="polite"
-              >
-                <Spinner />
-                <Text variant="caption" tone="secondary">
-                  Tracking live updates…
-                </Text>
+              {receiptOpen ? (
+                <ChevronUp className="h-4 w-4 text-neutral-400" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-neutral-400" />
+              )}
+            </button>
+
+            {receiptOpen && (
+              <div className="border-t border-neutral-800/80 p-4 space-y-3 bg-neutral-950/60">
+                <div className="space-y-2">
+                  {order.items?.map((item, i) => (
+                    <div key={i} className="flex justify-between text-xs">
+                      <span className="font-medium text-neutral-300">
+                        {item.quantity}x {item.name}
+                      </span>
+                      <span className="font-bold text-white">
+                        {formatINR((item.unitPrice || 0) * (item.quantity || 1))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-neutral-800 pt-2 space-y-1 text-[11px] text-neutral-400">
+                  <div className="flex justify-between">
+                    <span>GST & Taxes</span>
+                    <span>{formatINR(order.totals?.taxes ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Packaging Charge</span>
+                    <span>{formatINR(order.totals?.packingFee ?? 5)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Delivery Fee</span>
+                    <span>{order.totals?.deliveryFee === 0 ? "FREE" : formatINR(order.totals?.deliveryFee ?? 0)}</span>
+                  </div>
+                  <div className="border-t border-neutral-800 pt-2 flex justify-between font-sans text-xs font-black text-white">
+                    <span>Total Paid ({order.payment?.method?.toUpperCase() ?? "PAID"})</span>
+                    <span className="text-emerald-400 font-mono text-sm">
+                      {formatINR(order.totals?.grandTotal ?? 0)}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
-            {tracking.status === "offline" && (
-              <div className="mt-3 flex items-center gap-2 rounded-[var(--radius-medium)] bg-warning/10 p-2 text-warning">
-                <WifiOff className="h-4 w-4" aria-hidden />
-                <Text variant="caption" tone="secondary">
-                  You're offline. Showing last known status.
-                </Text>
-              </div>
-            )}
-            {tracking.status === "error" && (
-              <div className="mt-3 flex items-center gap-2 rounded-[var(--radius-medium)] bg-error/10 p-2 text-error">
-                <AlertCircle className="h-4 w-4" aria-hidden />
-                <Text variant="caption" tone="error">
-                  {tracking.error}
-                </Text>
-              </div>
-            )}
-          </section>
-
-          {/* Timeline */}
-          <section
-            aria-label="Order timeline"
-            className="rounded-[var(--radius-large)] border border-divider bg-surface p-4"
-          >
-            <Text variant="titleLarge" className="mb-4">
-              Timeline
-            </Text>
-            {snapshot ? (
-              <OrderTimeline steps={snapshot.steps} cancelled={cancelled} />
-            ) : (
-              <div className="space-y-3">
-                <Skeleton className="h-6 w-full" />
-                <Skeleton className="h-6 w-full" />
-                <Skeleton className="h-6 w-3/4" />
-              </div>
-            )}
-          </section>
-
-          {/* Fulfillment-specific panel */}
-          <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4">
-            <FulfillmentPanel order={order} etaMinutes={snapshot?.etaMinutes} />
-          </section>
-
-          <AppButton
-            fullWidth
-            variant="outlined"
-            iconLeft={<Phone className="h-4 w-4" aria-hidden />}
-            onClick={() => {
-              if (order.store.phone && typeof window !== "undefined") {
-                window.open(`tel:${order.store.phone}`, "_blank");
-              }
-            }}
-          >
-            Contact store
-          </AppButton>
-
-          <AppButton
-            fullWidth
-            variant="ghost"
-            onClick={() => navigate({ to: "/orders/$orderId", params: { orderId: order.id } })}
-          >
-            View full details
-          </AppButton>
+          </div>
         </div>
       </AppShell>
     </ProtectedRoute>
@@ -203,12 +233,14 @@ function TrackOrderPage() {
 
 function TrackSkeleton() {
   return (
-    <AppShell title="Track order" backTo="/orders" showTabs={false} showTopBar>
-      <div className="mx-auto max-w-[560px] space-y-3 px-4 py-4">
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-40 w-full" />
+    <AppShell title="Track Order" backTo="/orders" showTabs={false} showTopBar>
+      <div className="mx-auto max-w-[540px] space-y-3 px-4 py-4">
+        <Skeleton className="h-40 w-full rounded-3xl" />
+        <Skeleton className="h-64 w-full rounded-3xl" />
+        <Skeleton className="h-28 w-full rounded-3xl" />
       </div>
     </AppShell>
   );
 }
+
+export default TrackOrderPage;

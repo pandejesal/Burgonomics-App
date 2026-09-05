@@ -35,6 +35,7 @@ import { useHydrated } from "@/shared/hooks/useHydrated";
 import { formatINR } from "@/core/utils/format";
 import { logger } from "@/core/logging/logger";
 import { toast } from "@/shared/components/feedback/AppToaster";
+import { HapticService } from "@/core/services/haptics";
 
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
 import { ReviewItemsList, useCheckoutStore } from "@/features/checkout";
@@ -48,6 +49,7 @@ import {
   razorpayAdapter,
   PaymentMethodList,
   SecurePaymentBadge,
+  RazorpayModalHandler,
 } from "@/features/payments";
 import type { PaymentResult } from "@/features/payments/models";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
@@ -73,6 +75,7 @@ function PaymentPage() {
   const fulfillment = useStoreSelection((s) => s.fulfillment);
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const isBootstrapped = useAuthStore((s) => s.isBootstrapped);
+  const user = useAuthStore((s) => s.user);
 
   const status = usePaymentStore((s) => s.status);
   const method = usePaymentStore((s) => s.method);
@@ -93,6 +96,7 @@ function PaymentPage() {
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   const [preflightIssue, setPreflightIssue] = React.useState<string | null>(null);
+  const [abandonmentOpen, setAbandonmentOpen] = React.useState(false);
 
   // Auth guard — send guests to login with return-to-payment.
   React.useEffect(() => {
@@ -144,6 +148,7 @@ function PaymentPage() {
     setPreflightIssue(null);
     setFailure(null);
     setStatus("preparing");
+    setAbandonmentOpen(false);
 
     // 1. Validate common checkout requirements
     const preflight = await paymentRepository.validateForPayment();
@@ -184,6 +189,7 @@ function PaymentPage() {
 
         setStatus("success");
         AudioService.playSuccess();
+        void HapticService.notification("success");
         void cartRepository.clear();
         void navigate({
           to: "/order-confirmation/$orderId",
@@ -216,7 +222,18 @@ function PaymentPage() {
       setOrder(orderRes.data);
       setStatus("waiting");
 
-      await razorpayAdapter.initialize({ order: orderRes.data });
+      await razorpayAdapter.initialize({
+        order: orderRes.data,
+        prefill: {
+          name: user?.name,
+          email: (user as { email?: string } | null)?.email,
+          contact: user?.phone,
+        },
+        theme: {
+          color: "#0E4825",
+        },
+      });
+
       await razorpayAdapter.openCheckout(
         {
           onSuccess: (result: PaymentResult) => void handleSuccess(result),
@@ -230,12 +247,10 @@ function PaymentPage() {
             setStatus("cancelled");
             setFailure({
               code: "USER_CANCELLED",
-              message: "You cancelled the payment.",
+              message: "Payment modal was dismissed.",
               retryable: true,
             });
-            toast("Payment cancelled", {
-              description: "No money was charged. Your cart is still here.",
-            });
+            setAbandonmentOpen(true);
           },
           onExternalWallet: (walletName) => {
             logger.info("payment.externalWallet", { walletName });
@@ -273,10 +288,25 @@ function PaymentPage() {
         paymentMethod: result.method,
         transactionId: result.paymentId,
       });
+      // Never celebrate before the order exists: money is taken at this point,
+      // so a failed create must scream, not navigate to a confirmation page.
+      if (!created.success) {
+        setStatus("failed");
+        setFailure({
+          code: created.error.code,
+          message: `Payment of ${result.paymentId} succeeded but the order could not be created: ${created.error.message}. Contact support — do not pay again.`,
+          retryable: false,
+        });
+        toast.error("Payment taken, order not created", {
+          description: "Your money is safe. Contact support with payment ID before retrying.",
+        });
+        return;
+      }
       setStatus("success");
       AudioService.playSuccess();
+      void HapticService.notification("success");
       void cartRepository.clear();
-      const orderId = created.success ? created.data.id : verify.data.confirmedOrderId;
+      const orderId = created.data.id;
       void navigate({
         to: "/order-confirmation/$orderId",
         params: { orderId },
@@ -600,6 +630,17 @@ function PaymentPage() {
         )}
         <div className="h-28" aria-hidden="true" />
       </div>
+
+      {/* Abandonment Recovery Bottom Sheet */}
+      <RazorpayModalHandler
+        isAbandonmentOpen={abandonmentOpen}
+        onCloseAbandonment={() => setAbandonmentOpen(false)}
+        onRetryPayment={() => void retry()}
+        onChangePaymentMethod={() => {
+          setAbandonmentOpen(false);
+          void navigate({ to: "/checkout" });
+        }}
+      />
     </AppShell>
   );
 }
@@ -687,3 +728,5 @@ function PaymentSkeleton() {
     </AppShell>
   );
 }
+
+export default PaymentPage;

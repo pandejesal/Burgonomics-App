@@ -254,6 +254,7 @@ export function CheckoutPage() {
         setBusy(false);
         const msg = err instanceof Error ? err.message : "Error placing cash order.";
         setValidationError(msg);
+        toast.error("Could not place order", { description: msg });
       }
       return;
     }
