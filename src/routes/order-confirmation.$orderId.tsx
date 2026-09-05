@@ -157,18 +157,36 @@ function OrderConfirmationPage() {
 
   const shareOrder = async () => {
     const res = await orderRepository.buildShareMessage(order.id);
-    if (!res.success) return;
-    if (typeof navigator !== "undefined" && "share" in navigator) {
+    if (!res.success) {
+      toast.error("Could not build the share link. Please try again.");
+      return;
+    }
+    const url = `${window.location.origin}/orders/${order.id}/track`;
+    const nav = navigator as Navigator & {
+      share?: (data: ShareData) => Promise<void>;
+      clipboard?: Clipboard;
+    };
+    if (typeof nav.share === "function") {
       try {
-        await (navigator as Navigator & { share: (data: ShareData) => Promise<void> }).share({
+        await nav.share({
           title: res.data.title,
           text: res.data.text,
+          url,
         });
       } catch {
         /* user dismissed share dialog */
       }
-    } else {
-      toast.success("Order link copied to clipboard!");
+      return;
+    }
+    if (!nav.clipboard) {
+      toast.error("Sharing is not available in this browser.");
+      return;
+    }
+    try {
+      await nav.clipboard.writeText(url);
+      toast.success("Order tracking link copied to clipboard!");
+    } catch {
+      toast.error("Copy failed — long-press the address bar to copy the link.");
     }
   };
 

@@ -9,6 +9,9 @@ import {
   ChevronDown,
   Sparkles,
   Star,
+  Plus,
+  Clock,
+  ShieldCheck,
 } from "lucide-react";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
@@ -20,6 +23,10 @@ import { BottomSheet } from "@/shared/components/common/BottomSheet";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { cn } from "@/lib/utils";
 import { supportRepository } from "@/features/support/repositories/SupportRepository";
+import { useCustomerTickets } from "@/features/support/hooks/useCustomerTickets";
+import { CreateTicketForm } from "@/features/support/components/CreateTicketForm";
+import { TicketListAccordion } from "@/features/support/components/TicketListAccordion";
+import { useOrdersStore, selectAllOrders } from "@/features/orders";
 import type {
   FaqItem,
   IssueCategory,
@@ -38,6 +45,11 @@ export const Route = createFileRoute("/support")({
       },
     ],
   }),
+  validateSearch: (search: Record<string, unknown>) => ({
+    topic: typeof search.topic === "string" ? search.topic : undefined,
+    paymentId: typeof search.paymentId === "string" ? search.paymentId : undefined,
+    message: typeof search.message === "string" ? search.message : undefined,
+  }),
   component: Page,
 });
 
@@ -51,12 +63,20 @@ const ICONS: Record<SupportChannel["kind"], typeof Phone> = {
 };
 
 function Page() {
+  // Deep link from the payment failure panel (paid-but-no-order): open the
+  // ticket drawer prefilled with the payment id so the customer never has to
+  // retype it — and support gets the one field they need to trace the money.
+  const search = Route.useSearch();
+  const paymentPrefill = search.topic === "payment" && search.paymentId ? search : null;
   const [faqs, setFaqs] = React.useState<FaqItem[] | null>(null);
   const [channels, setChannels] = React.useState<SupportChannel[] | null>(null);
   const [categories, setCategories] = React.useState<IssueCategory[]>([]);
   const [faqQuery, setFaqQuery] = React.useState("");
-  const [openTicket, setOpenTicket] = React.useState(false);
+  const [openTicket, setOpenTicket] = React.useState(!!paymentPrefill);
   const [openFeedback, setOpenFeedback] = React.useState(false);
+
+  const { tickets, createTicket, isSubmitting } = useCustomerTickets();
+  const pastOrders = useOrdersStore(selectAllOrders);
 
   React.useEffect(() => {
     void supportRepository.listFaqs().then((r) => r.success && setFaqs(r.data));
@@ -76,16 +96,60 @@ function Page() {
     );
   }, [faqs, faqQuery]);
 
+  const handleTicketSubmit = async (payload: any) => {
+    const res = await createTicket(payload);
+    if (res.success) {
+      setOpenTicket(false);
+    }
+  };
+
   return (
-    <AppShell title="Help & support" backTo="/profile" showTabs showTopBar>
-      <div className="mx-auto max-w-[520px] space-y-4 px-4 py-4">
-        {/* Contact channels */}
-        <section>
-          <Text variant="titleMedium" className="mb-2">
-            Contact us
+    <AppShell title="Help & Support" backTo="/profile" showTabs showTopBar>
+      <div className="mx-auto max-w-[560px] space-y-5 px-4 py-4 select-none pb-20">
+        {/* Support & SLA Guarantee Banner */}
+        <div className="p-4 rounded-3xl bg-[#0E4825] border border-emerald-500/40 text-white space-y-2 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-black text-sm">
+              <ShieldCheck className="w-5 h-5 text-emerald-300" />
+              <span>Burgonomics Customer Care</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 font-bold text-[10px] uppercase">
+              15-Min SLA
+            </span>
+          </div>
+          <p className="text-xs text-emerald-100 leading-relaxed">
+            Need help with your meal or delivery? Store managers respond in &lt;15 mins. Tickets auto-escalate to Regional Operations if breached.
+          </p>
+          <button
+            type="button"
+            onClick={() => setOpenTicket(true)}
+            className="w-full py-2.5 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider transition-all active:scale-98 flex items-center justify-center gap-2 shadow-md cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Raise Support Ticket</span>
+          </button>
+        </div>
+
+        {/* Live Support Tickets Accordion */}
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Text variant="titleMedium" className="text-white font-bold">
+              Your Active & Past Tickets ({tickets.length})
+            </Text>
+          </div>
+          <TicketListAccordion
+            tickets={tickets}
+            onOpenNewTicket={() => setOpenTicket(true)}
+          />
+        </section>
+
+        {/* Direct Contact Channels */}
+        <section className="space-y-2">
+          <Text variant="titleMedium" className="text-white font-bold">
+            Direct Contact Channels
           </Text>
           {channels === null ? (
-            <div className="h-24 animate-pulse rounded-[var(--radius-large)] bg-bg-secondary" />
+            <div className="h-24 animate-pulse rounded-2xl bg-neutral-900" />
           ) : channels.length === 0 ? (
             <EmptyState
               title="No channels"
@@ -102,71 +166,57 @@ function Page() {
           )}
         </section>
 
-        {/* Report + Feedback */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <AppCard padded>
-            <Text variant="titleMedium">Report an issue</Text>
-            <Text variant="bodyMedium" tone="secondary" className="mt-1">
-              Tell us what went wrong with an order or the app.
-            </Text>
-            <AppButton
-              className="mt-3"
-              variant="outlined"
-              onClick={() => setOpenTicket(true)}
-              iconLeft={<FileWarning className="h-4 w-4" aria-hidden />}
-            >
-              Report an issue
-            </AppButton>
-          </AppCard>
-
-          <AppCard padded>
-            <Text variant="titleMedium">Share feedback</Text>
-            <Text variant="bodyMedium" tone="secondary" className="mt-1">
-              Rate the app and send us suggestions.
-            </Text>
-            <AppButton
-              className="mt-3"
-              variant="outlined"
+        {/* Share Feedback */}
+        <div className="p-4 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-white text-xs">Share Store Feedback</h3>
+              <p className="text-[11px] text-neutral-400">Rate your food, service, or suggest a new burger flavor.</p>
+            </div>
+            <button
+              type="button"
               onClick={() => setOpenFeedback(true)}
-              iconLeft={<Star className="h-4 w-4" aria-hidden />}
+              className="px-3.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs cursor-pointer"
             >
-              Send feedback
-            </AppButton>
-          </AppCard>
+              Feedback
+            </button>
+          </div>
         </div>
 
         {/* FAQs */}
-        <section>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <Text variant="titleMedium">Frequently asked questions</Text>
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Text variant="titleMedium" className="text-white font-bold">
+              Frequently Asked Questions
+            </Text>
           </div>
           {faqs && faqs.length > 0 && (
-            <label className="mb-2 flex h-11 items-center gap-2 rounded-full border border-divider bg-surface px-4 focus-within:border-primary">
+            <label className="flex h-11 items-center gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 focus-within:border-[#FF6600]">
               <input
                 type="search"
                 value={faqQuery}
                 onChange={(e) => setFaqQuery(e.target.value)}
-                placeholder="Search FAQs"
+                placeholder="Search FAQs (e.g., refund, delivery time, coins)..."
                 aria-label="Search frequently asked questions"
-                className="flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled"
+                className="flex-1 bg-transparent text-white outline-none text-xs placeholder:text-neutral-500"
               />
             </label>
           )}
           {filteredFaqs === null ? (
-            <div className="h-40 animate-pulse rounded-[var(--radius-large)] bg-bg-secondary" />
+            <div className="h-40 animate-pulse rounded-2xl bg-neutral-900" />
           ) : filteredFaqs.length === 0 ? (
             <EmptyState
               title={faqQuery ? "No matching FAQs" : "No FAQs"}
               description={
                 faqQuery
-                  ? "Try a different word or contact us above."
-                  : "Check back later — we're growing our help centre."
+                  ? "Try a different word or contact our store above."
+                  : "Check back later — we're expanding our help center."
               }
             />
           ) : (
-            <ul className="overflow-hidden rounded-[var(--radius-large)] border border-divider bg-surface">
-              {filteredFaqs.map((f, i) => (
-                <li key={f.id} className={cn(i !== 0 && "border-t border-divider")}>
+            <ul className="overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 divide-y divide-neutral-800">
+              {filteredFaqs.map((f) => (
+                <li key={f.id}>
                   <FaqAccordion item={f} />
                 </li>
               ))}
@@ -175,15 +225,29 @@ function Page() {
         </section>
       </div>
 
+      {/* Create Support Ticket Drawer */}
       <BottomSheet
         open={openTicket}
         onOpenChange={setOpenTicket}
-        title="Report an issue"
-        description="Our team will get back to you as soon as possible."
+        title="Report an Issue"
+        description="Our store manager will respond within 15 minutes."
       >
-        <ReportIssueForm categories={categories} onSubmitted={() => setOpenTicket(false)} />
+        <CreateTicketForm
+          key={paymentPrefill ? `pay-${paymentPrefill.paymentId}` : "blank"}
+          orders={pastOrders}
+          isSubmitting={isSubmitting}
+          onSubmit={handleTicketSubmit}
+          onCancel={() => setOpenTicket(false)}
+          initialCategory={paymentPrefill ? "PAYMENT_ISSUE" : undefined}
+          initialDescription={
+            paymentPrefill
+              ? `Payment ${paymentPrefill.paymentId} succeeded but my order was not created. Please confirm my payment and create the order or refund me.`
+              : undefined
+          }
+        />
       </BottomSheet>
 
+      {/* Share Feedback Drawer */}
       <BottomSheet
         open={openFeedback}
         onOpenChange={setOpenFeedback}
@@ -216,25 +280,25 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
       target={channel.kind === "whatsapp" ? "_blank" : undefined}
       rel={channel.kind === "whatsapp" ? "noreferrer noopener" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-[var(--radius-large)] border border-divider bg-surface p-3 transition-colors",
-        disabled ? "opacity-70" : "hover:border-primary/40 hover:bg-primary/5",
+        "flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-3 transition-colors text-white",
+        disabled ? "opacity-70" : "hover:border-[#0E4825] hover:bg-neutral-850",
       )}
       aria-disabled={disabled || undefined}
     >
-      <div className="grid h-10 w-10 flex-none place-items-center rounded-full bg-primary/10 text-primary">
+      <div className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-[#0E4825] text-emerald-300">
         <Icon className="h-5 w-5" aria-hidden />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 min-w-0">
-          <Text variant="titleMedium" className="truncate">
+          <span className="font-bold text-xs truncate">
             {channel.label}
-          </Text>
+          </span>
           {!channel.available && <AppBadge tone="neutral">Soon</AppBadge>}
         </div>
         {channel.helper && (
-          <Text variant="caption" tone="secondary" className="truncate">
+          <span className="text-[11px] text-neutral-400 block truncate">
             {channel.helper}
-          </Text>
+          </span>
         )}
       </div>
     </Wrapper>
@@ -249,21 +313,21 @@ function FaqAccordion({ item }: { item: FaqItem }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-neutral-850/60 transition-colors"
       >
         <div className="min-w-0 flex-1">
-          <Text variant="bodyLarge" className="truncate">
+          <span className="text-xs font-bold text-white block truncate">
             {item.question}
-          </Text>
+          </span>
           {item.category && (
-            <Text variant="caption" tone="secondary">
+            <span className="text-[10px] text-neutral-400 uppercase font-semibold">
               {item.category}
-            </Text>
+            </span>
           )}
         </div>
         <ChevronDown
           className={cn(
-            "h-4 w-4 flex-none text-text-secondary transition-transform",
+            "h-4 w-4 flex-none text-neutral-400 transition-transform",
             open && "rotate-180",
           )}
           aria-hidden
@@ -271,108 +335,12 @@ function FaqAccordion({ item }: { item: FaqItem }) {
       </button>
       {open && (
         <div className="px-4 pb-4">
-          <Text variant="bodyMedium" tone="secondary">
+          <p className="text-xs text-neutral-300 leading-relaxed">
             {item.answer}
-          </Text>
+          </p>
         </div>
       )}
     </div>
-  );
-}
-
-function ReportIssueForm({
-  categories,
-  onSubmitted,
-}: {
-  categories: IssueCategory[];
-  onSubmitted: () => void;
-}) {
-  const [category, setCategory] = React.useState<IssueCategoryId | "">("");
-  const [subject, setSubject] = React.useState("");
-  const [message, setMessage] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!category) {
-      setError("Please choose a category.");
-      return;
-    }
-    setBusy(true);
-    const res = await supportRepository.submitTicket({
-      subject: subject.trim(),
-      message: message.trim(),
-      category,
-    });
-    setBusy(false);
-    if (!res.success) {
-      setError(res.error.message);
-      return;
-    }
-    toast.success("Thanks — we've received your report.");
-    setSubject("");
-    setMessage("");
-    setCategory("");
-    onSubmitted();
-  };
-
-  return (
-    <form onSubmit={submit} className="space-y-3">
-      <fieldset>
-        <legend className="type-caption text-text-secondary uppercase">Category</legend>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {categories.map((c) => {
-            const active = category === c.id;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setCategory(c.id)}
-                aria-pressed={active}
-                className={cn(
-                  "rounded-full px-3 py-1.5 type-label-large transition-colors",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "border border-divider bg-surface text-text-secondary hover:text-primary",
-                )}
-              >
-                {c.label}
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
-      <TextField
-        label="Subject"
-        value={subject}
-        onChange={(e) => setSubject(e.target.value.slice(0, 80))}
-        placeholder="E.g. Order arrived cold"
-        required
-      />
-      <label className="flex flex-col gap-1">
-        <span className="type-caption text-text-secondary uppercase">Message</span>
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value.slice(0, 800))}
-          rows={5}
-          required
-          placeholder="Share as much detail as you can — order id, time, and what went wrong."
-          className="rounded-[var(--radius-medium)] border-[1.5px] border-divider bg-surface px-4 py-3 type-body-large placeholder:text-text-disabled outline-none focus:border-primary"
-        />
-      </label>
-      {error && (
-        <div role="alert">
-          <Text variant="bodyMedium" tone="error">
-            {error}
-          </Text>
-        </div>
-      )}
-      <AppButton type="submit" fullWidth loading={busy}>
-        Submit report
-      </AppButton>
-    </form>
   );
 }
 
@@ -409,9 +377,9 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form onSubmit={submit} className="space-y-3 text-white">
       <fieldset>
-        <legend className="type-caption text-text-secondary uppercase">Your rating</legend>
+        <legend className="text-xs font-bold uppercase text-neutral-400">Your rating</legend>
         <div
           role="radiogroup"
           aria-label="Rate your experience"
@@ -432,7 +400,7 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
                 <Star
                   className={cn(
                     "h-7 w-7 transition-colors",
-                    filled ? "fill-primary text-primary" : "text-text-disabled",
+                    filled ? "fill-amber-400 text-amber-400" : "text-neutral-600",
                   )}
                   aria-hidden
                 />
@@ -442,23 +410,23 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
         </div>
       </fieldset>
       <label className="flex flex-col gap-1">
-        <span className="type-caption text-text-secondary uppercase">Comment</span>
+        <span className="text-xs font-bold uppercase text-neutral-400">Comment</span>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value.slice(0, 500))}
           rows={3}
           placeholder="What did you love or dislike?"
-          className="rounded-[var(--radius-medium)] border-[1.5px] border-divider bg-surface px-4 py-3 type-body-large placeholder:text-text-disabled outline-none focus:border-primary"
+          className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-white placeholder:text-neutral-500 outline-none focus:border-[#FF6600]"
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="type-caption text-text-secondary uppercase">Suggestion (optional)</span>
+        <span className="text-xs font-bold uppercase text-neutral-400">Suggestion (optional)</span>
         <textarea
           value={suggestion}
           onChange={(e) => setSuggestion(e.target.value.slice(0, 500))}
           rows={2}
           placeholder="Anything we should build next?"
-          className="rounded-[var(--radius-medium)] border-[1.5px] border-divider bg-surface px-4 py-3 type-body-large placeholder:text-text-disabled outline-none focus:border-primary"
+          className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-white placeholder:text-neutral-500 outline-none focus:border-[#FF6600]"
         />
       </label>
       {error && (
@@ -474,3 +442,5 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
     </form>
   );
 }
+
+export default Page;

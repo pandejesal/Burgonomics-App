@@ -294,8 +294,9 @@ function PaymentPage() {
         setStatus("failed");
         setFailure({
           code: created.error.code,
-          message: `Payment of ${result.paymentId} succeeded but the order could not be created: ${created.error.message}. Contact support — do not pay again.`,
+          message: `Payment of ${result.paymentId} succeeded but the order could not be created: ${created.error.message}.`,
           retryable: false,
+          paymentId: result.paymentId,
         });
         toast.error("Payment taken, order not created", {
           description: "Your money is safe. Contact support with payment ID before retrying.",
@@ -599,11 +600,29 @@ function PaymentPage() {
               transition={{ duration: 0.2 }}
             >
               <FailurePanel
-                title={status === "cancelled" ? "Payment cancelled" : "Payment failed"}
+                title={
+                  status === "cancelled"
+                    ? "Payment cancelled"
+                    : failure?.retryable === false
+                      ? "Payment received — order pending"
+                      : "Payment failed"
+                }
                 message={failure?.message ?? "Something went wrong."}
+                retryable={failure?.retryable ?? true}
+                paymentId={failure?.paymentId}
                 onRetry={() => void retry()}
                 onBackToCheckout={() => void navigate({ to: "/checkout" })}
                 onCancel={() => void cancelAttempt()}
+                onContactSupport={() =>
+                  void navigate({
+                    to: "/support",
+                    search: {
+                      topic: "payment",
+                      paymentId: failure?.paymentId,
+                      message: failure?.message,
+                    },
+                  })
+                }
               />
             </motion.div>
           )}
@@ -664,15 +683,21 @@ function SummaryRow({ label, value, tone }: { label: string; value: number; tone
 function FailurePanel({
   title,
   message,
+  retryable,
+  paymentId,
   onRetry,
   onBackToCheckout,
   onCancel,
+  onContactSupport,
 }: {
   title: string;
   message: string;
+  retryable: boolean;
+  paymentId?: string;
   onRetry: () => void;
   onBackToCheckout: () => void;
   onCancel: () => void;
+  onContactSupport: () => void;
 }) {
   return (
     <div role="alert" className="rounded-xl border border-error/40 bg-error/5 p-4 shadow-sm">
@@ -682,17 +707,34 @@ function FailurePanel({
           <Text variant="titleMedium" className="font-bold text-error">
             {title}
           </Text>
+          {/* Paid-but-no-order must NEVER say "no money has been charged" or
+              offer Retry (double-charge). It shows the payment id + support. */}
           <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-normal">
-            {message} You can try again safely — no money has been charged.
+            {message}{" "}
+            {retryable ? (
+              "You can try again safely — no money has been charged."
+            ) : (
+              <>
+                Do not pay again. Your payment ID{" "}
+                <span className="font-mono font-bold text-text-primary">{paymentId}</span>{" "}
+                is recorded — contact support and we will confirm your order or refund you.
+              </>
+            )}
           </Text>
           <div className="mt-3 flex flex-wrap gap-2">
-            <AppButton
-              size="sm"
-              onClick={onRetry}
-              iconLeft={<RotateCcw className="h-3.5 w-3.5" aria-hidden />}
-            >
-              Retry
-            </AppButton>
+            {retryable ? (
+              <AppButton
+                size="sm"
+                onClick={onRetry}
+                iconLeft={<RotateCcw className="h-3.5 w-3.5" aria-hidden />}
+              >
+                Retry
+              </AppButton>
+            ) : (
+              <AppButton size="sm" onClick={onContactSupport}>
+                Contact support
+              </AppButton>
+            )}
             <AppButton
               size="sm"
               variant="outlined"

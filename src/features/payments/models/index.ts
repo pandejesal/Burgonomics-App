@@ -43,6 +43,8 @@ export interface PaymentFailure {
   message: string;
   retryable: boolean;
   method?: PaymentMethod;
+  /** Razorpay payment id when money actually moved (paid-but-no-order). */
+  paymentId?: string;
 }
 
 export interface PaymentPreflight {

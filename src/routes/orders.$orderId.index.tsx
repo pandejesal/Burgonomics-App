@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RotateCcw, LifeBuoy, FileText, Share2 } from "lucide-react";
+import { RotateCcw, LifeBuoy, Share2 } from "lucide-react";
 
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -18,10 +18,12 @@ import {
   OrderPriceSummary,
   OrderTimeline,
   FulfillmentPanel,
+  InvoiceDownloadButton,
   type Order,
   type OrderTrackingSnapshot,
 } from "@/features/orders";
 import { ReviewItemsList } from "@/features/checkout";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/orders/$orderId/")({
   head: () => ({
@@ -87,16 +89,34 @@ function OrderDetailsPage() {
 
   const share = async () => {
     const res = await orderRepository.buildShareMessage(order.id);
-    if (!res.success) return;
-    if (typeof navigator !== "undefined" && "share" in navigator) {
+    if (!res.success) {
+      toast.error("Could not build the share link. Please try again.");
+      return;
+    }
+    // A real track URL — the old code shared title/text with no URL, and on
+    // desktop (no Web Share API) silently did nothing at all.
+    const url = `${window.location.origin}/orders/${order.id}/track`;
+    const nav = navigator as Navigator & {
+      share?: (data: ShareData) => Promise<void>;
+      clipboard?: Clipboard;
+    };
+    if (typeof nav.share === "function") {
       try {
-        await (navigator as Navigator & { share: (data: ShareData) => Promise<void> }).share({
-          title: res.data.title,
-          text: res.data.text,
-        });
+        await nav.share({ title: res.data.title, text: res.data.text, url });
       } catch {
         /* user cancelled */
       }
+      return;
+    }
+    if (!nav.clipboard) {
+      toast.error("Sharing is not available in this browser.");
+      return;
+    }
+    try {
+      await nav.clipboard.writeText(url);
+      toast.success("Order tracking link copied to clipboard!");
+    } catch {
+      toast.error("Copy failed — long-press the address bar to copy the link.");
     }
   };
 
@@ -209,14 +229,9 @@ function OrderDetailsPage() {
             >
               Share
             </AppButton>
-            <AppButton
-              variant="outlined"
-              iconLeft={<FileText className="h-4 w-4" aria-hidden />}
-              disabled
-              title="Invoice will be available once the backend is connected."
-            >
-              Invoice
-            </AppButton>
+            {/* Real client-side GST invoice (same generator as order history) —
+                the old tile was permanently disabled with a hover-only title. */}
+            <InvoiceDownloadButton order={order} className="w-full justify-center py-3" />
           </div>
         </div>
       </AppShell>
