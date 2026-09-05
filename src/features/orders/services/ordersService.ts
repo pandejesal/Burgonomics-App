@@ -129,6 +129,20 @@ function buildTimeline(
 //
 // Mock persistence. Real backend replaces this whole layer.
 
+/**
+ * Ownership gate for single-order reads. Logged-out callers keep legacy
+ * behavior (rules decide); signed-in callers never see another user's order.
+ * Exported for tests — deleting or weakening this check must break the suite.
+ */
+export function isOrderVisibleTo(
+  data: Record<string, any>,
+  myUid: string | null | undefined
+): boolean {
+  const ownerId = data.userId ?? data.customerId;
+  if (ownerId && myUid && ownerId !== myUid) return false;
+  return true;
+}
+
 const orders = new Map<string, Order>();
 /** Progression timestamps per order — used to synthesise the timeline. */
 const progression = new Map<string, Partial<Record<OrderStatusCode, string>>>();
@@ -368,9 +382,8 @@ export const ordersService = {
           const data = snap.data() as Record<string, any>;
           // Ownership check: never load or cache another user's order fetched
           // by raw id (order ids are guessable). Mismatch reads as not-found.
-          const ownerId = data.userId ?? data.customerId;
           const myUid = auth.currentUser?.uid;
-          if (ownerId && myUid && ownerId !== myUid) return ok(null);
+          if (!isOrderVisibleTo(data, myUid)) return ok(null);
           const { userId, ...orderData } = data;
           orders.set(id, orderData as Order);
           progression.set(id, { PLACED: orderData.placedAt });

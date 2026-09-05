@@ -11,17 +11,24 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection } from "firebase/
 const PROJECT_ID = "burgonomics-test-rules";
 
 describe("Firestore Security Rules — CRM Hierarchy & RBAC (18 Tests)", () => {
-  let testEnv: RulesTestEnvironment;
+  let testEnv: RulesTestEnvironment | null = null;
+  let emulatorAvailable = false;
 
   beforeAll(async () => {
-    testEnv = await initializeTestEnvironment({
-      projectId: PROJECT_ID,
-      firestore: {
-        rules: readFileSync("firestore.rules", "utf8"),
-        host: "127.0.0.1",
-        port: 8080,
-      },
-    });
+    try {
+      testEnv = await initializeTestEnvironment({
+        projectId: PROJECT_ID,
+        firestore: {
+          rules: readFileSync("firestore.rules", "utf8"),
+          host: "127.0.0.1",
+          port: 8080,
+        },
+      });
+      emulatorAvailable = true;
+    } catch {
+      console.warn("Firestore Emulator is not running on 127.0.0.1:8080. Skipping rules integration tests.");
+      emulatorAvailable = false;
+    }
   });
 
   afterAll(async () => {
@@ -30,7 +37,19 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (18 Tests)", () => {
     }
   });
 
-  beforeEach(async () => {
+  beforeEach(async (context) => {
+    if (!emulatorAvailable || !testEnv) {
+      // Silent skips let RBAC rules rot green forever (Loop 9): in CI the
+      // emulator job must run — fail hard instead of skipping.
+      if (process.env.CI === "true") {
+        throw new Error(
+          "Firestore emulator unavailable in CI — the rules job must start it (see .github/workflows/ci.yml `rules` job)."
+        );
+      }
+      context.skip();
+      return;
+    }
+
     await testEnv.clearFirestore();
 
     // Seed administrative users & baseline data using withSecurityRulesDisabled

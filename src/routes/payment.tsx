@@ -52,6 +52,7 @@ import {
   RazorpayModalHandler,
 } from "@/features/payments";
 import type { PaymentResult } from "@/features/payments/models";
+import { describePaymentFailure } from "@/features/payments/utils/paymentFailure";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
 
 export const Route = createFileRoute("/payment")({
@@ -600,13 +601,7 @@ function PaymentPage() {
               transition={{ duration: 0.2 }}
             >
               <FailurePanel
-                title={
-                  status === "cancelled"
-                    ? "Payment cancelled"
-                    : failure?.retryable === false
-                      ? "Payment received — order pending"
-                      : "Payment failed"
-                }
+                status={status}
                 message={failure?.message ?? "Something went wrong."}
                 retryable={failure?.retryable ?? true}
                 paymentId={failure?.paymentId}
@@ -681,7 +676,7 @@ function SummaryRow({ label, value, tone }: { label: string; value: number; tone
 }
 
 function FailurePanel({
-  title,
+  status,
   message,
   retryable,
   paymentId,
@@ -690,7 +685,7 @@ function FailurePanel({
   onCancel,
   onContactSupport,
 }: {
-  title: string;
+  status: string;
   message: string;
   retryable: boolean;
   paymentId?: string;
@@ -699,30 +694,29 @@ function FailurePanel({
   onCancel: () => void;
   onContactSupport: () => void;
 }) {
+  // Copy/CTA decisions come from describePaymentFailure (unit-tested): the
+  // paid-but-no-order branch must NEVER say "no money has been charged" or
+  // offer Retry (double-charge). It shows the payment id + support.
+  const content = describePaymentFailure({ status, message, retryable });
   return (
     <div role="alert" className="rounded-xl border border-error/40 bg-error/5 p-4 shadow-sm">
       <div className="flex items-start gap-3">
         <ShieldAlert className="mt-0.5 h-5 w-5 text-error shrink-0" aria-hidden />
         <div className="min-w-0 flex-1">
           <Text variant="titleMedium" className="font-bold text-error">
-            {title}
+            {content.title}
           </Text>
-          {/* Paid-but-no-order must NEVER say "no money has been charged" or
-              offer Retry (double-charge). It shows the payment id + support. */}
           <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-normal">
-            {message}{" "}
-            {retryable ? (
-              "You can try again safely — no money has been charged."
-            ) : (
+            {content.body}{" "}
+            {!retryable && (
               <>
-                Do not pay again. Your payment ID{" "}
-                <span className="font-mono font-bold text-text-primary">{paymentId}</span>{" "}
-                is recorded — contact support and we will confirm your order or refund you.
+                Payment ID{" "}
+                <span className="font-mono font-bold text-text-primary">{paymentId}</span>
               </>
             )}
           </Text>
           <div className="mt-3 flex flex-wrap gap-2">
-            {retryable ? (
+            {content.showRetry ? (
               <AppButton
                 size="sm"
                 onClick={onRetry}

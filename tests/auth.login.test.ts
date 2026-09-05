@@ -136,6 +136,22 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
       const res = await useAuthStore.getState().resendOtp();
       expect(res.ok).toBe(false);
     });
+
+    it("opens the gate after the cooldown (attempts a fresh request, no Firebase needed to prove it)", async () => {
+      useAuthStore.setState({
+        status: "otp_sent",
+        challenge: {
+          otpToken: "+919825012345",
+          phone: "+919825012345",
+          requestedAt: Date.now() - 61 * 1000,
+          resendAfterSec: 60,
+        },
+      });
+      const res = await useAuthStore.getState().resendOtp();
+      // In node there is no reCAPTCHA, so the fresh request fails downstream —
+      // the point is the store no longer refuses with the cooldown error.
+      expect(res.error).not.toMatch(/wait \d+s/);
+    });
   });
 
   describe("4. OTP Input Keystroke & Paste Logic", () => {

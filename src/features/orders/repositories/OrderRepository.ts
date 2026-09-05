@@ -15,6 +15,7 @@
  */
 import { ok, type ApiResult } from "@/core/network/http";
 import { ordersService } from "@/features/orders/services/ordersService";
+import { buildTrackUrl } from "@/features/orders/utils/trackUrl";
 import { useOrdersStore, selectAllOrders } from "@/features/orders/state/ordersStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useCartStore } from "@/features/cart/state/cartStore";
@@ -212,6 +213,14 @@ export class OrderRepository {
   async downloadInvoice(id: string): Promise<ApiResult<{ url: string | null }>> {
     void id;
     return ok({ url: null });
+  }
+
+  /**
+   * Canonical customer tracking URL for an order. Delegates to the pure
+   * utils/trackUrl helper (unit-tested; keeps this repo method honest).
+   */
+  buildTrackUrl(id: string, origin?: string): string {
+    return buildTrackUrl(id, origin);
   }
 
   /**

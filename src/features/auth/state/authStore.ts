@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { authRepository } from "@/features/auth/repositories/AuthRepository";
 import { isJwtExpired } from "@/features/auth/utils/mockJwt";
 import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
+import { auth as firebaseAuth } from "@/core/config/firebase";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { isDev } from "@/core/config/env";
@@ -42,7 +43,7 @@ interface AuthState {
   error: string | null;
 
   // Actions
-  bootstrap: () => Promise<void>;
+  bootstrap: (sessionProbe?: () => Promise<string | null>) => Promise<void>;
   requestOtp: (
     phone: string,
     deliveryMethod?: "whatsapp" | "sms",
@@ -62,6 +63,20 @@ interface AuthState {
  * Zustand's `persist` middleware here because tokens must round-trip
  * through the secure abstraction, not raw `localStorage`.
  */
+
+/**
+ * Live Firebase uid, or null when no Firebase session exists. Single seam
+ * for the bootstrap trust gate — injectable in tests (module-mock
+ * interception is importer-dependent and cannot pin this gate; see Loop 9).
+ */
+export async function getFirebaseSessionUid(): Promise<string | null> {
+  try {
+    await firebaseAuth.authStateReady();
+  } catch {
+    // authStateReady failure — fall through to the currentUser check.
+  }
+  return firebaseAuth.currentUser?.uid ?? null;
+}
 
 async function persistSession(user: AuthUser, accessToken: string, refreshToken: string) {
   await Promise.all([
@@ -90,7 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isBootstrapped: false,
   error: null,
 
-  async bootstrap() {
+  async bootstrap(sessionProbe?: () => Promise<string | null>) {
     if (get().isBootstrapped) return;
     try {
       const [accessToken, refreshToken, userJson] = await Promise.all([
@@ -109,13 +124,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // The persisted tokens are real Firebase tokens, so a stolen
       // localStorage copy alone must never restore a session: require a live
       // Firebase session for the SAME uid before trusting anything stored.
-      const { auth: firebaseAuth } = await import("@/core/config/firebase");
-      try {
-        await firebaseAuth.authStateReady();
-      } catch {
-        // authStateReady failure — fall through to the currentUser check.
-      }
-      if (!firebaseAuth.currentUser || firebaseAuth.currentUser.uid !== user.id) {
+      const fbUid = await (sessionProbe ?? getFirebaseSessionUid)();
+      if (!fbUid || fbUid !== user.id) {
         await clearPersistedSession();
         set({ status: "guest", isBootstrapped: true });
         return;
