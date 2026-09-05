@@ -155,10 +155,11 @@ async function resolveRestId(storeId: string | undefined): Promise<string | unde
 }
 
 async function fetchStoreProducts(restId: string | undefined): Promise<Product[]> {
-  const q = restId
-    ? query(collection(db, "products"), where("restId", "==", restId))
-    : query(collection(db, "products"), limit(100));
-  const snap = await getDocs(q);
+  // No restId (unlinked store, missing store doc) means NO scope — returning
+  // the first 100 products of every outlet would show the wrong menu as if
+  // it were this store's. Empty is honest; the UI shows its empty state.
+  if (!restId) return [];
+  const snap = await getDocs(query(collection(db, "products"), where("restId", "==", restId)));
   const all: Product[] = [];
   snap.forEach((d) => {
     all.push(mapProductDoc(d.data(), d.id));
@@ -176,7 +177,7 @@ function deriveCategories(all: Product[]): MenuCategory[] {
     } else {
       seen.set(id, {
         id,
-        name: p.categoryName || id,
+        name: p.categoryName || (id === "uncategorized" ? "Other" : id),
         order: seen.size + 1,
         itemCount: 1,
         imageUrl: p.imageUrl,
