@@ -132,6 +132,8 @@ function buildTimeline(
 const orders = new Map<string, Order>();
 /** Progression timestamps per order — used to synthesise the timeline. */
 const progression = new Map<string, Partial<Record<OrderStatusCode, string>>>();
+/** Uids whose Firestore history was already merged into `orders` this session. */
+const historyFetchedFor = new Set<string>();
 
 function nextStatusCode(
   fulfillment: Fulfillment,
@@ -274,7 +276,12 @@ export const ordersService = {
       const { collection, getDocs, query: fsQuery, where } = await import("firebase/firestore");
       const user = auth.currentUser;
 
-      if (user) {
+      // Session cache: the old code re-downloaded the user's ENTIRE order
+      // history on every bucket/sort/search change (each tap = N reads).
+      // The in-memory map below is the cache — one fetch per uid per session;
+      // createOrder/cancelOrder mutate the same map, so it stays coherent.
+      // (Cross-device orders appear on next reload — documented tradeoff.)
+      if (user && !historyFetchedFor.has(user.uid)) {
         const ordersRef = collection(db, "orders");
         const q = fsQuery(ordersRef, where("userId", "==", user.uid));
         const snapshot = await Promise.race([
@@ -299,6 +306,7 @@ export const ordersService = {
             progression.set(order.id, { PLACED: order.placedAt });
           }
         }
+        historyFetchedFor.add(user.uid);
       }
     } catch (err) {
       console.warn("ordersService: Firestore read failed, falling back to memory:", err);

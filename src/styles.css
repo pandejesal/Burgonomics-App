@@ -90,7 +90,7 @@
   --shadow-low: 0 4px 12px -2px rgba(14, 72, 37, 0.05), 0 2px 4px -2px rgba(14, 72, 37, 0.03);
   --shadow-medium: 0 16px 32px -4px rgba(14, 72, 37, 0.1), 0 8px 16px -4px rgba(14, 72, 37, 0.05);
   --shadow-high: 0 32px 64px -12px rgba(14, 72, 37, 0.15), 0 16px 32px -8px rgba(14, 72, 37, 0.08);
-  --shadow-brand: 0 16px 32px -8px rgba(255, 102, 0, 0.3);
+  --shadow-brand: 0 16px 32px -8px rgba(194, 65, 12, 0.3);
 
   /* Typography families — Montserrat and MonstroSolid */
   --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -104,7 +104,7 @@
   /* Brand gradients */
   --gradient-brand: linear-gradient(135deg, #0e4825 0%, #175e33 100%);
   --gradient-brand-radial: radial-gradient(120% 80% at 50% 0%, #1b5934 0%, #0e4825 100%);
-  --gradient-orange: linear-gradient(135deg, #ff802b 0%, #ff6600 60%, #e05900 100%);
+  --gradient-orange: linear-gradient(135deg, #cc5200 0%, #b34700 55%, #9a3412 100%);
 }
 
 @font-face {
@@ -118,99 +118,115 @@
 }
 
 :root {
-  /* Default = 60% White / 30% Green / 10% Orange Light Theme for clean mobile-first ordering experience. */
-  --background: #ffffff; /* 60% Pure white canvas */
-  --foreground: #16281d; /* Near-black text — green reserved for accents */
-  --surface: #ffffff; /* 60% Pure White Card */
-  --surface-elevated: #ffffff;
-  --bg-secondary: #f8f9f8; /* Light neutral canvas surface */
+  /* Default = 60% Canvas #F5F5F5 / 30% Forest Green #0E4825 / 10% Accent Orange #C2410C (AA, was #FF6600) */
+  --background: #F5F5F5;         /* 60% Canvas — clean light grey */
+  --foreground: #16281D;         /* High-contrast charcoal near-black text */
+  --surface: #FFFFFF;            /* Cards, modals, sheets */
+  --surface-elevated: #FFFFFF;   /* Dropdowns, tooltips, popovers */
+  --bg-secondary: #F0F3F1;       /* Secondary card background / input fill */
 
-  --primary: #0e4825; /* 30% Primary Green: buttons, active tab, key CTAs */
-  --primary-foreground: #ffffff;
-  --primary-text: #0e4825; /* Brand primary green for high-contrast text on light surfaces */
-  --secondary: #ffffff;
-  --secondary-foreground: #0e4825;
-  --accent: #ff6600; /* 10% Accent Orange: offers, badges, highlights */
-  --accent-foreground: #ffffff;
-  --brand: #0e4825;
-  --brand-foreground: #ffffff;
+  --primary: #0E4825;            /* 30% Brand — Forest Green */
+  --primary-hover: #0A371C;
+  --primary-foreground: #FFFFFF; /* Crisp white text on green */
+  --primary-text: #0E4825;       /* Green text on light surface */
+  --secondary: #FFFFFF;
+  --secondary-foreground: #0E4825;
+  --accent: #C2410C;             /* 10% Accent — AA Vibrant Orange (was #FF6600) */
+  --accent-hover: #9A3412;
+  --accent-foreground: #FFFFFF;  /* White text on accent */
+  --brand: #0E4825;
+  --brand-foreground: #FFFFFF;
 
-  --text-primary: #16281d; /* High-contrast deep dark near-black */
-  --text-secondary: #586b60; /* Muted neutral */
-  --text-inverse: #ffffff;
-  --text-disabled: #9ca3af;
+  --text-primary: #16281D;       /* High-contrast charcoal text */
+  --text-secondary: #586B60;     /* Muted sage secondary text */
+  --text-inverse: #FFFFFF;
+  --text-disabled: #9CA3AF;
 
-  --divider: #e5ede7;
-  --border: #e5ede7;
-  --input: #f8f9f8;
-  --ring: #ff6600;
+  --divider: #E5EDE7;            /* Subtle dividers and card borders */
+  --border: #E5EDE7;
+  --input: #F0F3F1;
+  --ring: #C2410C;               /* Focus ring */
 
-  --card: #ffffff;
-  --card-foreground: #16281d;
-  --popover: #ffffff;
-  --popover-foreground: #16281d;
-  --muted: #f8f9f8;
-  --muted-foreground: #586b60;
+  --card: #FFFFFF;
+  --card-foreground: #16281D;
+  --popover: #FFFFFF;
+  --popover-foreground: #16281D;
+  --muted: #F0F3F1;
+  --muted-foreground: #586B60;
 
-  --success: #10b981;
-  --success-foreground: #ffffff;
-  --warning: #ff6600;
-  --warning-foreground: #ffffff;
-  --error: #ef4444;
-  --error-foreground: #ffffff;
-  --disabled: #e5e7eb;
+  --success: #16A34A;            /* 100% Pure Veg badge / status */
+  --success-foreground: #FFFFFF;
+  --warning: #F59E0B;            /* Price lock timer / warnings */
+  --warning-foreground: #FFFFFF;
+  --error: #DC2626;              /* Critical errors / cancellations */
+  --error-foreground: #FFFFFF;
+  --disabled: #E5E7EB;
 
-  --veg: #10b981;
-  --nonveg: #ef4444;
+  --veg: #16A34A;
+  --nonveg: #DC2626;
 
-  --chart-1: #0e4825;
-  --chart-2: #ff6600;
-  --chart-3: #10b981;
-  --chart-4: #ffb020;
-  --chart-5: #586b60;
+  --chart-1: #0E4825;
+  --chart-2: #C2410C;
+  --chart-3: #16A34A;
+  --chart-4: #F59E0B;
+  --chart-5: #586B60;
 
-  --sidebar: #0e4825;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #ff6600;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #175e33;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #1b5934;
-  --sidebar-ring: #ff6600;
+  --sidebar: #0E4825;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #FF6600;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #175E33;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #1B5934;
+  --sidebar-ring: #FF6600;
 }
 
 .dark {
-  /* Dark Mode: 60% Black / 30% Dark Green / 10% Dark Orange */
-  --background: #0a0a0a; /* 60% True black/dark canvas */
-  --foreground: #f3f5f4;
-  --surface: #1a1a1a; /* Lifted neutral dark surface card */
-  --surface-elevated: #1e1e1e;
-  --bg-secondary: #141414;
-  --text-primary: #f3f5f4;
-  --text-secondary: #a0a0a0;
-  --text-inverse: #0a0a0a;
+  /* Dark Mode: 60% Black #0A0A0A / 30% Dark Green #0E4825 / 10% Deep Orange #CC5200 */
+  --background: #0A0A0A;         /* 60% Canvas — Deep black */
+  --foreground: #F3F5F4;         /* High-contrast near-white text */
+  --surface: #1A1A1A;            /* Dark cards and containers */
+  --surface-elevated: #222222;   /* Elevated sheets / modals */
+  --bg-secondary: #141414;       /* Dark input fill */
+  --text-primary: #F3F5F4;       /* High-contrast near-white text */
+  --text-secondary: #A0A0A0;     /* Muted grey secondary text */
+  --text-inverse: #0A0A0A;
   --text-disabled: #666666;
   --border: #262626;
   --divider: #262626;
   --input: #141414;
-  --primary: #0e4825; /* 30% Dark Green: brand anchor */
-  --primary-foreground: #ffffff; /* White text on primary buttons */
-  --primary-text: #4ade80; /* Accessible vibrant emerald green for text against black (WCAG AAA) */
-  --secondary: #1a1a1a;
-  --secondary-foreground: #f3f5f4;
-  --accent: #cc5200; /* 10% Dark Orange: dark variant of #ff6600 for dark BG */
-  --accent-foreground: #ffffff;
-  --brand: #0e4825;
-  --brand-foreground: #ffffff;
-  --ring: #cc5200;
-  --warning: #cc5200;
-  --warning-foreground: #ffffff;
-  --card: #1a1a1a;
-  --card-foreground: #f3f5f4;
-  --popover: #1a1a1a;
-  --popover-foreground: #f3f5f4;
+
+  --primary: #0E4825;            /* 30% Brand Forest Green anchor */
+  --primary-hover: #145830;
+  --primary-foreground: #FFFFFF;
+  --primary-text: #4ADE80;       /* WCAG AAA Emerald text on dark surface */
+  --secondary: #1A1A1A;
+  --secondary-foreground: #F3F5F4;
+
+  --accent: #CC5200;             /* 10% Accent — Deep Orange for dark bg */
+  --accent-hover: #B34700;
+  --accent-foreground: #FFFFFF;
+  --brand: #0E4825;
+  --brand-foreground: #FFFFFF;
+  --ring: #CC5200;
+
+  --success: #22C55E;
+  --success-foreground: #FFFFFF;
+  --warning: #FBBF24;
+  --warning-foreground: #0A0A0A;
+  --error: #EF4444;
+  --error-foreground: #FFFFFF;
+  --disabled: #333333;
+
+  --veg: #22C55E;
+  --nonveg: #EF4444;
+
+  --card: #1A1A1A;
+  --card-foreground: #F3F5F4;
+  --popover: #222222;
+  --popover-foreground: #F3F5F4;
   --muted: #141414;
-  --muted-foreground: #a0a0a0;
+  --muted-foreground: #A0A0A0;
 }
 
 @layer base {
@@ -597,6 +613,19 @@
   }
 }
 
+/* Tab-bar cart badge pop — CSS replacement for the motion spring that used
+   to ship motion/react inside the shared shell chunk (Loop 7). */
+@keyframes tabBadgePop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 .route-transition-container {
   width: 100%;
   min-height: 100dvh;
@@ -639,5 +668,5 @@
 }
 
 @utility bg-orange-gradient {
-  background: linear-gradient(135deg, #ff802b 0%, #ff6600 60%, #e05900 100%);
+  background: linear-gradient(135deg, #cc5200 0%, #b34700 55%, #9a3412 100%);
 }

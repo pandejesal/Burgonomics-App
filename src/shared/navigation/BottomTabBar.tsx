@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, UtensilsCrossed, ShoppingBag, User, Ticket } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { Home, UtensilsCrossed, ShoppingBag, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCartStore, selectItemCount } from "@/features/cart/state/cartStore";
 import { useHydrated } from "@/shared/hooks/useHydrated";
@@ -16,16 +15,15 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { to: "/home", label: "Home", Icon: Home, match: (p) => p === "/home" },
+  { to: "/home", label: "Home", Icon: Home, match: (p) => p === "/home" || p === "/" },
   { to: "/menu", label: "Menu", Icon: UtensilsCrossed, match: (p) => p.startsWith("/menu") },
-  { to: "/offers", label: "Offers", Icon: Ticket, match: (p) => p.startsWith("/offers") },
   { to: "/cart", label: "Cart", Icon: ShoppingBag, match: (p) => p.startsWith("/cart") },
   { to: "/profile", label: "Profile", Icon: User, match: (p) => p.startsWith("/profile") },
 ];
 
 /**
- * Floating branded bottom nav — deep-green pill, orange active pill,
- * subtle scale animation on tap.
+ * Floating branded bottom nav — La Pino'z 4-tab bar with Forest Green active anchor,
+ * subtle top indicator, and vibrant orange cart badge.
  */
 export function BottomTabBar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -36,10 +34,10 @@ export function BottomTabBar() {
   return (
     <div
       aria-hidden={false}
-      className="glass-panel fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] md:max-w-[480px] max-md:max-w-full shadow-high pb-[env(safe-area-inset-bottom,0px)]"
+      className="glass-panel fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] md:max-w-[480px] max-md:max-w-full shadow-high pb-[env(safe-area-inset-bottom,0px)] bg-surface/95 backdrop-blur-md border-t border-border"
     >
       <nav aria-label="Primary" className="w-full">
-        <ul className="grid grid-cols-5 py-2.5 px-1">
+        <ul className="grid grid-cols-4 py-2 px-2">
           {TABS.map(({ to, label, Icon, match }) => {
             const active = match(path);
             const showBadge = label === "Cart" && hydrated && cartCount > 0;
@@ -53,63 +51,50 @@ export function BottomTabBar() {
                   aria-current={active ? "page" : undefined}
                   aria-label={label}
                   className={cn(
-                    "group relative flex min-h-[48px] w-full flex-col items-center justify-center gap-1",
+                    "group relative flex min-h-[50px] w-full flex-col items-center justify-center gap-1",
                     "transition-all duration-200 ease-out",
                     "active:scale-95",
-                    active ? "text-accent" : "text-text-secondary hover:text-text-primary",
+                    active ? "text-primary dark:text-primary-text" : "text-text-secondary hover:text-text-primary",
                   )}
                 >
-                  <div className="relative">
-                    {label === "Cart" ? (
-                      <motion.div
-                        key={`cart-icon-${cartCount}`}
-                        animate={hydrated && cartCount > 0 ? { scale: [1, 1.2, 1] } : {}}
-                        transition={{ duration: 0.25, ease: "easeOut" }}
-                      >
-                        <Icon
-                          className={cn(
-                            "h-6 w-6 transition-transform",
-                            active && !ios && "scale-105",
-                          )}
-                          aria-hidden
-                        />
-                      </motion.div>
-                    ) : (
-                      <Icon
-                        className={cn(
-                          "h-6 w-6 transition-transform",
-                          active && !ios && "scale-105",
-                        )}
-                        aria-hidden
-                      />
+                  {/* Top active indicator line (CSS transition — the shared
+                      shell must not pull motion into every page's chunk). */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute -top-2 inset-x-4 h-1 rounded-full bg-primary dark:bg-primary-text transition-all duration-200 ease-out",
+                      active ? "opacity-100 scale-x-100" : "opacity-0 scale-x-50",
                     )}
+                  />
 
-                    <AnimatePresence mode="popLayout">
-                      {showBadge && (
-                        <motion.span
-                          key={cartCount}
-                          initial={{ scale: 0.6, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          exit={{ scale: 0.6, opacity: 0 }}
-                          transition={{ type: "spring", stiffness: 600, damping: 20 }}
-                          aria-label={`${cartCount} items in cart`}
-                          className={cn(
-                            "absolute -right-2.5 -top-1.5 grid h-4.5 min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-extrabold text-accent-foreground",
-                          )}
-                        >
-                          {cartCount}
-                        </motion.span>
+                  <div className="relative">
+                    <Icon
+                      className={cn(
+                        "h-5.5 w-5.5 transition-transform",
+                        active && "scale-105 stroke-[2.5px]",
                       )}
-                    </AnimatePresence>
+                      aria-hidden
+                    />
+
+                    {showBadge && (
+                      <span
+                        key={cartCount}
+                        aria-label={`${cartCount} items in cart`}
+                        className={cn(
+                          "absolute -right-2.5 -top-1.5 grid h-4.5 min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-extrabold text-accent-foreground shadow-sm",
+                          "animate-[tabBadgePop_0.25s_ease-out]",
+                        )}
+                      >
+                        {cartCount}
+                      </span>
+                    )}
                   </div>
 
                   <span
                     className={cn(
-                      "text-[10px] tracking-wide transition-colors font-sans",
+                      "text-[11px] tracking-tight transition-colors font-sans",
                       active
-                        ? ios
-                          ? "font-semibold text-accent"
-                          : "font-bold text-accent"
+                        ? "font-bold text-primary dark:text-primary-text"
                         : "font-medium text-text-secondary",
                     )}
                   >

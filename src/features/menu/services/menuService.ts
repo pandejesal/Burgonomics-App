@@ -142,14 +142,20 @@ function mapProductDoc(data: any, docId: string): Product {
 }
 
 /** Delivery store id → Petpooja restID (equal once outlets are linked). */
+const restIdCache = new Map<string, string | undefined>();
 async function resolveRestId(storeId: string | undefined): Promise<string | undefined> {
   if (!storeId) return undefined;
+  if (restIdCache.has(storeId)) return restIdCache.get(storeId);
   try {
     const snap = await getDoc(doc(db, "stores", storeId));
     const restId = (snap.data() as any)?.petpoojaRestId;
-    if (typeof restId === "string" && restId.length > 0) return restId;
+    const resolved =
+      typeof restId === "string" && restId.length > 0 ? restId : storeId;
+    // Outlet links change in the console, not mid-session — cache hard.
+    restIdCache.set(storeId, resolved);
+    return resolved;
   } catch {
-    // store lookup failure — fall through to raw store id
+    // store lookup failure — fall through to raw store id (uncached: retry next call)
   }
   return storeId;
 }
@@ -165,6 +171,35 @@ async function fetchStoreProducts(restId: string | undefined): Promise<Product[]
     all.push(mapProductDoc(d.data(), d.id));
   });
   return all;
+}
+
+/**
+ * Session cache over the store's full product list. listCategories,
+ * listProducts, search, popular/featured, and related all scanned the entire
+ * `products` collection independently — one menu open cost 2 full scans plus
+ * a repeat per search keystroke/session. Entries live 30s (POS syncs and the
+ * live listener cover freshness; 86-ing never waits on this cache).
+ */
+const productsCache = new Map<string, { at: number; items: Product[] }>();
+const PRODUCTS_CACHE_TTL_MS = 30_000;
+
+async function fetchStoreProductsCached(restId: string | undefined): Promise<Product[]> {
+  const key = restId ?? "__unscoped__";
+  const hit = productsCache.get(key);
+  if (hit && Date.now() - hit.at < PRODUCTS_CACHE_TTL_MS) return hit.items;
+  // Raw fetch here — calling the cached wrapper would recurse forever.
+  const items = await fetchStoreProducts(restId);
+  productsCache.set(key, { at: Date.now(), items });
+  return items;
+}
+
+/** Drop cached product lists (e.g. after a POS menu sync lands). */
+export function invalidateMenuCache(restId?: string): void {
+  if (restId) {
+    productsCache.delete(restId);
+    return;
+  }
+  productsCache.clear();
 }
 
 function deriveCategories(all: Product[]): MenuCategory[] {
@@ -191,7 +226,7 @@ export const menuService = {
   async listCategories(storeId?: string): Promise<ApiResult<MenuCategory[]>> {
     try {
       const restId = await resolveRestId(storeId);
-      const all = await fetchStoreProducts(restId);
+      const all = await fetchStoreProductsCached(restId);
       return ok(deriveCategories(all));
     } catch (e: any) {
       console.error("Failed to list categories", e);
@@ -207,7 +242,7 @@ export const menuService = {
   ): Promise<ApiResult<ProductPage>> {
     try {
       const restId = await resolveRestId(storeId);
-      let all = await fetchStoreProducts(restId);
+      let all = await fetchStoreProductsCached(restId);
       if (categoryId) {
         all = all.filter((p) => p.categoryId === categoryId);
       }
@@ -264,7 +299,7 @@ export const menuService = {
       const current = await this.getProduct(productId);
       if (!current.success || !current.data) return ok([]);
       const restId = await resolveRestId(storeId);
-      const all = await fetchStoreProducts(restId);
+      const all = await fetchStoreProductsCached(restId);
       return ok(all.filter((p) => p.id !== productId && p.categoryId === current.data!.categoryId).slice(0, 6));
     } catch (e: any) {
       return ok([]);
@@ -275,7 +310,7 @@ export const menuService = {
     try {
       // Server products carry no popularity tags yet — serve in-stock first.
       const restId = await resolveRestId(storeId);
-      const all = await fetchStoreProducts(restId);
+      const all = await fetchStoreProductsCached(restId);
       const inStock = all.filter((p) => p.inStock !== false);
       return ok((inStock.length > 0 ? inStock : all).slice(0, 8));
     } catch (e) {
@@ -286,7 +321,7 @@ export const menuService = {
   async listFeatured(storeId?: string): Promise<ApiResult<Product[]>> {
     try {
       const restId = await resolveRestId(storeId);
-      const all = await fetchStoreProducts(restId);
+      const all = await fetchStoreProductsCached(restId);
       const inStock = all.filter((p) => p.inStock !== false);
       return ok((inStock.length > 0 ? inStock : all).slice(0, 8));
     } catch (e) {
@@ -305,7 +340,7 @@ export const menuService = {
       if (!term) return ok({ items: [], page, pageSize, total: 0 });
 
       const restId = await resolveRestId(storeId);
-      const all = await fetchStoreProducts(restId);
+      const all = await fetchStoreProductsCached(restId);
       const hits = all.filter((p) => {
         const haystack = [p.name, p.description ?? "", ...(p.tags ?? [])].join(" ");
         return fuzzyMatch(haystack, term);
@@ -473,3 +508,4 @@ export const menuService = {
     return unsub;
   },
 };
+

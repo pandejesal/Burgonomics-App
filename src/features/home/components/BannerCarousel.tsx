@@ -87,7 +87,7 @@ export function BannerCarousel({ banners, className }: Props) {
         className="flex w-full overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth touch-pan-y overscroll-x-contain"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        {banners.map((b) => (
+        {banners.map((b, i) => (
           <div
             key={b.id}
             className="w-full shrink-0 px-4 snap-center cursor-pointer"
@@ -133,6 +133,9 @@ export function BannerCarousel({ banners, className }: Props) {
                     src={b.imageUrl}
                     fallbackSrc={b.fallbackImageUrl}
                     alt={b.title}
+                    loading={i === 0 ? "eager" : "lazy"}
+                    decoding="async"
+                    fetchPriority={i === 0 ? "high" : undefined}
                     className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
                   />
                 </div>

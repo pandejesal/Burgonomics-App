@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { menuRepository } from "@/features/menu/repositories/MenuRepository";
+import { invalidateMenuCache } from "@/features/menu/services/menuService";
 import type { MenuCategoryModel, Product } from "@/features/menu/models";
 import { SAMPLE_PRODUCTS } from "@/features/menu/data/petpoojaSampleData";
 
@@ -92,23 +93,50 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
 
     const unsubProd = menuRepository.subscribeProducts(storeId, undefined, (res) => {
       if (res.success) {
+        // Live data wins over the 30s fetch cache — drop it so the next
+        // paginated loadMore re-reads instead of serving pre-sync items.
+        invalidateMenuCache();
         const allProducts = res.data.items.map(enrichProduct);
-        const newBuckets: Record<string, CategoryBucket> = {};
-        allProducts.forEach((p) => {
-          if (!newBuckets[p.categoryId]) {
-            newBuckets[p.categoryId] = {
-              items: [],
-              page: 1,
-              pageSize: 100,
-              total: 0,
-              hasMore: false,
-              loading: false,
+        // Merge into existing buckets — the old code REPLACED every bucket
+        // (pageSize 100, hasMore false), silently discarding the pagination
+        // loadMore had built and resetting scroll position on every POS sync.
+        set((s) => {
+          const buckets: Record<string, CategoryBucket> = { ...s.buckets };
+          const seen = new Set<string>();
+          for (const p of allProducts) {
+            seen.add(p.id);
+            const existing = buckets[p.categoryId];
+            if (!existing) {
+              buckets[p.categoryId] = {
+                items: [p],
+                page: 1,
+                pageSize: 100,
+                total: 1,
+                hasMore: false,
+                loading: false,
+              };
+              continue;
+            }
+            const idx = existing.items.findIndex((i) => i.id === p.id);
+            const items =
+              idx >= 0
+                ? existing.items.map((i, j) => (j === idx ? p : i))
+                : [...existing.items, p];
+            buckets[p.categoryId] = {
+              ...existing,
+              items,
+              total: Math.max(existing.total, items.length),
             };
           }
-          newBuckets[p.categoryId].items.push(p);
-          newBuckets[p.categoryId].total++;
+          // Drop items deleted from the menu (present locally, absent live).
+          for (const [catId, bucket] of Object.entries(buckets)) {
+            const kept = bucket.items.filter((i) => seen.has(i.id));
+            if (kept.length !== bucket.items.length) {
+              buckets[catId] = { ...bucket, items: kept, total: kept.length };
+            }
+          }
+          return { buckets };
         });
-        set({ buckets: newBuckets });
       }
     });
 

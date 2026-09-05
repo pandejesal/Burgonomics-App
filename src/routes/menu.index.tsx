@@ -232,6 +232,10 @@ function MenuPage() {
 
   if (!store) return null;
 
+  const activeIdx = Math.max(
+    0,
+    categories.findIndex((c) => c.id === activeCategoryId)
+  );
   const bucket = activeCategoryId ? buckets[activeCategoryId] : undefined;
   const initialLoading = status === "loading" && categories.length === 0;
 
@@ -337,8 +341,22 @@ function MenuPage() {
               className="flex w-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar overscroll-x-contain touch-pan-y"
               style={{ WebkitOverflowScrolling: "touch" }}
             >
-              {categories.map((cat) => {
+              {categories.map((cat, idx) => {
                 const b = buckets[cat.id];
+                // Windowed pager: only the active panel + immediate neighbours
+                // mount cards. The old code mounted EVERY category's cards
+                // (200 cards × ~4 motion nodes ≈ 800 animated nodes) — scroll
+                // jank on low-end WebViews. Off-window panels keep an empty
+                // full-width section so snap math (idx × width) still holds.
+                if (Math.abs(idx - activeIdx) > 1) {
+                  return (
+                    <section
+                      key={cat.id}
+                      aria-hidden
+                      className="w-full shrink-0 snap-start snap-always"
+                    />
+                  );
+                }
                 return (
                   <section
                     key={cat.id}
