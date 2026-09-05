@@ -1,4 +1,5 @@
 {
+  "//": "Emulator-only config for the rules suite (node scripts/test-rules.mjs). Firestore RULES + INDEXES deploy from the repo-root firebase.json — this file intentionally has no deploy targets.",
   "firestore": {
     "rules": "firestore.rules"
   },
