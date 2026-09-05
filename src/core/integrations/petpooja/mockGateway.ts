@@ -108,32 +108,10 @@ export class MockPetpoojaGateway implements PetpoojaGateway {
       simulated: true,
     };
 
-    // Persist real SyncLogRecord to Firestore collection petpooja_sync_logs
-    try {
-      const { db } = await import("@/core/config/firebase");
-      const { collection, addDoc, serverTimestamp } = await import("firebase/firestore");
-
-      await addDoc(collection(db, "petpooja_sync_logs"), {
-        storeName: store.name,
-        storeId: store.id,
-        scope: mode.toUpperCase(),
-        status: "COMPLETED",
-        version: "v4.2.1",
-        startedAt: new Date(Date.now() - 3200).toISOString(),
-        finishedAt: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-        duration: "3.2s",
-        created,
-        updated,
-        deleted: 0,
-        conflicts: 0,
-        error: null,
-        simulated: true,
-        source: "mockGateway",
-      });
-    } catch (err) {
-      console.warn("MockPetpoojaGateway: failed to persist sync log to Firestore:", err);
-    }
+    // NOTE: sync logs are intentionally NOT persisted from the customer app —
+    // rules deny client writes to petpooja_sync_logs, and the admin reader is
+    // the partner console. Persisting here only produced denied-write noise.
+    void store;
 
     return report;
   }

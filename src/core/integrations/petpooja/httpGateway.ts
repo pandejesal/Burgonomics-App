@@ -741,36 +741,16 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   // -- private ---------------------------------------------------------------
 
   private async writeSyncLog(
-    storeId: string,
-    scope: "FULL" | "INCREMENTAL" | "STOCK" | "STATUS",
-    created: number,
-    updated: number,
-    error: string | null
+    _storeId: string,
+    _scope: "FULL" | "INCREMENTAL" | "STOCK" | "STATUS",
+    _created: number,
+    _updated: number,
+    _error: string | null
   ) {
-    try {
-      await withTimeout(
-        addDoc(collection(db, "petpooja_sync_logs"), {
-          storeName: storeId,
-          storeId,
-          scope,
-          status: error ? "FAILED" : "COMPLETED",
-          version: "live",
-          startedAt: new Date().toISOString(),
-          finishedAt: new Date().toISOString(),
-          createdAt: serverTimestamp(),
-          duration: "live",
-          created,
-          updated,
-          deleted: 0,
-          conflicts: 0,
-          error,
-          simulated: false,
-          source: "httpGateway",
-        }),
-        this.logTimeout
-      );
-    } catch (err) {
-      console.warn("HttpPetpoojaGateway: sync log persist failed:", err);
-    }
+    // NOTE: sync logs are written server-side (menuSyncWebhook) where the
+    // Admin SDK bypasses rules. Client writes here are denied by rules, so
+    // this is intentionally a no-op — it used to only produce denied-write
+    // noise in the customer bundle.
+    return;
   }
 }

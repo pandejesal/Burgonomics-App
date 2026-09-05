@@ -405,6 +405,22 @@ export const ordersService = {
       completedAt: new Date().toISOString(),
     };
     orders.set(id, cancelled);
+    // Persist so cancellation reaches Partner/functions — memory-only
+    // cancels were invisible everywhere else.
+    try {
+      const { db } = await import("@/core/config/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      await setDoc(
+        doc(db, "orders", id),
+        {
+          status: cancelled.status,
+          completedAt: cancelled.completedAt,
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn("ordersService: cancel persist failed (kept in memory):", err);
+    }
     return ok(cancelled);
   },
 

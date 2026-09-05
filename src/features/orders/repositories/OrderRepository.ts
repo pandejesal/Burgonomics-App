@@ -288,6 +288,10 @@ export class OrderRepository {
           },
           (err) => {
             console.warn("OrderRepository: Firestore tracking onSnapshot error:", err);
+            options.onError?.({
+              code: "TRACKING_SNAPSHOT_FAILED",
+              message: err?.message || "Live tracking connection failed.",
+            });
           },
         );
       } catch (err) {
