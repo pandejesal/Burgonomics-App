@@ -38,6 +38,21 @@ export class PaymentRepository {
 
   constructor(private readonly service = paymentsService) {}
 
+  private lastFingerprint: string | null = null;
+  private lastIdempotencyKey: string | null = null;
+
+  /**
+   * Stable idempotency key per cart contents: retries of the same checkout
+   * reuse the open gateway order instead of minting a second payable order.
+   */
+  private idempotencyKeyFor(fingerprint: string): string {
+    if (this.lastFingerprint !== fingerprint) {
+      this.lastFingerprint = fingerprint;
+      this.lastIdempotencyKey = `chk_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+    }
+    return this.lastIdempotencyKey as string;
+  }
+
   // -- Preflight -------------------------------------------------------
 
   /**
@@ -95,7 +110,9 @@ export class PaymentRepository {
 
   // -- Order lifecycle -------------------------------------------------
 
-  async createPaymentOrder(): Promise<ApiResult<PaymentOrder>> {
+  async createPaymentOrder(opts?: {
+    loyaltyPointsToRedeem?: number;
+  }): Promise<ApiResult<PaymentOrder>> {
     const totalsRes = await cartRepository.calculateTotals();
     if (!totalsRes.success) return totalsRes;
 
@@ -150,12 +167,33 @@ export class PaymentRepository {
     const prep = await cartRepository.prepareCheckout();
     const checkoutToken = prep.success ? prep.data.checkoutToken : undefined;
 
+    // Server reprices authoritatively from items + store pricing; the client
+    // amount below is display-only. Loyalty/coupon/branch are sent as inputs.
+    const fingerprint = JSON.stringify([
+      sel.activeStore.id,
+      cart.lines.map((l) => [l.productId, l.quantity, l.unitPrice]),
+      cart.promo?.code || null,
+      opts?.loyaltyPointsToRedeem || 0,
+    ]);
     return this.service.createOrder({
       amount: totalsRes.data.grandTotal,
       currency: "INR",
       receipt: `rcpt_${Date.now()}`,
       storeId: sel.activeStore.id,
       fulfillment: sel.fulfillment,
+      items: cart.lines.map((l) => ({
+        id: l.productId,
+        productId: l.productId,
+        price: l.unitPrice,
+        unitPrice: l.unitPrice,
+        name: l.name,
+        quantity: l.quantity,
+        customizations: l.customizations,
+        modifiers: l.modifiers,
+      })),
+      couponCode: cart.promo?.code,
+      loyaltyPointsToRedeem: opts?.loyaltyPointsToRedeem,
+      idempotencyKey: this.idempotencyKeyFor(fingerprint),
       checkoutToken,
       checkoutSnapshot,
     });

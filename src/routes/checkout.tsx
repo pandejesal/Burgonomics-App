@@ -107,8 +107,9 @@ export function CheckoutPage() {
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
 
   const loyaltyBalance = useLoyaltyStore((s) => s.balance);
-  // 1 point = Rs.1, capped at 50% of subtotal
-  const maxPointsDiscount = Math.min(loyaltyBalance, Math.floor((totals?.subtotal ?? 0) * 0.5));
+  // 1 point = Rs.1, capped at 20% of subtotal — matches the server cap, so the
+  // displayed price is the price the gateway actually charges.
+  const maxPointsDiscount = Math.min(loyaltyBalance, Math.floor((totals?.subtotal ?? 0) * 0.2));
   const pointsDiscount = redeemPoints ? maxPointsDiscount : 0;
 
   // 10-Minute Price Lock Countdown Timer
@@ -262,7 +263,9 @@ export function CheckoutPage() {
     // 3. Online Razorpay Flow
     try {
       setPaymentStatus("preparing");
-      const orderRes = await paymentRepository.createPaymentOrder();
+      const orderRes = await paymentRepository.createPaymentOrder({
+        loyaltyPointsToRedeem: redeemPoints ? pointsDiscount : 0,
+      });
       if (!orderRes.success) {
         setBusy(false);
         setPaymentStatus("failed");
@@ -486,7 +489,7 @@ export function CheckoutPage() {
 
           <PromoInput applied={promo} onChanged={() => void recompute()} />
 
-          {/* Loyalty Points redemption toggle — 1 pt = Rs.1, max 50% of subtotal */}
+          {/* Loyalty Points redemption toggle — 1 pt = Rs.1, max 20% of subtotal */}
           <div className="flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3.5 select-none">
             <div className="flex items-center gap-2.5">
               <Coins className="h-5 w-5 text-amber-600 shrink-0" />

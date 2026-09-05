@@ -13,7 +13,7 @@ interface GrillCoinsRedemptionProps {
 
 /**
  * LoyaltyPointsRedemption (legacy name GrillCoinsRedemption) — 1-tap Loyalty Points redemption.
- * Enforces a strict 50% subtotal redemption ceiling (1 point = Rs.1 discount).
+ * Enforces a strict 20% subtotal redemption ceiling (1 point = Rs.1 discount).
  */
 export function GrillCoinsRedemption({
   availableCoins = 250,
@@ -22,8 +22,9 @@ export function GrillCoinsRedemption({
   onToggleRedemption,
   className,
 }: GrillCoinsRedemptionProps) {
-  // Max redeemable limit: up to 50% of subtotal, 1 coin = ₹1
-  const maxRedeemable = Math.min(availableCoins, Math.floor(subtotal * 0.5));
+  // Max redeemable: up to 20% of subtotal, 1 coin = ₹1 (matches server cap —
+  // showing more would overcharge vs display at the gateway).
+  const maxRedeemable = Math.min(availableCoins, Math.floor(subtotal * 0.2));
   const isApplied = redeemedCoins > 0;
 
   const handleToggle = () => {
@@ -71,7 +72,7 @@ export function GrillCoinsRedemption({
             {maxRedeemable > 0
               ? isApplied
                 ? `Redeeming ${redeemedCoins} pts for Rs.${redeemedCoins} instant discount`
-                : `Use ${maxRedeemable} pts for flat Rs.${maxRedeemable} off (Max 50% of bill)`
+                : `Use ${maxRedeemable} pts for flat Rs.${maxRedeemable} off (Max 20% of bill)`
               : "Add items worth more to unlock points redemption"}
           </p>
         </div>

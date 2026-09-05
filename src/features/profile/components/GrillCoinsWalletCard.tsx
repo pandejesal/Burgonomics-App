@@ -19,7 +19,7 @@ function tierFor(lifetimeEarned: number): string {
 
 /**
  * LoyaltyPointsWalletCard (legacy name GrillCoinsWalletCard) — live Loyalty Points balance.
- * 1 point = Rs.1, redeemable up to 50% of subtotal. Balance is shared via loyaltyStore.
+ * 1 point = Rs.1, redeemable up to 20% of subtotal. Balance is shared via loyaltyStore.
  */
 export function GrillCoinsWalletCard({
   balance: balanceProp,
@@ -63,7 +63,7 @@ export function GrillCoinsWalletCard({
           </div>
 
           <p className="text-[11px] text-emerald-100/70 pt-1">
-            Redeem on any order for up to 50% discount
+            Redeem on any order for up to 20% discount
           </p>
         </div>
 

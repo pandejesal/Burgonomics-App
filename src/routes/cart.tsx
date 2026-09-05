@@ -371,7 +371,7 @@ function CartPage() {
           <PromoInput applied={promo} onChanged={() => void recompute()} />
         </section>
 
-        {/* Loyalty Points redemption — live balance, 1 pt = Rs.1, max 50% */}
+        {/* Loyalty Points redemption — live balance, 1 pt = Rs.1, max 20% */}
         <GrillCoinsRedemption
           availableCoins={loyaltyBalance}
           subtotal={subtotal}

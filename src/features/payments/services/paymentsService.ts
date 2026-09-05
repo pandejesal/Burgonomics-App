@@ -27,6 +27,22 @@ export interface CreateOrderInput {
   receipt: string;
   storeId: string;
   fulfillment: string;
+  /** Pricing inputs the server reprices authoritatively (client amount is display-only). */
+  items?: Array<{
+    id?: string;
+    productId?: string;
+    price?: number;
+    unitPrice?: number;
+    name?: string;
+    quantity?: number;
+    customizations?: Array<{ price?: number; priceDelta?: number }>;
+    modifiers?: Array<{ price?: number; priceDelta?: number }>;
+  }>;
+  branchId?: string;
+  couponCode?: string;
+  loyaltyPointsToRedeem?: number;
+  /** Stable per checkout: retries reuse the open gateway order, no double charge. */
+  idempotencyKey?: string;
   checkoutToken?: string;
   checkoutSnapshot?: Record<string, any>;
 }
