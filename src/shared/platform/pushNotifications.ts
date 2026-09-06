@@ -249,6 +249,9 @@ export async function initWebPush(): Promise<string | null> {
 export async function requestPushPermissions(): Promise<boolean> {
   if (!isNative()) {
     // Web: explicit user gesture path (e.g. settings toggle) — may prompt.
+    // Singleton guard: initWebPush already registered an onMessage handler;
+    // a second registration double-toasts and double-pushes to the store.
+    if (webPushInitialized) return !!getCachedDeviceToken();
     try {
       if (typeof window === "undefined" || !("Notification" in window)) return false;
       const key = vapidKey();

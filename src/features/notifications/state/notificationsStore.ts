@@ -39,7 +39,9 @@ export const useNotificationsStore = create<NotificationsState>()(
       hydrate: (items) => set({ items, unreadCount: recount(items) }),
       push: (n) =>
         set((s) => {
-          const items = [n, ...s.items];
+          // Dedupe by id (double-registered foreground handlers used to
+          // inflate unreadCount) and cap the tray at 50.
+          const items = [n, ...s.items.filter((i) => i.id !== n.id)].slice(0, 50);
           return { items, unreadCount: recount(items) };
         }),
       markRead: (id) =>
