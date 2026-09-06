@@ -7,6 +7,7 @@
  */
 import { isNative, getPlatform } from "./platform";
 import { initPushNotifications } from "./pushNotifications";
+import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 
 export async function bootstrapNativePlatform(): Promise<void> {
   if (!isNative()) return;
@@ -25,11 +26,11 @@ export async function bootstrapNativePlatform(): Promise<void> {
       import("@capacitor/app"),
     ]);
 
-    // Status bar — brand green, dark content style.
+    // Status bar — brand green, light content style (matches capacitor.config.ts StatusBar plugin).
     try {
-      await StatusBar.setStyle({ style: Style.Dark });
+      await StatusBar.setStyle({ style: Style.Light });
       if (getPlatform() === "android") {
-        await StatusBar.setBackgroundColor({ color: "#023020" });
+        await StatusBar.setBackgroundColor({ color: "#0E4825" });
       }
     } catch {
       /* status bar not available on this device */
@@ -52,13 +53,23 @@ export async function bootstrapNativePlatform(): Promise<void> {
       /* keyboard plugin not registered */
     }
 
-    // Deep links (burgonomics://path or https universal links).
+    // Deep links (burgonomics://path or https universal links). Allowlisted:
+    // any scheme/host the OS delivers is otherwise pushed straight into the
+    // router (open redirect into arbitrary in-app or external targets).
     App.addListener("appUrlOpen", (event) => {
       try {
         const url = new URL(event.url);
+        const schemeOk = url.protocol === "burgonomics:";
+        const hostOk =
+          url.protocol === "https:" &&
+          ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
+            url.hostname.toLowerCase()
+          );
+        if (!schemeOk && !hostOk) return;
         const path = url.pathname + url.search + url.hash;
-        if (path && path !== "/") {
-          window.history.pushState({}, "", path);
+        const safe = sanitizeRedirectUrl(path, "");
+        if (safe) {
+          window.history.pushState({}, "", safe);
           window.dispatchEvent(new PopStateEvent("popstate"));
         }
       } catch {

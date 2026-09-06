@@ -8,6 +8,7 @@
 import { isNative, getPlatform } from "./platform";
 import { logger } from "@/core/logging/logger";
 import { toast } from "@/shared/components/feedback/AppToaster";
+import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
 import { notificationsService } from "@/features/notifications/services/notificationsService";
 
@@ -34,18 +35,26 @@ function setCachedDeviceToken(token: string | null) {
 }
 
 function navigateToDeeplink(url: string): void {
-  try {
-    window.history.pushState({}, "", url);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  } catch {
-    window.location.href = url;
-  }
+  // Server-controlled deeplinks are untrusted input: sanitize to same-origin
+  // paths only. The old code fell back to location.href on ANY value — a
+  // forged FCM payload meant an open redirect off-app.
+  const safe = sanitizeRedirectUrl(url, "");
+  if (!safe) return;
+  window.history.pushState({}, "", safe);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 function handleForegroundPush(title: string, body: string, data: Record<string, any>) {
   const category = (data.category as "order" | "offer" | "general") || "general";
+  const rawOrderId = typeof data.orderId === "string" ? data.orderId : "";
+  // orderIds become URL segments — reject anything but the id alphabet so a
+  // forged payload can't smuggle path traversal into the track URL.
+  const safeOrderId = /^[\w-]+$/.test(rawOrderId) ? rawOrderId : "";
   const deeplink =
-    data.deeplink || (data.orderId ? `/orders/${data.orderId}/track` : undefined);
+    (typeof data.deeplink === "string" && sanitizeRedirectUrl(data.deeplink, "")
+      ? sanitizeRedirectUrl(data.deeplink, "")
+      : "") ||
+    (safeOrderId ? `/orders/${safeOrderId}/track` : undefined);
 
   useNotificationsStore.getState().push({
     id: (data.messageId as string) || `notif_${Date.now()}`,

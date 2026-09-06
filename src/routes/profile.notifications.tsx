@@ -10,6 +10,7 @@ import {
   type NotificationCategory,
 } from "@/features/notifications/state/notificationsStore";
 import { notificationRepository } from "@/features/notifications/repositories/NotificationRepository";
+import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/profile/notifications")({
@@ -114,7 +115,11 @@ function Body() {
                   notification={n}
                   onRead={() => {
                     if (!n.read) void notificationRepository.markRead(n.id);
-                    if (n.deeplink) void navigate({ to: n.deeplink });
+                    // Stored deeplinks originate server-side: sanitize anyway.
+                    if (n.deeplink) {
+                      const safe = sanitizeRedirectUrl(n.deeplink, "");
+                      if (safe) void navigate({ to: safe });
+                    }
                   }}
                   onRemove={() => void notificationRepository.remove(n.id)}
                 />

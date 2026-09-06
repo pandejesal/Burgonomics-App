@@ -19,7 +19,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link: burgonomics:// custom scheme -->
+            <!-- Deep link: burgonomics:// custom scheme. No host constraint:
+                 scheme URLs like burgonomics://menu carry the route in the
+                 host position, so manifest filtering can't allowlist paths.
+                 Enforcement lives in-app instead (mobileBootstrap: scheme
+                 allowlist + sanitizeRedirectUrl), which covers every entry
+                 point including push deeplinks. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -45,4 +50,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

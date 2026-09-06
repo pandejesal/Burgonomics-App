@@ -87,11 +87,13 @@ export const appConfig: AppConfig = {
     vapidPublicKey: readEnv("VITE_PUSH_VAPID_PUBLIC_KEY", ""),
   },
   integrations: {
-    // Publishable Razorpay key — only fall back to test key in non-production.
+    // Publishable Razorpay key. No baked-in fallback: the old embedded test
+    // keyId (split-string to dodge scanners) silently booted dev/staging on a
+    // shared test key. Empty key = explicit simulation mode in the adapter.
     // Accept both VITE_RAZORPAY_KEY_ID (canonical) and VITE_RAZORPAY_KEY (alias).
     razorpayKeyId: readEnv(
       "VITE_RAZORPAY_KEY_ID",
-      readEnv("VITE_RAZORPAY_KEY", ENV_NAME === "production" ? "" : "rzp_test_" + "TQNIxYfbRYkmBQ"),
+      readEnv("VITE_RAZORPAY_KEY", ""),
     ),
     paymentsApiBaseUrl: readEnv("VITE_PAYMENTS_API_BASE_URL", ""),
     petpoojaEnabled: readEnv("VITE_PETPOOJA_ENABLED", "false") === "true",

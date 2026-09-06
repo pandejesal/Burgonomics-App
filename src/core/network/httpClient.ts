@@ -46,8 +46,19 @@ export class HttpClient {
   private readonly options: Required<HttpClientOptions>;
 
   constructor(options: HttpClientOptions = {}) {
+    const baseUrl = options.baseUrl ?? appConfig.api.baseUrl;
+    // Cleartext API transport must be a conscious choice, never a typo'd env:
+    // allow http only for local dev loopback.
+    const isDevLoopback = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(`${baseUrl}/`);
+    if (
+      !baseUrl.startsWith("https://") &&
+      !(import.meta.env?.DEV && isDevLoopback) &&
+      baseUrl.length > 0
+    ) {
+      throw new Error(`Refusing cleartext API base URL: ${baseUrl}`);
+    }
     this.options = {
-      baseUrl: options.baseUrl ?? appConfig.api.baseUrl,
+      baseUrl,
       defaultHeaders: options.defaultHeaders ?? { "content-type": "application/json" },
       timeoutMs: options.timeoutMs ?? appConfig.api.timeoutMs,
       retry: options.retry ?? appConfig.api.retry,
