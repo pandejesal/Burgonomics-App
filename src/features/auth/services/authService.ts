@@ -1,5 +1,6 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { auth } from "@/core/config/firebase";
+import { logger } from "@/core/logging/logger";
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
 
 export interface RequestOtpResponse {
@@ -112,7 +113,8 @@ export const authService = {
         simulated: false,
       });
     } catch (error: any) {
-      console.error("[Auth] Firebase signInWithPhoneNumber error:", error);
+      // Code only: the raw Firebase error embeds the phone in message/customData.
+      logger.error("auth.otp_request_failed", error, { code: error?.code });
       // Reset reCAPTCHA widget on error so user can retry cleanly
       if (recaptchaVerifier) {
         try {
@@ -180,7 +182,7 @@ export const authService = {
         user: returnedUser,
       });
     } catch (error: any) {
-      console.error("[Auth] Firebase verification confirmation error:", error);
+      logger.error("auth.otp_verify_failed", error, { code: error?.code });
       return fail(
         error.code || "AUTH_OTP_VERIFY_FAILED",
         error.message || "Invalid verification code. Please check and try again.",

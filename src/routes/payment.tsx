@@ -124,9 +124,16 @@ function PaymentPage() {
 
   React.useEffect(() => {
     if (!hydrated) return;
-    void cartRepository.calculateTotals().then((r) => {
-      if (r.success) setTotals(r.data);
-    });
+    void cartRepository
+      .calculateTotals()
+      .then((r) => {
+        if (r.success) setTotals(r.data);
+      })
+      .catch((e: unknown) =>
+        logger.warn("payment.totals_failed", {
+          message: e instanceof Error ? e.message : String(e),
+        })
+      );
   }, [hydrated, lines, fulfillment]);
 
   if (!hydrated || !isBootstrapped) return <PaymentSkeleton />;

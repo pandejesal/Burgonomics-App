@@ -3,6 +3,7 @@ import { authRepository } from "@/features/auth/repositories/AuthRepository";
 import { isJwtExpired } from "@/features/auth/utils/mockJwt";
 import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
 import { auth as firebaseAuth } from "@/core/config/firebase";
+import { logger } from "@/core/logging/logger";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { isDev } from "@/core/config/env";
@@ -133,8 +134,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (!isJwtExpired(accessToken)) {
         useProfileStore.getState().hydrateFromAuth(user);
-        profileRepository.refresh().catch(console.error);
-        void notificationsService.linkUserToDeviceToken(user.id);
+        profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
+        void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
         set({
           status: "authenticated",
           user,
@@ -150,10 +151,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (refreshed.success) {
         await persistSession(user, refreshed.data.accessToken, refreshed.data.refreshToken);
         useProfileStore.getState().hydrateFromAuth(user);
-        profileRepository.refresh().catch(console.error);
+        profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
         // Same linking as fresh login — otherwise refreshed sessions silently
         // stop receiving order status pushes.
-        void notificationsService.linkUserToDeviceToken(user.id);
+        void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
         set({
           status: "authenticated",
           user,
@@ -210,8 +211,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     await persistSession(res.data.user, res.data.accessToken, res.data.refreshToken);
     useProfileStore.getState().hydrateFromAuth(res.data.user);
-    profileRepository.refresh().catch(console.error);
-    void notificationsService.linkUserToDeviceToken(res.data.user.id);
+    profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
+    void notificationsService.linkUserToDeviceToken(res.data.user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
     set({
       status: "authenticated",
       user: res.data.user,
@@ -246,7 +247,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   async logout() {
     const { refreshToken, user: currentUser } = get();
-    void notificationsService.unlinkUserFromDeviceToken(currentUser?.id);
+    void notificationsService.unlinkUserFromDeviceToken(currentUser?.id).catch((e: unknown) => logger.warn("auth.device_unlink_failed", { message: e instanceof Error ? e.message : String(e) }));
     await authRepository.logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();
@@ -274,3 +275,4 @@ export const selectIsGuest = (s: AuthState) => s.status !== "authenticated";
 if (typeof window !== "undefined" && isDev()) {
   (window as any).useAuthStore = useAuthStore;
 }
+

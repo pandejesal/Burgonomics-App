@@ -390,8 +390,14 @@ export const ordersService = {
           orders.set(id, orderData as Order);
           progression.set(id, { PLACED: orderData.placedAt });
         }
-      } catch (err) {
-        // ignore
+      } catch (err: unknown) {
+        // Permission/offline failures used to masquerade as not-found with
+        // zero telemetry — the UI showed "Order not found" for denied reads.
+        const { logger } = await import("@/core/logging/logger");
+        logger.warn("orders.getOrder_failed", {
+          id,
+          message: err instanceof Error ? err.message : String(err),
+        });
       }
     }
     const existing = orders.get(id);

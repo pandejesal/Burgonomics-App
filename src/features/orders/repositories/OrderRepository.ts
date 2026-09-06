@@ -14,6 +14,7 @@
  * and receive a `stop()` on unmount.
  */
 import { ok, type ApiResult } from "@/core/network/http";
+import { logger } from "@/core/logging/logger";
 import { ordersService } from "@/features/orders/services/ordersService";
 import { buildTrackUrl } from "@/features/orders/utils/trackUrl";
 import { useOrdersStore, selectAllOrders } from "@/features/orders/state/ordersStore";
@@ -289,22 +290,35 @@ export class OrderRepository {
             if (stopped || !snapshot.exists()) return;
             // Immediate refresh tracking on snapshot event
             void (async () => {
-              const res = await this.service.getTracking(id);
-              if (!stopped && res.success && res.data) {
-                listener(res.data);
+              try {
+                const res = await this.service.getTracking(id);
+                if (!stopped && res.success && res.data) {
+                  listener(res.data);
+                }
+              } catch (err: unknown) {
+                logger.warn("orders.tracking_refresh_failed", {
+                  id,
+                  message: err instanceof Error ? err.message : String(err),
+                });
               }
             })();
           },
           (err) => {
-            console.warn("OrderRepository: Firestore tracking onSnapshot error:", err);
+            logger.warn("orders.tracking_snapshot_failed", {
+              id,
+              message: err?.message,
+            });
             options.onError?.({
               code: "TRACKING_SNAPSHOT_FAILED",
               message: err?.message || "Live tracking connection failed.",
             });
           },
         );
-      } catch (err) {
-        console.warn("OrderRepository: Could not bind Firestore onSnapshot listener:", err);
+      } catch (err: unknown) {
+        logger.warn("orders.tracking_bind_failed", {
+          id,
+          message: err instanceof Error ? err.message : String(err),
+        });
       }
     })();
 

@@ -1,6 +1,7 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 
 import { isNative } from "@/shared/platform/platform";
+import { logger } from "@/core/logging/logger";
 
 /**
  * Location-permission hook.
@@ -51,7 +52,9 @@ async function requestNative(): Promise<{
       coords: { lat: pos.coords.latitude, lng: pos.coords.longitude },
     };
   } catch (err: unknown) {
-    console.error("Native Geolocation error:", err);
+    logger.error("location.native_error", err, {
+      message: (err as { message?: string } | null)?.message,
+    });
     const errorObj = err as { message?: string; code?: string } | null;
     // Determine if it was a timeout / GPS disabled
     if (errorObj?.message?.includes("Location services") || errorObj?.code === "3") {
@@ -123,7 +126,17 @@ export function useLocationPermission() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Background continuous watching when permission is granted
+  // Background continuous watching when permission is granted.
+  // Watch errors are sampled (max 1/min): an active denial/timeout loop
+  // would otherwise spam the log on every fire. UI state stays real-time.
+  const lastWatchWarnAt = useRef(0);
+  const noteWatchError = (code: unknown, message: unknown) => {
+    const now = Date.now();
+    if (now - lastWatchWarnAt.current < 60_000) return;
+    lastWatchWarnAt.current = now;
+    logger.warn("location.watch_error", { code, message });
+  };
+
   useEffect(() => {
     let watchId: string | number | null = null;
     let isCancelled = false;
@@ -163,7 +176,8 @@ export function useLocationPermission() {
                 window.localStorage.setItem("burg.cached_coords", JSON.stringify(newCoords));
               },
               (err) => {
-                console.warn("Browser watchPosition error:", err);
+                setError(err?.message || "Location watch failed.");
+                noteWatchError(err?.code, err?.message);
               },
               {
                 enableHighAccuracy: true,
@@ -172,8 +186,10 @@ export function useLocationPermission() {
               },
             );
           }
-        } catch (e) {
-          console.error("Error setting up location watcher:", e);
+        } catch (e: unknown) {
+          logger.error("location.watcher_setup_failed", e, {
+            message: e instanceof Error ? e.message : String(e),
+          });
         }
       };
       void startWatching();
