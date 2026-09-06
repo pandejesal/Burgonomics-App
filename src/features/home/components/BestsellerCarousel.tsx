@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Plus, Sparkles, Flame, Check } from "lucide-react";
+import { SafeImage } from "@/shared/components/common/SafeImage";
 import type { Product } from "@/features/menu/models";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
@@ -72,8 +73,9 @@ export function BestsellerCarousel({
             {/* Product Image / Visual Placeholder */}
             <div className="relative w-full h-28 bg-gradient-to-br from-bg-secondary to-surface flex items-center justify-center overflow-hidden">
               {product.imageUrl ? (
-                <img
+                <SafeImage
                   src={product.imageUrl}
+                  fallbackSrc={product.fallbackImageUrl}
                   alt={product.name}
                   loading="lazy"
                   decoding="async"

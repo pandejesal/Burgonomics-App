@@ -26,6 +26,7 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { formatINR } from "@/core/utils/format";
+import { useAppConfig } from "@/core/state/appConfigStore";
 import { HapticService } from "@/core/services/haptics";
 import { AudioService } from "@/core/services/audio";
 import { cn } from "@/lib/utils";
@@ -101,6 +102,9 @@ export function CheckoutPage() {
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   const [busy, setBusy] = React.useState(false);
+  // Offline gate: the banner promises checkout is disabled offline — enforce
+  // it. Tapping PAY offline used to fire Razorpay into a generic failure.
+  const isOnline = useAppConfig((s) => s.isOnline);
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [authSheetOpen, setAuthSheetOpen] = React.useState(false);
   const [redeemPoints, setRedeemPoints] = React.useState(false);
@@ -178,6 +182,12 @@ export function CheckoutPage() {
 
   const handlePlaceOrder = async () => {
     setValidationError(null);
+
+    // Belt-and-braces behind the disabled button: never fire Razorpay offline.
+    if (!useAppConfig.getState().isOnline) {
+      setValidationError("You are offline. Reconnect to place your order — your cart is saved.");
+      return;
+    }
 
     // Guest check -> In-place frictionless Auth Sheet
     if (!isAuthenticated) {
@@ -363,11 +373,13 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy}
+              disabled={busy || !isOnline}
+              aria-disabled={busy || !isOnline}
+              title={!isOnline ? "Back online to place your order" : undefined}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
-              <span>{busy ? "Processing Order..." : `PAY ${formatINR(finalPayable)} SECURELY`}</span>
+              <span>{busy ? "Processing Order..." : !isOnline ? "OFFLINE — RECONNECT TO PAY" : `PAY ${formatINR(finalPayable)} SECURELY`}</span>
             </button>
           </div>
         </div>

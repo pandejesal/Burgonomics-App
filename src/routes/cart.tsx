@@ -55,6 +55,7 @@ function CartPage() {
   const hydrated = useHydrated();
 
   const lines = useCartStore((s) => s.lines);
+  const syncPending = useCartStore((s) => s.syncPending);
   const promo = useCartStore((s) => s.promo);
   const status = useCartStore((s) => s.status);
   const error = useCartStore((s) => s.error);
@@ -259,6 +260,12 @@ function CartPage() {
       }
     >
       <div className="mx-auto max-w-[520px] space-y-4 px-4 py-3">
+        {/* Offline pending-sync notice — cart persists locally either way */}
+        {syncPending && (
+          <div role="status" className="rounded-2xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-xs font-semibold text-text-secondary">
+            Offline changes saved on this device — will sync when back online.
+          </div>
+        )}
         {/* 10-Minute Price Lock Timer Banner */}
         {remainingLockSeconds !== null && (
           <div className="flex items-center justify-between gap-2 rounded-2xl bg-amber-500/10 border border-amber-500/25 px-3.5 py-2.5 text-amber-800 dark:text-amber-300 shadow-xs">

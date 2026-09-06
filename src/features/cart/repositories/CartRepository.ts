@@ -31,6 +31,7 @@ import {
   validateCartMock,
 } from "@/features/cart/services/cartService";
 import { offerRepository } from "@/features/offers/repositories/OfferRepository";
+import { useAppConfig } from "@/core/state/appConfigStore";
 
 /** Default used when the user hasn't chosen a fulfillment method yet. */
 const DEFAULT_FULFILLMENT: Fulfillment = "delivery";
@@ -69,6 +70,19 @@ export class CartRepository {
   // -- Mutations -------------------------------------------------------
 
   /**
+   * Marks the cart pending-sync when a mutation lands offline, so the UI can
+   * say "will sync when back online" instead of silently looking synced.
+   * Cleared on the next successful validate/prepare after reconnect.
+   */
+  private markSyncState() {
+    try {
+      useCartStore.getState().setSyncPending(!useAppConfig.getState().isOnline);
+    } catch {
+      // Store unavailable (tests) — local mutation still applies.
+    }
+  }
+
+  /**
    * Add an item to the cart. Rejects if the cart already contains lines
    * from a different store — the caller must clear or prompt first.
    */
@@ -99,21 +113,25 @@ export class CartRepository {
       meta: input.meta,
     };
     s.addLine(line);
+    this.markSyncState();
     return ok(line);
   }
 
   async updateQuantity(lineId: string, quantity: number): Promise<ApiResult<void>> {
     useCartStore.getState().updateQuantity(lineId, quantity);
+    this.markSyncState();
     return ok(undefined);
   }
 
   async updateNotes(lineId: string, notes: string): Promise<ApiResult<void>> {
     useCartStore.getState().updateNotes(lineId, notes);
+    this.markSyncState();
     return ok(undefined);
   }
 
   async removeItem(lineId: string): Promise<ApiResult<void>> {
     useCartStore.getState().removeLine(lineId);
+    this.markSyncState();
     return ok(undefined);
   }
 
@@ -243,7 +261,9 @@ export class CartRepository {
     if (s.isPriceLockExpired()) {
       await this.validateAndRefreshPriceLock();
     }
-    return validateCartMock(useCartStore.getState().lines);
+    const res = await validateCartMock(useCartStore.getState().lines);
+    if (res.success) this.markSyncState();
+    return res;
   }
 
   async validateAndRefreshPriceLock(): Promise<
@@ -272,7 +292,9 @@ export class CartRepository {
   }
 
   async prepareCheckout(): Promise<ApiResult<{ checkoutToken: string }>> {
-    return prepareCheckoutMock(useCartStore.getState().lines);
+    const res = await prepareCheckoutMock(useCartStore.getState().lines);
+    if (res.success) this.markSyncState();
+    return res;
   }
 }
 

@@ -40,6 +40,8 @@ interface MenuState {
   storeId?: string;
   status: MenuStatus;
   error?: string;
+  /** True when live data failed and the visible menu may be out of date. */
+  stale?: boolean;
   categories: MenuCategoryModel[];
   activeCategoryId?: string;
   buckets: Record<string, CategoryBucket>;
@@ -87,15 +89,25 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
               ? s.activeCategoryId
               : cats[0].id,
           status: "ready",
+          error: undefined,
         }));
+      } else if (!res.success) {
+        // Listener died: keep showing cached categories, flagged stale —
+        // the old code silently kept them with no error anywhere.
+        set({ error: res.error.message, stale: true });
       }
     });
 
     const unsubProd = menuRepository.subscribeProducts(storeId, undefined, (res) => {
-      if (res.success) {
+      if (!res.success) {
+        set({ error: res.error.message, stale: true });
+        return;
+      }
+      {
         // Live data wins over the 30s fetch cache — drop it so the next
         // paginated loadMore re-reads instead of serving pre-sync items.
         invalidateMenuCache();
+        set({ error: undefined, stale: false });
         const allProducts = res.data.items.map(enrichProduct);
         // Merge into existing buckets — the old code REPLACED every bucket
         // (pageSize 100, hasMore false), silently discarding the pagination
@@ -156,7 +168,14 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
 
     const res = await menuRepository.listCategories(storeId);
     if (!res.success) {
-      set({ status: "error", error: res.error.message });
+      // Preserve cached categories on failure (stale but usable) — the old
+      // code discarded them and blanked the menu on every blip.
+      const had = get().categories.length > 0;
+      set(
+        had
+          ? { status: "ready", error: res.error.message, stale: true }
+          : { status: "error", error: res.error.message, stale: false }
+      );
       return;
     }
     const cats = [...res.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -269,6 +288,7 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
     set({
       status: "idle",
       error: undefined,
+      stale: false,
       categories: [],
       activeCategoryId: undefined,
       buckets: {},

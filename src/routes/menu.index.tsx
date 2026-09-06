@@ -67,6 +67,7 @@ function MenuPage() {
 
   const status = useMenuStore((s) => s.status);
   const error = useMenuStore((s) => s.error);
+  const stale = useMenuStore((s) => s.stale);
   const categories = useMenuStore((s) => s.categories);
   const activeCategoryId = useMenuStore((s) => s.activeCategoryId);
   const buckets = useMenuStore((s) => s.buckets);
@@ -266,6 +267,24 @@ function MenuPage() {
           </div>
         )}
 
+        {online && stale && categories.length > 0 && (
+          <div className="px-4 pt-3">
+            <div
+              role="status"
+              className="flex items-center justify-between gap-3 rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 type-body-medium font-medium text-amber-900 dark:text-amber-200"
+            >
+              <span>Live updates paused{error ? ` (${error})` : ""} — showing last saved menu.</span>
+              <button
+                type="button"
+                onClick={() => store && void load(store.id, { refresh: true })}
+                className="shrink-0 rounded-lg bg-warning/20 px-3 py-1.5 text-xs font-bold cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
         {initialLoading ? (
           <MenuSkeleton />
         ) : status === "error" && !categories.length ? (
@@ -376,6 +395,11 @@ function MenuPage() {
                       <EmptyState
                         title="Nothing here yet"
                         description="This category has no available items right now."
+                        actionLabel="Try another category"
+                        onAction={() => {
+                          const next = categories.find((c) => (buckets[c.id]?.items.length ?? 0) > 0);
+                          if (next) handleCategorySelect(next.id);
+                        }}
                       />
                     ) : (
                       <div className={cn(viewMode === "grid" ? "grid grid-cols-2 gap-3.5" : "space-y-3")}>
