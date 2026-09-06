@@ -36,6 +36,7 @@ import { formatINR } from "@/core/utils/format";
 import { logger } from "@/core/logging/logger";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
+import { useAppConfig } from "@/core/state/appConfigStore";
 
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
 import { ReviewItemsList, useCheckoutStore } from "@/features/checkout";
@@ -153,6 +154,12 @@ function PaymentPage() {
   }
 
   const startPayment = async () => {
+    // Belt-and-braces behind the disabled button: never fire Razorpay offline.
+    if (!useAppConfig.getState().isOnline) {
+      setPreflightIssue("You are offline. Reconnect to place your order.");
+      setStatus("idle");
+      return;
+    }
     setPreflightIssue(null);
     setFailure(null);
     setStatus("preparing");
@@ -341,6 +348,7 @@ function PaymentPage() {
   };
 
   const busy = status === "preparing" || status === "waiting" || status === "retrying";
+  const isOnline = useAppConfig((s) => s.isOnline);
   const eta =
     fulfillment === "delivery"
       ? activeStore?.etaMinutes
@@ -380,7 +388,8 @@ function PaymentPage() {
               className="flex-1 max-w-[280px] h-12 rounded-xl text-base font-bold shadow-md shadow-primary/20 active:scale-[0.98] transition-transform"
               onClick={() => void startPayment()}
               loading={busy}
-              disabled={grandTotal <= 0}
+              disabled={grandTotal <= 0 || !isOnline}
+              title={!isOnline ? "Back online to place your order" : undefined}
               iconLeft={method === "online" ? <Lock className="h-4 w-4" /> : undefined}
             >
               {status === "failed" || status === "cancelled"
