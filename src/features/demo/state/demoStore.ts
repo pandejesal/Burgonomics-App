@@ -95,8 +95,8 @@ const DEFAULT_ERRORS: Record<SimulatedFailure, boolean> = {
 export const useDemoStore = create<DemoState>()(
   persist(
     (set) => ({
-      simulationMode: true,
-      petpoojaSimulateSuccess: true,
+      simulationMode: false,
+      petpoojaSimulateSuccess: false,
       debugPanelOpen: false,
       errorSims: { ...DEFAULT_ERRORS },
       recentApiCalls: [],
