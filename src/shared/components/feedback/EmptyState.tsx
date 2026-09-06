@@ -26,7 +26,7 @@ export function EmptyState({
   hideMascot,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center px-6 py-14 text-center">
+    <div role="status" className="flex flex-col items-center px-6 py-14 text-center">
       {icon ? (
         <div className="mb-5 grid h-20 w-20 place-items-center rounded-full bg-surface text-primary shadow-[var(--shadow-medium)]">
           {icon}
