@@ -19,15 +19,17 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
-    // Never enable the WebView debug bridge in production/release (resolves PLAT-4)
-    webContentsDebuggingEnabled:
-      process.env.NODE_ENV !== "production" && process.env.CAPACITOR_DEBUG === "true",
+    // process.env is not the runtime env in a Vite bundle — the old check
+    // silently left remote WebView debugging ON in shipped builds.
+    webContentsDebuggingEnabled: false,
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 1200,
-      launchAutoHide: true,
-      backgroundColor: "#023020",
+      // Manual hide from mobileBootstrap after first render — auto-hide on a
+      // fixed timer races slow-device bundle load.
+      launchAutoHide: false,
+      backgroundColor: "#0E4825",
       androidSplashResourceName: "splash",
       androidScaleType: "CENTER_CROP",
       showSpinner: false,
@@ -35,9 +37,9 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     StatusBar: {
-      // LIGHT icons on the deep-green (#023020) toolbar — DARK icons were invisible.
+      // LIGHT icons on the deep-green (#0E4825) toolbar — DARK icons were invisible.
       style: "LIGHT",
-      backgroundColor: "#023020",
+      backgroundColor: "#0E4825",
       overlaysWebView: false,
     },
     Keyboard: {
@@ -45,16 +47,13 @@ const config: CapacitorConfig = {
       style: "DARK",
       resizeOnFullScreen: true,
     },
-    Geolocation: {
-      // iOS: NSLocationWhenInUseUsageDescription must also be set in
-      //   ios/App/App/Info.plist:
-      //     <key>NSLocationWhenInUseUsageDescription</key>
-      //     <string>BURGONOMICS uses your location to show nearby stores.</string>
-      // Android: android/app/src/main/AndroidManifest.xml must declare:
-      //     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-      //     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-      permissions: ["location"],
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
     },
+    Geolocation: {
+      permissions: ['location'],
+    },
+    Haptics: {},
   },
 };
 

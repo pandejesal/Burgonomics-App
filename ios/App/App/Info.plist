@@ -49,9 +49,21 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>BURGONOMICS uses your location to show nearby stores and calculate delivery options.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>BURGONOMICS uses your camera to upload a profile picture.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>BURGONOMICS uses your photo library to upload a profile picture.</string>
+	<!-- No NSCameraUsageDescription / NSPhotoLibraryUsageDescription: no camera
+	     or photo code ships. Re-add with the scanner/upload feature. -->
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>burgonomics.com</string>
+		<string>partner.burgonomics.com</string>
+		<string>burgonomics.netlify.app</string>
+		<!-- Payment + auth subresources loaded inside the shell. Without these,
+		     iOS App-Bound Domains blocks Razorpay checkout and reCAPTCHA. -->
+		<string>checkout.razorpay.com</string>
+		<string>api.razorpay.com</string>
+		<string>apis.google.com</string>
+		<string>www.google.com</string>
+		<string>www.gstatic.com</string>
+		<string>burgonomics-7faa8.firebaseapp.com</string>
+	</array>
 </dict>
 </plist>

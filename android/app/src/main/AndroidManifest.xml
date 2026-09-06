@@ -31,6 +31,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="burgonomics" />
             </intent-filter>
+            <!-- HTTPS App Links (order tracking / push deeplinks). Requires
+                 assetlinks.json on each host (public/.well-known/); until
+                 published, these links open in the browser — same as today. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="burgonomics.com" />
+                <data android:scheme="https" android:host="www.burgonomics.com" />
+                <data android:scheme="https" android:host="burgonomics.netlify.app" />
+            </intent-filter>
         </activity>
 
         <provider
@@ -50,6 +61,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- No CAMERA permission: no camera code ships (no @capacitor/camera, no
+         picker). Declaring it invites Play Data-Safety questions. Re-add with
+         the scanner/upload feature. -->
 </manifest>
