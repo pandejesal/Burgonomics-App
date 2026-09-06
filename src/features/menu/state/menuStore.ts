@@ -2,21 +2,8 @@ import { create } from "zustand";
 import { menuRepository } from "@/features/menu/repositories/MenuRepository";
 import { invalidateMenuCache } from "@/features/menu/services/menuService";
 import type { MenuCategoryModel, Product } from "@/features/menu/models";
-import { SAMPLE_PRODUCTS } from "@/features/menu/data/petpoojaSampleData";
-
-const SAMPLE_BY_ID = new Map(SAMPLE_PRODUCTS.map((p) => [p.id, p]));
-const SAMPLE_BY_NAME = new Map(SAMPLE_PRODUCTS.map((p) => [p.name.toLowerCase(), p]));
 
 function enrichProduct(p: Product): Product {
-  if (p.imageUrl && p.imageUrl.trim().length > 0) return p;
-  const byId = SAMPLE_BY_ID.get(p.id);
-  if (byId?.imageUrl) {
-    return { ...p, imageUrl: byId.imageUrl, imageUrls: byId.imageUrls ?? (byId.imageUrl ? [byId.imageUrl] : []), fallbackImageUrl: byId.fallbackImageUrl ?? byId.imageUrl };
-  }
-  const byName = SAMPLE_BY_NAME.get(p.name.toLowerCase());
-  if (byName?.imageUrl) {
-    return { ...p, imageUrl: byName.imageUrl, imageUrls: byName.imageUrls ?? (byName.imageUrl ? [byName.imageUrl] : []), fallbackImageUrl: byName.fallbackImageUrl ?? byName.imageUrl };
-  }
   return p;
 }
 
