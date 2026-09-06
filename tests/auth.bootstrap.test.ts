@@ -59,6 +59,17 @@ describe("authStore.bootstrap Firebase trust gate (real store)", () => {
     expect(await secureStorage.get(SECURE_KEYS.ACCESS_TOKEN)).toBeNull();
   });
 
+  it("rejects corrupt persisted sessions (valid JSON, wrong shape)", async () => {
+    await secureStorage.set(SECURE_KEYS.ACCESS_TOKEN, "tok");
+    await secureStorage.set(SECURE_KEYS.REFRESH_TOKEN, "ref");
+    await secureStorage.set(SECURE_KEYS.USER, JSON.stringify("corrupt"));
+
+    await useAuthStore.getState().bootstrap(async () => USER.id);
+    const s = useAuthStore.getState();
+    expect(s.status).toBe("guest");
+    expect(await secureStorage.get(SECURE_KEYS.USER)).toBeNull();
+  });
+
   it("rejects stored tokens when the Firebase uid does not match", async () => {
     const { accessToken } = generateMockJwt(USER.id, USER.phone);
     await seedSession(accessToken);

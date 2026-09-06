@@ -120,7 +120,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      const user = JSON.parse(userJson) as AuthUser;
+      const parsed: unknown = JSON.parse(userJson);
+      // Shape-guard the persisted session: valid JSON like `"corrupt"`, `123`,
+      // or `{id:"other"}` used to cast cleanly and either crash downstream or
+      // orphan orders under an empty contact. Mismatch clears the session.
+      const user =
+        parsed && typeof parsed === "object" && typeof (parsed as any).id === "string" && typeof (parsed as any).phone === "string"
+          ? (parsed as AuthUser)
+          : null;
+      if (!user) {
+        await clearPersistedSession();
+        set({ status: "guest", isBootstrapped: true });
+        return;
+      }
 
       // The persisted tokens are real Firebase tokens, so a stolen
       // localStorage copy alone must never restore a session: require a live

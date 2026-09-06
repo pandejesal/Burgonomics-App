@@ -110,7 +110,14 @@ export function CheckoutPage() {
   const [redeemPoints, setRedeemPoints] = React.useState(false);
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
 
-  const loyaltyBalance = useLoyaltyStore((s) => s.balance);
+  const rawLoyaltyBalance = useLoyaltyStore((s) => s.balance);
+  // Finite-clamped: a hand-edited localStorage balance (999999) used to flow
+  // straight into the displayed discount and loyaltyPointsToRedeem. The server
+  // re-caps at charge time; the preview must not promise free money either.
+  const loyaltyBalance =
+    Number.isFinite(rawLoyaltyBalance) && (rawLoyaltyBalance as number) > 0
+      ? Math.floor(rawLoyaltyBalance as number)
+      : 0;
   // 1 point = Rs.1, capped at 20% of subtotal — matches the server cap, so the
   // displayed price is the price the gateway actually charges.
   const maxPointsDiscount = Math.min(loyaltyBalance, Math.floor((totals?.subtotal ?? 0) * 0.2));
@@ -203,11 +210,19 @@ export function CheckoutPage() {
       return;
     }
 
-    // Geofence check if Delivery mode
+    // Geofence check if Delivery mode. NaN coords used to sail through:
+    // `NaN > radius` is false, so corrupt addresses bypassed the zone block.
     if (isDelivery && selectedAddress && activeStore) {
-      const userLat = selectedAddress.lat ?? activeStore.lat + 0.015;
-      const userLng = selectedAddress.lng ?? activeStore.lng + 0.015;
-      const dist = calculateHaversineKm(userLat, userLng, activeStore.lat, activeStore.lng);
+      const userLat = Number(selectedAddress.lat ?? activeStore.lat + 0.015);
+      const userLng = Number(selectedAddress.lng ?? activeStore.lng + 0.015);
+      const storeLat = Number(activeStore.lat);
+      const storeLng = Number(activeStore.lng);
+      if (![userLat, userLng, storeLat, storeLng].every(Number.isFinite)) {
+        setValidationError("This address has invalid location data. Please re-pin it.");
+        toast.error("Address location is invalid.");
+        return;
+      }
+      const dist = calculateHaversineKm(userLat, userLng, storeLat, storeLng);
       if (dist > (activeStore.deliveryRadiusKm ?? 8.0)) {
         setValidationError(
           `This address is ${dist} km away, which exceeds our ${activeStore.deliveryRadiusKm ?? 8.0} km delivery zone. Please switch to Takeaway.`

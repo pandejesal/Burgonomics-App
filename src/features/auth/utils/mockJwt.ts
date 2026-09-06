@@ -80,6 +80,11 @@ export function isJwtExpired(token: string): boolean {
     );
   }
   const p = decodeMockJwt(token);
-  if (!p) return true;
+  // A body without numeric sub/iat/exp ({"sub":"x"} with missing exp) used to
+  // report NOT-expired (`now >= undefined` is false) — forged/expiry-less
+  // tokens restored sessions without refresh. Malformed means expired.
+  if (!p || typeof p.sub !== "string" || !Number.isFinite(p.iat) || !Number.isFinite(p.exp)) {
+    return true;
+  }
   return Math.floor(Date.now() / 1000) >= p.exp;
 }

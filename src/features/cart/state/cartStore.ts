@@ -225,22 +225,38 @@ export const useCartStore = create<CartState>()(
       onRehydrateStorage: () => (state) => {
         if (state) state.status = initialStatus(state.lines);
       },
-      migrate: (persisted, version) => {
-        if (!persisted || typeof persisted !== "object" || version < 4) {
-          const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
-          const lines = Array.isArray(anyPersisted.lines) ? (anyPersisted.lines as CartLine[]) : [];
-          return {
-            storeId: (anyPersisted.storeId as string | null) ?? null,
-            lines,
-            promo: (anyPersisted.promo as AppliedPromo | null) ?? null,
-            priceLockExpiresAt:
-              typeof anyPersisted.priceLockExpiresAt === "number"
-                ? anyPersisted.priceLockExpiresAt
-                : null,
-          } as Partial<CartState>;
-        }
-        return persisted as Partial<CartState>;
-      },
+    migrate: (persisted, version) => {
+      if (!persisted || typeof persisted !== "object" || version < 4) {
+        const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
+        // Per-line validation: a tampered/legacy burg.cart entry
+        // ({unitPrice:"free", quantity:"999"}) used to rehydrate straight
+        // into pricing math (free items, NaN totals). Scrub or drop lines.
+        const lines = Array.isArray(anyPersisted.lines)
+          ? (anyPersisted.lines as Record<string, unknown>[]).flatMap((l) => {
+              if (!l || typeof l !== "object") return [];
+              const unitPrice = Number((l as any).unitPrice);
+              const quantity = Number((l as any).quantity);
+              if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 100000) return [];
+              if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return [];
+              const productId = (l as any).productId;
+              const name = (l as any).name;
+              if (typeof productId !== "string" || typeof name !== "string") return [];
+              const modifiers = Array.isArray((l as any).modifiers) ? (l as any).modifiers : [];
+              return [{ ...(l as object), unitPrice, quantity, modifiers } as CartLine];
+            })
+          : [];
+        return {
+          storeId: (anyPersisted.storeId as string | null) ?? null,
+          lines,
+          promo: (anyPersisted.promo as AppliedPromo | null) ?? null,
+          priceLockExpiresAt:
+            typeof anyPersisted.priceLockExpiresAt === "number"
+              ? anyPersisted.priceLockExpiresAt
+              : null,
+        } as Partial<CartState>;
+      }
+      return persisted as Partial<CartState>;
+    },
     },
   ),
 );

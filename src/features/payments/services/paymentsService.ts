@@ -101,7 +101,9 @@ export const paymentsService = {
       .getState()
       .patchRazorpay({ paymentStatus: "creating_order", lastError: undefined });
 
-    if (input.amount <= 0) {
+    // NaN <= 0 is false: without the finite check, NaN/Infinity amounts
+    // sailed through, serialized as null, and opened ₹0/NaN gateway orders.
+    if (!Number.isFinite(input.amount) || input.amount <= 0) {
       return fail("INVALID_AMOUNT", "Order amount must be greater than zero.");
     }
 
