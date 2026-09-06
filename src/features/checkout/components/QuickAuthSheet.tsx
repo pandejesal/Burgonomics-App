@@ -138,7 +138,8 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
             <button
               type="button"
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-bg-secondary text-text-secondary hover:text-text-primary"
+              aria-label="Close login dialog"
+              className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-bg-secondary text-text-secondary hover:text-text-primary"
             >
               <X className="h-4 w-4" />
             </button>
@@ -147,7 +148,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
           {step === "phone" ? (
             <form onSubmit={handleSendOtp} className="mt-4 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-text-primary mb-1.5">
+                <label htmlFor="checkout-phone" className="block text-xs font-bold text-text-primary mb-1.5">
                   Mobile Number
                 </label>
                 <div className="flex items-center rounded-xl border border-border bg-bg-secondary px-3 min-h-[48px] focus-within:border-primary transition-colors">
@@ -155,6 +156,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
                     +91
                   </span>
                   <input
+                    id="checkout-phone"
                     type="tel"
                     required
                     maxLength={10}
@@ -186,7 +188,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
             <form onSubmit={handleVerifyOtp} className="mt-4 space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-text-primary">
+                  <label htmlFor="checkout-otp" className="text-xs font-bold text-text-primary">
                     Enter 6-Digit OTP Code
                   </label>
                   <button
@@ -198,6 +200,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
                   </button>
                 </div>
                 <input
+                  id="checkout-otp"
                   type="text"
                   required
                   maxLength={6}

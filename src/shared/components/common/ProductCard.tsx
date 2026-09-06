@@ -53,7 +53,7 @@ export function ProductCard({
           <SafeImage
             src={imageUrl}
             fallbackSrc={fallbackImageUrl}
-            alt=""
+            alt={name}
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
@@ -101,7 +101,7 @@ export function ProductCard({
             }}
             disabled={!inStock}
             aria-label={`Add ${name} to cart`}
-            className="min-h-[38px] min-w-[76px] rounded-full bg-accent px-5 py-1.5 text-xs font-extrabold uppercase text-accent-foreground shadow-sm hover:brightness-105 active:scale-95 transition-all duration-150 disabled:opacity-40"
+            className="min-h-[44px] min-w-[76px] rounded-full bg-accent px-5 py-1.5 text-xs font-extrabold uppercase text-accent-foreground shadow-sm hover:brightness-105 active:scale-95 transition-all duration-150 disabled:opacity-40"
           >
             ADD +
           </button>

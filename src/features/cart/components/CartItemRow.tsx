@@ -73,7 +73,7 @@ export const CartItemRow = React.memo(function CartItemRow({
             <SafeImage
               src={line.imageUrl}
               fallbackSrc={line.fallbackImageUrl}
-              alt=""
+              alt={line.name}
               className="h-full w-full object-cover"
               loading="lazy"
             />
@@ -119,7 +119,7 @@ export const CartItemRow = React.memo(function CartItemRow({
               type="button"
               onClick={handleRemoveClick}
               aria-label={`Remove ${line.name}`}
-              className="grid h-9 w-9 flex-none place-items-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-error transition-colors"
+              className="grid h-11 w-11 min-h-11 min-w-11 flex-none place-items-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-error transition-colors"
             >
               <Trash2 className="h-4 w-4" aria-hidden />
             </button>

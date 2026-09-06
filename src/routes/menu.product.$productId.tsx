@@ -1,14 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Clock, ShoppingCart } from "lucide-react";
+import { ShoppingBag, ArrowLeft, Clock, Flame, Sparkles, Plus, Minus, ShieldCheck, Check } from "lucide-react";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
 
 import { AppShell } from "@/shared/layouts/AppShell";
-import { Text } from "@/shared/components/common/Text";
-import { AppButton } from "@/shared/components/common/AppButton";
-import { AppBadge } from "@/shared/components/common/AppBadge";
-import { VegIndicator } from "@/shared/components/common/VegIndicator";
 import { SafeImage } from "@/shared/components/common/SafeImage";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { FailureState } from "@/shared/components/feedback/FailureState";
@@ -18,22 +14,18 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { menuRepository } from "@/features/menu/repositories/MenuRepository";
 import { useMenuStore } from "@/features/menu/state/menuStore";
-import { MenuProductCard } from "@/features/menu/components/MenuProductCard";
-import {
-  CustomizationPicker,
-  type Selections,
-} from "@/features/menu/components/CustomizationPicker";
-import { QuantityStepper } from "@/features/menu/components/QuantityStepper";
-import type { CustomizationGroup, Product, ProductDetails } from "@/features/menu/models";
+import type { Product, ProductDetails, CustomizationGroup } from "@/features/menu/models";
+import type { CartModifier } from "@/features/cart/models";
 import { formatINR } from "@/core/utils/format";
-import { isNative } from "@/shared/platform/platform";
 import { cn } from "@/lib/utils";
+import { ModifierGroupSelector, type ModifierSelections } from "@/features/menu/components/ModifierGroupSelector";
+import { AddonUpsellSection } from "@/features/menu/components/AddonUpsellSection";
 
 export const Route = createFileRoute("/menu/product/$productId")({
   head: () => ({
     meta: [
-      { title: "Product — Burgonomics" },
-      { name: "description", content: "Customize modifiers, sizes, and add-ons." },
+      { title: "Product Details — Burgonomics (100% Pure Vegetarian)" },
+      { name: "description", content: "100% Pure Vegetarian handcrafted smash burger with customizable modifiers." },
     ],
   }),
   component: ProductPage,
@@ -43,7 +35,6 @@ interface State {
   status: "loading" | "ready" | "error" | "notfound";
   error?: string;
   product?: ProductDetails;
-  customizations: CustomizationGroup[];
   related: Product[];
 }
 
@@ -56,82 +47,139 @@ function ProductPage() {
 
   const [state, setState] = useState<State>({
     status: "loading",
-    customizations: [],
     related: [],
   });
   const [qty, setQty] = useState(1);
-  const [selections, setSelections] = useState<Selections>({});
-  const [notes, setNotes] = useState("");
   const [activeImage, setActiveImage] = useState(0);
+
+  // Customization selections
+  const [selections, setSelections] = useState<ModifierSelections>({});
+  const [selectedComboId, setSelectedComboId] = useState<string | null>(null);
 
   const load = async () => {
     setState((s) => ({ ...s, status: "loading", error: undefined }));
-    const [pr, cr, rr] = await Promise.all([
+    const [pr, rr] = await Promise.all([
       menuRepository.getProduct(productId, store?.id),
-      menuRepository.listCustomizations(productId),
       menuRepository.listRelatedProducts(productId, store?.id),
     ]);
     if (!pr.success) {
-      setState({ status: "error", error: pr.error.message, customizations: [], related: [] });
+      setState({ status: "error", error: pr.error.message, related: [] });
       return;
     }
     if (!pr.data) {
-      setState({ status: "notfound", customizations: [], related: [] });
+      setState({ status: "notfound", related: [] });
       return;
     }
-    const customizations = cr.success ? cr.data : (pr.data.customizations ?? []);
-    // Seed default selections.
-    const initial: Selections = {};
-    for (const g of customizations) {
-      const defaults = g.options.filter((o) => o.isDefault).map((o) => o.id);
-      if (defaults.length)
-        initial[g.id] = g.selection === "single" ? defaults.slice(0, 1) : defaults;
-    }
-    setSelections(initial);
     pushRecentlyViewed(pr.data);
     setState({
       status: "ready",
       product: pr.data,
-      customizations,
       related: rr.success ? rr.data : [],
     });
+
+    // Initialize required single-choice modifier defaults
+    const groups: CustomizationGroup[] = pr.data.customizations || [];
+    if (groups.length) {
+      const initial: ModifierSelections = {};
+      groups.forEach((g) => {
+        if (g.selection === "single" && g.required && g.options.length > 0) {
+          const firstAvailable = g.options.find((o) => !o.outOfStock) || g.options[0];
+          initial[g.id] = [firstAvailable.id];
+        }
+      });
+      setSelections(initial);
+    }
   };
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId, store?.id]);
 
-  const priceTotal = useMemo(() => {
-    if (!state.product) return 0;
-    const modifiersTotal = state.customizations.reduce((sum, g) => {
-      const chosen = selections[g.id] ?? [];
-      return (
-        sum +
-        chosen.reduce((s2, oid) => {
-          const opt = g.options.find((o) => o.id === oid);
-          return s2 + (opt?.priceDelta ?? 0);
-        }, 0)
-      );
-    }, 0);
-    return (state.product.price + modifiersTotal) * qty;
-  }, [state, selections, qty]);
+  const p = state.product;
+  const groups: CustomizationGroup[] = p?.customizations || [];
 
-  const requiredMissing = state.customizations.some(
-    (g) => g.required && (selections[g.id]?.length ?? 0) === 0,
-  );
+  const handleToggleOption = (groupId: string, optionId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
 
-  if (state.status === "loading") return <ProductSkeleton />;
+    setSelections((prev) => {
+      const current = prev[groupId] || [];
+      if (group.selection === "single") {
+        return { ...prev, [groupId]: [optionId] };
+      }
+
+      let next: string[];
+      if (current.includes(optionId)) {
+        next = current.filter((id) => id !== optionId);
+      } else {
+        next = [...current, optionId];
+        if (group.maxSelect && next.length > group.maxSelect) {
+          next = next.slice(-group.maxSelect);
+        }
+      }
+      return { ...prev, [groupId]: next };
+    });
+  };
+
+  // Dynamic unit price calculation
+  const unitPrice = useMemo(() => {
+    if (!p) return 0;
+    let price = p.price;
+
+    groups.forEach((g) => {
+      const selected = selections[g.id] || [];
+      selected.forEach((optId) => {
+        const opt = g.options.find((o) => o.id === optId);
+        if (opt) {
+          price += opt.priceDelta || 0;
+        }
+      });
+    });
+
+    if (selectedComboId === "combo_upgrade_regular") price += 99;
+    if (selectedComboId === "combo_upgrade_premium") price += 149;
+
+    return Math.max(0, price);
+  }, [p, groups, selections, selectedComboId]);
+
+  const totalPrice = unitPrice * qty;
+
+  // Validation passed check
+  const isValidationPassed = useMemo(() => {
+    if (!groups.length) return true;
+    for (const g of groups) {
+      if (g.required) {
+        const selected = selections[g.id] || [];
+        if (selected.length === 0) return false;
+      }
+    }
+    return true;
+  }, [groups, selections]);
+
+  if (state.status === "loading") {
+    return (
+      <AppShell title="Product" backTo="/menu" showTabs={false} showTopBar={false}>
+        <div className="p-4 space-y-4 max-w-[560px] mx-auto">
+          <Skeleton className="aspect-video w-full rounded-3xl" />
+          <Skeleton className="h-8 w-3/4 rounded-xl" />
+          <Skeleton className="h-4 w-1/2 rounded-lg" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
+        </div>
+      </AppShell>
+    );
+  }
+
   if (state.status === "error") {
     return (
-      <AppShell title="Product" backTo="/menu" showTabs>
+      <AppShell title="Product" backTo="/menu" showTabs={false}>
         <FailureState title="We couldn't load this product" message={state.error} onRetry={load} />
       </AppShell>
     );
   }
-  if (state.status === "notfound" || !state.product) {
+
+  if (state.status === "notfound" || !p) {
     return (
-      <AppShell title="Product" backTo="/menu" showTabs>
+      <AppShell title="Product" backTo="/menu" showTabs={false}>
         <EmptyState
           title="Product not available"
           description="This product is not currently available at your selected store."
@@ -142,50 +190,75 @@ function ProductPage() {
     );
   }
 
-  const p = state.product;
   const images = p.imageUrls && p.imageUrls.length ? p.imageUrls : p.imageUrl ? [p.imageUrl] : [];
-  const disabled = !p.inStock || requiredMissing;
+  const disabled = p.inStock === false;
 
-  const handleAdd = async () => {
-    if (!store) return;
-    const modifiers = state.customizations.flatMap((g) =>
-      (selections[g.id] ?? []).map((oid) => {
-        const opt = g.options.find((o) => o.id === oid)!;
-        return {
-          groupId: g.id,
-          groupName: g.name,
-          optionId: opt.id,
-          name: opt.name,
-          priceDelta: opt.priceDelta,
-        };
-      }),
-    );
-    const res = await cartRepository.addItem({
-      storeId: store.id,
-      productId: p.id,
-      name: p.name,
-      imageUrl: p.imageUrl ?? (p.imageUrls && p.imageUrls[0]),
-      fallbackImageUrl: p.fallbackImageUrl,
-      veg: p.veg,
-      unitPrice: p.price,
-      quantity: qty,
-      modifiers,
-      notes: notes.trim() || undefined,
-    });
-    if (!res.success) return;
+  const handleAddToCart = async () => {
+    if (!store) {
+      toast.error("Please select a store first");
+      return;
+    }
+
+    if (!isValidationPassed) {
+      toast.error("Please select all required options");
+      return;
+    }
 
     void HapticService.impact("medium");
 
-    toast(`✓ ${p.name} added`, {
-      action: {
-        label: "View Cart",
-        onClick: () => {
-          void navigate({ to: "/cart" });
-        },
-      },
-      duration: 3500,
+    const modifiersList: CartModifier[] = [];
+    groups.forEach((g) => {
+      const selected = selections[g.id] || [];
+      selected.forEach((optId) => {
+        const opt = g.options.find((o) => o.id === optId);
+        if (opt) {
+          modifiersList.push({
+            groupId: g.id,
+            groupName: g.name,
+            optionId: opt.id,
+            name: opt.name,
+            priceDelta: opt.priceDelta || 0,
+          });
+        }
+      });
     });
 
+    if (selectedComboId === "combo_upgrade_regular") {
+      modifiersList.push({
+        groupId: "meal_combo",
+        groupName: "Combo Upgrade",
+        optionId: "combo_upgrade_regular",
+        name: "Regular Meal: Fries + Drink",
+        priceDelta: 99,
+      });
+    } else if (selectedComboId === "combo_upgrade_premium") {
+      modifiersList.push({
+        groupId: "meal_combo",
+        groupName: "Combo Upgrade",
+        optionId: "combo_upgrade_premium",
+        name: "Gourmet Meal: Loaded Fries + Shake",
+        priceDelta: 149,
+      });
+    }
+
+    await cartRepository.addItem({
+      storeId: store.id,
+      productId: p.id,
+      name: p.name,
+      unitPrice,
+      quantity: qty,
+      veg: p.veg ?? true,
+      imageUrl: p.imageUrl ?? (p.imageUrls && p.imageUrls[0]),
+      fallbackImageUrl: p.fallbackImageUrl,
+      modifiers: modifiersList.length ? modifiersList : undefined,
+    });
+
+    toast.success(`Added ${qty}x ${p.name} to cart!`, {
+      action: {
+        label: "View Cart",
+        onClick: () => void navigate({ to: "/cart" }),
+      },
+    });
     void navigate({ to: "/menu" });
   };
 
@@ -193,36 +266,76 @@ function ProductPage() {
     <AppShell
       title={p.name}
       backTo="/menu"
-      showTabs
-      showTopBar
-      contentClassName="pb-[calc(180px+env(safe-area-inset-bottom,0px))]"
+      showTabs={false}
+      showTopBar={false}
       bottomSlot={
-        <div className="fixed inset-x-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-30 border-t border-divider bg-surface backdrop-blur shadow-md">
-          <div className="mx-auto flex max-w-[480px] md:max-w-[480px] max-md:max-w-full items-center justify-between gap-3 px-4 py-3">
-            <div>
-              <p className="type-caption text-text-secondary">Total</p>
-              <p className="type-title-large">{formatINR(priceTotal)}</p>
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
+          <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3">
+            {/* Quantity Stepper (mirrors QuantityStepper: grouped, live, 44px) */}
+            <div role="group" aria-label={`Quantity for ${p.name}`} className="flex h-11 items-center rounded-xl bg-bg-secondary border border-divider p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  void HapticService.impact("light");
+                  setQty((q) => Math.max(1, q - 1));
+                }}
+                disabled={qty <= 1}
+                aria-label="Decrease quantity"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-text hover:bg-surface active:scale-90 transition disabled:opacity-30 cursor-pointer"
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+              <span aria-live="polite" className="w-8 text-center text-xs font-black font-mono text-text">{qty}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void HapticService.impact("light");
+                  setQty((q) => q + 1);
+                }}
+                aria-label="Increase quantity"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-text hover:bg-surface active:scale-90 transition cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
             </div>
-            <AppButton
-              variant="primary"
-              size="md"
-              disabled={disabled}
-              onClick={() => void handleAdd()}
-              iconLeft={<ShoppingCart className="h-5 w-5" />}
+
+            {/* Add to Cart CTA */}
+            <button
+              type="button"
+              disabled={disabled || !isValidationPassed}
+              onClick={handleAddToCart}
+              className={cn(
+                "flex flex-1 items-center justify-between rounded-xl px-5 py-3.5 text-white shadow-lg transition-all active:scale-[0.98] cursor-pointer",
+                disabled || !isValidationPassed
+                  ? "bg-zinc-700 opacity-60 cursor-not-allowed"
+                  : "bg-[#FF6600] hover:bg-[#e05a00]"
+              )}
             >
-              {p.inStock
-                ? requiredMissing
-                  ? "Select required options"
-                  : "Add to cart"
-                : "Unavailable"}
-            </AppButton>
+              <span className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wide">
+                <ShoppingBag className="h-4 w-4" />
+                <span>{disabled ? "Sold Out" : isValidationPassed ? "Add To Cart" : "Choose Required Options"}</span>
+              </span>
+              <span className="font-mono text-sm font-black">{formatINR(totalPrice)}</span>
+            </button>
           </div>
         </div>
       }
     >
-      <div className="mx-auto max-w-[720px]">
-        {/* Gallery */}
-        <div className="relative aspect-[4/3] w-full overflow-hidden bg-bg-secondary">
+      <div className="mx-auto max-w-[560px] pb-32">
+        {/* Top Floating Nav Bar */}
+        <div className="sticky top-0 z-30 flex items-center justify-between p-4 bg-gradient-to-b from-black/40 to-transparent pointer-events-none">
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/menu" })}
+            aria-label="Back to menu"
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-surface/90 text-text shadow-md backdrop-blur-sm active:scale-95 transition cursor-pointer border border-divider"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Hero Photo */}
+        <div className="-mt-16 relative aspect-[4/3] w-full overflow-hidden bg-bg-secondary rounded-b-3xl">
           {images.length ? (
             <SafeImage
               src={images[activeImage]}
@@ -231,181 +344,110 @@ function ProductPage() {
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="skeleton h-full w-full" aria-hidden />
+            <div className="skeleton h-full w-full" />
           )}
-          {!p.inStock && (
-            <div className="absolute inset-0 grid place-items-center bg-black/55">
-              <AppBadge tone="neutral">{p.unavailableReason ?? "Unavailable"}</AppBadge>
+
+          {/* 100% Pure Veg badge */}
+          <div className="absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-full bg-surface/95 px-3 py-1 shadow-md backdrop-blur-sm border border-divider">
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-emerald-600 p-[1.5px]">
+              <span className="h-2 w-2 rounded-full bg-emerald-600" />
+            </span>
+            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 tracking-wider">100% PURE VEG</span>
+          </div>
+
+          {disabled && (
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center">
+              <span className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-300 text-sm font-black uppercase tracking-wider shadow-lg">
+                Sold Out
+              </span>
             </div>
           )}
         </div>
-        {images.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto px-4 py-3">
-            {images.map((src, i) => (
-              <button
-                key={src}
-                type="button"
-                onClick={() => setActiveImage(i)}
-                aria-label={`View image ${i + 1}`}
-                className={cn(
-                  "h-16 w-16 flex-none overflow-hidden rounded-[var(--radius-medium)] border",
-                  i === activeImage ? "border-primary" : "border-divider",
-                )}
-              >
-                <SafeImage
-                  src={src}
-                  fallbackSrc={i === 0 ? p.fallbackImageUrl : undefined}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
-        )}
 
-        <div className="space-y-6 px-4 py-4">
+        {/* Product Details & Modifiers */}
+        <div className="p-4 space-y-6">
           {/* Header */}
-          <div>
-            <div className="flex items-center gap-2">
-              <VegIndicator veg={p.veg} />
-              <Text variant="headlineMedium">{p.name}</Text>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-black text-text leading-tight">
+                {p.name}
+              </h1>
+              <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                {p.description || "Freshly grilled smash patty layered with crisp greens and gourmet house sauce."}
+              </p>
             </div>
-            {p.description && (
-              <Text variant="bodyMedium" tone="secondary" className="mt-1">
-                {p.description}
-              </Text>
-            )}
-            <div className="mt-3 flex flex-wrap items-baseline gap-3">
-              <Text variant="headlineMedium">{formatINR(p.price)}</Text>
-              {p.compareAtPrice && p.compareAtPrice > p.price && (
-                <span className="type-body-medium text-text-secondary line-through">
-                  {formatINR(p.compareAtPrice)}
-                </span>
-              )}
-              {typeof p.prepTimeMinutes === "number" && (
-                <span className="inline-flex items-center gap-1 type-caption text-text-secondary">
-                  <Clock className="h-3.5 w-3.5" aria-hidden /> {p.prepTimeMinutes} min
-                </span>
-              )}
+            <div className="shrink-0 text-right">
+              <span className="font-mono text-xl font-black text-[#0E4825] dark:text-[#4ADE80]">
+                {formatINR(p.price)}
+              </span>
+              <p className="text-[10px] text-text-secondary">Base price</p>
             </div>
-            {p.badges && p.badges.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {p.badges.map((b) => (
-                  <AppBadge key={b.id} tone={b.tone ?? "neutral"}>
-                    {b.label}
-                  </AppBadge>
-                ))}
-              </div>
-            )}
           </div>
 
-          {/* Customizations */}
-          {state.customizations.length > 0 && (
-            <section aria-labelledby="cust-heading">
-              <Text id="cust-heading" variant="titleLarge" className="mb-3">
-                Customize
-              </Text>
-              <CustomizationPicker
-                groups={state.customizations}
-                value={selections}
-                onChange={setSelections}
-              />
-            </section>
-          )}
+          {/* Key Attributes Pills */}
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
+              <Clock className="h-3.5 w-3.5 text-[#0E4825]" />
+              <span>Prep: {p.prepTimeMinutes ?? 12} mins</span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
+              <Flame className="h-3.5 w-3.5 text-[#FF6600]" />
+              <span>Smash Grilled</span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Zero Cross-Contamination</span>
+            </span>
+          </div>
 
-          {/* Ingredients */}
-          {p.ingredients && p.ingredients.length > 0 && (
-            <section>
-              <Text variant="titleLarge" className="mb-2">
-                Ingredients
-              </Text>
-              <Text variant="bodyMedium" tone="secondary">
-                {p.ingredients.join(", ")}
-              </Text>
-            </section>
-          )}
-
-          {/* Nutrition */}
-          {p.nutrition && p.nutrition.length > 0 && (
-            <section>
-              <Text variant="titleLarge" className="mb-2">
-                Nutritional information
-              </Text>
-              <dl className="grid grid-cols-2 gap-2">
-                {p.nutrition.map((n) => (
-                  <div
-                    key={n.key}
-                    className="rounded-[var(--radius-medium)] border border-divider bg-surface p-3"
-                  >
-                    <dt className="type-caption text-text-secondary">{n.label}</dt>
-                    <dd className="type-title-medium">{n.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          )}
-
-          {/* Special instructions */}
-          {p.allowSpecialInstructions !== false && (
-            <section>
-              <Text variant="titleLarge" className="mb-2">
-                Special instructions
-              </Text>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value.slice(0, 200))}
-                placeholder="Any cooking notes for the kitchen?"
-                aria-label="Special instructions for the kitchen"
-                className="w-full rounded-[var(--radius-medium)] border border-divider bg-surface p-3 type-body-large focus:border-primary outline-none"
-                rows={3}
-              />
-              <p className="mt-1 text-right type-caption text-text-secondary">{notes.length}/200</p>
-            </section>
-          )}
-
-          {/* Quantity */}
-          <section className="flex items-center justify-between">
-            <Text variant="titleLarge">Quantity</Text>
-            <QuantityStepper value={qty} onChange={setQty} />
-          </section>
-
-          {/* Related */}
-          {state.related.length > 0 && (
-            <section aria-labelledby="related-heading">
-              <Text id="related-heading" variant="titleLarge" className="mb-3">
-                You may also like
-              </Text>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {state.related.map((r) => (
-                  <MenuProductCard
-                    key={r.id}
-                    product={r}
-                    layout="grid"
-                    className="w-[200px] flex-none"
-                  />
-                ))}
+          {/* Nutrition & Allergen Transparency */}
+          <div className="rounded-2xl border border-divider bg-bg-secondary/50 p-4 space-y-3 shadow-xs">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-400" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                Nutritional & Quality Highlights
+              </h3>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
+                <span className="text-[10px] font-medium text-text-secondary block">Energy</span>
+                <p className="font-mono text-xs font-bold text-text mt-0.5">380 kcal</p>
               </div>
-            </section>
-          )}
+              <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
+                <span className="text-[10px] font-medium text-text-secondary block">Protein</span>
+                <p className="font-mono text-xs font-bold text-text mt-0.5">14g</p>
+              </div>
+              <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
+                <span className="text-[10px] font-medium text-text-secondary block">Dietary</span>
+                <p className="text-xs font-bold text-emerald-600 mt-0.5">100% Veg</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-text-secondary leading-snug">
+              <strong>Allergen Notice:</strong> Contains gluten and dairy. Prepared in a dedicated 100% vegetarian kitchen facility.
+            </p>
+          </div>
+
+          {/* Interactive Modifier Groups */}
+          {groups.map((group) => (
+            <ModifierGroupSelector
+              key={group.id}
+              group={group}
+              selectedOptionIds={selections[group.id] || []}
+              onToggleOption={handleToggleOption}
+            />
+          ))}
+
+          {/* Combo Meal Upsell Section */}
+          <AddonUpsellSection
+            selectedComboId={selectedComboId}
+            onToggleCombo={(id) =>
+              setSelectedComboId((prev) => (prev === id ? null : id))
+            }
+          />
         </div>
-        <div className="h-24" aria-hidden="true" />
       </div>
     </AppShell>
   );
 }
 
-function ProductSkeleton() {
-  return (
-    <AppShell title="Product" backTo="/menu" showTabs>
-      <div className="mx-auto max-w-[720px]">
-        <Skeleton className="aspect-[4/3] w-full" />
-        <div className="space-y-3 p-4">
-          <Skeleton className="h-6 w-2/3" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-8 w-32" />
-        </div>
-      </div>
-    </AppShell>
-  );
-}
+export default ProductPage;

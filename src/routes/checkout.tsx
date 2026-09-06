@@ -386,7 +386,7 @@ export function CheckoutPage() {
         )}
 
         {validationError && (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs">
+          <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs">
             {validationError}
           </div>
         )}
@@ -463,10 +463,11 @@ export function CheckoutPage() {
           </div>
 
           <div className="pt-2">
-            <label className="block text-[11px] font-bold text-text-secondary mb-1">
+            <label htmlFor="order-notes" className="block text-[11px] font-bold text-text-secondary mb-1">
               Cooking / Delivery Instructions
             </label>
             <input
+              id="order-notes"
               type="text"
               placeholder="e.g. Leave package at door, extra napkins, less spicy..."
               value={orderNotes}
@@ -509,7 +510,9 @@ export function CheckoutPage() {
                 void HapticService.selection();
                 setRedeemPoints(!redeemPoints);
               }}
-              className={`rounded-full px-3.5 py-1.5 min-h-[36px] text-xs font-bold transition-all cursor-pointer disabled:opacity-40 ${
+              aria-pressed={redeemPoints}
+              aria-label="Redeem loyalty points"
+              className={`rounded-full px-3.5 py-1.5 min-h-[44px] text-xs font-bold transition-all cursor-pointer disabled:opacity-40 ${
                 redeemPoints
                   ? "bg-[#0E4825] text-white shadow-xs"
                   : "bg-surface border border-divider text-text hover:border-primary"
