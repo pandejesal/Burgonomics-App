@@ -123,10 +123,10 @@ export function CheckoutPage() {
   const maxPointsDiscount = Math.min(loyaltyBalance, Math.floor((totals?.subtotal ?? 0) * 0.2));
   const pointsDiscount = redeemPoints ? maxPointsDiscount : 0;
 
-  // 10-Minute Price Lock Countdown Timer
+  // 10-Minute Price Lock Countdown Timer (honest: no lock => no banner)
   React.useEffect(() => {
     if (!priceLockExpiresAt) {
-      setRemainingLockSeconds(600);
+      setRemainingLockSeconds(null);
       return;
     }
     const updateCountdown = () => {
@@ -406,7 +406,11 @@ export function CheckoutPage() {
           <div className="flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-500/25 px-3.5 py-2 text-amber-800 dark:text-amber-300 shadow-xs">
             <div className="flex items-center gap-2 text-xs font-semibold">
               <Timer className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              <span>Checkout Price Locked</span>
+              <span>
+                {remainingLockSeconds === 0
+                  ? "Price Lock Expired — Rechecked At Checkout"
+                  : "Checkout Price Locked"}
+              </span>
             </div>
             <span className="font-mono text-xs font-black">{formatCountdown(remainingLockSeconds)}</span>
           </div>

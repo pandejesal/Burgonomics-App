@@ -27,6 +27,7 @@ import {
 } from "@/features/cart";
 import type { CartTotals } from "@/features/cart/models";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
+import { useCheckoutStore } from "@/features/checkout";
 import { FulfillmentSheet } from "@/features/stores/components/FulfillmentSheet";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
@@ -50,6 +51,20 @@ const INSTRUCTION_PILLS = [
   "Extra Napkins",
 ];
 
+// Merge one chip toggle into persisted checkout notes. Chips are stored as
+// "|" separated parts; free text typed in checkout never contains that
+// separator from this writer, and removal only drops exact chip matches,
+// so user-typed notes are preserved. Idempotent under StrictMode re-invoke.
+function mergeChipIntoNotes(current: string, chip: string, selecting: boolean): string {
+  const parts = current
+    .split("|")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => p !== chip);
+  if (selecting) parts.push(chip);
+  return parts.join(" | ");
+}
+
 function CartPage() {
   const navigate = useNavigate();
   const hydrated = useHydrated();
@@ -72,16 +87,25 @@ function CartPage() {
   const [confirmClear, setConfirmClear] = React.useState(false);
   const [checkoutBusy, setCheckoutBusy] = React.useState(false);
   const [fulfillmentOpen, setFulfillmentOpen] = React.useState(false);
-  const [selectedChips, setSelectedChips] = React.useState<string[]>([]);
-  const [customNote, setCustomNote] = React.useState("");
+  // Seed from persisted checkout notes so chips stay in sync when the user
+  // navigates back from /checkout (order creation reads checkout.orderNotes).
+  const [selectedChips, setSelectedChips] = React.useState<string[]>(() =>
+    INSTRUCTION_PILLS.filter((chip) =>
+      useCheckoutStore
+        .getState()
+        .orderNotes.split("|")
+        .map((p) => p.trim())
+        .includes(chip),
+    ),
+  );
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
   const [tipAmount, setTipAmount] = React.useState(0);
   const [coinsRedeemed, setCoinsRedeemed] = React.useState(0);
 
-  // 10-Minute Price Lock Countdown Timer
+  // 10-Minute Price Lock Countdown Timer (honest: no lock => no banner)
   React.useEffect(() => {
     if (!priceLockExpiresAt) {
-      setRemainingLockSeconds(600); // 10 min default
+      setRemainingLockSeconds(null);
       return;
     }
     const updateCountdown = () => {
@@ -174,9 +198,14 @@ function CartPage() {
 
   const toggleChip = (chip: string) => {
     void HapticService.selection();
+    const selecting = !selectedChips.includes(chip);
     setSelectedChips((prev) =>
       prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip],
     );
+    // Mirror into checkout orderNotes (the only notes channel order
+    // creation reads) while preserving any free text typed in checkout.
+    const { orderNotes, setOrderNotes } = useCheckoutStore.getState();
+    setOrderNotes(mergeChipIntoNotes(orderNotes, chip, selecting));
   };
 
   const onCheckout = async () => {
@@ -271,7 +300,11 @@ function CartPage() {
           <div className="flex items-center justify-between gap-2 rounded-2xl bg-amber-500/10 border border-amber-500/25 px-3.5 py-2.5 text-amber-800 dark:text-amber-300 shadow-xs">
             <div className="flex items-center gap-2 text-xs font-semibold">
               <Timer className="h-4 w-4 text-amber-600 dark:text-amber-400 animate-pulse" />
-              <span>Prices locked for this order</span>
+              <span>
+                {remainingLockSeconds === 0
+                  ? "Price lock expired — latest prices apply at checkout"
+                  : "Prices locked for this order"}
+              </span>
             </div>
             <span className="font-mono text-xs font-black bg-amber-500/20 px-2.5 py-0.5 rounded-md">
               {formatCountdown(remainingLockSeconds)}
