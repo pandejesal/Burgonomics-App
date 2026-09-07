@@ -26,7 +26,8 @@ import { supportRepository } from "@/features/support/repositories/SupportReposi
 import { useCustomerTickets } from "@/features/support/hooks/useCustomerTickets";
 import { CreateTicketForm } from "@/features/support/components/CreateTicketForm";
 import { TicketListAccordion } from "@/features/support/components/TicketListAccordion";
-import { useOrdersStore, selectAllOrders } from "@/features/orders";
+import { useOrdersStore } from "@/features/orders";
+import type { Order } from "@/features/orders";
 import type {
   FaqItem,
   IssueCategory,
@@ -76,7 +77,14 @@ function Page() {
   const [openFeedback, setOpenFeedback] = React.useState(false);
 
   const { tickets, createTicket, isSubmitting } = useCustomerTickets();
-  const pastOrders = useOrdersStore(selectAllOrders);
+  // NOTE: never subscribe with selectAllOrders here — it derives a fresh
+  // array per snapshot, which never stabilizes getSnapshot and loops
+  // React into error #185. Subscribe to the stable `ids` ref instead.
+  const orderIds = useOrdersStore((s) => s.ids);
+  const pastOrders: Order[] = React.useMemo(() => {
+    const st = useOrdersStore.getState();
+    return orderIds.map((id) => st.byId[id]).filter(Boolean) as Order[];
+  }, [orderIds]);
 
   React.useEffect(() => {
     void supportRepository.listFaqs().then((r) => r.success && setFaqs(r.data));
