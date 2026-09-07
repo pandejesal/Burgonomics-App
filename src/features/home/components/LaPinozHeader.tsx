@@ -6,6 +6,7 @@ import { ModeSegmentedSwitch } from "./ModeSegmentedSwitch";
 import { useStoreSelection, type Fulfillment } from "@/features/stores/state/storeStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
+import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
 import { HapticService } from "@/core/services/haptics";
 
 interface LaPinozHeaderProps {
@@ -21,6 +22,7 @@ export function LaPinozHeader({ onSearchClick, className }: LaPinozHeaderProps) 
 
   const selectedAddress = useAddressStore(selectSelectedAddress);
   const loyaltyBalance = useLoyaltyStore((s) => s.balance);
+  const unreadCount = useNotificationsStore((s) => s.unreadCount);
 
   const handleModeChange = (mode: Fulfillment) => {
     setFulfillment(mode);
@@ -79,11 +81,13 @@ export function LaPinozHeader({ onSearchClick, className }: LaPinozHeaderProps) 
 
           <Link
             to="/profile/notifications"
-            aria-label="Notifications"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
             className="relative flex h-8 w-8 items-center justify-center rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors text-white shrink-0"
           >
             <Bell className="h-4 w-4" />
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent ring-1.5 ring-primary" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent ring-1.5 ring-primary" />
+            )}
           </Link>
         </div>
       </div>
