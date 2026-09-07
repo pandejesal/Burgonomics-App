@@ -141,7 +141,7 @@ function Page() {
         {/* Live Support Tickets Accordion */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <Text variant="titleMedium" className="text-white font-bold">
+            <Text variant="titleMedium" className="font-bold">
               Your Active & Past Tickets ({tickets.length})
             </Text>
           </div>
@@ -153,7 +153,7 @@ function Page() {
 
         {/* Direct Contact Channels */}
         <section className="space-y-2">
-          <Text variant="titleMedium" className="text-white font-bold">
+          <Text variant="titleMedium" className="font-bold">
             Direct Contact Channels
           </Text>
           {channels === null ? (
@@ -194,7 +194,7 @@ function Page() {
         {/* FAQs */}
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <Text variant="titleMedium" className="text-white font-bold">
+            <Text variant="titleMedium" className="font-bold">
               Frequently Asked Questions
             </Text>
           </div>
