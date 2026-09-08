@@ -56,6 +56,8 @@ export interface PaymentPreflight {
       | "no_fulfillment"
       | "no_address"
       | "not_authenticated"
+      | "min_order"
+      | "closed_store"
       | "cart_invalid";
     message: string;
   }>;

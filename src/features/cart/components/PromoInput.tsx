@@ -23,6 +23,31 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
   const [code, setCode] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const revalidatedRef = React.useRef(false);
+
+  // Revalidate a rehydrated promo once on mount: the persisted discount is
+  // never trusted (see cartStore migrate). Success refreshes the amount,
+  // failure drops the coupon with an explicit message.
+  React.useEffect(() => {
+    if (!applied || revalidatedRef.current) return;
+    revalidatedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      const res = await cartRepository.applyPromo({ code: applied.code, offerId: applied.offerId });
+      if (cancelled) return;
+      if (!res.success) {
+        await cartRepository.removePromo();
+        setError(`Coupon ${applied.code} is no longer valid and was removed.`);
+        onChanged();
+      } else if (res.data.discount !== applied.discount) {
+        onChanged();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const apply = async (e: React.FormEvent) => {
     e.preventDefault();

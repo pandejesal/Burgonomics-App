@@ -12,12 +12,12 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { formatINR } from "@/core/utils/format";
+import { FREE_DELIVERY_THRESHOLD, DELIVERY_FEE_FLAT } from "@/shared/pricing/pricingEngine";
 
 import {
   cartRepository,
   useCartStore,
   selectItemCount,
-  CartItemRow,
   CartItemList,
   BillBreakdown,
   GrillCoinsRedemption,
@@ -84,6 +84,7 @@ function CartPage() {
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   const [computing, setComputing] = React.useState(false);
+  const [totalsError, setTotalsError] = React.useState<string | null>(null);
   const [confirmClear, setConfirmClear] = React.useState(false);
   const [checkoutBusy, setCheckoutBusy] = React.useState(false);
   const [fulfillmentOpen, setFulfillmentOpen] = React.useState(false);
@@ -99,8 +100,12 @@ function CartPage() {
     ),
   );
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
-  const [tipAmount, setTipAmount] = React.useState(0);
-  const [coinsRedeemed, setCoinsRedeemed] = React.useState(0);
+  // Tip + coins live in persisted checkout state (not local useState) so
+  // they survive cart → checkout → payment and reach the order payload.
+  const tipAmount = useCheckoutStore((s) => s.tipAmount);
+  const setTipAmount = useCheckoutStore((s) => s.setTipAmount);
+  const coinsRedeemed = useCheckoutStore((s) => s.loyaltyPointsToRedeem);
+  const setCoinsRedeemed = useCheckoutStore((s) => s.setLoyaltyPointsToRedeem);
 
   // 10-Minute Price Lock Countdown Timer (honest: no lock => no banner)
   React.useEffect(() => {
@@ -125,9 +130,17 @@ function CartPage() {
 
   const recompute = React.useCallback(async () => {
     setComputing(true);
+    setTotalsError(null);
     const res = await cartRepository.calculateTotals();
     setComputing(false);
-    if (res.success) setTotals(res.data);
+    if (res.success) {
+      setTotals(res.data);
+    } else {
+      // Fail-closed: no invented bill. The footer disables checkout and
+      // offers retry; the breakdown renders skeletons, not ₹0s.
+      setTotals(null);
+      setTotalsError(res.error.message);
+    }
   }, []);
 
   React.useEffect(() => {
@@ -231,23 +244,24 @@ function CartPage() {
 
   const subtotal = totals?.subtotal ?? lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const discountAmount = promo?.discount ? Math.abs(promo.discount) : (totals?.promoDiscount ?? 0);
-  // Fallback schedule (only when the pricing engine hasn't produced totals):
-  // matches the client pricing engine (free delivery over ₹499, ₹40 fee) so
-  // the preview never shows a third schedule. The old fallback (free over
-  // ₹349, ₹35 fee, integer GST on the PRE-discount subtotal) disagreed with
-  // both the engine and the server. Server re-prices authoritatively at
-  // checkout — previews are estimates, never the charge.
+  // Preview estimates while the engine hasn't produced totals — same
+  // single schedule as pricingEngine (free delivery over the shared
+  // threshold, shared flat fee). Never shown as the charge: the footer
+  // stays disabled until real totals arrive, and the server reprices.
   const taxableFallback = Math.max(0, subtotal - discountAmount);
   const deliveryFee =
     totals?.deliveryFee ??
-    (fulfillment === "delivery" ? (subtotal > 499 ? 0 : subtotal > 0 ? 40 : 0) : 0);
+    (fulfillment === "delivery"
+      ? (subtotal > FREE_DELIVERY_THRESHOLD ? 0 : subtotal > 0 ? DELIVERY_FEE_FLAT : 0)
+      : 0);
   const packagingFee = totals?.packingFee ?? (fulfillment === "dinein" || lines.length === 0 ? 0 : 15);
   const gst = totals?.taxes ?? totals?.tax ?? Math.round(taxableFallback * 0.05 * 100) / 100;
   const finalToPay = Math.max(
     0,
     subtotal - discountAmount - coinsRedeemed + gst + packagingFee + deliveryFee + tipAmount
   );
-  const freeDeliveryDelta = Math.max(0, 499 - subtotal);
+  const freeDeliveryDelta = Math.max(0, FREE_DELIVERY_THRESHOLD - subtotal);
+  const totalsReady = totals !== null;
 
   return (
     <AppShell
@@ -271,20 +285,40 @@ function CartPage() {
           <div className="mx-auto flex max-w-[520px] items-center justify-between gap-4">
             <div>
               <p className="text-[10px] uppercase font-bold text-text-secondary">Grand Total</p>
-              <p className="font-mono text-xl font-black text-text">
-                {formatINR(finalToPay)}
-              </p>
+              {totalsReady ? (
+                <p className="font-mono text-xl font-black text-text">
+                  {formatINR(finalToPay)}
+                </p>
+              ) : (
+                <Skeleton className="h-7 w-24 rounded-lg" />
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => void onCheckout()}
-              disabled={checkoutBusy || lines.length === 0}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
-            >
-              <span>Proceed to Checkout</span>
-              <ArrowRight className="h-4 w-4 stroke-[2.5px]" />
-            </button>
+            {totalsError && !totalsReady ? (
+              <button
+                type="button"
+                onClick={() => void recompute()}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <span>Retry bill</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void onCheckout()}
+                disabled={checkoutBusy || lines.length === 0 || !totalsReady}
+                title={!totalsReady ? "Calculating your bill…" : undefined}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
+              >
+                <span>{totalsReady ? "Proceed to Checkout" : "Calculating bill…"}</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
+          {totalsError && !totalsReady && (
+            <p role="alert" className="mx-auto max-w-[520px] pt-2 text-[11px] font-semibold text-red-500">
+              {totalsError}
+            </p>
+          )}
         </div>
       }
     >
@@ -349,12 +383,12 @@ function CartPage() {
                   ? "🎉 You've unlocked FREE Delivery!"
                   : `Add ${formatINR(freeDeliveryDelta)} more for FREE delivery`}
               </span>
-              <span className="font-mono font-bold text-text">{Math.min(100, Math.round((subtotal / 499) * 100))}%</span>
+              <span className="font-mono font-bold text-text">{Math.min(100, Math.round((subtotal / FREE_DELIVERY_THRESHOLD) * 100))}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-bg-secondary overflow-hidden">
               <div
                 className="h-full bg-[#0E4825] transition-all duration-500 rounded-full"
-                style={{ width: `${Math.min(100, (subtotal / 499) * 100)}%` }}
+                style={{ width: `${Math.min(100, (subtotal / FREE_DELIVERY_THRESHOLD) * 100)}%` }}
               />
             </div>
           </div>
@@ -369,15 +403,12 @@ function CartPage() {
             {computing && <span className="text-xs text-text-secondary">Recalculating…</span>}
           </div>
           <div className="space-y-2.5">
-            {lines.map((line) => (
-              <CartItemRow
-                key={line.lineId}
-                line={line}
-                onQuantityChange={(q) => void onQuantity(line.lineId, q)}
-                onRemove={() => void onRemove(line.lineId, line.name)}
-                onNotesChange={(n) => void onNotes(line.lineId, n)}
-              />
-            ))}
+            <CartItemList
+              lines={lines}
+              onQuantityChange={(lineId, q) => void onQuantity(lineId, q)}
+              onRemove={(lineId, name) => void onRemove(lineId, name)}
+              onNotesChange={(lineId, n) => void onNotes(lineId, n)}
+            />
           </div>
           <div className="pt-1">
             <Link to="/menu" className="text-xs font-bold text-[#FF6600] hover:underline">

@@ -15,11 +15,15 @@ export interface PricingConfig {
   minOrderAmount?: number;
 }
 
+export const FREE_DELIVERY_THRESHOLD = 499;
+export const DELIVERY_FEE_FLAT = 40;
+export const GST_RATE = 0.05;
+
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
-  gstRate: 0.05,
+  gstRate: GST_RATE,
   packingChargePerItem: 5,
-  deliveryFeeFlat: 40,
-  freeDeliveryThreshold: 499,
+  deliveryFeeFlat: DELIVERY_FEE_FLAT,
+  freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD,
   minOrderAmount: 0,
 };
 
@@ -142,7 +146,7 @@ export function calculateOrderTotals(input: PricingCalculationInput): Calculated
   const validPromoDiscount = Math.max(0, Number(promoDiscount) || 0);
 
   const taxableAmount = Math.max(0, subtotal - validItemDiscount - validPromoDiscount);
-  const gstRate = typeof config.gstRate === "number" ? config.gstRate : 0.05;
+  const gstRate = typeof config.gstRate === "number" ? config.gstRate : GST_RATE;
   const taxes = Math.round(taxableAmount * gstRate * 100) / 100;
 
   const packingRate =
@@ -151,11 +155,11 @@ export function calculateOrderTotals(input: PricingCalculationInput): Calculated
 
   let deliveryFee = 0;
   if (fulfillment === "delivery" && subtotal > 0) {
-    const threshold = config.freeDeliveryThreshold ?? 499;
+    const threshold = config.freeDeliveryThreshold ?? FREE_DELIVERY_THRESHOLD;
     if (threshold > 0 && subtotal > threshold) {
       deliveryFee = 0;
     } else {
-      deliveryFee = typeof config.deliveryFeeFlat === "number" ? config.deliveryFeeFlat : 40;
+      deliveryFee = typeof config.deliveryFeeFlat === "number" ? config.deliveryFeeFlat : DELIVERY_FEE_FLAT;
     }
   }
 

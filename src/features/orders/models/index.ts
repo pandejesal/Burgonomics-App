@@ -130,6 +130,9 @@ export interface Order {
   items: CartLine[];
   totals: CartTotals;
   promo?: AppliedPromo | null;
+  /** Delivery-partner tip (₹) and redeemed loyalty points, as placed. */
+  tipAmount?: number;
+  loyaltyPointsRedeemed?: number;
 
   /** Free-text special instructions collected on checkout. */
   notes?: string;
@@ -199,6 +202,10 @@ export interface CreateOrderInput {
   items: CartLine[];
   totals: CartTotals;
   promo?: AppliedPromo | null;
+  /** Delivery-partner tip (₹) chosen on the cart screen. */
+  tipAmount?: number;
+  /** Loyalty points redeemed (1 pt = ₹1, server re-caps at 20%). */
+  loyaltyPointsRedeemed?: number;
   address?: OrderAddressSnapshot;
   notes?: string;
   fulfillmentInstructions?: string;

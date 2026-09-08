@@ -7,3 +7,6 @@ export { OrderStatusBadge } from "./components/OrderStatusBadge";
 export { OrderCard } from "./components/OrderCard";
 export { OrderPriceSummary } from "./components/OrderPriceSummary";
 export { FulfillmentPanel } from "./components/FulfillmentPanel";
+export { InvoiceDownloadButton } from "./components/InvoiceDownloadButton";
+export { OrderSuccessCelebration } from "./components/OrderSuccessCelebration";
+export { EstimatedDeliveryCountdown } from "./components/EstimatedDeliveryCountdown";

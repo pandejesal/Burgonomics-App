@@ -129,6 +129,11 @@ export const offersService = {
     }
 
     if (!offer) return fail("OFFER_NOT_FOUND", "Offer not found.");
+    // Shared eligibility gate (mirrors validateCoupon): inactive/expired
+    // offers must never grant a discount through the apply path.
+    if (offer.status !== "active") {
+      return fail("OFFER_INACTIVE", "This offer is no longer active.");
+    }
     if (offer.eligibility?.minOrderValue && input.subtotal < offer.eligibility.minOrderValue) {
       return fail(
         "MIN_ORDER_NOT_MET",

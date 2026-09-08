@@ -27,7 +27,7 @@ export const Route = createFileRoute("/orders/$orderId/track")({
   head: () => ({
     meta: [
       { title: "Track Order — Burgonomics" },
-      { name: "description", content: "Live real-time status of your Burgonomics order with Porter GPS tracking." },
+      { name: "description", content: "Current status of your Burgonomics order, refreshed from the store." },
     ],
   }),
   component: TrackOrderPage,
@@ -44,7 +44,7 @@ function TrackOrderPage() {
   const [receiptOpen, setReceiptOpen] = React.useState(false);
 
   const trackingHook = useOrderTracking(hydrated ? orderId : null);
-  const trackingState = usePorterLiveTracking(order);
+  const trackingState = usePorterLiveTracking(order, trackingHook.snapshot);
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -89,30 +89,9 @@ function TrackOrderPage() {
     );
   }
 
-  // Developer simulation handler to advance status
-  const handleDevAdvanceStatus = () => {
-    void HapticService.impact("medium");
-    const statusSequence = [
-      { code: "ORDER_PLACED", label: "Order Placed & Confirmed" },
-      { code: "KITCHEN_PREPARING", label: "Grilling in Kitchen" },
-      { code: "OUT_FOR_DELIVERY", label: "Out for Delivery with Porter" },
-      { code: "DELIVERED", label: "Delivered & Enjoyed" },
-    ];
-    const currentIndex = statusSequence.findIndex((s) => s.code === order.status.code);
-    const nextIndex = (currentIndex + 1) % statusSequence.length;
-    const nextStatus = statusSequence[nextIndex];
-
-    setOrder({
-      ...order,
-      status: {
-        ...order.status,
-        code: nextStatus.code,
-        label: nextStatus.label,
-      },
-    });
-  };
-
-  const storePhone = order.store?.phone || "+91 98250 99881";
+  // Real store phone from the order snapshot only — never a hardcoded
+  // fallback number. Rider/support contact renders from backend data.
+  const storePhone = order.store?.phone ?? null;
   const shortOrderNum = order.shortCode || order.id.slice(-6).toUpperCase();
   const addressText =
     order.address?.line1 ||
@@ -139,13 +118,10 @@ function TrackOrderPage() {
         }
       >
         <div className="mx-auto max-w-[540px] space-y-4 px-4 py-3 pb-16 select-none">
-          {/* 1. 4-Stage Visual Progress Stepper (Domino's Tracker Standard) */}
-          <DeliveryStepTracker
-            tracking={trackingState}
-            onAdvanceDevStatus={handleDevAdvanceStatus}
-          />
+          {/* 1. 4-Stage Visual Progress Stepper (status-driven) */}
+          <DeliveryStepTracker tracking={trackingState} />
 
-          {/* 2. Live Porter GPS Map with Route Polyline */}
+          {/* 2. Route endpoints (live GPS not integrated — no fabricated map) */}
           <LiveOrderMap
             tracking={trackingState}
             storeName={order.store?.name || "Burgonomics Outlet"}

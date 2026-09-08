@@ -106,7 +106,7 @@ export class CartRepository {
       fallbackImageUrl: input.fallbackImageUrl,
       veg: input.veg,
       unitPrice: input.unitPrice,
-      quantity: Math.max(1, input.quantity),
+      quantity: Math.min(99, Math.max(1, Math.floor(input.quantity) || 1)),
       modifiers: input.modifiers ?? [],
       notes: input.notes,
       availability: "available",
@@ -262,7 +262,45 @@ export class CartRepository {
       await this.validateAndRefreshPriceLock();
     }
     const res = await validateCartMock(useCartStore.getState().lines);
-    if (res.success) this.markSyncState();
+    if (!res.success) return res;
+    // Revalidate any persisted promo against the repository (active
+    // status, min-order, context) at the CURRENT subtotal. A tampered or
+    // stale burg.cart promo is dropped and reported — checkout never sees
+    // a discount the offers backend wouldn't grant right now.
+    const promo = useCartStore.getState().promo;
+    if (promo) {
+      const totals = await this.calculateTotals().catch(() => null);
+      const recheck = await offerRepository.apply({
+        code: promo.code,
+        offerId: promo.offerId,
+        storeId: useCartStore.getState().storeId ?? undefined,
+        fulfillment: this.getFulfillment(),
+        subtotal: totals && totals.success ? totals.data.subtotal : 0,
+      });
+      if (!recheck.success) {
+        useCartStore.getState().setPromo(null);
+        return ok({
+          valid: false,
+          issues: [
+            {
+              code: "other",
+              message: `Your coupon ${promo.code} is no longer valid and was removed.`,
+            },
+          ],
+        });
+      }
+      if (recheck.data.discount !== promo.discount) {
+        useCartStore.getState().setPromo({
+          offerId: recheck.data.offerId,
+          code: recheck.data.code,
+          description: recheck.data.title,
+          discount: recheck.data.discount,
+          savingsLabel: recheck.data.savingsLabel,
+          type: recheck.data.type,
+        });
+      }
+    }
+    this.markSyncState();
     return res;
   }
 

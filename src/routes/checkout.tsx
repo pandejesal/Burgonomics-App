@@ -101,13 +101,13 @@ export function CheckoutPage() {
   const setPaymentVerification = usePaymentStore((s) => s.setVerification);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  const [totalsError, setTotalsError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   // Offline gate: the banner promises checkout is disabled offline — enforce
   // it. Tapping PAY offline used to fire Razorpay into a generic failure.
   const isOnline = useAppConfig((s) => s.isOnline);
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [authSheetOpen, setAuthSheetOpen] = React.useState(false);
-  const [redeemPoints, setRedeemPoints] = React.useState(false);
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
 
   const rawLoyaltyBalance = useLoyaltyStore((s) => s.balance);
@@ -121,7 +121,13 @@ export function CheckoutPage() {
   // 1 point = Rs.1, capped at 20% of subtotal — matches the server cap, so the
   // displayed price is the price the gateway actually charges.
   const maxPointsDiscount = Math.min(loyaltyBalance, Math.floor((totals?.subtotal ?? 0) * 0.2));
-  const pointsDiscount = redeemPoints ? maxPointsDiscount : 0;
+  // Loyalty redemption persists in checkout state so the choice survives
+  // checkout → payment and reaches the payment payload (M4 fix).
+  const storedPoints = useCheckoutStore((s) => s.loyaltyPointsToRedeem);
+  const redeemPoints = storedPoints > 0;
+  const setRedeemPoints = (v: boolean) =>
+    useCheckoutStore.getState().setLoyaltyPointsToRedeem(v ? maxPointsDiscount : 0);
+  const pointsDiscount = redeemPoints ? Math.min(storedPoints, maxPointsDiscount) : 0;
 
   // 10-Minute Price Lock Countdown Timer (honest: no lock => no banner)
   React.useEffect(() => {
@@ -145,8 +151,11 @@ export function CheckoutPage() {
   };
 
   const recompute = React.useCallback(async () => {
+    setTotalsError(null);
     const res = await cartRepository.calculateTotals();
     if (res.success) setTotals(res.data);
+    else setTotals(null);
+    if (!res.success) setTotalsError(res.error.message);
   }, []);
 
   React.useEffect(() => {
@@ -186,6 +195,20 @@ export function CheckoutPage() {
 
   const rawGrandTotal = totals?.grandTotal ?? 0;
   const finalPayable = Math.max(0, rawGrandTotal - pointsDiscount);
+
+  // Per-method CTA: cash is not "PAY SECURELY" (L2) — and with no totals
+  // the button is disabled, so the label must not promise an amount.
+  const payCtaLabel = () => {
+    if (busy) return "Processing Order...";
+    if (!isOnline) return "OFFLINE — RECONNECT TO PAY";
+    if (!totals) return "CALCULATING BILL…";
+    if (paymentMethod === "cash") {
+      return isDelivery
+        ? `PLACE COD ORDER · ${formatINR(finalPayable)}`
+        : `PLACE ORDER · ${formatINR(finalPayable)}`;
+    }
+    return `PAY ${formatINR(finalPayable)} SECURELY`;
+  };
 
   const handlePlaceOrder = async () => {
     setValidationError(null);
@@ -388,13 +411,13 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline}
-              aria-disabled={busy || !isOnline}
-              title={!isOnline ? "Back online to place your order" : undefined}
+              disabled={busy || !isOnline || !totals}
+              aria-disabled={busy || !isOnline || !totals}
+              title={!isOnline ? "Back online to place your order" : !totals ? "Calculating your bill…" : undefined}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
-              <span>{busy ? "Processing Order..." : !isOnline ? "OFFLINE — RECONNECT TO PAY" : `PAY ${formatINR(finalPayable)} SECURELY`}</span>
+              <span>{payCtaLabel()}</span>
             </button>
           </div>
         </div>
@@ -438,7 +461,7 @@ export function CheckoutPage() {
               addresses={addresses}
               selectedAddress={selectedAddress}
               activeStore={activeStore}
-              onSelectAddress={(addr) => selectAddress(addr.id)}
+              onSelectAddress={(id: string) => selectAddress(id)}
               onSwitchToTakeaway={() => setFulfillment("takeaway")}
             />
 
@@ -554,7 +577,8 @@ export function CheckoutPage() {
           </div>
         </section>
 
-        {/* 4. Bill Summary */}
+        {/* 4. Bill Summary — fail-closed: no totals, no invented numbers.
+            Skeleton + disabled Pay + retry until the engine responds. */}
         <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-2.5">
           <div className="flex items-center gap-2 border-b border-divider pb-2">
             <h2 className="text-xs font-bold uppercase tracking-wider text-text">
@@ -562,33 +586,53 @@ export function CheckoutPage() {
             </h2>
           </div>
 
+          {!totals ? (
+            <div className="space-y-2" aria-live="polite">
+              <Skeleton className="h-4 w-full rounded-lg" />
+              <Skeleton className="h-4 w-5/6 rounded-lg" />
+              <Skeleton className="h-4 w-4/6 rounded-lg" />
+              <Skeleton className="h-8 w-full rounded-lg" />
+              {totalsError && (
+                <div role="alert" className="space-y-2 pt-1">
+                  <p className="text-xs font-bold text-red-500">{totalsError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void recompute()}
+                    className="rounded-xl bg-[#FF6600] px-4 py-2.5 min-h-[44px] text-xs font-extrabold uppercase tracking-wider text-white cursor-pointer"
+                  >
+                    Retry bill
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between text-text-secondary">
               <span>Item Total</span>
-              <span className="font-mono font-bold text-text">{formatINR(totals?.subtotal ?? 0)}</span>
+              <span className="font-mono font-bold text-text">{formatINR(totals.subtotal)}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Govt. GST (5%)</span>
-              <span className="font-mono font-bold text-text">{formatINR(totals?.taxes ?? 0)}</span>
+              <span className="font-mono font-bold text-text">{formatINR(totals.taxes)}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="font-mono font-bold text-text">
-                {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : formatINR(totals?.packingFee ?? 15)}
+                {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : formatINR(totals.packingFee)}
               </span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Delivery Fee</span>
               <span className="font-mono font-bold text-text">
-                {totals?.deliveryFee === 0 || !isDelivery ? (
+                {totals.deliveryFee === 0 || !isDelivery ? (
                   <span className="font-bold text-[#4ADE80] uppercase text-[10px]">FREE</span>
                 ) : (
-                  formatINR(totals?.deliveryFee ?? 35)
+                  formatINR(totals.deliveryFee)
                 )}
               </span>
             </div>
 
-            {totals?.promoDiscount ? (
+            {totals.promoDiscount ? (
               <div className="flex justify-between text-[#4ADE80] font-semibold">
                 <span>Coupon Discount ({promo?.code ?? "PROMO"})</span>
                 <span className="font-mono font-bold">-{formatINR(totals.promoDiscount)}</span>
@@ -607,6 +651,7 @@ export function CheckoutPage() {
               <span className="font-mono text-[#FF6600] font-black text-lg">{formatINR(finalPayable)}</span>
             </div>
           </div>
+          )}
         </section>
 
         {/* 5. Payment Method Selector */}

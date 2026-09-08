@@ -97,8 +97,38 @@ function PaymentPage() {
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  const [totalsError, setTotalsError] = React.useState<string | null>(null);
   const [preflightIssue, setPreflightIssue] = React.useState<string | null>(null);
   const [abandonmentOpen, setAbandonmentOpen] = React.useState(false);
+
+  // Loyalty + tip persist in checkout state (chosen on cart/checkout), so
+  // they survive the checkout → payment navigation and reach the payload.
+  const loyaltyPointsToRedeem = useCheckoutStore((s) => s.loyaltyPointsToRedeem);
+  const tipAmount = useCheckoutStore((s) => s.tipAmount);
+
+  const loadTotals = React.useCallback(() => {
+    setTotalsError(null);
+    void cartRepository
+      .calculateTotals()
+      .then((r) => {
+        if (r.success) setTotals(r.data);
+        else {
+          setTotals(null);
+          setTotalsError(r.error.message);
+        }
+      })
+      .catch((e: unknown) => {
+        setTotals(null);
+        const message = e instanceof Error ? e.message : String(e);
+        setTotalsError(message);
+        logger.warn("payment.totals_failed", { message });
+      });
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    loadTotals();
+  }, [hydrated, lines, fulfillment, loadTotals]);
 
   // Auth guard — send guests to login with return-to-payment.
   React.useEffect(() => {
@@ -122,20 +152,6 @@ function PaymentPage() {
       }
     };
   }, [resetPayment]);
-
-  React.useEffect(() => {
-    if (!hydrated) return;
-    void cartRepository
-      .calculateTotals()
-      .then((r) => {
-        if (r.success) setTotals(r.data);
-      })
-      .catch((e: unknown) =>
-        logger.warn("payment.totals_failed", {
-          message: e instanceof Error ? e.message : String(e),
-        })
-      );
-  }, [hydrated, lines, fulfillment]);
 
   if (!hydrated || !isBootstrapped) return <PaymentSkeleton />;
   if (!isAuthenticated) return <PaymentSkeleton />;
@@ -222,7 +238,9 @@ function PaymentPage() {
 
     // 3. ONLINE FLOW (Razorpay Checkout)
     try {
-      const orderRes = await paymentRepository.createPaymentOrder();
+      const orderRes = await paymentRepository.createPaymentOrder({
+        loyaltyPointsToRedeem: loyaltyDiscount,
+      });
       if (!orderRes.success) {
         setStatus("failed");
         setFailure({
@@ -353,7 +371,13 @@ function PaymentPage() {
     fulfillment === "delivery"
       ? activeStore?.etaMinutes
       : (activeStore?.pickupEtaMinutes ?? activeStore?.etaMinutes);
-  const grandTotal = totals?.grandTotal ?? 0;
+  // Payable mirrors checkout: engine grand total, minus the persisted
+  // loyalty redemption (re-capped at 20% of subtotal for display), plus
+  // the persisted delivery-partner tip. No totals → disabled Pay + retry.
+  const loyaltyDiscount = totals
+    ? Math.min(loyaltyPointsToRedeem, Math.floor(totals.subtotal * 0.2))
+    : 0;
+  const grandTotal = totals ? Math.max(0, totals.grandTotal - loyaltyDiscount + tipAmount) : 0;
 
   const instructions =
     fulfillment === "delivery"
@@ -566,8 +590,21 @@ function PaymentPage() {
               </div>
             </div>
 
-            {/* Prices Breakdown */}
-            {totals && (
+            {/* Prices Breakdown — engine numbers only; loyalty/tip are
+                persisted checkout inputs, never invented here. */}
+            {!totals ? (
+              <div className="py-4 bg-bg-secondary/20 -mx-5 px-5 space-y-2" aria-live="polite">
+                <Skeleton className="h-4 w-full rounded-lg" />
+                <Skeleton className="h-4 w-5/6 rounded-lg" />
+                <Skeleton className="h-8 w-full rounded-lg" />
+                {totalsError && (
+                  <div role="alert" className="space-y-2 pt-1">
+                    <Text variant="bodyMedium" tone="error">{totalsError}</Text>
+                    <AppButton size="sm" onClick={loadTotals}>Retry bill</AppButton>
+                  </div>
+                )}
+              </div>
+            ) : (
               <div className="py-4 bg-bg-secondary/20 -mx-5 px-5">
                 <dl className="space-y-2">
                   <SummaryRow label="Subtotal" value={totals.subtotal} />
@@ -578,6 +615,13 @@ function PaymentPage() {
                       tone="success"
                     />
                   )}
+                  {loyaltyDiscount > 0 && (
+                    <SummaryRow
+                      label="Loyalty Points Redeemed"
+                      value={-loyaltyDiscount}
+                      tone="success"
+                    />
+                  )}
                   {totals.deliveryFee > 0 && (
                     <SummaryRow label="Delivery Charges" value={totals.deliveryFee} />
                   )}
@@ -585,6 +629,9 @@ function PaymentPage() {
                     <SummaryRow label="Store Packing Charges" value={totals.packingFee} />
                   )}
                   <SummaryRow label="Taxes & Surcharges" value={totals.taxes} />
+                  {tipAmount > 0 && (
+                    <SummaryRow label="Delivery Partner Tip" value={tipAmount} />
+                  )}
 
                   <div className="mt-3 flex items-center justify-between border-t border-divider pt-3">
                     <Text variant="titleLarge" className="font-extrabold text-text">

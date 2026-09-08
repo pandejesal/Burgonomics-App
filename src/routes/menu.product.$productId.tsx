@@ -54,7 +54,6 @@ function ProductPage() {
 
   // Customization selections
   const [selections, setSelections] = useState<ModifierSelections>({});
-  const [selectedComboId, setSelectedComboId] = useState<string | null>(null);
 
   const load = async () => {
     setState((s) => ({ ...s, status: "loading", error: undefined }));
@@ -121,14 +120,16 @@ function ProductPage() {
     });
   };
 
-  // Dynamic unit price calculation
+  // Unit price = server base price + server-provided modifier deltas.
+  // No client-invented combo upgrades: anything charged must exist in
+  // the server product doc. The backend reprices authoritatively anyway.
   const unitPrice = useMemo(() => {
     if (!p) return 0;
     let price = p.price;
 
     groups.forEach((g) => {
       const selected = selections[g.id] || [];
-      selected.forEach((optId) => {
+      selected.forEach((optId: string) => {
         const opt = g.options.find((o) => o.id === optId);
         if (opt) {
           price += opt.priceDelta || 0;
@@ -136,11 +137,8 @@ function ProductPage() {
       });
     });
 
-    if (selectedComboId === "combo_upgrade_regular") price += 99;
-    if (selectedComboId === "combo_upgrade_premium") price += 149;
-
     return Math.max(0, price);
-  }, [p, groups, selections, selectedComboId]);
+  }, [p, groups, selections]);
 
   const totalPrice = unitPrice * qty;
 
@@ -209,7 +207,7 @@ function ProductPage() {
     const modifiersList: CartModifier[] = [];
     groups.forEach((g) => {
       const selected = selections[g.id] || [];
-      selected.forEach((optId) => {
+      selected.forEach((optId: string) => {
         const opt = g.options.find((o) => o.id === optId);
         if (opt) {
           modifiersList.push({
@@ -223,30 +221,12 @@ function ProductPage() {
       });
     });
 
-    if (selectedComboId === "combo_upgrade_regular") {
-      modifiersList.push({
-        groupId: "meal_combo",
-        groupName: "Combo Upgrade",
-        optionId: "combo_upgrade_regular",
-        name: "Regular Meal: Fries + Drink",
-        priceDelta: 99,
-      });
-    } else if (selectedComboId === "combo_upgrade_premium") {
-      modifiersList.push({
-        groupId: "meal_combo",
-        groupName: "Combo Upgrade",
-        optionId: "combo_upgrade_premium",
-        name: "Gourmet Meal: Loaded Fries + Shake",
-        priceDelta: 149,
-      });
-    }
-
     await cartRepository.addItem({
       storeId: store.id,
       productId: p.id,
       name: p.name,
       unitPrice,
-      quantity: qty,
+      quantity: Math.min(99, Math.max(1, qty)),
       veg: p.veg ?? true,
       imageUrl: p.imageUrl ?? (p.imageUrls && p.imageUrls[0]),
       fallbackImageUrl: p.fallbackImageUrl,
@@ -290,7 +270,7 @@ function ProductPage() {
                 type="button"
                 onClick={() => {
                   void HapticService.impact("light");
-                  setQty((q) => q + 1);
+                  setQty((q) => Math.min(99, q + 1));
                 }}
                 aria-label="Increase quantity"
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-text hover:bg-surface active:scale-90 transition cursor-pointer"
@@ -437,13 +417,8 @@ function ProductPage() {
             />
           ))}
 
-          {/* Combo Meal Upsell Section */}
-          <AddonUpsellSection
-            selectedComboId={selectedComboId}
-            onToggleCombo={(id) =>
-              setSelectedComboId((prev) => (prev === id ? null : id))
-            }
-          />
+          {/* Server-priced add-ons (related products at repository prices) */}
+          <AddonUpsellSection products={state.related.filter((r) => r.id !== p.id).slice(0, 8)} />
         </div>
       </div>
     </AppShell>
