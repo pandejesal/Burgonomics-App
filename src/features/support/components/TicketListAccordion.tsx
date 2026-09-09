@@ -8,6 +8,11 @@ import type { CustomerTicket } from "@/features/support/hooks/useCustomerTickets
 interface Props {
   tickets: CustomerTicket[];
   onOpenNewTicket: () => void;
+  /**
+   * Ticket id to expand on mount — the push `data.ticketId` deeplink target
+   * (`/support?ticketId=<id>`). Matched by id only; never by subject.
+   */
+  initialOpenId?: string;
 }
 
 /**
@@ -19,8 +24,16 @@ interface Props {
 export const TicketListAccordion = React.memo(function TicketListAccordion({
   tickets,
   onOpenNewTicket,
+  initialOpenId,
 }: Props) {
-  const [openId, setOpenId] = React.useState<string | null>(null);
+  const [openId, setOpenId] = React.useState<string | null>(initialOpenId ?? null);
+
+  // Late-arriving server tickets: expand the deeplink target once it lands.
+  React.useEffect(() => {
+    if (initialOpenId && tickets.some((t) => t.id === initialOpenId)) {
+      setOpenId(initialOpenId);
+    }
+  }, [initialOpenId, tickets]);
 
   if (tickets.length === 0) {
     return (

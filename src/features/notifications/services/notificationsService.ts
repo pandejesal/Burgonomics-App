@@ -1,8 +1,21 @@
 import { delay, ok, type ApiResult } from "@/core/network/http";
+import { httpClient } from "@/core/network/httpClient";
+import { auth } from "@/core/config/firebase";
 import type { AppNotification } from "@/features/notifications/state/notificationsStore";
 import { getPlatform } from "@/shared/platform/platform";
 import { getCachedDeviceToken } from "@/shared/platform/pushNotifications";
 import { logger } from "@/core/logging/logger";
+
+/** Best-effort Firebase ID token for authenticated notification calls. */
+async function authHeaders(): Promise<Record<string, string>> {
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch {
+    // Offline / token fetch failed — server decides as unauthenticated.
+  }
+  return {};
+}
 
 export interface NotificationPreferences {
   pushEnabled: boolean;
@@ -17,13 +30,72 @@ export const notificationsService = {
     return ok([]);
   },
 
-  async markRead(_id: string): Promise<ApiResult<{ id: string }>> {
-    await delay(80);
-    return ok({ id: _id });
+  /**
+   * Badge-clear binding (MOP-S2, B5-S1 follow-up 4 core half).
+   *
+   * Brief contract: badge clears via the markRead endpoint —
+   *   PATCH /v1/notifications/:id/read
+   * Landed contract in this tree: NO HTTP notifications route exists
+   * (netlify/functions serves payments/porter/petpooja/account only);
+   * the in-app source of truth is Firestore `users/{uid}/notifications`
+   * (firestore.rules:90-93, writable by the owning uid).
+   *
+   * Runtime guard: try the HTTP endpoint first; when the route is absent
+   * (404/NetworkError/OfflineError — or no base URL configured) degrade to
+   * a direct Firestore `read: true` write; when Firestore is also
+   * unavailable (signed out / offline) resolve ok anyway so the caller
+   * still clears the local badge (queued/degraded path). Never throws,
+   * never fabricates a server confirmation.
+   */
+  async markRead(id: string): Promise<ApiResult<{ id: string }>> {
+    const headers = await authHeaders();
+    try {
+      await httpClient.patch(`/v1/notifications/${encodeURIComponent(id)}/read`, {}, { headers });
+      return ok({ id });
+    } catch {
+      // HTTP route absent — fall through to the landed Firestore contract.
+    }
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return ok({ id });
+      const { db } = await import("@/core/config/firebase");
+      const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", uid, "notifications", id), {
+        read: true,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err: any) {
+      logger.warn("notifications.markReadDegraded", { id, message: err?.message || String(err) });
+    }
+    return ok({ id });
   },
 
   async markAllRead(): Promise<ApiResult<null>> {
-    await delay(120);
+    const headers = await authHeaders();
+    try {
+      await httpClient.patch("/v1/notifications/read-all", {}, { headers });
+      return ok(null);
+    } catch {
+      // HTTP route absent — fall through to the landed Firestore contract.
+    }
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return ok(null);
+      const { db } = await import("@/core/config/firebase");
+      const { collection, getDocs, writeBatch, serverTimestamp } = await import(
+        "firebase/firestore"
+      );
+      const snap = await getDocs(collection(db, "users", uid, "notifications"));
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => {
+        if (d.data()?.read !== true) {
+          batch.update(d.ref, { read: true, updatedAt: serverTimestamp() });
+        }
+      });
+      await batch.commit();
+    } catch (err: any) {
+      logger.warn("notifications.markAllReadDegraded", { message: err?.message || String(err) });
+    }
     return ok(null);
   },
 

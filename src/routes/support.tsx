@@ -51,6 +51,13 @@ export const Route = createFileRoute("/support")({
     topic: typeof search.topic === "string" ? search.topic : undefined,
     paymentId: typeof search.paymentId === "string" ? search.paymentId : undefined,
     message: typeof search.message === "string" ? search.message : undefined,
+    // Ticket deeplink target from push `data.ticketId` (MOP-S2). The detail
+    // fetch is by id — the payload no longer carries a subject, so nothing
+    // here parses a subject. Sanitized to the id alphabet on read.
+    ticketId:
+      typeof search.ticketId === "string" && /^[\w-]{1,64}$/.test(search.ticketId)
+        ? search.ticketId
+        : undefined,
   }),
   component: Page,
 });
@@ -185,6 +192,7 @@ function Page() {
             <TicketListAccordion
               tickets={tickets}
               onOpenNewTicket={() => setOpenTicket(true)}
+              initialOpenId={search.ticketId}
             />
           )}
         </section>

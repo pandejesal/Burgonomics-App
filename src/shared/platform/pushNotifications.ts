@@ -34,6 +34,33 @@ function setCachedDeviceToken(token: string | null) {
   }
 }
 
+/**
+ * Ticket deeplink binding (MOP-S2, B5-S1 follow-up 4 core half).
+ * Ticket detail fetches by `data.ticketId` — the push payload no longer
+ * carries a subject, so NEVER read `data.subject` here (PII discipline:
+ * free-text subjects stay out of notification bodies AND out of routing).
+ * Ticket ids become URL query values — accept the id alphabet only.
+ */
+function ticketIdFrom(data: Record<string, any>): string {
+  const raw = typeof data.ticketId === "string" ? data.ticketId : "";
+  return /^[\w-]{1,64}$/.test(raw) ? raw : "";
+}
+
+function resolvePushDeeplink(
+  data: Record<string, any>,
+  fallbackCta: { orderId: string },
+): string | undefined {
+  const sanitized =
+    typeof data.deeplink === "string" && sanitizeRedirectUrl(data.deeplink, "")
+      ? sanitizeRedirectUrl(data.deeplink, "")
+      : "";
+  if (sanitized) return sanitized;
+  const ticketId = ticketIdFrom(data);
+  if (ticketId) return `/support?ticketId=${encodeURIComponent(ticketId)}`;
+  const rawOrderId = typeof fallbackCta.orderId === "string" ? fallbackCta.orderId : "";
+  const safeOrderId = /^[\w-]+$/.test(rawOrderId) ? rawOrderId : "";
+  return safeOrderId ? `/orders/${safeOrderId}/track` : undefined;
+}
 function navigateToDeeplink(url: string): void {
   // Server-controlled deeplinks are untrusted input: sanitize to same-origin
   // paths only. The old code fell back to location.href on ANY value — a
@@ -46,15 +73,10 @@ function navigateToDeeplink(url: string): void {
 
 function handleForegroundPush(title: string, body: string, data: Record<string, any>) {
   const category = (data.category as "order" | "offer" | "general") || "general";
-  const rawOrderId = typeof data.orderId === "string" ? data.orderId : "";
-  // orderIds become URL segments — reject anything but the id alphabet so a
-  // forged payload can't smuggle path traversal into the track URL.
-  const safeOrderId = /^[\w-]+$/.test(rawOrderId) ? rawOrderId : "";
-  const deeplink =
-    (typeof data.deeplink === "string" && sanitizeRedirectUrl(data.deeplink, "")
-      ? sanitizeRedirectUrl(data.deeplink, "")
-      : "") ||
-    (safeOrderId ? `/orders/${safeOrderId}/track` : undefined);
+  const deeplink = resolvePushDeeplink(data, {
+    orderId: typeof data.orderId === "string" ? data.orderId : "",
+  });
+  const ticketId = ticketIdFrom(data);
 
   useNotificationsStore.getState().push({
     id: (data.messageId as string) || `notif_${Date.now()}`,
@@ -64,14 +86,16 @@ function handleForegroundPush(title: string, body: string, data: Record<string, 
     createdAt: Date.now(),
     read: false,
     deeplink,
-    ctaLabel: (data.ctaLabel as string) || (data.orderId ? "Track order" : undefined),
+    ctaLabel:
+      (data.ctaLabel as string) ||
+      (ticketId ? "View ticket" : data.orderId ? "Track order" : undefined),
   });
 
   toast(title || "Burgonomics", {
     description: body,
     action: deeplink
       ? {
-          label: "View",
+          label: ticketId ? "View ticket" : "View",
           onClick: () => {
             navigateToDeeplink(deeplink);
           },
@@ -142,8 +166,12 @@ export async function initPushNotifications(): Promise<void> {
 
       const data = notification?.data || {};
       const category = (data.category as "order" | "offer" | "general") || "general";
-      const deeplink =
-        data.deeplink || (data.orderId ? `/orders/${data.orderId}/track` : undefined);
+      // Same hardened resolution as the web path: sanitized deeplink first,
+      // then data.ticketId, then orderId. Never data.subject.
+      const deeplink = resolvePushDeeplink(data, {
+        orderId: typeof data.orderId === "string" ? data.orderId : "",
+      });
+      const ticketId = ticketIdFrom(data);
 
       // Add to notifications store
       useNotificationsStore.getState().push({
@@ -154,7 +182,8 @@ export async function initPushNotifications(): Promise<void> {
         createdAt: Date.now(),
         read: false,
         deeplink,
-        ctaLabel: data.ctaLabel || (data.orderId ? "Track order" : undefined),
+        ctaLabel:
+          data.ctaLabel || (ticketId ? "View ticket" : data.orderId ? "Track order" : undefined),
       });
 
       // Display in-app toast
@@ -162,7 +191,7 @@ export async function initPushNotifications(): Promise<void> {
         description: notification?.body,
         action: deeplink
           ? {
-              label: "View",
+              label: ticketId ? "View ticket" : "View",
               onClick: () => {
                 navigateToDeeplink(deeplink);
               },
@@ -174,8 +203,9 @@ export async function initPushNotifications(): Promise<void> {
     // 4. Notification Action Performed (Tapped from system tray)
     PushNotifications.addListener("pushNotificationActionPerformed", (action: any) => {
       const data = action?.notification?.data || {};
-      const deeplink =
-        data.deeplink || (data.orderId ? `/orders/${data.orderId}/track` : undefined);
+      const deeplink = resolvePushDeeplink(data, {
+        orderId: typeof data.orderId === "string" ? data.orderId : "",
+      });
 
       logger.info("push.actionPerformed", { actionId: action?.actionId, deeplink });
 
