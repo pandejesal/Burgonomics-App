@@ -1,4 +1,5 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
+import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import { auth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
@@ -78,7 +79,7 @@ export const authService = {
 
   async requestOtp(
     phone: string,
-    deliveryMethod: "whatsapp" | "sms" = "sms",
+    deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
     _otpToken?: string,
   ): Promise<ApiResult<RequestOtpResponse>> {
     try {

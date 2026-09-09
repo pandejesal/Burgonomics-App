@@ -8,7 +8,7 @@ import { toast } from "@/shared/components/feedback/AppToaster";
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { useGuestOnly } from "@/features/auth/hooks/useAuthGuard";
 import { useCountdown } from "@/features/auth/hooks/useCountdown";
-import { OTP_LENGTH, validateOtp, COUNTRY_CODE } from "@/features/auth/utils/validators";
+import { OTP_LENGTH, validateOtp, COUNTRY_CODE, DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { authService } from "@/features/auth/services/authService";
 import { APP } from "@/core/constants/app";
@@ -43,12 +43,10 @@ function OtpScreen() {
   const status = useAuthStore((s) => s.status);
   const verifyOtp = useAuthStore((s) => s.verifyOtp);
   const resendOtp = useAuthStore((s) => s.resendOtp);
-  const requestOtpAction = useAuthStore((s) => s.requestOtp);
   const changePhone = useAuthStore((s) => s.changePhone);
   const serverError = useAuthStore((s) => s.error);
 
   const [code, setCode] = useState("");
-  const [isFallbackSwitching, setIsFallbackSwitching] = useState(false);
   const { remaining, isDone, reset } = useCountdown(challenge?.resendAfterSec ?? 30);
 
   const isVerifying = status === "verifying";
@@ -107,27 +105,6 @@ function OtpScreen() {
     }
   };
 
-  const handleFallbackSwitch = async () => {
-    if (!challenge) return;
-    setIsFallbackSwitching(true);
-    const fallbackMethod = challenge.deliveryMethod === "whatsapp" ? "sms" : "whatsapp";
-
-    // Call requestOtp with same phone, new deliveryMethod, and current otpToken for backend reuse decryption
-    const res = await requestOtpAction(challenge.phone, fallbackMethod, challenge.otpToken);
-    setIsFallbackSwitching(false);
-
-    if (res.ok) {
-      reset();
-      setCode("");
-      toast.success(`Requested delivery via ${fallbackMethod === "whatsapp" ? "WhatsApp" : "SMS"}`);
-    } else {
-      toast.error(
-        res.error ??
-          `Couldn't send code via ${fallbackMethod === "whatsapp" ? "WhatsApp" : "SMS"}.`,
-      );
-    }
-  };
-
   const onChangeNumber = () => {
     changePhone();
     void navigate({
@@ -153,7 +130,7 @@ function OtpScreen() {
           <Text variant="bodyMedium" tone="secondary">
             We sent a {OTP_LENGTH}-digit code via{" "}
             <span className="font-semibold text-text-primary capitalize">
-              {challenge.deliveryMethod || "SMS"}
+                {challenge.deliveryMethod || DEFAULT_DELIVERY_METHOD}
             </span>{" "}
             to{" "}
             <span className="text-text-primary font-medium">

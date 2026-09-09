@@ -10,6 +10,7 @@ import { useAuthStore } from "@/features/auth/state/authStore";
 import { useGuestOnly } from "@/features/auth/hooks/useAuthGuard";
 import {
   COUNTRY_CODE,
+  DEFAULT_DELIVERY_METHOD,
   PHONE_LENGTH,
   sanitizePhone,
   validatePhone,
@@ -53,7 +54,7 @@ function LoginScreen() {
   const clearError = useAuthStore((s) => s.clearError);
 
   const [phone, setPhone] = useState("");
-  const deliveryMethod = "sms";
+  const deliveryMethod = DEFAULT_DELIVERY_METHOD;
   const [touched, setTouched] = useState(false);
   const validation = useMemo(() => validatePhone(phone), [phone]);
   const isBusy = status === "authenticating";
@@ -72,7 +73,8 @@ function LoginScreen() {
     clearError();
     const res = await requestOtp(sanitizePhone(phone), deliveryMethod);
     if (res.ok) {
-      toast.success(`OTP sent via SMS to +91 ${phone}`);
+      const channelLabel = deliveryMethod === "whatsapp" ? "WhatsApp" : "SMS";
+      toast.success(`OTP sent via ${channelLabel} to +91 ${phone}`);
 
       void navigate({
         to: "/auth/otp",
