@@ -1,10 +1,11 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, Phone, MessageSquare, Receipt, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, Receipt, ChevronDown, ChevronUp } from "lucide-react";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { FailureState } from "@/shared/components/feedback/FailureState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { HapticService } from "@/core/services/haptics";
 import { formatINR } from "@/core/utils/format";
@@ -41,29 +42,61 @@ function TrackOrderPage() {
   const cachedOrder = useOrdersStore(selectOrderById(orderId));
   const [order, setOrder] = React.useState<Order | null>(cachedOrder);
   const [loadingOrder, setLoadingOrder] = React.useState(!cachedOrder);
+  const [orderError, setOrderError] = React.useState<string | null>(null);
   const [receiptOpen, setReceiptOpen] = React.useState(false);
 
   const trackingHook = useOrderTracking(hydrated ? orderId : null);
   const trackingState = usePorterLiveTracking(order, trackingHook.snapshot);
 
+  const loadOrder = React.useCallback(async () => {
+    if (!hydrated) return;
+    setLoadingOrder(true);
+    setOrderError(null);
+    try {
+      const res = await orderRepository.getOrder(orderId);
+      if (res.success) {
+        setOrder(res.data);
+      } else {
+        // A backend/network failure is NOT "not found" — surface a retry.
+        setOrderError(res.error.message);
+      }
+    } catch (err) {
+      setOrderError(err instanceof Error ? err.message : "Could not load this order.");
+    } finally {
+      setLoadingOrder(false);
+    }
+  }, [hydrated, orderId]);
+
   React.useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
-    void orderRepository
-      .getOrder(orderId)
-      .then((res) => {
+    void (async () => {
+      setLoadingOrder(true);
+      setOrderError(null);
+      try {
+        const res = await orderRepository.getOrder(orderId);
         if (cancelled) return;
-        if (res.success) setOrder(res.data);
-        setLoadingOrder(false);
-      })
-      .catch(() => {
-        // Rejection must end loading — otherwise the skeleton spins forever.
+        if (res.success) {
+          setOrder(res.data);
+        } else {
+          setOrderError(res.error.message);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setOrderError(err instanceof Error ? err.message : "Could not load this order.");
+      } finally {
         if (!cancelled) setLoadingOrder(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, [hydrated, orderId]);
+
+  const handleRetry = React.useCallback(() => {
+    void loadOrder();
+    void trackingHook.refresh();
+  }, [loadOrder, trackingHook.refresh]);
 
   React.useEffect(() => {
     if (!order || !trackingHook.snapshot) return;
@@ -74,6 +107,24 @@ function TrackOrderPage() {
 
   if (!hydrated || loadingOrder) return <TrackSkeleton />;
 
+  // A backend/network failure loading the order is NOT "not found" — it
+  // must surface a retry UI so the user can recover without leaving.
+  if (orderError) {
+    return (
+      <ProtectedRoute>
+        <AppShell title="Track order" backTo="/orders" showTabs={false} showTopBar>
+          <FailureState
+            title="Couldn't load this order"
+            message={orderError}
+            onRetry={() => void handleRetry()}
+          />
+        </AppShell>
+      </ProtectedRoute>
+    );
+  }
+
+  // Only a confirmed empty result (order genuinely does not exist) is a
+  // real "not found" — never a network/backend failure.
   if (!order) {
     return (
       <ProtectedRoute>
@@ -83,6 +134,22 @@ function TrackOrderPage() {
             description="We couldn't locate this order."
             actionLabel="View all orders"
             onAction={() => navigate({ to: "/orders" })}
+          />
+        </AppShell>
+      </ProtectedRoute>
+    );
+  }
+
+  // Tracking subscription failed (network/backend) — surface a retry UI
+  // instead of silently showing a stale or empty tracker.
+  if (trackingHook.status === "error") {
+    return (
+      <ProtectedRoute>
+        <AppShell title={`Order #${order.shortCode || order.id.slice(-6).toUpperCase()}`} backTo="/orders" showTabs={false} showTopBar>
+          <FailureState
+            title="Live tracking unavailable"
+            message={trackingHook.error ?? "We couldn't refresh your order status."}
+            onRetry={() => void handleRetry()}
           />
         </AppShell>
       </ProtectedRoute>

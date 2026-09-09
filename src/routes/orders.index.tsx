@@ -73,9 +73,15 @@ function OrderHistoryPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void orderRepository
-      .listOrders({ bucket, sort, search, page: 1, pageSize: PAGE_SIZE })
-      .then((res) => {
+    void (async () => {
+      try {
+        const res = await orderRepository.listOrders({
+          bucket,
+          sort,
+          search,
+          page: 1,
+          pageSize: PAGE_SIZE,
+        });
         if (cancelled) return;
         if (res.success) {
           setOrders(res.data.items);
@@ -84,8 +90,13 @@ function OrderHistoryPage() {
         } else {
           setError(res.error.message);
         }
-        setLoading(false);
-      });
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Could not load your orders.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -95,39 +106,51 @@ function OrderHistoryPage() {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     const next = page + 1;
-    const res = await orderRepository.listOrders({
-      bucket,
-      sort,
-      search,
-      page: next,
-      pageSize: PAGE_SIZE,
-    });
-    if (res.success) {
-      setOrders((prev) => [...prev, ...res.data.items]);
-      setHasMore(res.data.hasMore);
-      setPage(next);
+    try {
+      const res = await orderRepository.listOrders({
+        bucket,
+        sort,
+        search,
+        page: next,
+        pageSize: PAGE_SIZE,
+      });
+      if (res.success) {
+        setOrders((prev) => [...prev, ...res.data.items]);
+        setHasMore(res.data.hasMore);
+        setPage(next);
+      } else {
+        setError(res.error.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load more orders.");
+    } finally {
+      setLoadingMore(false);
     }
-    setLoadingMore(false);
   };
 
   const handleRefresh = async () => {
     setLoading(true);
     setError(null);
-    const res = await orderRepository.listOrders({
-      bucket,
-      sort,
-      search,
-      page: 1,
-      pageSize: PAGE_SIZE,
-    });
-    if (res.success) {
-      setOrders(res.data.items);
-      setHasMore(res.data.hasMore);
-      setPage(1);
-    } else {
-      setError(res.error.message);
+    try {
+      const res = await orderRepository.listOrders({
+        bucket,
+        sort,
+        search,
+        page: 1,
+        pageSize: PAGE_SIZE,
+      });
+      if (res.success) {
+        setOrders(res.data.items);
+        setHasMore(res.data.hasMore);
+        setPage(1);
+      } else {
+        setError(res.error.message);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not refresh your orders.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -220,6 +243,14 @@ function OrderHistoryPage() {
               <Text variant="bodyMedium" tone="error">
                 {error}
               </Text>
+              <button
+                type="button"
+                onClick={() => void handleRefresh()}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-error/40 px-3 py-1.5 text-xs font-bold text-error hover:bg-error/10 cursor-pointer"
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                Retry
+              </button>
             </div>
           )}
 

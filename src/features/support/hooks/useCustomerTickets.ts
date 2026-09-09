@@ -71,7 +71,15 @@ export function useCustomerTickets() {
   const [tickets, setTickets] = useState<CustomerTicket[]>(() => {
     try {
       const stored = localStorage.getItem("burgonomics_customer_tickets");
-      return stored ? JSON.parse(stored) : INITIAL_MOCK_TICKETS;
+      if (!stored) return INITIAL_MOCK_TICKETS;
+      const parsed = JSON.parse(stored);
+      // Cache-shape guard: a corrupt / non-array payload must not poison
+      // the hook. Clear the bad key so the next read starts clean.
+      if (!Array.isArray(parsed)) {
+        localStorage.removeItem("burgonomics_customer_tickets");
+        return INITIAL_MOCK_TICKETS;
+      }
+      return parsed;
     } catch {
       return INITIAL_MOCK_TICKETS;
     }

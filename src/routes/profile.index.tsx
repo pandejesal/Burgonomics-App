@@ -63,18 +63,11 @@ function Page() {
     void navigate({ to: "/home", replace: true });
   };
 
-  const activeProfile =
-    profile ??
-    (isAuth && authUser
-      ? {
-          id: authUser.id,
-          phone: authUser.phone,
-          fullName: authUser.name ?? "Burger Lover",
-          email: `${authUser.phone}@burgonomics.in`,
-          membershipTier: "Gold",
-          createdAt: new Date().toISOString(),
-        }
-      : null);
+  // Render only what the repository-backed store actually holds. No
+  // fabricated membership tier / email / createdAt fallback — if the
+  // backend (or its local cache) has no profile, we render the honest
+  // empty state below instead of inventing data.
+  const activeProfile = profile;
 
   // Guest — pre-hydration we still render the guest view (safe default).
   if (!hydrated || !isAuth || !activeProfile) {

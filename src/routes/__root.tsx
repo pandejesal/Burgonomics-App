@@ -12,6 +12,41 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportAppError } from "../lib/error-reporting";
 import { AppToaster } from "@/shared/components/feedback/AppToaster";
+
+/**
+ * Route-context error sink — forwards unhandled browser errors to the
+ * existing error-reporting pipeline with the current route path.
+ * Uses sendBeacon when available for best-effort delivery on page unload;
+ * falls back to console.error when sendBeacon is unavailable or blocked.
+ */
+function reportErrorToSink(error: unknown, routeContext: string) {
+  reportAppError(error, {
+    boundary: "window_event_listener",
+    routeContext,
+    mechanism: error instanceof PromiseRejectionEvent ? "unhandledrejection" : "onerror",
+  });
+  // Best-effort beacon (no secrets, no PII — error.message only)
+  try {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : String(error);
+    const payload = JSON.stringify({
+      type: "browser_error",
+      message,
+      route: routeContext,
+      ts: new Date().toISOString(),
+    });
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      navigator.sendBeacon("/api/error-report", payload);
+    }
+  } catch {
+    // Non-fatal: if beacon fails, console.error is the last resort
+    console.error("[error-sink] beacon failed", error);
+  }
+}
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { useCartStore } from "@/features/cart/state/cartStore";
@@ -219,6 +254,34 @@ function RootComponent() {
         profileRepository.hydrateFromAuth(state.user);
       }
     });
+  }, []);
+
+  // Forward unhandled promise rejections + window errors to the report sink
+  // with the current route path so async failures are never silently lost.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      reportErrorToSink(reason, window.location.pathname);
+      logger.error("window.unhandledrejection", reason, {
+        message: reason instanceof Error ? reason.message : String(reason),
+      });
+    };
+
+    const handleWindowError = (event: ErrorEvent) => {
+      reportErrorToSink(event.error ?? event.message, window.location.pathname);
+      logger.error("window.error", event.error ?? event.message, {
+        message: event.message,
+      });
+    };
+
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    window.addEventListener("error", handleWindowError);
+    return () => {
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      window.removeEventListener("error", handleWindowError);
+    };
   }, []);
 
   useOnlineStatus();

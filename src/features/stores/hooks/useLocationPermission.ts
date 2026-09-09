@@ -100,30 +100,73 @@ async function requestBrowser(): Promise<{
   });
 }
 
+const CACHE_KEY = "burg.cached_coords";
+
+interface InitialLocationState {
+  status: PermissionStatus;
+  coords: Coords | null;
+  error: string | null;
+}
+
+/**
+ * Read the cached coordinates once at mount.
+ *
+ * A cached value is NEVER permission: it only hydrates coordinates while
+ * the status stays "idle" until a real OS/browser grant resolves.
+ * A corrupt (unparseable or wrong-shaped) payload is purged and reported
+ * as "denied" with null coords so it can never poison the hook.
+ */
+function readInitialLocationState(): InitialLocationState {
+  const idle: InitialLocationState = { status: "idle", coords: null, error: null };
+  if (typeof window === "undefined") return idle;
+  let saved: string | null = null;
+  try {
+    saved = window.localStorage.getItem(CACHE_KEY);
+  } catch {
+    return idle;
+  }
+  if (!saved) return idle;
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as Coords).lat === "number" &&
+      typeof (parsed as Coords).lng === "number" &&
+      Number.isFinite((parsed as Coords).lat) &&
+      Number.isFinite((parsed as Coords).lng)
+    ) {
+      return {
+        status: "idle",
+        coords: { lat: (parsed as Coords).lat, lng: (parsed as Coords).lng },
+        error: null,
+      };
+    }
+  } catch {
+    // Unparseable — fall through to purge below.
+  }
+  // Corrupt or wrong-shaped payload: clear the bad key so the next read
+  // starts clean, and surface denied + null (never "granted").
+  try {
+    window.localStorage.removeItem(CACHE_KEY);
+  } catch {
+    // ignore storage errors
+  }
+  return {
+    status: "denied",
+    coords: null,
+    error: "Saved location was invalid and has been cleared.",
+  };
+}
+
 export function useLocationPermission() {
-  const [status, setStatus] = useState<PermissionStatus>(() => {
-    if (typeof window !== "undefined") {
-      const saved = window.localStorage.getItem("burg.cached_coords");
-      if (saved) return "granted";
-    }
-    return "idle";
-  });
+  // One-shot initial read: cached coords hydrate position but never imply
+  // permission; a corrupt payload surfaces denied + null.
+  const [initial] = useState<InitialLocationState>(readInitialLocationState);
+  const [status, setStatus] = useState<PermissionStatus>(initial.status);
+  const [coords, setCoords] = useState<Coords | null>(initial.coords);
 
-  const [coords, setCoords] = useState<Coords | null>(() => {
-    if (typeof window !== "undefined") {
-      const saved = window.localStorage.getItem("burg.cached_coords");
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          return null;
-        }
-      }
-    }
-    return null;
-  });
-
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initial.error);
   const [isLoading, setIsLoading] = useState(false);
 
   // Background continuous watching when permission is granted.
@@ -160,7 +203,7 @@ export function useLocationPermission() {
                     lng: position.coords.longitude,
                   };
                   setCoords(newCoords);
-                  window.localStorage.setItem("burg.cached_coords", JSON.stringify(newCoords));
+                  window.localStorage.setItem(CACHE_KEY, JSON.stringify(newCoords));
                 }
               },
             );
@@ -173,7 +216,7 @@ export function useLocationPermission() {
                   lng: position.coords.longitude,
                 };
                 setCoords(newCoords);
-                window.localStorage.setItem("burg.cached_coords", JSON.stringify(newCoords));
+                window.localStorage.setItem(CACHE_KEY, JSON.stringify(newCoords));
               },
               (err) => {
                 setError(err?.message || "Location watch failed.");
@@ -227,7 +270,7 @@ export function useLocationPermission() {
 
     if (result.status === "granted" && result.coords) {
       setCoords(result.coords);
-      window.localStorage.setItem("burg.cached_coords", JSON.stringify(result.coords));
+      window.localStorage.setItem(CACHE_KEY, JSON.stringify(result.coords));
       setError(null);
     } else {
       setError(result.error || "Unable to acquire location.");

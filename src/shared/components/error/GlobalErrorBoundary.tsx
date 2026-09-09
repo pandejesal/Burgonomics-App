@@ -305,6 +305,52 @@ export class GlobalErrorBoundary extends Component<
     }
   }
 
+  componentDidMount(): void {
+    if (typeof window === "undefined") return;
+
+    // Forward unhandled promise rejections + window errors to the report
+    // sink with the current route path. Cleaned up on unmount so the
+    // listeners never leak across route changes.
+    this.handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      reportAppError(reason, {
+        boundary: "GlobalErrorBoundary.window",
+        route: window.location.pathname,
+        mechanism: "unhandledrejection",
+      });
+      logger.error("GlobalErrorBoundary.unhandledrejection", reason, {
+        message: reason instanceof Error ? reason.message : String(reason),
+      });
+    };
+
+    this.handleWindowError = (event: ErrorEvent) => {
+      reportAppError(event.error ?? event.message, {
+        boundary: "GlobalErrorBoundary.window",
+        route: window.location.pathname,
+        mechanism: "onerror",
+      });
+      logger.error("GlobalErrorBoundary.window_error", event.error ?? event.message, {
+        message: event.message,
+      });
+    };
+
+    window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
+    window.addEventListener("error", this.handleWindowError);
+  }
+
+  componentWillUnmount(): void {
+    if (typeof window === "undefined") return;
+    if (this.handleUnhandledRejection) {
+      window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
+    }
+    if (this.handleWindowError) {
+      window.removeEventListener("error", this.handleWindowError);
+    }
+  }
+
+  private handleUnhandledRejection?: (event: PromiseRejectionEvent) => void;
+  private handleWindowError?: (event: ErrorEvent) => void;
+
   resetErrorBoundary = (): void => {
     if (this.props.onReset) {
       this.props.onReset();

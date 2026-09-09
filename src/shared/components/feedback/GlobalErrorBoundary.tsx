@@ -2,6 +2,7 @@ import * as React from "react";
 import { RefreshCw, RotateCcw, AlertTriangle } from "lucide-react";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { Text } from "@/shared/components/common/Text";
+import { reportAppError } from "@/lib/error-reporting";
 
 interface Props {
   children: React.ReactNode;
@@ -24,7 +25,49 @@ export class GlobalErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("[BURGONOMICS] Global Error Boundary caught error:", error, errorInfo);
+    reportAppError(error, {
+      boundary: "GlobalErrorBoundary.feedback",
+      componentStack: errorInfo.componentStack,
+    });
   }
+
+  componentDidMount(): void {
+    if (typeof window === "undefined") return;
+
+    // Forward unhandled promise rejections + window errors to the report
+    // sink with the current route path. Cleaned up on unmount.
+    this.handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      reportAppError(event.reason, {
+        boundary: "GlobalErrorBoundary.feedback.window",
+        route: window.location.pathname,
+        mechanism: "unhandledrejection",
+      });
+    };
+
+    this.handleWindowError = (event: ErrorEvent) => {
+      reportAppError(event.error ?? event.message, {
+        boundary: "GlobalErrorBoundary.feedback.window",
+        route: window.location.pathname,
+        mechanism: "onerror",
+      });
+    };
+
+    window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
+    window.addEventListener("error", this.handleWindowError);
+  }
+
+  componentWillUnmount(): void {
+    if (typeof window === "undefined") return;
+    if (this.handleUnhandledRejection) {
+      window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
+    }
+    if (this.handleWindowError) {
+      window.removeEventListener("error", this.handleWindowError);
+    }
+  }
+
+  private handleUnhandledRejection?: (event: PromiseRejectionEvent) => void;
+  private handleWindowError?: (event: ErrorEvent) => void;
 
   handleReload = () => {
     window.location.reload();

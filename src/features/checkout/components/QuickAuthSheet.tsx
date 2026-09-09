@@ -4,7 +4,7 @@ import { X, ShieldCheck, Sparkles, ArrowRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/state/authStore";
-import { sanitizePhone, validateOtp, validatePhone } from "@/features/auth/utils/validators";
+import { DEFAULT_DELIVERY_METHOD, sanitizePhone, validateOtp, validatePhone } from "@/features/auth/utils/validators";
 import { HapticService } from "@/core/services/haptics";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 
@@ -56,14 +56,21 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await requestOtp(`+91${sanitizePhone(phone)}`, "whatsapp");
-    setBusy(false);
+    try {
+      const res = await requestOtp(`+91${sanitizePhone(phone)}`, DEFAULT_DELIVERY_METHOD);
 
-    if (res.ok) {
-      setStep("otp");
-      toast.success("OTP sent to your number!");
-    } else {
-      toast.error(res.error ?? "Failed to send OTP. Please try again.");
+      if (res.ok) {
+        setStep("otp");
+        toast.success("OTP sent to your number!");
+      } else {
+        toast.error(res.error ?? "Failed to send OTP. Please try again.");
+      }
+    } catch {
+      // A thrown rejection must surface a retryable toast, never leave the
+      // sheet stuck in the busy state.
+      toast.error("Failed to send OTP. Please try again.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -78,25 +85,32 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await verifyOtp(otp);
-    setBusy(false);
+    try {
+      const res = await verifyOtp(otp);
 
-    if (res.ok) {
-      // Signup bonus: credit 50 Loyalty Points once per device.
-      try {
-        const flag = localStorage.getItem("burgonomics.loyalty.signupBonus");
-        if (!flag) {
-          useLoyaltyStore.getState().earn(50);
-          localStorage.setItem("burgonomics.loyalty.signupBonus", "1");
+      if (res.ok) {
+        // Signup bonus: credit 50 Loyalty Points once per device.
+        try {
+          const flag = localStorage.getItem("burgonomics.loyalty.signupBonus");
+          if (!flag) {
+            useLoyaltyStore.getState().earn(50);
+            localStorage.setItem("burgonomics.loyalty.signupBonus", "1");
+          }
+        } catch {
+          // ignore storage errors
         }
-      } catch {
-        // ignore storage errors
+        toast.success("Verified successfully!");
+        onSuccess();
+        onClose();
+      } else {
+        toast.error(res.error ?? "Invalid OTP code. Please try again.");
       }
-      toast.success("Verified successfully!");
-      onSuccess();
-      onClose();
-    } else {
-      toast.error(res.error ?? "Invalid OTP code. Please try again.");
+    } catch {
+      // A thrown rejection must surface a retryable toast, never leave the
+      // sheet stuck in the busy state.
+      toast.error("Verification failed. Please try again.");
+    } finally {
+      setBusy(false);
     }
   };
 
