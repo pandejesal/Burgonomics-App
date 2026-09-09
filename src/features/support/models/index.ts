@@ -29,12 +29,36 @@ export interface SupportTicketInput {
   message: string;
   category?: IssueCategoryId;
   orderId?: string;
+  /** Storage-backed evidence URLs (https). Never base64 data-URLs. */
+  photoUrls?: string[];
 }
 
 export interface SupportTicket extends SupportTicketInput {
   id: string;
   createdAt: number;
   status: "open" | "in_progress" | "resolved";
+  /** Backend ticket number when the server assigns one. */
+  ticketNumber?: string;
+  /**
+   * Backend-provided response SLA in minutes. Absent when the backend did
+   * not supply one — callers must gate ALL SLA copy on this field.
+   */
+  slaMinutes?: number;
+}
+
+/**
+ * Minimal backend ticket projection (Batch-5 S1 contract). Parsed
+ * defensively in supportService — extra fields are ignored, missing
+ * fields fall back to client-known values.
+ */
+export interface BackendTicket {
+  id?: string;
+  ticketNumber?: string;
+  ticket_number?: string;
+  status?: string;
+  createdAt?: string | number;
+  slaMinutes?: number;
+  sla_minutes?: number;
 }
 
 export interface FeedbackInput {

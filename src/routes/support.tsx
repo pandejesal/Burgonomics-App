@@ -21,6 +21,7 @@ import { TextField } from "@/shared/components/common/TextField";
 import { Text } from "@/shared/components/common/Text";
 import { BottomSheet } from "@/shared/components/common/BottomSheet";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { FailureState } from "@/shared/components/feedback/FailureState";
 import { cn } from "@/lib/utils";
 import { supportRepository } from "@/features/support/repositories/SupportRepository";
 import { useCustomerTickets } from "@/features/support/hooks/useCustomerTickets";
@@ -76,7 +77,18 @@ function Page() {
   const [openTicket, setOpenTicket] = React.useState(!!paymentPrefill);
   const [openFeedback, setOpenFeedback] = React.useState(false);
 
-  const { tickets, createTicket, isSubmitting } = useCustomerTickets();
+  const { tickets, createTicket, isSubmitting, isLoading, listError, refresh } =
+    useCustomerTickets();
+  // SLA copy is gated on the backend field: the first server-provided
+  // response SLA across tickets. No backend SLA → no SLA promises anywhere.
+  const slaMinutes = React.useMemo(() => {
+    for (const t of tickets) {
+      if (typeof t.slaMinutes === "number" && Number.isFinite(t.slaMinutes) && t.slaMinutes > 0) {
+        return t.slaMinutes;
+      }
+    }
+    return null;
+  }, [tickets]);
   // NOTE: never subscribe with selectAllOrders here — it derives a fresh
   // array per snapshot, which never stabilizes getSnapshot and loops
   // React into error #185. Subscribe to the stable `ids` ref instead.
@@ -104,7 +116,14 @@ function Page() {
     );
   }, [faqs, faqQuery]);
 
-  const handleTicketSubmit = async (payload: any) => {
+  const handleTicketSubmit = async (payload: {
+    orderId?: string;
+    orderShortCode?: string;
+    category: Parameters<typeof createTicket>[0]["category"];
+    description: string;
+    photos: string[];
+    photoFiles: File[];
+  }) => {
     const res = await createTicket(payload);
     if (res.success) {
       setOpenTicket(false);
@@ -114,19 +133,28 @@ function Page() {
   return (
     <AppShell title="Help & Support" backTo="/profile" showTabs showTopBar>
       <div className="mx-auto max-w-[560px] space-y-5 px-4 py-4 select-none pb-20">
-        {/* Support & SLA Guarantee Banner */}
+        {/* Support banner — SLA badge/copy only when the backend provided one */}
         <div className="p-4 rounded-3xl bg-[#0E4825] border border-emerald-500/40 text-white space-y-2 shadow-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 font-black text-sm">
               <ShieldCheck className="w-5 h-5 text-emerald-300" />
               <span>Burgonomics Customer Care</span>
             </div>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 font-bold text-[10px] uppercase">
-              15-Min SLA
-            </span>
+            {slaMinutes !== null && (
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 font-bold text-[10px] uppercase">
+                {slaMinutes}-Min SLA
+              </span>
+            )}
           </div>
           <p className="text-xs text-emerald-100 leading-relaxed">
-            Need help with your meal or delivery? Store managers respond in &lt;15 mins. Tickets auto-escalate to Regional Operations if breached.
+            {slaMinutes !== null ? (
+              <>
+                Need help with your meal or delivery? Store managers respond in &lt;{slaMinutes}{" "}
+                mins. Tickets auto-escalate to Regional Operations if breached.
+              </>
+            ) : (
+              "Need help with your meal or delivery? Raise a ticket and track the store team's response below."
+            )}
           </p>
           <button
             type="button"
@@ -138,17 +166,27 @@ function Page() {
           </button>
         </div>
 
-        {/* Live Support Tickets Accordion */}
+        {/* Live Support Tickets Accordion — server list, honest [] empty state */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
             <Text variant="titleMedium" className="font-bold">
               Your Active & Past Tickets ({tickets.length})
             </Text>
           </div>
-          <TicketListAccordion
-            tickets={tickets}
-            onOpenNewTicket={() => setOpenTicket(true)}
-          />
+          {isLoading && tickets.length === 0 ? (
+            <div className="h-24 animate-pulse rounded-2xl bg-neutral-900" aria-busy="true" aria-label="Loading tickets" />
+          ) : listError && tickets.length === 0 ? (
+            <FailureState
+              title="We couldn't load your tickets"
+              message={listError}
+              onRetry={() => void refresh()}
+            />
+          ) : (
+            <TicketListAccordion
+              tickets={tickets}
+              onOpenNewTicket={() => setOpenTicket(true)}
+            />
+          )}
         </section>
 
         {/* Direct Contact Channels */}
@@ -238,12 +276,17 @@ function Page() {
         open={openTicket}
         onOpenChange={setOpenTicket}
         title="Report an Issue"
-        description="Our store manager will respond within 15 minutes."
+        description={
+          slaMinutes !== null
+            ? `Our store manager will respond within ${slaMinutes} minutes.`
+            : "Describe the issue and our store team will follow up here."
+        }
       >
         <CreateTicketForm
           key={paymentPrefill ? `pay-${paymentPrefill.paymentId}` : "blank"}
           orders={pastOrders}
           isSubmitting={isSubmitting}
+          slaMinutes={slaMinutes}
           onSubmit={handleTicketSubmit}
           onCancel={() => setOpenTicket(false)}
           initialCategory={paymentPrefill ? "PAYMENT_ISSUE" : undefined}
@@ -367,21 +410,24 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
       return;
     }
     setBusy(true);
-    const res = await supportRepository.submitFeedback({
-      rating,
-      comment: comment.trim() || undefined,
-      suggestion: suggestion.trim() || undefined,
-    });
-    setBusy(false);
-    if (!res.success) {
-      setError(res.error.message);
-      return;
+    try {
+      const res = await supportRepository.submitFeedback({
+        rating,
+        comment: comment.trim() || undefined,
+        suggestion: suggestion.trim() || undefined,
+      });
+      if (!res.success) {
+        setError(res.error.message);
+        return;
+      }
+      toast.success("Thanks for the feedback!");
+      setRating(0);
+      setComment("");
+      setSuggestion("");
+      onSubmitted();
+    } finally {
+      setBusy(false);
     }
-    toast.success("Thanks for the feedback!");
-    setRating(0);
-    setComment("");
-    setSuggestion("");
-    onSubmitted();
   };
 
   return (

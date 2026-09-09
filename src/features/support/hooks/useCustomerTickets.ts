@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import { supportService } from "@/features/support/services/supportService";
+import type { IssueCategoryId } from "@/features/support/models";
 
 export type TicketCategory =
   | "LATE_DELIVERY"
@@ -19,6 +21,7 @@ export interface CustomerTicket {
   category: TicketCategory;
   categoryLabel: string;
   description: string;
+  /** Storage-backed evidence URLs (https only — never base64 data-URLs). */
   photos: string[];
   status: TicketStatus;
   priority: "normal" | "urgent";
@@ -27,6 +30,11 @@ export interface CustomerTicket {
   managerResponse?: string;
   createdAt: string;
   resolvedAt?: string;
+  /**
+   * Backend-provided response SLA in minutes. Null when the backend did
+   * not supply one — UI gates ALL SLA copy on this field.
+   */
+  slaMinutes?: number | null;
 }
 
 export interface CreateTicketParams {
@@ -34,7 +42,10 @@ export interface CreateTicketParams {
   orderShortCode?: string;
   category: TicketCategory;
   description: string;
+  /** Already-uploaded remote URLs (https). Data-URLs are dropped, never stored. */
   photos?: string[];
+  /** Local files to upload to Storage before the ticket POST. */
+  photoFiles?: File[];
   branchId?: string;
 }
 
@@ -47,53 +58,177 @@ const CATEGORY_LABELS: Record<TicketCategory, string> = {
   OTHER: "General Query or Feedback",
 };
 
-const INITIAL_MOCK_TICKETS: CustomerTicket[] = [
-  {
-    id: "tkt_001",
-    ticketNumber: "TKT-84920",
-    orderId: "ord_102",
-    orderShortCode: "BG-9921",
-    category: "FOOD_QUALITY",
-    categoryLabel: "Food Quality (Cold/Soggy)",
-    description: "Burger arrived cold due to rain delay. Requesting replacement or refund credit.",
-    photos: [],
-    status: "RESOLVED",
-    priority: "normal",
-    escalationLevel: 1,
-    branchId: "branch_ahmedabad_01",
-    managerResponse: "Credited 100 Loyalty Points to your wallet as compensation. Apologies for the delay!",
-    createdAt: new Date(Date.now() - 3600 * 1000 * 24).toISOString(),
-    resolvedAt: new Date(Date.now() - 3600 * 1000 * 22).toISOString(),
-  },
-];
+const TICKET_CATEGORY_TO_ISSUE: Record<TicketCategory, IssueCategoryId> = {
+  LATE_DELIVERY: "delivery",
+  MISSING_ITEM: "order",
+  FOOD_QUALITY: "order",
+  WRONG_ORDER: "order",
+  PAYMENT_ISSUE: "payment",
+  OTHER: "other",
+};
+
+const STORAGE_KEY = "burgonomics_customer_tickets";
+const MAX_CACHED_TICKETS = 20;
+
+/** Remote evidence URLs only — base64 data-URLs are never valid photo refs. */
+export function isRemotePhotoUrl(url: unknown): url is string {
+  return typeof url === "string" && /^https:\/\//.test(url);
+}
+
+function isValidCachedTicket(v: unknown): v is CustomerTicket {
+  if (!v || typeof v !== "object") return false;
+  const t = v as Record<string, unknown>;
+  return (
+    typeof t.id === "string" &&
+    typeof t.ticketNumber === "string" &&
+    typeof t.categoryLabel === "string" &&
+    typeof t.description === "string" &&
+    typeof t.createdAt === "string" &&
+    (t.status === "OPEN" ||
+      t.status === "IN_PROGRESS" ||
+      t.status === "RESOLVED" ||
+      t.status === "ESCALATED")
+  );
+}
+
+/**
+ * Sanitize a cached ticket list: keep only valid shapes, drop base64
+ * photo payloads (quota + honesty), cap length. Exported for tests.
+ */
+export function sanitizeCachedTickets(parsed: unknown): CustomerTicket[] {
+  if (!Array.isArray(parsed)) return [];
+  return (parsed as unknown[])
+    .filter(isValidCachedTicket)
+    .map((t) => ({
+      ...t,
+      photos: Array.isArray(t.photos) ? t.photos.filter(isRemotePhotoUrl).slice(0, 3) : [],
+      slaMinutes:
+        typeof t.slaMinutes === "number" && Number.isFinite(t.slaMinutes) && t.slaMinutes > 0
+          ? t.slaMinutes
+          : null,
+    }))
+    .slice(0, MAX_CACHED_TICKETS);
+}
+
+function readCachedTickets(): CustomerTicket[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    // No seed: fresh installs start with []. The cache holds only
+    // server-confirmed tickets from prior sessions on this device.
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    // Cache-shape guard: a corrupt / non-array payload must not poison
+    // the hook. Clear the bad key so the next read starts clean.
+    if (!Array.isArray(parsed)) {
+      localStorage.removeItem(STORAGE_KEY);
+      return [];
+    }
+    return sanitizeCachedTickets(parsed);
+  } catch {
+    return [];
+  }
+}
+
+function persistTickets(tickets: CustomerTicket[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets.slice(0, MAX_CACHED_TICKETS)));
+  } catch (e) {
+    console.warn("Failed to persist tickets:", e);
+  }
+}
 
 export function useCustomerTickets() {
-  const [tickets, setTickets] = useState<CustomerTicket[]>(() => {
-    try {
-      const stored = localStorage.getItem("burgonomics_customer_tickets");
-      if (!stored) return INITIAL_MOCK_TICKETS;
-      const parsed = JSON.parse(stored);
-      // Cache-shape guard: a corrupt / non-array payload must not poison
-      // the hook. Clear the bad key so the next read starts clean.
-      if (!Array.isArray(parsed)) {
-        localStorage.removeItem("burgonomics_customer_tickets");
-        return INITIAL_MOCK_TICKETS;
-      }
-      return parsed;
-    } catch {
-      return INITIAL_MOCK_TICKETS;
-    }
-  });
+  // Server is the source of truth. localStorage is a read-through cache
+  // of the last server-confirmed list for offline reads only.
+  const [tickets, setTickets] = useState<CustomerTicket[]>(readCachedTickets);
+  const [isLoading, setIsLoading] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
+  // Initial server sync: backend list wins; client-known detail (category,
+  // description, photos) is preserved by id for tickets created here.
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    setListError(null);
     try {
-      localStorage.setItem("burgonomics_customer_tickets", JSON.stringify(tickets));
-    } catch (e) {
-      console.warn("Failed to persist tickets:", e);
+      const res = await supportService.listTickets();
+      if (!res.success) {
+        // Offline with no cache is still an honest empty state —
+        // surface the failure so the UI can offer retry.
+        setListError("Could not load tickets. Please try again.");
+        return;
+      }
+      setTickets((prev) => {
+        const prevById = new Map(prev.map((t) => [t.id, t]));
+        const merged: CustomerTicket[] = res.data.map((raw) => {
+          const nested = raw.ticket;
+          const id =
+            nested?.id ?? (typeof raw.id === "string" ? raw.id : `tkt_${Date.now().toString(36)}`);
+          const cached = prevById.get(id);
+          const statusRaw = (nested?.status ?? raw.status ?? "open").toLowerCase();
+          const status: TicketStatus =
+            statusRaw === "resolved" || statusRaw === "closed" || statusRaw === "done"
+              ? "RESOLVED"
+              : statusRaw === "in_progress" || statusRaw === "in-progress"
+                ? "IN_PROGRESS"
+                : "OPEN";
+          const created =
+            nested?.createdAt ?? raw.createdAt ?? raw.created_at ?? cached?.createdAt;
+          const createdAt =
+            typeof created === "number"
+              ? new Date(created).toISOString()
+              : typeof created === "string"
+                ? created
+                : new Date().toISOString();
+          const slaCandidates = [
+            raw.slaMinutes,
+            raw.sla_minutes,
+            raw.responseSlaMinutes,
+            nested?.slaMinutes,
+            nested?.sla_minutes,
+          ];
+          const sla =
+            slaCandidates.find(
+              (c): c is number => typeof c === "number" && Number.isFinite(c) && c > 0,
+            ) ?? null;
+          return {
+            id,
+            ticketNumber:
+              nested?.ticketNumber ??
+              raw.ticketNumber ??
+              raw.ticket_number ??
+              cached?.ticketNumber ??
+              id.toUpperCase(),
+            orderId: cached?.orderId,
+            orderShortCode: cached?.orderShortCode,
+            category: cached?.category ?? "OTHER",
+            categoryLabel: cached?.categoryLabel ?? "Support request",
+            description: cached?.description ?? "",
+            photos: cached?.photos ?? [],
+            status,
+            priority: cached?.priority ?? "normal",
+            escalationLevel: cached?.escalationLevel ?? 1,
+            branchId: cached?.branchId,
+            managerResponse: cached?.managerResponse,
+            createdAt,
+            resolvedAt: status === "RESOLVED" ? (cached?.resolvedAt ?? createdAt) : undefined,
+            slaMinutes: sla,
+          };
+        });
+        persistTickets(merged);
+        return merged;
+      });
+    } catch {
+      setListError("Could not load tickets. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-  }, [tickets]);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const createTicket = useCallback(
     async (params: CreateTicketParams): Promise<{ success: boolean; ticket?: CustomerTicket }> => {
@@ -108,40 +243,87 @@ export function useCustomerTickets() {
 
       setIsSubmitting(true);
       try {
-        const ticketNum = `TKT-${Math.floor(10000 + Math.random() * 90000)}`;
+        // 1. Storage-backed photo evidence — never base64-in-localStorage.
+        // Upload failures fail the evidence step honestly (ticket still
+        // posts without photos rather than inventing URLs).
+        let photoUrls = (params.photos ?? []).filter(isRemotePhotoUrl).slice(0, 3);
+        const files = (params.photoFiles ?? []).slice(0, 3);
+        if (files.length > 0) {
+          const upload = await supportService.uploadEvidence(files, `new_${Date.now()}`);
+          if (upload.success) {
+            photoUrls = [...photoUrls, ...upload.data.filter(isRemotePhotoUrl)].slice(0, 3);
+          } else {
+            toast.error("Photo upload failed — submitting the ticket without photos.");
+          }
+        }
+
+        // 2. Server POST is the ticket creation. No local fabrication.
+        const res = await supportService.submitTicket({
+          subject: CATEGORY_LABELS[params.category],
+          message: params.description.trim(),
+          category: TICKET_CATEGORY_TO_ISSUE[params.category],
+          orderId: params.orderId,
+          photoUrls,
+        });
+        if (!res.success) {
+          toast.error(res.error.message);
+          return { success: false };
+        }
+
+        const server = res.data;
         const newTicket: CustomerTicket = {
-          id: `tkt_${Date.now()}`,
-          ticketNumber: ticketNum,
+          id: server.id,
+          ticketNumber: server.ticketNumber ?? server.id.toUpperCase(),
           orderId: params.orderId,
           orderShortCode: params.orderShortCode || params.orderId?.slice(-6).toUpperCase(),
           category: params.category,
           categoryLabel: CATEGORY_LABELS[params.category],
           description: params.description.trim(),
-          photos: params.photos || [],
-          status: "OPEN",
-          priority: params.category === "PAYMENT_ISSUE" || params.category === "WRONG_ORDER" ? "urgent" : "normal",
+          photos: photoUrls,
+          status: server.status === "resolved" ? "RESOLVED" : server.status === "in_progress" ? "IN_PROGRESS" : "OPEN",
+          priority:
+            params.category === "PAYMENT_ISSUE" || params.category === "WRONG_ORDER"
+              ? "urgent"
+              : "normal",
           escalationLevel: 1,
           branchId: params.branchId || "branch_cg_road",
-          createdAt: new Date().toISOString(),
+          createdAt: new Date(server.createdAt).toISOString(),
+          slaMinutes: server.slaMinutes ?? null,
         };
 
-        setTickets((prev) => [newTicket, ...prev]);
-        toast.success(`Support Ticket #${ticketNum} raised! Our store manager will respond within 15 minutes.`);
+        setTickets((prev) => {
+          const next = [newTicket, ...prev].slice(0, MAX_CACHED_TICKETS);
+          persistTickets(next);
+          return next;
+        });
+        // SLA copy is gated on the backend field — no invented "15 minutes".
+        if (typeof server.slaMinutes === "number" && Number.isFinite(server.slaMinutes)) {
+          toast.success(
+            `Support Ticket #${newTicket.ticketNumber} raised! Our store manager will respond within ${server.slaMinutes} minutes.`,
+          );
+        } else {
+          toast.success(
+            `Support Ticket #${newTicket.ticketNumber} raised! Our store team has been notified.`,
+          );
+        }
         return { success: true, ticket: newTicket };
-      } catch (err) {
+      } catch {
         toast.error("Failed to submit support ticket");
         return { success: false };
       } finally {
         setIsSubmitting(false);
       }
     },
-    []
+    [],
   );
 
   return {
     tickets,
+    isLoading,
+    listError,
     isSubmitting,
     createTicket,
+    refresh,
     categoryLabels: CATEGORY_LABELS,
   };
 }
