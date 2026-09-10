@@ -322,6 +322,3 @@ export const MOCK_STORES: Store[] = [
     petpoojaRestId: "rest_ayodhya",
   },
 ];
-
-/** Default coordinates used when location permission is granted (Burgonomics Navrangpura). */
-export const MOCK_USER_COORDS = { lat: 23.034362, lng: 72.5548094 };
