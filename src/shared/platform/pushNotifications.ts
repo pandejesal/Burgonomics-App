@@ -123,7 +123,7 @@ export async function initPushNotifications(): Promise<void> {
     // 2. Listen for successful registration & device token
     PushNotifications.addListener("registration", async (token: { value: string }) => {
       if (!token?.value) return;
-      logger.info("push.registered", { token: token.value.slice(0, 10) + "..." });
+      logger.info("push.registered", { tokenLength: token.value.length });
       setCachedDeviceToken(token.value);
       await notificationsService.registerDeviceToken(token.value);
     });

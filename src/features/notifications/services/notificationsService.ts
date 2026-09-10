@@ -68,7 +68,7 @@ export const notificationsService = {
         throw new Error(`registerToken HTTP ${res.status}`);
       }
 
-      logger.info("notifications.tokenRegistered", { token: token.slice(0, 10) + "..." });
+      logger.info("notifications.tokenRegistered", { tokenLength: token.length });
       return ok(null);
     } catch (err: any) {
       logger.warn("notifications.registerDeviceTokenError", err);
