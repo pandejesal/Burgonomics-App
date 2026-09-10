@@ -19,8 +19,22 @@ const getCap = (): CapacitorLike | null => {
   return w.Capacitor ?? null;
 };
 
+// True only in production builds. Dependency-free on purpose (platform.ts
+// must stay importable anywhere, incl. SSR) — no appConfig import.
+const isProdBuild = (): boolean => {
+  try {
+    return (import.meta as any)?.env?.PROD === true;
+  } catch {
+    return false;
+  }
+};
+
 export const getPlatform = (): Platform => {
-  if (typeof window !== "undefined") {
+  if (typeof window !== "undefined" && !isProdBuild()) {
+    // Dev/test-only override (?platform=ios). Prod ignores it: the param
+    // otherwise spoofs maps links, push channel setup, and the platform
+    // string sent with token registration. Security gates use isNative()
+    // (Capacitor check below), never this value — still, no spoofing in prod.
     const params = new URLSearchParams(window.location.search);
     const simulated = params.get("platform") || params.get("simulate");
     if (simulated === "ios" || simulated === "android") return simulated;
