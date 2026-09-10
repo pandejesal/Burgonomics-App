@@ -33,30 +33,40 @@ export const notificationsService = {
   },
 
   /**
-   * Registers a native device token in Firestore under `device_tokens/{token}`.
+   * Registers a native device token via the server-owned
+   * POST /notifications/registerToken endpoint (requireAuth).
+   * Direct client writes to `device_tokens/{token}` are denied by
+   * firestore.rules (server-owned) — the old setDoc silently failed and
+   * push never registered. Failures stay warn-level: registration is
+   * retried on next launch via NotificationRepository.
    */
   async registerDeviceToken(token: string): Promise<ApiResult<null>> {
     try {
-      const { db, auth } = await import("@/core/config/firebase");
-      const { doc, setDoc, serverTimestamp } = await import("firebase/firestore");
-
-      const tokenRef = doc(db, "device_tokens", token);
-      await setDoc(
-        tokenRef,
-        {
-          token,
-          platform: getPlatform(),
-          userId: auth.currentUser?.uid || null,
-          pushEnabled: true,
-          preferences: {
-            orders: true,
-            offers: true,
-            announcements: true,
-          },
-          updatedAt: serverTimestamp(),
+      const { appConfig } = await import("@/core/config/env");
+      const { auth } = await import("@/core/config/firebase");
+      const idToken = await auth.currentUser?.getIdToken().catch(() => null);
+      if (!idToken) {
+        logger.warn("notifications.registerDeviceTokenNoAuth");
+        return ok(null);
+      }
+      const paymentsBase = (
+        appConfig.integrations.paymentsApiBaseUrl ||
+        "https://asia-south1-burgonomics-7faa8.cloudfunctions.net/api/payments"
+      ).replace(/\/$/, "");
+      const apiBase = paymentsBase.endsWith("/payments")
+        ? paymentsBase.slice(0, -"/payments".length)
+        : paymentsBase;
+      const res = await fetch(`${apiBase}/notifications/registerToken`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
         },
-        { merge: true },
-      );
+        body: JSON.stringify({ token, platform: getPlatform() }),
+      });
+      if (!res.ok) {
+        throw new Error(`registerToken HTTP ${res.status}`);
+      }
 
       logger.info("notifications.tokenRegistered", { token: token.slice(0, 10) + "..." });
       return ok(null);
