@@ -99,6 +99,10 @@ function PaymentPage() {
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   const [preflightIssue, setPreflightIssue] = React.useState<string | null>(null);
   const [abandonmentOpen, setAbandonmentOpen] = React.useState(false);
+  // Loop 11: synchronous re-entry guard — status flips async, so rapid
+  // double-tap fires startPayment twice (double charge) before the button
+  // shows loading. Reset on every terminal status below.
+  const payInFlight = React.useRef(false);
 
   // Auth guard — send guests to login with return-to-payment.
   React.useEffect(() => {
@@ -122,6 +126,20 @@ function PaymentPage() {
       }
     };
   }, [resetPayment]);
+
+  // Loop 11: release the pay re-entry guard on every terminal status so a
+  // failed/cancelled payment is retryable but never double-fired.
+  const payStatus = usePaymentStore((s) => s.status);
+  React.useEffect(() => {
+    if (
+      payStatus === "idle" ||
+      payStatus === "success" ||
+      payStatus === "failed" ||
+      payStatus === "cancelled"
+    ) {
+      payInFlight.current = false;
+    }
+  }, [payStatus]);
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -154,6 +172,10 @@ function PaymentPage() {
   }
 
   const startPayment = async () => {
+    // Sync re-entry guard: a second tap before status flips must not start
+    // a second payment. (Terminal statuses reset the ref, see effect below.)
+    if (payInFlight.current) return;
+    payInFlight.current = true;
     // Belt-and-braces behind the disabled button: never fire Razorpay offline.
     if (!useAppConfig.getState().isOnline) {
       setPreflightIssue("You are offline. Reconnect to place your order.");

@@ -102,6 +102,10 @@ export function CheckoutPage() {
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   const [busy, setBusy] = React.useState(false);
+  // Loop 11: synchronous re-entry guard — setBusy is async, so rapid
+  // double-tap fires handlePlaceOrder twice (double order creation) before
+  // the disabled button re-renders. Ref flips synchronously: no double fire.
+  const placeOrderInFlight = React.useRef(false);
   // Offline gate: the banner promises checkout is disabled offline — enforce
   // it. Tapping PAY offline used to fire Razorpay into a generic failure.
   const isOnline = useAppConfig((s) => s.isOnline);
@@ -232,12 +236,16 @@ export function CheckoutPage() {
       }
     }
 
+    // Sync re-entry guard (see declaration): a second tap before re-render
+    // must not create a second order.
+    if (placeOrderInFlight.current) return;
     setBusy(true);
-
+    placeOrderInFlight.current = true;
     // 1. Cart preflight validation
     const validation = await cartRepository.validateCart();
     if (!validation.success || !validation.data.valid) {
       setBusy(false);
+      placeOrderInFlight.current = false;
       const msg = validation.success
         ? (validation.data.issues[0]?.message ?? "Some items in your cart are no longer available.")
         : validation.error.message;
@@ -259,6 +267,7 @@ export function CheckoutPage() {
         });
 
         setBusy(false);
+      placeOrderInFlight.current = false;
         if (!created.success) {
           setValidationError(created.error.message);
           toast.error("Could not place order", { description: created.error.message });
@@ -278,6 +287,7 @@ export function CheckoutPage() {
         });
       } catch (err) {
         setBusy(false);
+      placeOrderInFlight.current = false;
         const msg = err instanceof Error ? err.message : "Error placing cash order.";
         setValidationError(msg);
         toast.error("Could not place order", { description: msg });
@@ -293,6 +303,7 @@ export function CheckoutPage() {
       });
       if (!orderRes.success) {
         setBusy(false);
+      placeOrderInFlight.current = false;
         setPaymentStatus("failed");
         setPaymentFailure({
           code: orderRes.error.code,
@@ -315,6 +326,7 @@ export function CheckoutPage() {
               const verify = await paymentRepository.verifyPayment(result);
               if (!verify.success || !verify.data.verified) {
                 setBusy(false);
+      placeOrderInFlight.current = false;
                 setPaymentStatus("failed");
                 toast.error("Payment verification failed", {
                   description: verify.success ? "Signature mismatch" : verify.error.message,
@@ -330,6 +342,7 @@ export function CheckoutPage() {
               });
 
               setBusy(false);
+      placeOrderInFlight.current = false;
               setPaymentStatus("success");
               AudioService.playSuccess();
               void HapticService.notification("success");
@@ -345,17 +358,20 @@ export function CheckoutPage() {
               });
             } catch {
               setBusy(false);
+      placeOrderInFlight.current = false;
               setPaymentStatus("failed");
               toast.error("Verification error occurred.");
             }
           },
           onFailure: (err) => {
             setBusy(false);
+      placeOrderInFlight.current = false;
             setPaymentStatus("failed");
             toast.error("Payment not completed", { description: err.description });
           },
           onCancel: () => {
             setBusy(false);
+      placeOrderInFlight.current = false;
             setPaymentStatus("cancelled");
             toast.info("Payment cancelled. You can retry when ready.");
           },
@@ -364,6 +380,7 @@ export function CheckoutPage() {
       );
     } catch (payErr) {
       setBusy(false);
+      placeOrderInFlight.current = false;
       setPaymentStatus("failed");
       const msg = payErr instanceof Error ? payErr.message : "Payment gateway error.";
       setValidationError(msg);
