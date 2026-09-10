@@ -89,7 +89,7 @@ export function computeItemUnitPrice(item: PricingLineItem): number {
           (c as { price?: number; priceDelta?: number })?.priceDelta ??
           0,
       );
-      if (Number.isFinite(p)) addons += p;
+      if (Number.isFinite(p) && p >= 0) addons += p;
     }
   } else if (Array.isArray(item.modifiers) && item.modifiers.length > 0) {
     for (const m of item.modifiers) {
@@ -98,7 +98,7 @@ export function computeItemUnitPrice(item: PricingLineItem): number {
           (m as { price?: number; priceDelta?: number })?.price ??
           0,
       );
-      if (Number.isFinite(d)) addons += d;
+      if (Number.isFinite(d) && d >= 0) addons += d;
     }
   }
 
