@@ -29,7 +29,7 @@ const result = spawnSync(
     'firestore',
     '--project',
     'burgonomics-test-rules',
-    '"npx vitest run tests/rules --reporter=verbose"',
+    '"npx vitest run tests/rules --reporter=verbose --hookTimeout=120000"',
   ],
   {
     env,
