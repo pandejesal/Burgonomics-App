@@ -10,7 +10,7 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection } from "firebase/
 
 const PROJECT_ID = "burgonomics-test-rules";
 
-describe("Firestore Security Rules — CRM Hierarchy & RBAC (18 Tests)", () => {
+describe("Firestore Security Rules — CRM Hierarchy & RBAC (20 Tests)", () => {
   let testEnv: RulesTestEnvironment | null = null;
   let emulatorAvailable = false;
 
@@ -115,6 +115,16 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (18 Tests)", () => {
       await setDoc(doc(db, "chats", "branch_01_brand_owner_1"), {
         participantIds: ["branch_owner_1", "brand_owner_1"],
         branchId: "branch_01",
+      });
+
+      // Branch support ticket (Loop: pins the staff update field mask —
+      // workflow fields allowed, money-action fields server-only)
+      await setDoc(doc(db, "support_tickets", "tkt_rules_01"), {
+        ticketNumber: "TICK-RULES-01",
+        customerId: "cust_100",
+        branchId: "branch_01",
+        status: "open",
+        subject: "Rules pin ticket",
       });
     });
   });
@@ -283,5 +293,27 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (18 Tests)", () => {
     const pairId = "branch_01_brand_owner_1";
     const branch2Db = testEnv.authenticatedContext("branch_owner_2").firestore();
     await assertFails(getDoc(doc(branch2Db, "chats", pairId, "messages", "msg_001")));
+  });
+
+  it("19. [TICKET-STAFF-MASK-ALLOW] Branch staff CAN advance workflow fields (incl dotted assignedTo.tier)", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(branch1Db, "support_tickets", "tkt_rules_01"), {
+        status: "in_progress",
+        resolution: "Looking into it",
+        "assignedTo.tier": "branch",
+        timeline: [{ action: "message_added" }],
+      })
+    );
+  });
+
+  it("20. [TICKET-MONEY-DENY] Branch staff CANNOT write money-action fields directly", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branch1Db, "support_tickets", "tkt_rules_01"), {
+        status: "resolved",
+        refundAmount: 99,
+      })
+    );
   });
 });
