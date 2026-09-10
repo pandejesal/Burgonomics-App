@@ -69,11 +69,23 @@ const INITIAL_MOCK_TICKETS: CustomerTicket[] = [
 
 export function useCustomerTickets() {
   const [tickets, setTickets] = useState<CustomerTicket[]>(() => {
+    // Loop 7: exact signature of the retired dev seed — purged from
+    // already-persisted browsers so no prod user keeps fake history.
+    // Real tickets use tkt_${Date.now()} ids: no collision possible.
+    const isSeedTicket = (t: any) => t?.id === "tkt_001" && t?.ticketNumber === "TKT-84920";
     try {
       const stored = localStorage.getItem("burgonomics_customer_tickets");
-      return stored ? JSON.parse(stored) : INITIAL_MOCK_TICKETS;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const cleaned = Array.isArray(parsed) ? parsed.filter((t) => !isSeedTicket(t)) : [];
+        return cleaned;
+      }
+      // Loop 7: production starts empty — the mock seed (fake RESOLVED
+      // ticket + fabricated loyalty credit) is dev-only. Prod must never
+      // render fabricated support history.
+      return import.meta.env.DEV ? INITIAL_MOCK_TICKETS : [];
     } catch {
-      return INITIAL_MOCK_TICKETS;
+      return import.meta.env.DEV ? INITIAL_MOCK_TICKETS : [];
     }
   });
 
