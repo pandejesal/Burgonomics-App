@@ -136,10 +136,23 @@ export const supportService = {
     if (!Number.isFinite(input.rating) || input.rating < 1 || input.rating > 5) {
       return fail("INVALID_RATING", "Please select a rating between 1 and 5.");
     }
-    return ok({
+    const record: FeedbackRecord = {
       id: `fb_${Date.now().toString(36)}`,
       createdAt: Date.now(),
       ...input,
-    });
+    };
+    // Loop: feedback previously vanished (ok + toast, persisted nowhere).
+    // Keep it on-device until POST /v1/support/feedback ships.
+    try {
+      const key = "burgonomics_customer_feedback";
+      const stored = localStorage.getItem(key);
+      const list = stored ? JSON.parse(stored) : [];
+      list.unshift(record);
+      localStorage.setItem(key, JSON.stringify(list.slice(0, 100)));
+    } catch {
+      // Persistence is best-effort; the success receipt below still holds
+      // for this session only.
+    }
+    return ok(record);
   },
 };

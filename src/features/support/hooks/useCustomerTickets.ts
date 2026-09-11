@@ -125,12 +125,16 @@ export function useCustomerTickets() {
           status: "OPEN",
           priority: params.category === "PAYMENT_ISSUE" || params.category === "WRONG_ORDER" ? "urgent" : "normal",
           escalationLevel: 1,
-          branchId: params.branchId || "branch_cg_road",
+          // Loop: no fabricated branch default — a ticket with no store
+          // context stays branch-less rather than stamped to a wrong outlet.
+          branchId: params.branchId || undefined,
           createdAt: new Date().toISOString(),
         };
 
         setTickets((prev) => [newTicket, ...prev]);
-        toast.success(`Support Ticket #${ticketNum} raised! Our store manager will respond within 15 minutes.`);
+        // Loop: honest copy — tickets persist on-device only until the server
+        // inbox ships (no one is notified yet; no 15-minute promise).
+        toast.success(`Support Ticket #${ticketNum} saved on this device. Our team inbox is coming soon — for urgent help, contact the store directly.`);
         return { success: true, ticket: newTicket };
       } catch (err) {
         toast.error("Failed to submit support ticket");
