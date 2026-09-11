@@ -214,6 +214,14 @@ export function CheckoutPage() {
       return;
     }
 
+    // Loop: dine-in without a table number used to sail through, and KDS
+    // rendered a fabricated "Table 01" (food misrouted). Require it.
+    if (isDineIn && !tableNumber.trim()) {
+      setValidationError("Please enter your table number so the kitchen knows where to serve.");
+      toast.error("Table number is required for dine-in.");
+      return;
+    }
+
     // Geofence check if Delivery mode. NaN coords used to sail through:
     // `NaN > radius` is false, so corrupt addresses bypassed the zone block.
     if (isDelivery && selectedAddress && activeStore) {
