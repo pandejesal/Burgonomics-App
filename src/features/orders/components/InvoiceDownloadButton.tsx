@@ -16,6 +16,15 @@ export function InvoiceDownloadButton({
 }: InvoiceDownloadButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Loop: order/store/item strings are interpolated into raw HTML below.
+  // Escape them (merchant data is trusted, but invoices get saved/shared).
+  const esc = (v: unknown): string =>
+    String(v ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
   const handleDownloadInvoice = () => {
     setIsGenerating(true);
 
@@ -35,7 +44,7 @@ export function InvoiceDownloadButton({
       ?.map(
         (item) => `
         <tr>
-          <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5;">${item.name}</td>
+          <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5;">${esc(item.name)}</td>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: center;">${item.quantity}</td>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right;">${formatINR(item.unitPrice || 0)}</td>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right; font-weight: bold;">${formatINR((item.unitPrice || 0) * (item.quantity || 1))}</td>
@@ -83,15 +92,15 @@ export function InvoiceDownloadButton({
 
         <div class="meta-grid">
           <div>
-            <strong>Invoice & Order:</strong> #${shortOrder}<br>
-            <strong>Date & Time:</strong> ${dateFormatted}<br>
-            <strong>Fulfillment:</strong> ${order.fulfillment.toUpperCase()}<br>
+            <strong>Invoice & Order:</strong> #${esc(shortOrder)}<br>
+            <strong>Date & Time:</strong> ${esc(dateFormatted)}<br>
+            <strong>Fulfillment:</strong> ${esc(order.fulfillment).toUpperCase()}<br>
             <strong>Payment Mode:</strong> ${(order.payment?.method || "ONLINE").toUpperCase()}
           </div>
           <div>
-            <strong>Store Outlet:</strong> ${order.store?.name || "Burgonomics Flagship"}<br>
-            <strong>Address:</strong> ${order.store?.address || "Ahmedabad, Gujarat"}<br>
-            <strong>Phone:</strong> ${order.store?.phone || "+91 98250 99881"}
+            <strong>Store Outlet:</strong> ${esc(order.store?.name || "Burgonomics Outlet")}<br>
+            <strong>Address:</strong> ${esc(order.store?.address || "Ahmedabad, Gujarat")}<br>
+            <strong>Phone:</strong> ${order.store?.phone ? esc(order.store.phone) : "—"}
           </div>
         </div>
 
