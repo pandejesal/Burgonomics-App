@@ -224,14 +224,17 @@ export function CheckoutPage() {
 
     // Geofence check if Delivery mode. NaN coords used to sail through:
     // `NaN > radius` is false, so corrupt addresses bypassed the zone block.
+    // Loop 34/120: a missing pin no longer fabricates a nearby point
+    // (store + 0.015 auto-passed) — unverifiable location blocks delivery
+    // with a re-pin prompt instead of a fake pass.
     if (isDelivery && selectedAddress && activeStore) {
-      const userLat = Number(selectedAddress.lat ?? activeStore.lat + 0.015);
-      const userLng = Number(selectedAddress.lng ?? activeStore.lng + 0.015);
+      const userLat = Number(selectedAddress.lat);
+      const userLng = Number(selectedAddress.lng);
       const storeLat = Number(activeStore.lat);
       const storeLng = Number(activeStore.lng);
       if (![userLat, userLng, storeLat, storeLng].every(Number.isFinite)) {
-        setValidationError("This address has invalid location data. Please re-pin it.");
-        toast.error("Address location is invalid.");
+        setValidationError("This address has no verified location. Please re-pin it on the map.");
+        toast.error("Address location is missing.");
         return;
       }
       const dist = calculateHaversineKm(userLat, userLng, storeLat, storeLng);
