@@ -112,7 +112,9 @@ function TrackOrderPage() {
     });
   };
 
-  const storePhone = order.store?.phone || "+91 98250 99881";
+  // Loop: no fabricated fallback — a missing store phone must hide the call
+  // button, never dial a hardcoded number that isn't the restaurant.
+  const storePhone = order.store?.phone || undefined;
   const shortOrderNum = order.shortCode || order.id.slice(-6).toUpperCase();
   const addressText =
     order.address?.line1 ||
@@ -142,7 +144,9 @@ function TrackOrderPage() {
           {/* 1. 4-Stage Visual Progress Stepper (Domino's Tracker Standard) */}
           <DeliveryStepTracker
             tracking={trackingState}
-            onAdvanceDevStatus={handleDevAdvanceStatus}
+            // Loop: the sandbox stepper fakes Delivered locally with no server
+            // write — DEV-only. Prod customers must never self-advance status.
+            onAdvanceDevStatus={import.meta.env.DEV ? handleDevAdvanceStatus : undefined}
           />
 
           {/* 2. Live Porter GPS Map with Route Polyline */}
