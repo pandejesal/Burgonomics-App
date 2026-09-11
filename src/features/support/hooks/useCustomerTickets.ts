@@ -1,5 +1,14 @@
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import { useAuthStore } from "@/features/auth/state/authStore";
+
+// Loop 35/120: ticket drafts hold issue descriptions (personal data). A
+// single global key leaked them across users on shared devices. Scope by
+// user id; guests keep the legacy key. Never migrate the legacy key into a
+// signed-in scope — that would copy one user's drafts to another.
+const LEGACY_TICKETS_KEY = "burgonomics_customer_tickets";
+export const ticketsKeyFor = (uid?: string | null) =>
+  uid ? `${LEGACY_TICKETS_KEY}:${uid}` : LEGACY_TICKETS_KEY;
 
 export type TicketCategory =
   | "LATE_DELIVERY"
@@ -68,13 +77,15 @@ const INITIAL_MOCK_TICKETS: CustomerTicket[] = [
 ];
 
 export function useCustomerTickets() {
+  const uid = useAuthStore((s) => s.user?.id) ?? null;
+  const storageKey = ticketsKeyFor(uid);
   const [tickets, setTickets] = useState<CustomerTicket[]>(() => {
     // Loop 7: exact signature of the retired dev seed — purged from
     // already-persisted browsers so no prod user keeps fake history.
     // Real tickets use tkt_${Date.now()} ids: no collision possible.
     const isSeedTicket = (t: any) => t?.id === "tkt_001" && t?.ticketNumber === "TKT-84920";
     try {
-      const stored = localStorage.getItem("burgonomics_customer_tickets");
+      const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
         const cleaned = Array.isArray(parsed) ? parsed.filter((t) => !isSeedTicket(t)) : [];
@@ -91,13 +102,24 @@ export function useCustomerTickets() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Reload when the signed-in user changes (shared device safety).
   useEffect(() => {
     try {
-      localStorage.setItem("burgonomics_customer_tickets", JSON.stringify(tickets));
+      const stored = localStorage.getItem(storageKey);
+      setTickets(stored ? (JSON.parse(stored) as CustomerTicket[]) : []);
+    } catch {
+      setTickets([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(tickets));
     } catch (e) {
       console.warn("Failed to persist tickets:", e);
     }
-  }, [tickets]);
+  }, [tickets, storageKey]);
 
   const createTicket = useCallback(
     async (params: CreateTicketParams): Promise<{ success: boolean; ticket?: CustomerTicket }> => {
