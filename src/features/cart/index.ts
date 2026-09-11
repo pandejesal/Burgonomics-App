@@ -9,5 +9,4 @@ export { GrillCoinsRedemption, LoyaltyPointsRedemption } from "./components/Gril
 export { DeliveryTipSelector } from "./components/DeliveryTipSelector";
 export { OrderSummary } from "./components/OrderSummary";
 export { PromoInput } from "./components/PromoInput";
-export { FulfillmentSelector } from "./components/FulfillmentSelector";
 export { FloatingCartBar } from "./components/FloatingCartBar";
