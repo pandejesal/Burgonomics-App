@@ -44,6 +44,7 @@ import type { CartTotals } from "@/features/cart/models";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
+import { useDemoStore } from "@/features/demo/state/demoStore";
 import {
   paymentRepository,
   usePaymentStore,
@@ -140,6 +141,9 @@ function PaymentPage() {
       payInFlight.current = false;
     }
   }, [payStatus]);
+  // Loop 44/120: demo-mode payments simulate success then fail server
+  // verification — say so on-screen instead of a silent theater-to-failure.
+  const razorpayMode = useDemoStore((s) => s.razorpay.mode);
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -626,6 +630,15 @@ function PaymentPage() {
           <div role="alert" className="rounded-xl border border-warning/40 bg-warning/10 p-4">
             <Text variant="bodyMedium" tone="error">
               {preflightIssue}
+            </Text>
+          </div>
+        )}
+
+        {method === "online" && razorpayMode !== "live_test" && (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+            <Text variant="bodyMedium" className="font-bold">
+              Demo payments: no live Razorpay key is configured, so online payment will simulate
+              and then fail verification — no money moves. Use cash, or configure keys.
             </Text>
           </div>
         )}
