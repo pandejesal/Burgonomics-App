@@ -2,6 +2,7 @@ import * as React from "react";
 import { Bike, Store as StoreIcon, Utensils, Phone, Clock, MapPin, ChevronRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
 import type { Address } from "@/features/addresses/models";
 
@@ -99,7 +100,7 @@ export function FulfillmentDetailsCard({
               <p className="text-[11px] text-text-secondary">
                 {store?.address ?? "Ahmedabad, Gujarat"}
               </p>
-              {store?.phone && (
+              {store?.phone && isSafeTelNumber(store.phone) && (
                 <a
                   href={`tel:${store.phone}`}
                   className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0E4825] dark:text-[#4ADE80] hover:underline pt-0.5"

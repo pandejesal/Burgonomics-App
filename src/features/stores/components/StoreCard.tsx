@@ -14,6 +14,7 @@ import {
   Store as StoreIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 import { AppBadge } from "@/shared/components/common/AppBadge";
 import { Text } from "@/shared/components/common/Text";
 import { BottomSheet } from "@/shared/components/common/BottomSheet";
@@ -59,7 +60,8 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
 
   const handleCall = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (store.phone) {
+    // Loop 19/120: directory phones are staff-entered — dial only sane shapes.
+    if (store.phone && isSafeTelNumber(store.phone)) {
       window.open(`tel:${store.phone}`, "_blank");
     } else {
       toast.error("Phone number not available for this store");

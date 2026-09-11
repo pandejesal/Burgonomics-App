@@ -17,3 +17,12 @@ export function isSafeTrackingUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * tel: links: digits/spaces/dashes only, sane length (mirrors partner
+ * utils/urlSafety). A staff-stored "phone" like `12345` or a premium-rate
+ * string must never become a one-tap dial link for customers.
+ */
+export function isSafeTelNumber(phone: string): boolean {
+  return /^[+0-9][0-9\s-]{6,15}$/.test((phone || "").trim());
+}

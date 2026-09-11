@@ -22,6 +22,7 @@ import { Text } from "@/shared/components/common/Text";
 import { BottomSheet } from "@/shared/components/common/BottomSheet";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { cn } from "@/lib/utils";
+import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 import { supportRepository } from "@/features/support/repositories/SupportRepository";
 import { useCustomerTickets } from "@/features/support/hooks/useCustomerTickets";
 import { CreateTicketForm } from "@/features/support/components/CreateTicketForm";
@@ -122,11 +123,11 @@ function Page() {
               <span>Burgonomics Customer Care</span>
             </div>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 font-bold text-[10px] uppercase">
-              15-Min SLA
+              On-Device Drafts
             </span>
           </div>
           <p className="text-xs text-emerald-100 leading-relaxed">
-            Need help with your meal or delivery? Store managers respond in &lt;15 mins. Tickets auto-escalate to Regional Operations if breached.
+            Need help with your meal or delivery? Tickets save on this device for now — for urgent help, contact the store directly. Team inbox coming soon.
           </p>
           <button
             type="button"
@@ -238,7 +239,7 @@ function Page() {
         open={openTicket}
         onOpenChange={setOpenTicket}
         title="Report an Issue"
-        description="Our store manager will respond within 15 minutes."
+        description="Tickets save on this device for now — for urgent help, contact the store directly."
       >
         <CreateTicketForm
           key={paymentPrefill ? `pay-${paymentPrefill.paymentId}` : "blank"}
@@ -270,8 +271,12 @@ function Page() {
 
 function ChannelRow({ channel }: { channel: SupportChannel }) {
   const Icon = ICONS[channel.kind] ?? MessageSquare;
+  // Loop 19/120: masked fixture values (e.g. "+911****3123") must never
+  // become tappable tel: links.
+  const callOk =
+    channel.kind === "call" && !!channel.value && isSafeTelNumber(channel.value);
   const href =
-    channel.kind === "call" && channel.value
+    callOk
       ? `tel:${channel.value}`
       : channel.kind === "email" && channel.value
         ? `mailto:${channel.value}`

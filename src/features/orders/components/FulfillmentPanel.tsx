@@ -1,6 +1,7 @@
 import { Phone, MapPin, Utensils, Package, Bike, Copy } from "lucide-react";
 import { Text } from "@/shared/components/common/Text";
 import { AppButton } from "@/shared/components/common/AppButton";
+import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 import type { Order } from "@/features/orders/models";
 
 interface Props {
@@ -210,7 +211,8 @@ function Section({
 }
 
 function callPhone(phone?: string | null) {
-  if (!phone) return;
+  // Loop 19/120: order-doc phones are staff-entered — dial only sane shapes.
+  if (!phone || !isSafeTelNumber(phone)) return;
   if (typeof window !== "undefined") {
     window.open(`tel:${phone}`, "_blank");
   }

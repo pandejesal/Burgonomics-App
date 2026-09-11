@@ -1,6 +1,7 @@
 import React from "react";
 import { Bike, Phone, MessageSquare, ShieldCheck, AlertCircle, ExternalLink } from "lucide-react";
 import type { PorterTrackingState } from "../hooks/usePorterLiveTracking";
+import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 
 interface RiderContactCardProps {
   tracking: PorterTrackingState;
@@ -23,6 +24,11 @@ export function RiderContactCard({
     trackingUrl,
   } = tracking;
 
+  // Loop 19/120: phone numbers come from order docs (staff-entered values
+  // included) — only dialable shapes become one-tap tel: links.
+  const safeStorePhone = storePhone && isSafeTelNumber(storePhone) ? storePhone : undefined;
+  const safeRiderPhone = riderPhone && isSafeTelNumber(riderPhone) ? riderPhone : undefined;
+
   if (isTakeawayOrDineIn) {
     return (
       <div className="p-4 rounded-3xl border border-neutral-800 bg-[#0E4825]/10 space-y-3 text-white">
@@ -39,13 +45,13 @@ export function RiderContactCard({
         </div>
 
         <div className="flex items-center gap-2 pt-1 border-t border-neutral-800">
-          {storePhone ? (
+          {safeStorePhone ? (
           <a
-            href={`tel:${storePhone}`}
+            href={`tel:${safeStorePhone}`}
             className="flex-1 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
           >
             <Phone className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Call Restaurant ({storePhone})</span>
+            <span>Call Restaurant ({safeStorePhone})</span>
           </a>
           ) : (
             <span className="text-neutral-500 italic text-[11px]">Restaurant phone unavailable</span>
@@ -96,9 +102,9 @@ export function RiderContactCard({
           <span className="font-black text-sm text-white">{riderName || "Assigning Courier..."}</span>
         </div>
 
-        {riderPhone ? (
+        {safeRiderPhone ? (
           <a
-            href={`tel:${riderPhone}`}
+            href={`tel:${safeRiderPhone}`}
             className="px-4 py-2 rounded-xl bg-[#0E4825] hover:bg-[#135d30] border border-emerald-500/40 text-emerald-300 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
           >
             <Phone className="w-3.5 h-3.5" />
@@ -111,9 +117,9 @@ export function RiderContactCard({
 
       {/* Escalation CTAs */}
       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-800/80 text-xs">
-        {storePhone ? (
+        {safeStorePhone ? (
         <a
-          href={`tel:${storePhone}`}
+          href={`tel:${safeStorePhone}`}
           className="py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white font-bold text-center flex items-center justify-center gap-1.5 transition-colors"
         >
           <Phone className="w-3.5 h-3.5 text-neutral-400" />
