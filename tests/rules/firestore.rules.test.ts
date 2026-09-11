@@ -10,7 +10,7 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection } from "firebase/
 
 const PROJECT_ID = "burgonomics-test-rules";
 
-describe("Firestore Security Rules — CRM Hierarchy & RBAC (20 Tests)", () => {
+describe("Firestore Security Rules — CRM Hierarchy & RBAC (22 Tests)", () => {
   let testEnv: RulesTestEnvironment | null = null;
   let emulatorAvailable = false;
 
@@ -125,6 +125,15 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (20 Tests)", () => {
         branchId: "branch_01",
         status: "open",
         subject: "Rules pin ticket",
+      });
+
+      // Petpooja webhook log probe (Loop 1/120: rule block was top-level dead
+      // code outside the documents match — admin reads default-denied)
+      await setDoc(doc(db, "petpooja_webhook_logs", "wh_rules_01"), {
+        storeId: "branch_01",
+        type: "order",
+        status: "success",
+        timestamp: new Date().toISOString(),
       });
     });
   });
@@ -315,5 +324,15 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (20 Tests)", () => {
         refundAmount: 99,
       })
     );
+  });
+
+  it("21. [WEBHOOKLOG-ADMIN-ALLOW] Brand Owner CAN read petpooja webhook logs", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(getDoc(doc(brandDb, "petpooja_webhook_logs", "wh_rules_01")));
+  });
+
+  it("22. [WEBHOOKLOG-ANON-DENY] Anonymous request to read petpooja webhook logs is DENIED", async () => {
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(anonDb, "petpooja_webhook_logs", "wh_rules_01")));
   });
 });
