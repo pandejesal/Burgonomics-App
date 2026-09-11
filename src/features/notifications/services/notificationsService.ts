@@ -121,39 +121,65 @@ export const notificationsService = {
   /**
    * Unlinks the user ID from the device token on logout. Takes the uid
    * explicitly — by logout time the auth session may already be gone.
+   *
+   * Loop 37/120: detaches via the server-owned POST
+   * /notifications/unregisterToken endpoint (requireAuth — callers must
+   * invoke pre-signout while authed). The old direct device_tokens write
+   * ALWAYS failed (rules deny all client writes there), so logged-out
+   * devices kept their token identity. Failures stay warn-level: logout
+   * must never fail on push cleanup.
    */
   async unlinkUserFromDeviceToken(userId?: string): Promise<ApiResult<null>> {
     const token = getCachedDeviceToken();
     if (!token) return ok(null);
 
     try {
-      const { db } = await import("@/core/config/firebase");
-      const { doc, updateDoc, arrayRemove, serverTimestamp } = await import("firebase/firestore");
-
-      await updateDoc(doc(db, "device_tokens", token), {
-        userId: null,
-        updatedAt: serverTimestamp(),
-      });
-
-      // Also drop the token from the user's fan-out list, or logged-out
-      // devices keep receiving that user's order pushes.
-      if (userId) {
-        try {
-          await updateDoc(doc(db, "users", userId), {
-            fcmTokens: arrayRemove(token),
-            updatedAt: serverTimestamp(),
-          });
-        } catch (inner: any) {
-          logger.warn("notifications.unlinkFcmTokensError", inner);
+      const { appConfig } = await import("@/core/config/env");
+      const { auth } = await import("@/core/config/firebase");
+      const idToken = await auth.currentUser?.getIdToken().catch(() => null);
+      if (idToken) {
+        const paymentsBase = (
+          appConfig.integrations.paymentsApiBaseUrl ||
+          "https://asia-south1-burgonomics-7faa8.cloudfunctions.net/api/payments"
+        ).replace(/\/$/, "");
+        const apiBase = paymentsBase.endsWith("/payments")
+          ? paymentsBase.slice(0, -"/payments".length)
+          : paymentsBase;
+        const res = await fetch(`${apiBase}/notifications/unregisterToken`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ token }),
+        });
+        if (!res.ok) {
+          logger.warn("notifications.unregisterTokenFailed", { status: res.status });
+        } else {
+          logger.info("notifications.userUnlinkedFromToken");
+          return ok(null);
         }
       }
-
-      logger.info("notifications.userUnlinkedFromToken");
-      return ok(null);
     } catch (err: any) {
-      logger.warn("notifications.unlinkUserError", err);
-      return ok(null);
+      logger.warn("notifications.unregisterTokenError", err);
     }
+
+    // Best-effort fallback: drop the token from the user's own fan-out list
+    // (owner writes to users/{uid} are rules-allowed). The device_tokens doc
+    // itself is server-owned — no direct write is attempted anymore.
+    try {
+      if (userId) {
+        const { db } = await import("@/core/config/firebase");
+        const { doc, updateDoc, arrayRemove, serverTimestamp } = await import("firebase/firestore");
+        await updateDoc(doc(db, "users", userId), {
+          fcmTokens: arrayRemove(token),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch (inner: any) {
+      logger.warn("notifications.unlinkFcmTokensError", inner);
+    }
+    return ok(null);
   },
 
   /**
