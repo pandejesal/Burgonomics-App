@@ -184,42 +184,16 @@ export const notificationsService = {
 
   /**
    * Updates push notification preferences for this device.
+   *
+   * Loop 38/120: local-only by design. The old code setDoc'd device_tokens,
+   * which rules ALWAYS deny (server-owned) — every call failed into a warn
+   * log while the toggle appeared synced. Nothing server-side reads these
+   * preferences (dispatch is topic/token addressed), so no endpoint is
+   * needed: the local settings store is the source of truth.
    */
   async updateNotificationPreferences(
-    prefs: Partial<NotificationPreferences>,
+    _prefs: Partial<NotificationPreferences>,
   ): Promise<ApiResult<null>> {
-    const token = getCachedDeviceToken();
-    if (!token) return ok(null);
-
-    try {
-      const { db } = await import("@/core/config/firebase");
-      const { doc, setDoc, serverTimestamp } = await import("firebase/firestore");
-
-      const updateData: any = {
-        updatedAt: serverTimestamp(),
-      };
-
-      if (prefs.pushEnabled !== undefined) {
-        updateData.pushEnabled = prefs.pushEnabled;
-      }
-
-      if (
-        prefs.orders !== undefined ||
-        prefs.offers !== undefined ||
-        prefs.announcements !== undefined
-      ) {
-        updateData.preferences = {
-          orders: prefs.orders ?? true,
-          offers: prefs.offers ?? true,
-          announcements: prefs.announcements ?? true,
-        };
-      }
-
-      await setDoc(doc(db, "device_tokens", token), updateData, { merge: true });
-      return ok(null);
-    } catch (err: any) {
-      logger.warn("notifications.updatePreferencesError", err);
-      return ok(null);
-    }
+    return ok(null);
   },
 };
