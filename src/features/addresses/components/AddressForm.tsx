@@ -27,7 +27,7 @@ const customMarkerHtml = `
     justify-content: center;
     border-radius: 50% 50% 50% 0;
     transform: rotate(-45deg);
-    box-shadow: 0 6px 12px rgba(255, 102, 0, 0.4);
+    box-shadow: 0 6px 12px rgba(194, 65, 12, 0.4);
     border: 3px solid white;
   ">
     <div style="width: 14px; height: 14px; background: white; border-radius: 50%; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);"></div>
@@ -177,7 +177,10 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       label,
       customLabel: label === "other" ? customLabel.trim() || undefined : undefined,
       contactName: profile?.fullName || "Guest Customer",
-      contactPhone: profile?.phone || "0000000000",
+      // Loop: was profile?.phone || "0000000000" — a fabricated number
+      // persisted into address records (rider/SMS downstream). Absent
+      // phone stays empty; update-path validation already skips empty.
+      contactPhone: profile?.phone || "",
       line1: line1.trim(),
       line2: line2.trim() || undefined,
       landmark: landmark.trim() || undefined,
