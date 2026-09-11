@@ -30,10 +30,12 @@ export function FranchiseModal({ isOpen, onClose }: FranchiseModalProps) {
       return;
     }
 
-    // Loop 47/120: franchise enquiries persist to the live franchise_leads
-    // collection (rules bind customerId == uid). The old code waited 800ms
-    // and toasted success while the PII went nowhere. Guests must sign in
-    // first — the collection is auth-bound by design.
+    // Loop 47/120: franchise enquiries persist to the live collection
+    // staff actually watch (franchise_inquiries — the partner pipeline;
+    // franchise_leads is an unwatched mirror). Rules bind customerId == uid.
+    // The old code waited 800ms and toasted success while the PII went
+    // nowhere. Guests must sign in first — the collection is auth-bound
+    // by design.
     setBusy(true);
     void HapticService.impact("medium");
     try {
@@ -45,7 +47,7 @@ export function FranchiseModal({ isOpen, onClose }: FranchiseModalProps) {
         setBusy(false);
         return;
       }
-      await addDoc(collection(db, "franchise_leads"), {
+      await addDoc(collection(db, "franchise_inquiries"), {
         customerId: user.uid,
         customerName: formData.name.trim(),
         customerPhone: formData.phone.trim(),
