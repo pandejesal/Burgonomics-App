@@ -172,6 +172,14 @@ function tickOrder(order: Order): Order {
   if (!result.advanced) {
     return order;
   }
+  // Loop: never auto-complete by timer alone. A tick that lands on a
+  // terminal state (DELIVERED/COMPLETED) with no real backend event fakes
+  // handover — the customer stops expecting food that never arrived, and
+  // the closed ticket removes recourse. Real completions arrive via
+  // partner/server writes (KDS bump, verifyDeliveryOtp). Hold pre-terminal.
+  if (result.order.status?.terminal && !order.status?.terminal) {
+    return order;
+  }
   progression.set(order.id, result.timestamps as Partial<Record<OrderStatusCode, string>>);
   orders.set(order.id, result.order as Order);
   return result.order as Order;
