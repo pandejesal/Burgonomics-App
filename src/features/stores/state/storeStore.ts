@@ -65,14 +65,17 @@ export function storeSupportsFulfillment(
 export const useStoreSelection = create<StoreState>()(
   persist(
     (set, get) => ({
+      // Loop: boot with NO store selected. MOCK_STORES[0] as the default
+      // active store let checkout run against a fake outlet in prod when the
+      // backend list was empty. Explicit selection only (stores screen).
       activeStore: null,
       recentStores: [],
       searchHistory: [],
-      fulfillment: null,
+      fulfillment: "delivery",
 
-      isHydrated: false,
+      isHydrated: true,
       fulfillmentStatus: "none",
-      status: "idle",
+      status: "ready",
       stores: [],
       nearby: [],
       coords: null,
@@ -177,7 +180,7 @@ export const useStoreSelection = create<StoreState>()(
     }),
     {
       name: "burg.store",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => {
         if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
         const memoryStorage = new Map<string, string>();
@@ -204,7 +207,10 @@ export const useStoreSelection = create<StoreState>()(
         fulfillment: s.fulfillment,
       }),
       onRehydrateStorage: () => (state) => {
-        if (!state) return;
+        if (!state) {
+          useStoreSelection.setState({ isHydrated: true });
+          return;
+        }
         // Re-hydrate fulfillmentStatus from the persisted pair.
         if (state.activeStore && state.fulfillment) {
           state.fulfillmentStatus = storeSupportsFulfillment(state.activeStore, state.fulfillment)
@@ -221,6 +227,19 @@ export const useStoreSelection = create<StoreState>()(
         }
         if (version < 2) {
           return { ...(persisted as object), fulfillment: null } as Partial<StoreState>;
+        }
+        if (version < 3) {
+          // Loop: v3 drops mock-booted state. Mock catalog ids are str_NNN
+          // (real outlets are branch_* / Firestore ids) — strip them so
+          // upgraded installs re-pick a real store instead of checking out
+          // against a fake outlet. Genuine selections survive untouched.
+          const p = persisted as Record<string, any>;
+          const isMockId = (id: unknown) => typeof id === "string" && /^str_\d+$/.test(id);
+          const activeStore = p.activeStore && !isMockId(p.activeStore.id) ? p.activeStore : null;
+          const recentStores = Array.isArray(p.recentStores)
+            ? p.recentStores.filter((s: any) => s && !isMockId(s.id))
+            : [];
+          return { ...p, activeStore, recentStores } as Partial<StoreState>;
         }
         return persisted as Partial<StoreState>;
       },
