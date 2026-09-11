@@ -94,7 +94,9 @@ export const storesService = {
     } catch {
       // fallback
     }
-    const found = MOCK_STORES.find((s) => s.id === id) ?? null;
+    // Loop: list() is DEV-gated; byId must match — a prod lookup miss must
+    // return null (honest not-found), never a mock store.
+    const found = import.meta.env.DEV ? (MOCK_STORES.find((s) => s.id === id) ?? null) : null;
     return ok(found);
   },
 
