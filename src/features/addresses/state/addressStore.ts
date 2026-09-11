@@ -1,7 +1,12 @@
 /**
  * Address state — persisted list of saved addresses + selection state.
- * The store is intentionally guest-safe (survives sign-out) so a user
- * who signs in mid-checkout keeps every field they entered.
+ *
+ * Loop 36/120 privacy: addresses hold contact names/phones + home locations,
+ * so persistence is scoped per signed-in user (guests keep the legacy key).
+ * On identity change the in-memory list resets and rehydrates from the new
+ * scope — a mid-checkout sign-in drops guest-entered rows (re-enter once)
+ * rather than leaking another device user's addresses. The legacy key is
+ * never migrated into a signed-in scope.
  *
  * When the backend lands: seed the store from `addressService.list()`
  * once on login and forward every mutation via the repository. State
@@ -10,6 +15,30 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Address } from "@/features/addresses/models";
+import { useAuthStore } from "@/features/auth/state/authStore";
+
+// Loop 36/120: namespace every persist key by signed-in user id. Guests
+// (uid null) keep the legacy unscoped key.
+export const addressStorageKey = (key: string, uid?: string | null): string =>
+  uid ? `${key}::${uid}` : key;
+
+const scopedKey = (key: string): string => {
+  const uid = useAuthStore.getState().user?.id;
+  return addressStorageKey(key, uid);
+};
+
+function namespacedStorage(base: Storage): Storage {
+  return {
+    getItem: (key: string) => base.getItem(scopedKey(key)),
+    setItem: (key: string, value: string) => base.setItem(scopedKey(key), value),
+    removeItem: (key: string) => base.removeItem(scopedKey(key)),
+    clear: () => base.clear(),
+    get length() {
+      return base.length;
+    },
+    key: (index: number) => base.key(index),
+  };
+}
 
 interface AddressState {
   addresses: Address[];
@@ -75,9 +104,10 @@ export const useAddressStore = create<AddressState>()(
       name: "burg.addresses",
       version: 1,
       storage: createJSONStorage(() => {
-        if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+        if (typeof window !== "undefined" && window.localStorage)
+          return namespacedStorage(window.localStorage);
         const memoryStorage = new Map<string, string>();
-        return {
+        return namespacedStorage({
           getItem: (key: string) => memoryStorage.get(key) ?? null,
           setItem: (key: string, value: string) => {
             memoryStorage.set(key, value);
@@ -90,12 +120,24 @@ export const useAddressStore = create<AddressState>()(
           },
           length: memoryStorage.size,
           key: (index: number) => Array.from(memoryStorage.keys())[index] ?? null,
-        } as Storage;
+        } as Storage);
       }),
       partialize: (s) => ({ addresses: s.addresses, selectedId: s.selectedId }),
     },
   ),
 );
+
+// Loop 36/120: re-scope on identity change — reset in-memory rows (never
+// carry user A's addresses into user B's session) and rehydrate the new
+// scope. Runs on module import; no-ops until the first login/logout.
+let lastAddressUid: string | null | undefined = undefined;
+useAuthStore.subscribe((s) => {
+  const uid = s.user?.id ?? null;
+  if (uid === lastAddressUid) return;
+  lastAddressUid = uid;
+  useAddressStore.setState({ addresses: [], selectedId: null });
+  void useAddressStore.persist.rehydrate();
+});
 
 export const selectAddresses = (s: AddressState) => s.addresses;
 export const selectSelectedAddress = (s: AddressState): Address | null => {
