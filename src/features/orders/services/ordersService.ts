@@ -413,7 +413,31 @@ export const ordersService = {
     return ok(tickOrder(existing));
   },
 
+  /**
+   * Loop: unconditional server refresh for one order (tracking polls).
+   * Same ownership/telemetry rules as getOrder; failures keep memory.
+   */
+  async refreshOrder(id: string): Promise<void> {
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { doc, getDoc } = await import("firebase/firestore");
+      const snap = await getDoc(doc(db, "orders", id));
+      if (!snap.exists()) return;
+      const data = snap.data() as Record<string, any>;
+      const myUid = auth.currentUser?.uid;
+      if (!isOrderVisibleTo(data, myUid)) return;
+      const { userId, ...orderData } = data;
+      orders.set(id, orderData as Order);
+    } catch {
+      // Best-effort: keep memory (caller logs if it needs to).
+    }
+  },
+
   async getTracking(id: string): Promise<ApiResult<OrderTrackingSnapshot | null>> {
+    // Loop: refresh from the server on every poll — memory holds pre-terminal
+    // estimates (timer-completion was removed), so without this a delivered
+    // order would show pre-terminal forever. Best-effort: failures keep memory.
+    await this.refreshOrder(id);
     if (!orders.has(id)) {
       await this.getOrder(id); // load to memory if exists in FS
     }
