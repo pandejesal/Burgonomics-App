@@ -61,20 +61,32 @@ export const profileService = {
     return fail("NOT_IMPLEMENTED", "Phone changes require verification. Coming soon.");
   },
 
+  // Loop 50/120: real DPDP erasure via POST /auth/deleteAccount (deletes
+  // the caller's own Auth user; the deletion trigger scrubs carts/admins/
+  // PII). The old Netlify path never existed — deletion always failed.
   async requestDeleteAccount(): Promise<ApiResult<{ ticketId: string }>> {
     try {
       const { auth } = await import("@/core/config/firebase");
+      const { appConfig } = await import("@/core/config/env");
       const user = auth.currentUser;
       if (!user) return fail("UNAUTHORIZED", "Not logged in");
 
       const token = await user.getIdToken(true);
-      const res = await fetch("/.netlify/functions/account/deleteAccount", {
+      const paymentsBase = (
+        appConfig.integrations.paymentsApiBaseUrl ||
+        "https://asia-south1-burgonomics-7faa8.cloudfunctions.net/api/payments"
+      ).replace(/\/$/, "");
+      const apiBase = paymentsBase.endsWith("/payments")
+        ? paymentsBase.slice(0, -"/payments".length)
+        : paymentsBase;
+      const res = await fetch(`${apiBase}/auth/deleteAccount`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ confirm: true }),
       });
 
       if (!res.ok) {
@@ -82,12 +94,8 @@ export const profileService = {
         return fail("SERVER_ERROR", `Deletion failed (HTTP ${res.status}): ${text}`);
       }
 
-      const data = (await res.json()) as {
-        status: string;
-        deleted?: boolean;
-        ordersAnonymized?: number;
-      };
-      if (data.status !== "success" || !data.deleted) {
+      const data = (await res.json()) as { success?: boolean; uid?: string };
+      if (!data.success) {
         return fail("SERVER_ERROR", "Deletion was not completed by the server.");
       }
 
