@@ -64,6 +64,24 @@ function matchesContext(offer: Offer, input: ListOffersInput): boolean {
   return true;
 }
 
+/**
+ * Loop 14/120 liveness gate — mirrors the server pricing engine (coupons
+ * collection: active + unexpired + branch + min). The client preview must
+ * never promise savings the server will refuse at charge time.
+ */
+function checkOfferLiveness(offer: Offer): { ok: true } | { ok: false; code: string; message: string } {
+  if (offer.status !== "active") {
+    return { ok: false, code: "COUPON_INACTIVE", message: "This coupon is no longer active." };
+  }
+  if (offer.expiresAt) {
+    const expiry = new Date(offer.expiresAt).getTime();
+    if (Number.isFinite(expiry) && expiry <= Date.now()) {
+      return { ok: false, code: "COUPON_EXPIRED", message: "This coupon has expired." };
+    }
+  }
+  return { ok: true };
+}
+
 export const offersService = {
   async list(input: ListOffersInput = {}): Promise<ApiResult<OfferBundle>> {
     const allOffers = await fetchOffersFromFirebase();
@@ -101,9 +119,8 @@ export const offersService = {
     if (!offer) {
       return fail("COUPON_NOT_FOUND", `"${trimmed}" isn't a valid coupon.`, false);
     }
-    if (offer.status !== "active") {
-      return fail("COUPON_INACTIVE", "This coupon is no longer active.", false);
-    }
+    const live = checkOfferLiveness(offer);
+    if (!live.ok) return fail(live.code, live.message, false);
     if (offer.eligibility?.minOrderValue && input.subtotal < offer.eligibility.minOrderValue) {
       return fail(
         "MIN_ORDER_NOT_MET",
@@ -133,6 +150,8 @@ export const offersService = {
     }
 
     if (!offer) return fail("OFFER_NOT_FOUND", "Offer not found.");
+    const live = checkOfferLiveness(offer);
+    if (!live.ok) return fail(live.code, live.message);
     if (offer.eligibility?.minOrderValue && input.subtotal < offer.eligibility.minOrderValue) {
       return fail(
         "MIN_ORDER_NOT_MET",
