@@ -3,7 +3,11 @@ import type { Store } from "@/features/stores/models/Store";
 import { MOCK_STORES } from "@/features/stores/data/mockStores";
 import { haversineKm } from "@/features/stores/utils/distance";
 import { db } from "@/core/config/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, limit } from "firebase/firestore";
+
+// Loop 11/120: the outlet directory holds tens of docs — never pull it
+// unbounded (same class as the Loop 3 partner fix).
+const DIRECTORY_LIMIT = 100;
 
 function mapStoreDoc(data: any, id: string): Store {
   const lat = data.lat ?? data.latitude ?? 23.0225;
@@ -46,7 +50,7 @@ const withDistance = (stores: Store[], coords?: { lat: number; lng: number }): S
 
 async function fetchFirestoreStores(): Promise<Store[]> {
   try {
-    const storesSnap = await getDocs(collection(db, "stores"));
+    const storesSnap = await getDocs(query(collection(db, "stores"), limit(DIRECTORY_LIMIT)));
     if (!storesSnap.empty) {
       const stores: Store[] = [];
       storesSnap.forEach((d) => stores.push(mapStoreDoc(d.data(), d.id)));
@@ -54,7 +58,7 @@ async function fetchFirestoreStores(): Promise<Store[]> {
     }
 
     // Fallback to admin_stores
-    const adminStoresSnap = await getDocs(collection(db, "admin_stores"));
+    const adminStoresSnap = await getDocs(query(collection(db, "admin_stores"), limit(DIRECTORY_LIMIT)));
     if (!adminStoresSnap.empty) {
       const stores: Store[] = [];
       adminStoresSnap.forEach((d) => stores.push(mapStoreDoc(d.data(), d.id)));
