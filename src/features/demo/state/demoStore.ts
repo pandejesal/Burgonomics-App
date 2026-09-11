@@ -4,7 +4,8 @@
  * Enables end-to-end testing of the customer journey without a live
  * backend:
  *   • simulationMode — when true, mock services serve rich PETPOOJA-
- *     shaped sample data (menu, offers). Default: true.
+ *     shaped sample data (menu, offers). Default: false, and FORCED false in
+ *     production (setters refuse, rehydrate strips stored flags).
  *   • debugPanelOpen — floating dev-only inspector.
  *   • errorSims — toggles that force specific failure paths for QA.
  *
@@ -116,15 +117,25 @@ export const useDemoStore = create<DemoState>()(
       },
 
       setSimulationMode(v) {
+        // Loop 10/120 prod gate: simulation flags persisted by a dev/QA build
+        // share localStorage with prod builds on the same device. Refuse to
+        // engage here — prod must never serve mocks or simulated failures.
+        if (isProd()) return;
         set({ simulationMode: v });
       },
       setPetpoojaSimulate(v) {
+        if (isProd()) return;
         set({ petpoojaSimulateSuccess: v });
       },
       toggleDebugPanel(v) {
+        if (isProd()) {
+          set({ debugPanelOpen: false });
+          return;
+        }
         set((s) => ({ debugPanelOpen: typeof v === "boolean" ? v : !s.debugPanelOpen }));
       },
       setError(kind, v) {
+        if (isProd()) return;
         set((s) => ({ errorSims: { ...s.errorSims, [kind]: v } }));
       },
       clearErrors() {
@@ -165,6 +176,22 @@ export const useDemoStore = create<DemoState>()(
         petpoojaSimulateSuccess: s.petpoojaSimulateSuccess,
         errorSims: s.errorSims,
       }),
+      // Loop 10/120 prod gate: dev/QA-persisted flags must never rehydrate
+      // into a prod build (shared localStorage on-device). Strip them here so
+      // direct subscribers (routes reading s.simulationMode) stay safe too.
+      merge: (persisted, current) => {
+        const incoming = (persisted || {}) as Partial<DemoState>;
+        if (isProd()) {
+          return {
+            ...current,
+            simulationMode: false,
+            petpoojaSimulateSuccess: false,
+            errorSims: { ...DEFAULT_ERRORS },
+            debugPanelOpen: false,
+          };
+        }
+        return { ...current, ...incoming };
+      },
     },
   ),
 );
@@ -181,6 +208,10 @@ const undefinedStorage: Storage = {
 /** Is the debug surface allowed in this build? */
 export const isDebugAllowed = (): boolean => !isProd();
 
-/** Convenience — check a single simulated failure. */
+/** Convenience — check a single simulated failure. Hard-off in prod. */
 export const shouldSimulate = (kind: SimulatedFailure): boolean =>
-  useDemoStore.getState().errorSims[kind] === true;
+  !isProd() && useDemoStore.getState().errorSims[kind] === true;
+
+/** Live simulation mode — always false in prod regardless of stored flags. */
+export const isSimulationMode = (): boolean =>
+  !isProd() && useDemoStore.getState().simulationMode === true;
