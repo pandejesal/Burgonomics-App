@@ -26,3 +26,15 @@ export function isSafeTrackingUrl(url: string): boolean {
 export function isSafeTelNumber(phone: string): boolean {
   return /^[+0-9][0-9\s-]{6,15}$/.test((phone || "").trim());
 }
+
+/**
+ * mailto: links: basic shape + never fixture domains. A support fixture
+ * like support@burgonomics.example must not become a tappable mailto that
+ * just bounces.
+ */
+export function isSafeEmail(email: string): boolean {
+  const v = (email || "").trim().toLowerCase();
+  if (!/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(v)) return false;
+  const host = v.split("@")[1];
+  return !host.endsWith(".example") && host !== "example.com";
+}

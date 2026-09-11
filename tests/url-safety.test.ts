@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSafeTrackingUrl, isSafeTelNumber } from '../src/shared/utils/urlSafety';
+import { isSafeTrackingUrl, isSafeTelNumber, isSafeEmail } from '../src/shared/utils/urlSafety';
 
 describe('isSafeTrackingUrl (Loop 18/120)', () => {
   it('allows porter.in tracking links', () => {
@@ -28,5 +28,18 @@ describe('isSafeTelNumber (Loop 19/120)', () => {
     expect(isSafeTelNumber('12345')).toBe(false);
     expect(isSafeTelNumber('')).toBe(false);
     expect(isSafeTelNumber('tel:1234')).toBe(false);
+  });
+});
+
+describe('isSafeEmail (Loop 20/120)', () => {
+  it('allows ordinary addresses', () => {
+    expect(isSafeEmail('care@burgonomics.com')).toBe(true);
+  });
+
+  it('rejects malformed and fixture domains', () => {
+    expect(isSafeEmail('support@burgonomics.example')).toBe(false);
+    expect(isSafeEmail('a@example.com')).toBe(false);
+    expect(isSafeEmail('not-an-email')).toBe(false);
+    expect(isSafeEmail('')).toBe(false);
   });
 });

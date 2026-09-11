@@ -22,7 +22,7 @@ import { Text } from "@/shared/components/common/Text";
 import { BottomSheet } from "@/shared/components/common/BottomSheet";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { cn } from "@/lib/utils";
-import { isSafeTelNumber } from "@/shared/utils/urlSafety";
+import { isSafeTelNumber, isSafeEmail } from "@/shared/utils/urlSafety";
 import { supportRepository } from "@/features/support/repositories/SupportRepository";
 import { useCustomerTickets } from "@/features/support/hooks/useCustomerTickets";
 import { CreateTicketForm } from "@/features/support/components/CreateTicketForm";
@@ -272,13 +272,15 @@ function Page() {
 function ChannelRow({ channel }: { channel: SupportChannel }) {
   const Icon = ICONS[channel.kind] ?? MessageSquare;
   // Loop 19/120: masked fixture values (e.g. "+911****3123") must never
-  // become tappable tel: links.
+  // become tappable tel: links. Loop 20/120: same for fixture emails.
   const callOk =
     channel.kind === "call" && !!channel.value && isSafeTelNumber(channel.value);
+  const emailOk =
+    channel.kind === "email" && !!channel.value && isSafeEmail(channel.value);
   const href =
     callOk
       ? `tel:${channel.value}`
-      : channel.kind === "email" && channel.value
+      : emailOk
         ? `mailto:${channel.value}`
         : channel.kind === "whatsapp" && channel.value
           ? channel.value
