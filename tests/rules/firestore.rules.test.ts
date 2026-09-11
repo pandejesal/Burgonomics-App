@@ -10,7 +10,7 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection } from "firebase/
 
 const PROJECT_ID = "burgonomics-test-rules";
 
-describe("Firestore Security Rules — CRM Hierarchy & RBAC (22 Tests)", () => {
+describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
   let testEnv: RulesTestEnvironment | null = null;
   let emulatorAvailable = false;
 
@@ -127,6 +127,23 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (22 Tests)", () => {
         subject: "Rules pin ticket",
       });
 
+      // Loop 12: OTP-bypass pins — delivery vs takeaway handover paths
+      await setDoc(doc(db, "orders", "ord_deliver_01"), {
+        orderId: "ord_deliver_01",
+        customerId: "cust_100",
+        branchId: "branch_01",
+        orderType: "delivery",
+        status: { kind: "in_progress", code: "OUT_FOR_DELIVERY" },
+        placedAt: new Date().toISOString(),
+      });
+      await setDoc(doc(db, "orders", "ord_takeaway_01"), {
+        orderId: "ord_takeaway_01",
+        customerId: "cust_100",
+        branchId: "branch_01",
+        orderType: "takeaway",
+        status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
+        placedAt: new Date().toISOString(),
+      });
       // Petpooja webhook log probe (Loop 1/120: rule block was top-level dead
       // code outside the documents match — admin reads default-denied)
       await setDoc(doc(db, "petpooja_webhook_logs", "wh_rules_01"), {
@@ -334,5 +351,23 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (22 Tests)", () => {
   it("22. [WEBHOOKLOG-ANON-DENY] Anonymous request to read petpooja webhook logs is DENIED", async () => {
     const anonDb = testEnv.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(anonDb, "petpooja_webhook_logs", "wh_rules_01")));
+  });
+
+  it("23. [OTP-BYPASS-DENY] Branch staff CANNOT flip a delivery order straight to DELIVERED", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branch1Db, "orders", "ord_deliver_01"), {
+        status: { kind: "completed", code: "DELIVERED" },
+      })
+    );
+  });
+
+  it("24. [TAKEAWAY-DELIVER-ALLOW] Branch staff CAN complete a takeaway order directly", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(branch1Db, "orders", "ord_takeaway_01"), {
+        status: { kind: "completed", code: "DELIVERED" },
+      })
+    );
   });
 });
