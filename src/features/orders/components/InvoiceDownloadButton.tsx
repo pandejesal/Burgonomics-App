@@ -54,7 +54,12 @@ export function InvoiceDownloadButton({
       .join("");
 
     const grandTotal = order.totals?.grandTotal || 0;
-    const taxes = order.totals?.taxes || Math.round(grandTotal * 0.05);
+    // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
+    // component backs OUT of the total (total - total/1.05), never 5% on top.
+    // The old fallback charged an extra ~5% phantom tax whenever server
+    // taxes were absent.
+    const taxes =
+      order.totals?.taxes ?? Math.round((grandTotal - grandTotal / 1.05) * 100) / 100;
     const packing = order.totals?.packingFee || 0;
     const delivery = order.totals?.deliveryFee || 0;
 
@@ -62,7 +67,7 @@ export function InvoiceDownloadButton({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Tax Invoice - #${shortOrder}</title>
+        <title>Order Receipt - #${shortOrder}</title>
         <style>
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #111; padding: 24px; max-width: 600px; margin: 0 auto; line-height: 1.4; }
           .header { border-bottom: 2px solid #0E4825; padding-bottom: 12px; margin-bottom: 16px; }
@@ -86,8 +91,8 @@ export function InvoiceDownloadButton({
 
         <div class="header">
           <div class="brand">BURGONOMICS</div>
-          <div style="font-size: 11px; color: #555;">Burgonomics Foodworks Pvt. Ltd. • GSTIN: 24AAACB1234F1Z5</div>
-          <div style="font-size: 10px; color: #777;">FSSAI Lic No: 10723026000492</div>
+          <div style="font-size: 11px; color: #555;">Burgonomics Foodworks Pvt. Ltd.</div>
+          <div style="font-size: 10px; color: #777;">GST/FSSAI registration particulars available on request. This is an order receipt, not a GST tax invoice.</div>
         </div>
 
         <div class="meta-grid">
