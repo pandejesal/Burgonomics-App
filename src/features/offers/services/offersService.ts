@@ -37,7 +37,11 @@ function mockComputeDiscount(offer: Offer, subtotal: number): number {
   const d = offer.discount;
   if (d.mode === "percent" && typeof d.value === "number") {
     const raw = Math.round((subtotal * d.value) / 100);
-    return d.maxDiscount ? Math.min(raw, d.maxDiscount) : raw;
+    // Loop: clamp to subtotal — a misconfigured value >100 (or missing
+    // maxDiscount) must never preview a negative payable. Server reprices
+    // authoritatively, but the preview must not promise free money either.
+    const capped = Math.min(raw, subtotal);
+    return d.maxDiscount ? Math.min(capped, d.maxDiscount) : capped;
   }
   if (d.mode === "flat" && typeof d.value === "number") {
     return Math.min(d.value, subtotal);
