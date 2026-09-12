@@ -17,6 +17,8 @@ import {
   offerRepository,
   useOffersStore,
   OfferListCard,
+  CouponCard,
+  BOGOBanner,
   CouponInput,
   OfferTermsSheet,
 } from "@/features/offers";
@@ -303,6 +305,9 @@ function OffersPage() {
           </section>
         )}
 
+        {/* Signature La Pino'z BOGO Promotion Banner */}
+        <BOGOBanner onApplyCode={(code) => void submitCoupon(code)} />
+
         {/* Coupon entry */}
         <section aria-labelledby="coupon-heading" className="space-y-2">
           <Text id="coupon-heading" variant="titleMedium">
@@ -348,19 +353,29 @@ function OffersPage() {
           visibleSections.map((section) => (
             <section key={section.title} aria-label={section.title} className="space-y-2">
               <Text variant="titleMedium">{section.title}</Text>
-              <div className="space-y-2">
-                {section.items.map((offer) => (
-                  <OfferListCard
-                    key={offer.id}
-                    offer={offer}
-                    applied={promo?.offerId === offer.id}
-                    busy={busyId === offer.id}
-                    disabled={!hasItems && !offer.automatic}
-                    onApply={applyOffer}
-                    onRemove={() => void removeOffer()}
-                    onViewTerms={openTerms}
-                  />
-                ))}
+              <div className="space-y-3">
+                {section.items.map((offer) =>
+                  offer.code ? (
+                    <CouponCard
+                      key={offer.id}
+                      offer={offer}
+                      applied={promo?.offerId === offer.id || promo?.code === offer.code}
+                      onApply={applyOffer}
+                      onRemove={() => void removeOffer()}
+                    />
+                  ) : (
+                    <OfferListCard
+                      key={offer.id}
+                      offer={offer}
+                      applied={promo?.offerId === offer.id}
+                      busy={busyId === offer.id}
+                      disabled={!hasItems && !offer.automatic}
+                      onApply={applyOffer}
+                      onRemove={() => void removeOffer()}
+                      onViewTerms={openTerms}
+                    />
+                  )
+                )}
               </div>
             </section>
           ))}

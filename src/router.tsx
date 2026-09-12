@@ -7,8 +7,6 @@ import { AppShell } from "@/shared/layouts/AppShell";
 
 const shouldUseHashHistory = () => {
   if (typeof window === "undefined") return false;
-  if (import.meta.env.IS_CAPACITOR_BUILD === "true" || import.meta.env.IS_CAPACITOR_BUILD === true)
-    return true;
   if (window.location.protocol === "file:" || window.location.pathname.includes("android_asset"))
     return true;
   return isNative();

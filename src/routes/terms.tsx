@@ -31,7 +31,7 @@ function TermsPage() {
               Terms & Conditions
             </Text>
             <Text variant="caption" tone="secondary">
-              Last updated: August 14, 2026 · Burgonomics India
+              Last updated: August 29, 2026 · Burgonomics Foods Pvt Ltd, India
             </Text>
           </div>
         </div>
@@ -50,12 +50,22 @@ function TermsPage() {
 
           <section className="space-y-2 pt-3 border-t border-divider">
             <Text variant="titleMedium" className="font-bold flex items-center gap-2">
-              <Clock className="h-4 w-4 text-primary" /> 2. Pricing, Taxes & Delivery
+              <Clock className="h-4 w-4 text-primary" /> 2. Pricing, Taxes & Delivery (India)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              All prices listed on the app are in Indian Rupees (INR) and are subject to statutory
-              Goods and Services Tax (GST 5% on restaurant service). Delivery charges may apply
-              based on order subtotal and distance from the fulfilling store.
+              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup: <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is <strong>FREE above ₹499</strong>, otherwise a flat Porter bike fee (≈ ₹40 base + ₹10/km) applies. No international shipping — India only.
+            </Text>
+          </section>
+
+          <section className="space-y-2 pt-3 border-t border-divider">
+            <Text variant="titleMedium" className="font-bold flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" /> 2b. Seller Disclosure (Consumer Protection E-Commerce Rules, 2020)
+            </Text>
+            <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
+              <strong>Seller:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.<br />
+              <strong>CIN:</strong> UXXXXXGJ2024PTCXXXXXX · <strong>GSTIN:</strong> 24XXXXXXXXXX1Z5 · <strong>FSSAI Lic. No.:</strong> 1072XXXXXXXXXX (per store, displayed on menu &amp; checkout).<br />
+              <strong>Helpline:</strong> support@burgonomics.com · +91-7XXXXXXXXX (Mon–Sun 10am–11pm IST).<br />
+              <strong>100% Pure Veg:</strong> All items are strictly vegetarian; FSSAI-licensed kitchens with zero cross-contamination.
             </Text>
           </section>
 

@@ -7,6 +7,7 @@ import { AppButton } from "@/shared/components/common/AppButton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { AddressCard } from "@/features/addresses/components/AddressCard";
+import { AddressFormModal } from "@/features/profile/components/AddressFormModal";
 import { useAddressStore, selectAddresses } from "@/features/addresses/state/addressStore";
 import { addressRepository } from "@/features/addresses/repositories/AddressRepository";
 import type { Address } from "@/features/addresses/models";
@@ -15,8 +16,8 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/profile/addresses")({
   head: () => ({
     meta: [
-      { title: "Saved addresses — Burgonomics" },
-      { name: "description", content: "Manage your delivery addresses." },
+      { title: "Saved Addresses — Burgonomics" },
+      { name: "description", content: "Manage your delivery addresses and set default address." },
     ],
   }),
   component: Page,
@@ -34,6 +35,8 @@ function Body() {
   const navigate = useNavigate();
   const addresses = useAddressStore(selectAddresses);
   const [pendingDelete, setPendingDelete] = React.useState<Address | null>(null);
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [editingAddress, setEditingAddress] = React.useState<Address | null>(null);
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
@@ -43,38 +46,34 @@ function Body() {
   };
 
   const handleAddAddress = () => {
-    void navigate({
-      to: "/addresses/create",
-      search: { returnTo: "/profile/addresses" },
-    });
+    setEditingAddress(null);
+    setModalOpen(true);
   };
 
   const handleEditAddress = (a: Address) => {
-    void navigate({
-      to: "/addresses/create",
-      search: { editId: a.id, returnTo: "/profile/addresses" },
-    });
+    setEditingAddress(a);
+    setModalOpen(true);
   };
 
   return (
-    <AppShell title="Saved addresses" backTo="/profile" showTabs showTopBar>
+    <AppShell title="Saved Addresses" backTo="/profile" showTabs showTopBar>
       <div className="mx-auto max-w-[520px] space-y-3 px-4 py-4">
         {addresses.length === 0 ? (
           <EmptyState
             title="No saved addresses"
-            description="Add your first delivery address so checkout is one tap away."
+            description="Add your delivery address so your favorite smash burgers are just one tap away."
             actionLabel="Add address"
             onAction={handleAddAddress}
           />
         ) : (
           <>
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {addresses.map((a) => (
                 <li key={a.id}>
                   <AddressCard
                     address={a}
                     actionSlot={
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
                         {!a.isDefault && (
                           <button
                             type="button"
@@ -82,24 +81,27 @@ function Body() {
                               void addressRepository.setDefault(a.id);
                               toast.success("Default address updated");
                             }}
-                            className="inline-flex items-center gap-1 type-caption text-primary hover:underline cursor-pointer"
+                            className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-bold text-[#0E4825] dark:text-[#4ADE80] hover:bg-[#0E4825]/10 cursor-pointer transition-colors"
                           >
-                            <Star className="h-3.5 w-3.5" aria-hidden /> Set default
+                            <Star className="h-3.5 w-3.5" aria-hidden />
+                            <span>Set default</span>
                           </button>
                         )}
                         <button
                           type="button"
                           onClick={() => handleEditAddress(a)}
-                          className="inline-flex items-center gap-1 type-caption text-text-secondary hover:text-primary cursor-pointer"
+                          className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-medium text-text-secondary hover:text-text hover:bg-bg-secondary cursor-pointer transition-colors"
                         >
-                          <Pencil className="h-3.5 w-3.5" aria-hidden /> Edit
+                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                          <span>Edit</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setPendingDelete(a)}
-                          className="inline-flex items-center gap-1 type-caption text-text-secondary hover:text-error cursor-pointer"
+                          className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-medium text-text-secondary hover:text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
                         >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden /> Delete
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          <span>Delete</span>
                         </button>
                       </div>
                     }
@@ -107,14 +109,17 @@ function Body() {
                 </li>
               ))}
             </ul>
-            <AppButton
-              variant="outlined"
-              fullWidth
-              onClick={handleAddAddress}
-              iconLeft={<Plus className="h-4 w-4" aria-hidden />}
-            >
-              Add new address
-            </AppButton>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleAddAddress}
+                className="w-full min-h-[48px] py-3 px-4 rounded-2xl border-2 border-dashed border-divider hover:border-primary text-text font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all hover:bg-surface cursor-pointer"
+              >
+                <Plus className="h-4 w-4 text-primary" />
+                <span>Add new address</span>
+              </button>
+            </div>
           </>
         )}
       </div>
@@ -128,6 +133,15 @@ function Body() {
         destructive
         onConfirm={handleDelete}
       />
+
+      <AddressFormModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        addressToEdit={editingAddress}
+        onSuccess={() => setModalOpen(false)}
+      />
     </AppShell>
   );
 }
+
+export default Page;

@@ -20,15 +20,16 @@ export default defineConfig({
     TanStackRouterVite({
       target: "react",
       autoCodeSplitting: true,
-      routesDirectory: path.resolve(__dirname, "src/routes"),
-      generatedRouteTree: path.resolve(__dirname, "src/routeTree.gen.ts"),
+      routesDirectory: path.resolve(import.meta.dirname, "src/routes"),
+      generatedRouteTree: path.resolve(import.meta.dirname, "src/routeTree.gen.ts"),
+      routeFileIgnorePattern: "\\.test\\.(ts|tsx)$",
     }),
     react(),
     tailwindcss(),
   ],
   resolve: {
     tsconfigPaths: true,
-    alias: { "@": path.resolve(__dirname, "src") },
+    alias: { "@": path.resolve(import.meta.dirname, "src") },
     dedupe: ["react", "react-dom", "@tanstack/react-router", "@tanstack/react-query"],
   },
   define: {
@@ -44,7 +45,7 @@ export default defineConfig({
     cssMinify: true,
     assetsInlineLimit: 4096,
     rollupOptions: {
-      input: path.resolve(__dirname, "index.html"),
+      input: path.resolve(import.meta.dirname, "index.html"),
       output: {
         entryFileNames: "assets/[name]-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",

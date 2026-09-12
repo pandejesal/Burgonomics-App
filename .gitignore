@@ -68,3 +68,4 @@ build/
 ios/App/Pods
 ios/App/DerivedData
 .agents/
+vitest.out

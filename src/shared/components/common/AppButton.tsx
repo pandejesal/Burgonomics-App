@@ -25,7 +25,7 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-  sm: "min-h-[40px] px-4 text-sm",
+  sm: "min-h-11 min-w-11 px-4 text-sm", // 44px India PlayStore a11y — hard block
   md: "min-h-[48px] px-6 text-base",
   lg: "min-h-[56px] px-8 text-base",
 };

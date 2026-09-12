@@ -2,9 +2,11 @@ export type { Store, StoreHours, StoreSupport, Fulfillment } from "./models/Stor
 export * from "./repositories/StoreRepository";
 export * from "./state/storeStore";
 export * from "./components/StoreCard";
+export * from "./components/StoreMapViewer";
 export * from "./components/StoreSwitcher";
 export * from "./components/NearestStoreSheet";
 export * from "./components/FulfillmentSheet";
 export * from "./components/FulfillmentChip";
 export * from "./hooks/useLocationPermission";
-export { formatDistance } from "./utils/distance";
+export * from "./hooks/useNearestStore";
+export { formatDistance, haversineKm } from "./utils/distance";

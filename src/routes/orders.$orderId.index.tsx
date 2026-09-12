@@ -95,7 +95,7 @@ function OrderDetailsPage() {
     }
     // A real track URL — the old code shared title/text with no URL, and on
     // desktop (no Web Share API) silently did nothing at all.
-    const url = `${window.location.origin}/orders/${order.id}/track`;
+    const url = orderRepository.buildTrackUrl(order.id);
     const nav = navigator as Navigator & {
       share?: (data: ShareData) => Promise<void>;
       clipboard?: Clipboard;

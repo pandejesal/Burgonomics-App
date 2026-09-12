@@ -11,16 +11,43 @@ export interface ValidationResult {
   error?: string;
 }
 
-/** Normalises raw input to a digits-only string, trimmed to PHONE_LENGTH. */
+/**
+ * Normalises raw input to a 10-digit string, stripping +91 country codes and leading zeroes.
+ */
 export function sanitizePhone(raw: string): string {
-  return raw.replace(/\D/g, "").slice(0, PHONE_LENGTH);
+  let clean = raw.trim();
+  if (clean.startsWith("+91")) {
+    clean = clean.slice(3);
+  } else if (clean.startsWith("91") && clean.replace(/\D/g, "").length > 10) {
+    clean = clean.slice(2);
+  } else if (clean.startsWith("0")) {
+    clean = clean.replace(/^0+/, "");
+  }
+  return clean.replace(/\D/g, "").slice(0, PHONE_LENGTH);
 }
 
 export function validatePhone(raw: string): ValidationResult {
-  const digits = sanitizePhone(raw);
-  if (!digits) return { valid: false, error: "Mobile number is required." };
-  if (digits.length !== PHONE_LENGTH)
+  const rawClean = raw.trim();
+  if (!rawClean) return { valid: false, error: "Mobile number is required." };
+  
+  const rawDigits = rawClean.replace(/\D/g, "");
+  // Check if raw length without country code is oversized
+  if (rawClean.startsWith("+91") || (rawClean.startsWith("91") && rawDigits.length > 10)) {
+    const stripped = rawClean.startsWith("+91") ? rawClean.slice(3).replace(/\D/g, "") : rawDigits.slice(2);
+    if (stripped.length !== PHONE_LENGTH) {
+      return { valid: false, error: `Enter a ${PHONE_LENGTH}-digit mobile number.` };
+    }
+  } else if (rawDigits.length !== PHONE_LENGTH) {
     return { valid: false, error: `Enter a ${PHONE_LENGTH}-digit mobile number.` };
+  }
+
+  const digits = sanitizePhone(raw);
+  if (digits.length !== PHONE_LENGTH) {
+    return { valid: false, error: `Enter a ${PHONE_LENGTH}-digit mobile number.` };
+  }
+  if (!/^[6-9]/.test(digits)) {
+    return { valid: false, error: "Please enter a valid 10-digit Indian mobile number." };
+  }
   return { valid: true };
 }
 

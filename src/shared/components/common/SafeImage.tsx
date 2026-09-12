@@ -12,7 +12,9 @@ const DEFAULT_PLACEHOLDER =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23f97316' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M12 2a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z'/><path d='M3 13h18'/><path d='M4 17h16a2 2 0 0 1 2 2v1H2v-1a2 2 0 0 1 2-2z'/></svg>";
 
 export function SafeImage({ src, fallbackSrc, alt = "", ...props }: SafeImageProps) {
-  const [imgSrc, setImgSrc] = React.useState(src || fallbackSrc || DEFAULT_PLACEHOLDER);
+  // Always prefer a real menu photo — local /images/menu paths are guaranteed to exist, so treat them as primary.
+  const primarySrc = src || fallbackSrc || DEFAULT_PLACEHOLDER;
+  const [imgSrc, setImgSrc] = React.useState(primarySrc);
   const [hasError, setHasError] = React.useState(false);
 
   React.useEffect(() => {
@@ -25,6 +27,8 @@ export function SafeImage({ src, fallbackSrc, alt = "", ...props }: SafeImagePro
       setHasError(true);
       if (fallbackSrc && fallbackSrc !== imgSrc) {
         setImgSrc(fallbackSrc);
+      } else if (src && imgSrc !== src) {
+        setImgSrc(src);
       } else {
         setImgSrc(DEFAULT_PLACEHOLDER);
       }

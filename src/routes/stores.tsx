@@ -11,6 +11,7 @@ import { FailureState } from "@/shared/components/feedback/FailureState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import {
   StoreCard,
+  StoreMapViewer,
   NearestStoreSheet,
   FulfillmentSheet,
   useStoreSelection,
@@ -505,6 +506,12 @@ function StoreSelectionPage() {
         {/* All / Search results */}
         {!initialLoading && !error && (
           <section aria-labelledby="all-stores">
+            <StoreMapViewer
+              stores={listStores}
+              selectedStore={activeStore}
+              onSelectStore={onSelect}
+              className="mb-4"
+            />
             <div className="mb-3 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
               <Text as="h2" variant="titleMedium" tone="secondary" id="all-stores">
                 {searchResults

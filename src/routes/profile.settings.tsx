@@ -17,7 +17,7 @@ export const Route = createFileRoute("/profile/settings")({
   head: () => ({
     meta: [
       { title: "Settings — Burgonomics" },
-      { name: "description", content: "App preferences and account controls." },
+      { name: "description", content: "App preferences, theme toggle and privacy controls." },
     ],
   }),
   component: Page,
@@ -52,20 +52,20 @@ function Body() {
     <AppShell title="Settings" backTo="/profile" showTabs showTopBar>
       <div className="mx-auto max-w-[520px] space-y-4 px-4 py-4">
         {/* Notification preferences */}
-        <AppCard padded>
-          <Text variant="titleMedium" className="mb-2">
-            Notification preferences
-          </Text>
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-divider space-y-3 shadow-xs">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+            Notification Preferences
+          </h4>
           <div className="space-y-3">
             <ToggleRow
               label="Offers & promotions"
-              description="Deals, combos and special drops."
+              description="Deals, combos and special limited drops."
               value={settings.notifications.offers}
               onChange={(v) => void settingsRepository.updateNotifications({ offers: v })}
             />
             <ToggleRow
               label="Order updates"
-              description="Preparation, dispatch and delivery status."
+              description="Preparation, dispatch and live delivery tracking."
               value={settings.notifications.orderUpdates}
               onChange={(v) => void settingsRepository.updateNotifications({ orderUpdates: v })}
             />
@@ -76,74 +76,75 @@ function Body() {
               onChange={(v) => void settingsRepository.updateNotifications({ announcements: v })}
             />
           </div>
-        </AppCard>
+        </div>
 
-        {/* Appearance & language (placeholders) */}
-        <AppCard padded>
-          <Text variant="titleMedium" className="mb-2">
+        {/* Appearance & theme */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-divider space-y-3 shadow-xs">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
             Appearance
-          </Text>
+          </h4>
           <ToggleRow
             label="Dark mode"
-            description="Enable dark theme across the application."
+            description="Enable high-contrast dark theme across Burgonomics."
             value={settings.theme === "dark"}
             onChange={(v) => {
               void settingsRepository.update({ theme: v ? "dark" : "light" });
             }}
           />
-          <div className="mt-3 flex items-center justify-between">
+          <div className="pt-2 flex items-center justify-between border-t border-divider">
             <div>
-              <Text variant="bodyLarge">Language</Text>
-              <Text variant="caption" tone="secondary">
+              <p className="text-xs sm:text-sm font-bold text-text">Language</p>
+              <p className="text-[11px] text-text-secondary">
                 English (India)
-              </Text>
+              </p>
             </div>
-            <AppBadge tone="neutral">Soon</AppBadge>
+            <span className="px-2 py-0.5 rounded-full bg-bg-secondary text-text-secondary text-[10px] font-bold">
+              Default
+            </span>
           </div>
-        </AppCard>
+        </div>
 
         {/* Privacy */}
-        <AppCard padded>
-          <Text variant="titleMedium" className="mb-2">
-            Privacy
-          </Text>
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-divider space-y-3 shadow-xs">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+            Privacy & Analytics
+          </h4>
           <ToggleRow
             label="Product analytics"
-            description="Helps us improve the app. No personal data is sold."
+            description="Helps us optimize menu loading. No personal data is shared."
             value={settings.analyticsOptIn}
             onChange={(v) => void settingsRepository.update({ analyticsOptIn: v })}
           />
-          <div className="mt-3">
+          <div className="pt-2 border-t border-divider">
             <ToggleRow
               label="Personalised recommendations"
-              description="Show offers based on your ordering history."
+              description="Suggest burgers and combos based on your taste profile."
               value={settings.personalizedAdsOptIn}
               onChange={(v) => void settingsRepository.update({ personalizedAdsOptIn: v })}
             />
           </div>
-        </AppCard>
+        </div>
 
         {/* Danger zone */}
-        <AppCard padded>
-          <Text variant="titleMedium" tone="error" className="mb-2">
-            Danger zone
-          </Text>
+        <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-red-500/20 bg-red-500/5 space-y-2.5 shadow-xs">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-red-500">
+            Danger Zone
+          </h4>
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="type-label-large text-error hover:underline"
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-bold transition-colors cursor-pointer"
           >
             Delete account
           </button>
-          <Text variant="caption" tone="secondary" className="mt-1">
-            Permanently deletes your account. Order history is anonymized for records; all other
-            personal data is removed immediately.
-          </Text>
-        </AppCard>
+          <p className="text-[11px] text-text-secondary">
+            Permanently deletes your account and removes personal profile data. Order records are anonymized for tax compliance.
+          </p>
+        </div>
 
-        <Text variant="caption" tone="secondary" className="text-center">
-          {APP.name} v1.0.0
-        </Text>
+        <p className="text-[11px] text-text-secondary text-center">
+          {APP.name} v1.0.0 • 100% Pure Vegetarian
+        </p>
       </div>
 
       <ConfirmDialog
@@ -170,13 +171,13 @@ interface ToggleRowProps {
 
 function ToggleRow({ label, description, value, disabled, trailing, onChange }: ToggleRowProps) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <Text variant="bodyLarge">{label}</Text>
+    <div className="flex items-center justify-between gap-3 min-h-[44px]">
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <p className="text-xs sm:text-sm font-bold text-text">{label}</p>
         {description && (
-          <Text variant="caption" tone="secondary">
+          <p className="text-[11px] text-text-secondary leading-tight">
             {description}
-          </Text>
+          </p>
         )}
       </div>
       {trailing ?? (
@@ -185,3 +186,5 @@ function ToggleRow({ label, description, value, disabled, trailing, onChange }: 
     </div>
   );
 }
+
+export default Page;

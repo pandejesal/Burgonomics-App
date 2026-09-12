@@ -166,19 +166,16 @@ export const razorpayAdapter: RazorpayAdapter = {
         return;
       }
       useDemoStore.getState().patchRazorpay({ paymentStatus: "processing" });
-      // Only pass `order_id` when it was minted by the backend (real
-      // Razorpay order ids start with `order_` followed by 14 base62
-      // chars). Client-simulated ids would make Razorpay reject the
-      // checkout with a silent error and leave the UI hanging.
       const isRealRzpOrder = /^order_[A-Za-z0-9]{14}$/.test(init.order.orderId);
       const options: Record<string, unknown> = {
         key: init.order.keyId,
         amount: Math.round(init.order.amount * 100),
         currency: init.order.currency,
         name: "Burgonomics",
-        description: "House of DAMN GOOD BURGERS!!",
+        description: "Burgonomics — 100% Pure Veg Burgers",
+        image: "/brand/burgonomics-logo.png",
         prefill: init.prefill,
-        theme: { color: init.theme?.color ?? "#EF6124" },
+        theme: { color: init.theme?.color ?? "#0E4825" },
         modal: {
           ondismiss: () => {
             useDemoStore.getState().patchRazorpay({ paymentStatus: "cancelled" });
@@ -214,9 +211,6 @@ export const razorpayAdapter: RazorpayAdapter = {
         open: () => void;
         on?: (event: string, cb: (payload: unknown) => void) => void;
       };
-      // Razorpay fires `payment.failed` for gateway/validation errors
-      // (invalid order, network drop, bank decline). Without this
-      // listener the modal shows the error but our UI stays "waiting".
       rzp.on?.("payment.failed", (payload: unknown) => {
         const err =
           (
