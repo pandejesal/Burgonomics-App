@@ -287,8 +287,13 @@ export function CheckoutPage() {
 
         AudioService.playSuccess();
         void HapticService.notification("success");
-        if (redeemPoints && pointsDiscount > 0) {
-          useLoyaltyStore.getState().redeem(pointsDiscount);
+        // Loop 65/120: no local decrement — the server debits redeemed coins
+        // on confirm (Loop 63). Refresh converges the display to ledger truth.
+        try {
+          const uid = useAuthStore.getState().user?.id ?? null;
+          void useLoyaltyStore.getState().refreshFromServer(uid);
+        } catch {
+          // best-effort; the confirmation screen re-syncs
         }
         void cartRepository.clear();
         void navigate({
@@ -357,8 +362,13 @@ export function CheckoutPage() {
               setPaymentStatus("success");
               AudioService.playSuccess();
               void HapticService.notification("success");
-              if (redeemPoints && pointsDiscount > 0) {
-                useLoyaltyStore.getState().redeem(pointsDiscount);
+              // Loop 65/120: no local decrement — the server debits redeemed
+              // coins on confirm (Loop 63). Refresh converges to ledger truth.
+              try {
+                const uid = useAuthStore.getState().user?.id ?? null;
+                void useLoyaltyStore.getState().refreshFromServer(uid);
+              } catch {
+                // best-effort; the confirmation screen re-syncs
               }
               void cartRepository.clear();
               const orderId = created.success ? created.data.id : verify.data.confirmedOrderId;

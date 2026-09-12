@@ -1,18 +1,33 @@
 import { create } from "zustand";
+import { db } from "@/core/config/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 const STORAGE_KEY = "burgonomics.loyalty.v1";
 
 interface LoyaltyState {
+  /**
+   * Loop 65/120: this balance is a CACHE of the server truth
+   * (customers/{uid}.loyaltyPoints) — never minted locally. The old store
+   * defaulted every user to 250 phantom points, granted 50 more on signup,
+   * and credited purchases, all without any server backing; the server
+   * (Loops 62-63) charges against its own ledger, so the fiction also
+   * produced "You only have 0" errors at pay time. Defaults 0, converges
+   * via refreshFromServer.
+   */
   balance: number;
-  lifetimeEarned: number;
-  lifetimeRedeemed: number;
+  /** Last successful server sync (ms epoch) — display only, never a truth claim. */
+  lastSyncedAt: number | null;
   hydrate: () => void;
-  earn: (points: number) => void;
-  redeem: (points: number) => boolean;
-  setBalance: (balance: number) => void;
+  /**
+   * Pull the authoritative balance for a signed-in customer. Guests (no uid)
+   * hold zero. Failures keep the last cached value (offline-safe) and never
+   * invent one. Firestore rules let customers read only their own doc and
+   * never write loyaltyPoints — the server is the sole minter.
+   */
+  refreshFromServer: (uid: string | null | undefined) => Promise<void>;
 }
 
-function readPersisted(): Partial<LoyaltyState> | null {
+function readPersisted(): { balance?: unknown; lastSyncedAt?: unknown } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -22,7 +37,7 @@ function readPersisted(): Partial<LoyaltyState> | null {
   }
 }
 
-function persist(state: Pick<LoyaltyState, "balance" | "lifetimeEarned" | "lifetimeRedeemed">) {
+function persist(state: Pick<LoyaltyState, "balance" | "lastSyncedAt">) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -30,62 +45,68 @@ function persist(state: Pick<LoyaltyState, "balance" | "lifetimeEarned" | "lifet
   }
 }
 
+function cleanBalance(raw: unknown): number {
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : 0;
+}
+
 export const useLoyaltyStore = create<LoyaltyState>((set, get) => ({
-  balance: 250,
-  lifetimeEarned: 250,
-  lifetimeRedeemed: 0,
+  balance: 0,
+  lastSyncedAt: null,
 
   hydrate() {
     const p = readPersisted();
-    if (p && typeof p.balance === "number") {
-      set({
-        balance: p.balance,
-        lifetimeEarned: typeof p.lifetimeEarned === "number" ? p.lifetimeEarned : p.balance,
-        lifetimeRedeemed: typeof p.lifetimeRedeemed === "number" ? p.lifetimeRedeemed : 0,
-      });
+    if (!p) return;
+    // Cached values are pre-Loop-65 fiction-capable: clamp, never trust.
+    // refreshFromServer overwrites with truth when authed + online.
+    set({
+      balance: cleanBalance(p.balance),
+      lastSyncedAt:
+        typeof p.lastSyncedAt === "number" && Number.isFinite(p.lastSyncedAt)
+          ? p.lastSyncedAt
+          : null,
+    });
+  },
+
+  async refreshFromServer(uid) {
+    if (!uid) {
+      set({ balance: 0, lastSyncedAt: null });
+      persist({ balance: 0, lastSyncedAt: null });
+      return;
     }
-  },
-
-  earn(points: number) {
-    if (points <= 0) return;
-    const next = get().balance + points;
-    const earned = get().lifetimeEarned + points;
-    set({ balance: next, lifetimeEarned: earned });
-    persist({ balance: next, lifetimeEarned: earned, lifetimeRedeemed: get().lifetimeRedeemed });
-  },
-
-  redeem(points: number) {
-    if (points <= 0) return false;
-    const bal = get().balance;
-    if (bal < points) return false;
-    const next = bal - points;
-    const redeemed = get().lifetimeRedeemed + points;
-    set({ balance: next, lifetimeRedeemed: redeemed });
-    persist({ balance: next, lifetimeEarned: get().lifetimeEarned, lifetimeRedeemed: redeemed });
-    return true;
-  },
-
-  setBalance(balance: number) {
-    const b = Math.max(0, Math.floor(balance));
-    set({ balance: b });
-    persist({ balance: b, lifetimeEarned: get().lifetimeEarned, lifetimeRedeemed: get().lifetimeRedeemed });
+    try {
+      const snap = await getDoc(doc(db, "customers", uid));
+      const server = snap.exists()
+        ? cleanBalance((snap.data() as any)?.loyaltyPoints)
+        : 0;
+      const at = Date.now();
+      // Server is truth: adopt unconditionally, even downward (post-purchase
+      // debits must show).
+      set({ balance: server, lastSyncedAt: at });
+    } catch {
+      // Offline / denied / missing doc: keep the last cached value.
+      // Callers (checkout) already clamp display; charge-time truth is
+      // enforced server-side (Loop 62 400s on over-claim).
+    }
   },
 }));
 
-// auto-hydrate on module load (browser only)
+// auto-hydrate cache on module load (browser only); truth arrives via
+// refreshFromServer once the auth identity is known.
 if (typeof window !== "undefined") {
   try {
     const p = readPersisted();
-    if (p && typeof p.balance === "number") {
+    if (p) {
       useLoyaltyStore.setState({
-        balance: p.balance,
-        lifetimeEarned: typeof p.lifetimeEarned === "number" ? p.lifetimeEarned : p.balance,
-        lifetimeRedeemed: typeof p.lifetimeRedeemed === "number" ? p.lifetimeRedeemed : 0,
+        balance: cleanBalance(p.balance),
+        lastSyncedAt:
+          typeof p?.lastSyncedAt === "number" && Number.isFinite(p.lastSyncedAt)
+            ? p.lastSyncedAt
+            : null,
       });
     }
   } catch {
-    // ignore
+    // corrupted cache: boot at zero, refresh later
   }
 }
-
-export const selectLoyaltyBalance = (s: LoyaltyState) => s.balance;

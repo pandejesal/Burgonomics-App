@@ -82,15 +82,15 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(false);
 
     if (res.ok) {
-      // Signup bonus: credit 50 Loyalty Points once per device.
+      // Loop 65/120: no local signup mint. The old code credited 50 phantom
+      // points per device with zero server backing (clearing storage
+      // re-minted them); the server ledger is the sole minter. Refresh from
+      // truth instead — new customers correctly see zero.
       try {
-        const flag = localStorage.getItem("burgonomics.loyalty.signupBonus");
-        if (!flag) {
-          useLoyaltyStore.getState().earn(50);
-          localStorage.setItem("burgonomics.loyalty.signupBonus", "1");
-        }
+        const uid = useAuthStore.getState().user?.id ?? null;
+        void useLoyaltyStore.getState().refreshFromServer(uid);
       } catch {
-        // ignore storage errors
+        // balance refresh is best-effort here; checkout re-syncs anyway
       }
       toast.success("Verified successfully!");
       onSuccess();

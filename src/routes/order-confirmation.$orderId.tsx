@@ -36,7 +36,7 @@ import {
   EstimatedDeliveryCountdown,
   type Order,
 } from "@/features/orders";
-import { GrillCoinsEarnedCard } from "@/features/loyalty/components/GrillCoinsEarnedCard";
+import { useAuthStore } from "@/features/auth/state/authStore";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { ReviewItemsList } from "@/features/checkout";
 import { db } from "@/core/config/firebase";
@@ -144,16 +144,21 @@ function OrderConfirmationPage() {
         ? "Takeaway"
         : "Dine-in";
 
-  // Loyalty Points earn: 5% of item subtotal, min 15 pts, 1 pt = Rs.1
-  const earnedCoins = Math.max(15, Math.round((order.totals.subtotal || 300) * 0.05));
-
-  // Credit points once per order
-  const creditedRef = React.useRef<string | null>(null);
+  // Loop 65/120: no local earn. The old effect credited 5% phantom points
+  // per order (celebrated below as wallet credit) with zero server backing —
+  // the server has no purchase-earn program. Refresh converges the display
+  // to ledger truth instead (post-confirm debits included).
+  const syncedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!order || creditedRef.current === order.id) return;
-    creditedRef.current = order.id;
-    useLoyaltyStore.getState().earn(earnedCoins);
-  }, [order, earnedCoins]);
+    if (!order || syncedRef.current === order.id) return;
+    syncedRef.current = order.id;
+    try {
+      const uid = useAuthStore.getState().user?.id ?? null;
+      void useLoyaltyStore.getState().refreshFromServer(uid);
+    } catch {
+      // best-effort; wallet screen re-syncs on mount
+    }
+  }, [order]);
 
   const shareOrder = async () => {
     const res = await orderRepository.buildShareMessage(order.id);
@@ -161,7 +166,7 @@ function OrderConfirmationPage() {
       toast.error("Could not build the share link. Please try again.");
       return;
     }
-    const url = `${window.location.origin}/orders/${order.id}/track`;
+    const url = orderRepository.buildTrackUrl(order.id);
     const nav = navigator as Navigator & {
       share?: (data: ShareData) => Promise<void>;
       clipboard?: Clipboard;
@@ -203,8 +208,10 @@ function OrderConfirmationPage() {
           estimatedMinutes={eta}
         />
 
-        {/* 3. Loyalty Points Earned Card */}
-        <GrillCoinsEarnedCard pointsEarned={earnedCoins} totalSubtotal={order.totals.subtotal} />
+        {/* Loop 65/120: earned-card REMOVED — it celebrated phantom points
+          as wallet credit with zero server backing (no purchase-earn
+          program exists). QUEUED product call: server purchase-earn rule +
+          honest earn UI. */}
 
         {/* 4. Order & Fulfillment Summary Card */}
         <section

@@ -11,9 +11,13 @@ interface GrillCoinsWalletCardProps {
   className?: string;
 }
 
-function tierFor(lifetimeEarned: number): string {
-  if (lifetimeEarned >= 700) return "Gold";
-  if (lifetimeEarned >= 300) return "Silver";
+// Loop 65/120: tier derives from the server-verified balance, not the
+// retired local lifetime counter (phantom 250 + local mints inflated every
+// fresh user toward Silver). Thresholds unchanged; queue a server lifetime
+// field if product wants tenure-based tiers.
+function tierFor(balance: number): string {
+  if (balance >= 700) return "Gold";
+  if (balance >= 300) return "Silver";
   return "Bronze";
 }
 
@@ -27,9 +31,8 @@ export function GrillCoinsWalletCard({
   className,
 }: GrillCoinsWalletCardProps) {
   const storeBalance = useLoyaltyStore((s) => s.balance);
-  const lifetimeEarned = useLoyaltyStore((s) => s.lifetimeEarned);
   const balance = balanceProp ?? storeBalance;
-  const tier = tierProp ?? tierFor(lifetimeEarned);
+  const tier = tierProp ?? tierFor(balance);
   return (
     <div
       onClick={() => void HapticService.selection()}
