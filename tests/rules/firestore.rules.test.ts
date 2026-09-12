@@ -370,4 +370,19 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
       })
     );
   });
+
+  it("25. [BROADCAST-ADMIN-ALLOW] Brand Owner CAN read broadcast history", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(getDoc(doc(brandDb, "broadcasts", "bc_rules_01")));
+  });
+
+  it("26. [BROADCAST-WRITE-DENY] Branch staff CANNOT write broadcast history directly", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      setDoc(doc(branch1Db, "broadcasts", "bc_rules_evil"), {
+        title: "Fake",
+        successCount: 99999,
+      })
+    );
+  });
 });
