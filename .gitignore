@@ -58,6 +58,13 @@ device_audit_report.json
 *.sln
 *.sw?
 
+# Local verification logs (never commit)
+*.out
+build.out
+rules.out
+vitest.out
+tsc.out
+
 # Mobile & Native build artifacts
 android/.gradle
 android/app/build
@@ -68,4 +75,3 @@ build/
 ios/App/Pods
 ios/App/DerivedData
 .agents/
-vitest.out
