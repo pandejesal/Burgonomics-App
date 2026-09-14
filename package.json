@@ -8,7 +8,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "build:mobile": "vite build",
+    "build:mobile": "vite build --config vite.mobile.config.ts",
     "build:mobile:staging": "npm run build:mobile -- --mode staging",
     "build:mobile:prod": "npm run build:mobile -- --mode production",
     "preview": "vite preview",

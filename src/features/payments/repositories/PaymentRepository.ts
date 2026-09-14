@@ -92,6 +92,27 @@ export class PaymentRepository {
         message: "Sign in to complete your payment.",
       });
     }
+    // Min-order gate: the pricing code exists but was never enforced
+    // pre-gateway. Block here with the shortfall, not at the gateway.
+    if (sel.activeStore && cart.lines.length > 0) {
+      const minOrder = sel.activeStore.pricing?.minOrderAmount ?? 0;
+      if (minOrder > 0) {
+        const totalsRes = await cartRepository.calculateTotals();
+        if (totalsRes.success && totalsRes.data.subtotal < minOrder) {
+          issues.push({
+            code: "min_order",
+            message: `Add items worth ₹${minOrder - totalsRes.data.subtotal} more to meet the ₹${minOrder} minimum order.`,
+          });
+        }
+      }
+    }
+    // Closed-store gate: never open the gateway for a closed store.
+    if (sel.activeStore && sel.activeStore.isOpen === false) {
+      issues.push({
+        code: "closed_store",
+        message: "This store is currently closed. Try again during opening hours.",
+      });
+    }
 
     if (issues.length === 0) {
       const cartCheck = await cartRepository.validateCart();
@@ -125,6 +146,9 @@ export class PaymentRepository {
     const auth = useAuthStore.getState();
     const address = selectSelectedAddress(useAddressStore.getState());
     const checkout = useCheckoutStore.getState();
+    const loyaltyPointsToRedeem =
+      opts?.loyaltyPointsToRedeem ?? checkout.loyaltyPointsToRedeem;
+    const tipAmount = checkout.tipAmount;
 
     const checkoutSnapshot = {
       store: toStoreSnapshot(sel.activeStore),
@@ -160,6 +184,8 @@ export class PaymentRepository {
             ? checkout.pickupInstructions
             : checkout.diningNotes,
       userId: auth.user?.id,
+      tipAmount,
+      loyaltyPointsToRedeem,
     };
 
     // The checkout token would normally come from the cart-prepare step
@@ -168,12 +194,15 @@ export class PaymentRepository {
     const checkoutToken = prep.success ? prep.data.checkoutToken : undefined;
 
     // Server reprices authoritatively from items + store pricing; the client
-    // amount below is display-only. Loyalty/coupon/branch are sent as inputs.
+    // amount below is display-only. Loyalty/coupon/tip/branch are sent as
+    // inputs (resolved above from opts with fallback to persisted checkout
+    // state). Stable per checkout: retries reuse the open gateway order.
     const fingerprint = JSON.stringify([
       sel.activeStore.id,
       cart.lines.map((l) => [l.productId, l.quantity, l.unitPrice]),
       cart.promo?.code || null,
-      opts?.loyaltyPointsToRedeem || 0,
+      loyaltyPointsToRedeem || 0,
+      tipAmount || 0,
     ]);
     return this.service.createOrder({
       amount: totalsRes.data.grandTotal,
@@ -192,7 +221,8 @@ export class PaymentRepository {
         modifiers: l.modifiers,
       })),
       couponCode: cart.promo?.code,
-      loyaltyPointsToRedeem: opts?.loyaltyPointsToRedeem,
+      loyaltyPointsToRedeem,
+      tipAmount,
       idempotencyKey: this.idempotencyKeyFor(fingerprint),
       checkoutToken,
       checkoutSnapshot,

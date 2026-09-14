@@ -6,9 +6,9 @@
 
       colorPrimary      = #023020  (dark teal — splash background)
       colorPrimaryDark  = #012313  (darker variant for status bar)
-      colorAccent       = #FF6600  (orange accent — matches color-accent in Tailwind)
+      colorAccent       = #C2410C  (AA accent — matches --accent in styles.css)
     -->
     <color name="colorPrimary">#023020</color>
     <color name="colorPrimaryDark">#012313</color>
-    <color name="colorAccent">#FF6600</color>
+    <color name="colorAccent">#C2410C</color>
 </resources>

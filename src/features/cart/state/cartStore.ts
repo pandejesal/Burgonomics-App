@@ -55,15 +55,21 @@ export const useCartStore = create<CartState>()(
           if (s.storeId && s.storeId !== line.storeId) {
             return { error: "Cart belongs to a different store." };
           }
-          const key = signatureOf(line);
+          // Clamp every entry path 1..99: the product page used to push
+          // 9999× lines straight past the merge clamp below.
+          const clean: CartLine = {
+            ...line,
+            quantity: Math.min(99, Math.max(1, Math.floor(line.quantity) || 1)),
+          };
+          const key = signatureOf(clean);
           const existingIdx = s.lines.findIndex((l) => signatureOf(l) === key);
           let lines: CartLine[];
           if (existingIdx >= 0) {
             lines = s.lines.map((l, i) =>
-              i === existingIdx ? { ...l, quantity: Math.min(99, l.quantity + line.quantity) } : l,
+              i === existingIdx ? { ...l, quantity: Math.min(99, l.quantity + clean.quantity) } : l,
             );
           } else {
-            lines = [...s.lines, line];
+            lines = [...s.lines, clean];
           }
           return {
             lines,
@@ -196,7 +202,7 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: "burg.cart",
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => {
         if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
         const memoryStorage = new Map<string, string>();
@@ -226,36 +232,48 @@ export const useCartStore = create<CartState>()(
         if (state) state.status = initialStatus(state.lines);
       },
     migrate: (persisted, version) => {
+      const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
+      // Promo is NEVER trusted across reloads: a hand-edited burg.cart
+      // promo ({discount: 9999}) used to flow straight into checkout.
+      // v<5 entries are scrubbed to null; v5+ entries must still carry a
+      // well-shaped promo or they are scrubbed too. The coupon code is
+      // re-applied (and re-checked for active status) via applyPromo —
+      // see CartRepository.validateCart + PromoInput mount revalidation.
+      const scrubbedPromo =
+        version >= 5 && isShapedPromo(anyPersisted.promo)
+          ? (anyPersisted.promo as AppliedPromo)
+          : null;
       if (!persisted || typeof persisted !== "object" || version < 4) {
-        const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
         // Per-line validation: a tampered/legacy burg.cart entry
         // ({unitPrice:"free", quantity:"999"}) used to rehydrate straight
         // into pricing math (free items, NaN totals). Scrub or drop lines.
         const lines = Array.isArray(anyPersisted.lines)
           ? (anyPersisted.lines as Record<string, unknown>[]).flatMap((l) => {
               if (!l || typeof l !== "object") return [];
-              const unitPrice = Number((l as any).unitPrice);
-              const quantity = Number((l as any).quantity);
+              const unitPrice = Number((l as { unitPrice?: unknown }).unitPrice);
+              const quantity = Number((l as { quantity?: unknown }).quantity);
               if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 100000) return [];
               if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return [];
-              const productId = (l as any).productId;
-              const name = (l as any).name;
+              const productId = (l as { productId?: unknown }).productId;
+              const name = (l as { name?: unknown }).name;
               if (typeof productId !== "string" || typeof name !== "string") return [];
-              const modifiers = Array.isArray((l as any).modifiers) ? (l as any).modifiers : [];
+              const rawMods = (l as { modifiers?: unknown }).modifiers;
+              const modifiers = Array.isArray(rawMods) ? rawMods : [];
               return [{ ...(l as object), unitPrice, quantity, modifiers } as CartLine];
             })
           : [];
         return {
           storeId: (anyPersisted.storeId as string | null) ?? null,
           lines,
-          promo: (anyPersisted.promo as AppliedPromo | null) ?? null,
+          promo: scrubbedPromo,
           priceLockExpiresAt:
             typeof anyPersisted.priceLockExpiresAt === "number"
               ? anyPersisted.priceLockExpiresAt
               : null,
         } as Partial<CartState>;
       }
-      return persisted as Partial<CartState>;
+      // v4+ shape is otherwise current — but the promo is still scrubbed.
+      return { ...(persisted as object), promo: scrubbedPromo } as Partial<CartState>;
     },
     },
   ),
@@ -271,6 +289,15 @@ export const selectHasItems = (s: CartState): boolean => s.lines.length > 0;
 export const selectCartStoreId = (s: CartState): string | null => s.storeId;
 
 // -- Helpers -----------------------------------------------------------
+
+/** Persisted promos must at least be well-shaped to survive rehydrate. */
+function isShapedPromo(p: unknown): p is AppliedPromo {
+  if (!p || typeof p !== "object") return false;
+  const r = p as Record<string, unknown>;
+  if (typeof r.code !== "string" || r.code.length === 0) return false;
+  const discount = Number(r.discount);
+  return Number.isFinite(discount) && discount >= 0 && discount <= 100000;
+}
 
 function signatureOf(line: CartLine): string {
   const mods = [...(line.modifiers ?? [])]

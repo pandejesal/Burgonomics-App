@@ -13,11 +13,36 @@
  */
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import type { Address, AddressInput } from "@/features/addresses/models";
+import { INDIAN_MOBILE_RE } from "@/features/auth/utils/validators";
 
+/**
+ * Shared create-path validation. Phone uses the same strict Indian
+ * mobile rule as auth (first digit 6–9) so "0000000000", "1234567890"
+ * and 5-series numbers fail closed here too.
+ */
 function validate(input: AddressInput): string | null {
   if (!input.line1?.trim()) return "Address line is required.";
   if (!input.city?.trim()) return "City is required.";
   if (!/^\d{6}$/.test(input.pincode ?? "")) return "Enter a valid 6-digit pincode.";
+  if (input.contactPhone && !INDIAN_MOBILE_RE.test(input.contactPhone)) {
+    return "Enter a valid 10-digit Indian mobile number.";
+  }
+  return null;
+}
+
+/**
+ * Update-path validation — same rules as create, applied only to the
+ * fields present in the patch. A present-but-invalid phone fails closed.
+ */
+function validatePatch(patch: Partial<AddressInput>): string | null {
+  if (patch.line1 !== undefined && !patch.line1?.trim()) return "Address line is required.";
+  if (patch.city !== undefined && !patch.city?.trim()) return "City is required.";
+  if (patch.pincode !== undefined && !/^\d{6}$/.test(patch.pincode ?? "")) {
+    return "Enter a valid 6-digit pincode.";
+  }
+  if (patch.contactPhone !== undefined && !INDIAN_MOBILE_RE.test(patch.contactPhone)) {
+    return "Enter a valid 10-digit Indian mobile number.";
+  }
   return null;
 }
 
@@ -69,12 +94,8 @@ export const addressService = {
   },
 
   async update(id: string, patch: Partial<AddressInput>): Promise<ApiResult<Partial<Address>>> {
-    if (patch.contactPhone && !/^\d{10}$/.test(patch.contactPhone)) {
-      return fail("INVALID_PHONE", "Enter a valid 10-digit phone.");
-    }
-    if (patch.pincode && !/^\d{6}$/.test(patch.pincode)) {
-      return fail("INVALID_PINCODE", "Enter a valid 6-digit pincode.");
-    }
+    const err = validatePatch(patch);
+    if (err) return fail("INVALID_ADDRESS", err);
 
     try {
       const { auth, db } = await import("@/core/config/firebase");

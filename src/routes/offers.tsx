@@ -148,20 +148,26 @@ function OffersPage() {
       return;
     }
     setBusyId(offer.id);
-    const res = await cartRepository.applyPromo({ offerId: offer.id });
-    setBusyId(null);
-    if (!res.success) {
-      toast.error(res.error.message);
-      return;
+    try {
+      const res = await cartRepository.applyPromo({ offerId: offer.id });
+      if (!res.success) {
+        toast.error(res.error.message);
+        return;
+      }
+      toast.success(res.data.savingsLabel ?? `${offer.title} applied.`, { duration: 2500 });
+    } finally {
+      setBusyId(null);
     }
-    toast.success(res.data.savingsLabel ?? `${offer.title} applied.`, { duration: 2500 });
   };
 
   const removeOffer = async () => {
     setBusyId(promo?.offerId ?? "current");
-    await cartRepository.removePromo();
-    setBusyId(null);
-    toast("Offer removed", { duration: 2000 });
+    try {
+      await cartRepository.removePromo();
+      toast("Offer removed", { duration: 2000 });
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const submitCoupon = async (code: string) => {
@@ -174,26 +180,30 @@ function OffersPage() {
       return;
     }
     setCoupon({ busy: true, error: null, success: null });
-    // Validation then apply — both delegated to the repository.
-    const validate = await offerRepository.validateCoupon(code, {
-      storeId,
-      fulfillment: fulfillment ?? undefined,
-      subtotal: 0,
-    });
-    if (!validate.success) {
-      setCoupon({ busy: false, error: validate.error.message, success: null });
-      return;
+    try {
+      // Validation then apply — both delegated to the repository.
+      const validate = await offerRepository.validateCoupon(code, {
+        storeId,
+        fulfillment: fulfillment ?? undefined,
+        subtotal: 0,
+      });
+      if (!validate.success) {
+        setCoupon({ busy: false, error: validate.error.message, success: null });
+        return;
+      }
+      const applied = await cartRepository.applyPromo({ code });
+      if (!applied.success) {
+        setCoupon({ busy: false, error: applied.error.message, success: null });
+        return;
+      }
+      setCoupon({
+        busy: false,
+        error: null,
+        success: applied.data.savingsLabel ?? `${applied.data.description ?? code} applied.`,
+      });
+    } catch {
+      setCoupon({ busy: false, error: "Could not apply the coupon. Please try again.", success: null });
     }
-    const applied = await cartRepository.applyPromo({ code });
-    if (!applied.success) {
-      setCoupon({ busy: false, error: applied.error.message, success: null });
-      return;
-    }
-    setCoupon({
-      busy: false,
-      error: null,
-      success: applied.data.savingsLabel ?? `${applied.data.description ?? code} applied.`,
-    });
   };
 
   const sections = React.useMemo(() => {

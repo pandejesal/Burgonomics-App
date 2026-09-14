@@ -79,22 +79,32 @@ export function useOrderTracking(
     setState((prev) =>
       prev.snapshot ? { status: "refreshing", snapshot: prev.snapshot, error: null } : prev,
     );
-    const res = await orderRepository.getTracking(orderId);
-    if (res.success && res.data) {
-      setState({
-        status: res.data.status.terminal
-          ? res.data.status.kind === "cancelled"
-            ? "cancelled"
-            : "completed"
-          : "tracking",
-        snapshot: res.data,
-        error: null,
-      });
-    } else if (!res.success) {
+    try {
+      const res = await orderRepository.getTracking(orderId);
+      if (res.success && res.data) {
+        setState({
+          status: res.data.status.terminal
+            ? res.data.status.kind === "cancelled"
+              ? "cancelled"
+              : "completed"
+            : "tracking",
+          snapshot: res.data,
+          error: null,
+        });
+      } else if (!res.success) {
+        setState((prev) => ({
+          status: "error",
+          snapshot: prev.snapshot,
+          error: res.error.message,
+        }));
+      }
+    } catch (err) {
+      // A thrown rejection must surface as an error state (with retry),
+      // never leave the hook stuck in "refreshing".
       setState((prev) => ({
         status: "error",
         snapshot: prev.snapshot,
-        error: res.error.message,
+        error: err instanceof Error ? err.message : "Could not refresh tracking.",
       }));
     }
   }, [orderId]);

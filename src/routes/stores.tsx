@@ -209,8 +209,13 @@ function StoreSelectionPage() {
 
   const onPullRefresh = async () => {
     setPulling(true);
-    await refresh();
-    setPulling(false);
+    try {
+      await refresh();
+    } finally {
+      // A thrown refresh must still release the spinner — otherwise the
+      // refresh button spins forever with no recovery path.
+      setPulling(false);
+    }
   };
 
   const commitSelection = (s: Store) => {

@@ -8,6 +8,7 @@ import { AppButton } from "@/shared/components/common/AppButton";
 import { Text } from "@/shared/components/common/Text";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { FailureState } from "@/shared/components/feedback/FailureState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 
 import {
@@ -44,19 +45,50 @@ function OrderDetailsPage() {
   const [order, setOrder] = React.useState<Order | null>(cached);
   const [tracking, setTracking] = React.useState<OrderTrackingSnapshot | null>(null);
   const [loading, setLoading] = React.useState(!cached);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  const loadDetails = React.useCallback(async () => {
+    if (!hydrated) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [o, t] = await Promise.all([
+        orderRepository.getOrder(orderId),
+        orderRepository.getTracking(orderId),
+      ]);
+      if (o.success) setOrder(o.data);
+      if (t.success) setTracking(t.data);
+      // A backend/network failure is NOT "not found" — surface a retry.
+      if (!o.success) setLoadError(o.error.message);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not load this order.");
+    } finally {
+      setLoading(false);
+    }
+  }, [hydrated, orderId]);
 
   React.useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
-    void Promise.all([
-      orderRepository.getOrder(orderId),
-      orderRepository.getTracking(orderId),
-    ]).then(([o, t]) => {
-      if (cancelled) return;
-      if (o.success) setOrder(o.data);
-      if (t.success) setTracking(t.data);
-      setLoading(false);
-    });
+    void (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [o, t] = await Promise.all([
+          orderRepository.getOrder(orderId),
+          orderRepository.getTracking(orderId),
+        ]);
+        if (cancelled) return;
+        if (o.success) setOrder(o.data);
+        if (t.success) setTracking(t.data);
+        if (!o.success) setLoadError(o.error.message);
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : "Could not load this order.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -64,6 +96,24 @@ function OrderDetailsPage() {
 
   if (!hydrated || loading) return <DetailsSkeleton />;
 
+  // A backend/network failure loading the order is NOT "not found" — it
+  // must surface a retry UI so the user can recover without leaving.
+  if (loadError) {
+    return (
+      <ProtectedRoute>
+        <AppShell title="Order details" backTo="/orders" showTabs={false} showTopBar>
+          <FailureState
+            title="Couldn't load this order"
+            message={loadError}
+            onRetry={() => void loadDetails()}
+          />
+        </AppShell>
+      </ProtectedRoute>
+    );
+  }
+
+  // Only a confirmed empty result (order genuinely does not exist) is a
+  // real "not found" — never a network/backend failure.
   if (!order) {
     return (
       <ProtectedRoute>

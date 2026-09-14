@@ -1,8 +1,10 @@
 import * as React from "react";
 import { WifiOff } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { useHydrated } from "@/shared/hooks/useHydrated";
+import { useStoreSelection } from "@/features/stores/state/storeStore";
 
 /**
  * OfflineBanner — persistent alert per Frontend Arch §22.
@@ -10,11 +12,17 @@ import { useHydrated } from "@/shared/hooks/useHydrated";
  * Also emits a lightweight "Back online" toast when connectivity is
  * restored so screens dependent on repository data can visibly refresh
  * without any per-feature wiring.
+ *
+ * On reconnect the banner provably refreshes data: it invalidates every
+ * React Query cache entry (forcing active queries to refetch) and reloads
+ * the persisted store-selection state so the active store / fulfillment
+ * reflect the latest server truth.
  */
 export function OfflineBanner() {
   const hydrated = useHydrated();
   const online = useAppConfig((s) => s.isOnline);
   const wasOfflineRef = React.useRef(false);
+  const queryClient = useQueryClient();
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -25,8 +33,12 @@ export function OfflineBanner() {
       toast.success("Back online", {
         description: "Refreshing latest content…",
       });
+      // Real refresh, not toast-only: invalidate all queries so every
+      // active query refetches, and reload the persisted store selection.
+      void queryClient.invalidateQueries();
+      void useStoreSelection.persist.rehydrate();
     }
-  }, [hydrated, online]);
+  }, [hydrated, online, queryClient]);
 
   if (!hydrated || online) return null;
   return (

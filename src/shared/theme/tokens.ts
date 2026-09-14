@@ -3,6 +3,43 @@
  * src/styles.css. Reference these keys from components/hooks instead
  * of hardcoding hex/rgb values (see R-FE-001).
  */
+
+export const colors = {
+  background: "var(--background)",
+  foreground: "var(--foreground)",
+  surface: "var(--surface)",
+  surfaceElevated: "var(--surface-elevated)",
+  bgSecondary: "var(--bg-secondary)",
+  primary: "var(--primary)",
+  primaryHover: "var(--primary-hover)",
+  primaryForeground: "var(--primary-foreground)",
+  primaryText: "var(--primary-text)",
+  secondary: "var(--secondary)",
+  secondaryForeground: "var(--secondary-foreground)",
+  accent: "var(--accent)",
+  accentHover: "var(--accent-hover)",
+  accentForeground: "var(--accent-foreground)",
+  brand: "var(--brand)",
+  brandForeground: "var(--brand-foreground)",
+  textPrimary: "var(--text-primary)",
+  textSecondary: "var(--text-secondary)",
+  textInverse: "var(--text-inverse)",
+  textDisabled: "var(--text-disabled)",
+  divider: "var(--divider)",
+  border: "var(--border)",
+  input: "var(--input)",
+  ring: "var(--ring)",
+  success: "var(--success)",
+  successForeground: "var(--success-foreground)",
+  warning: "var(--warning)",
+  warningForeground: "var(--warning-foreground)",
+  error: "var(--error)",
+  errorForeground: "var(--error-foreground)",
+  disabled: "var(--disabled)",
+  veg: "var(--veg)",
+  nonveg: "var(--nonveg)",
+} satisfies Record<string, string>;
+
 export const radius = {
   none: "0",
   small: "var(--radius-small)",

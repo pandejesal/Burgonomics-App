@@ -19,12 +19,18 @@ interface CreateTicketFormProps {
   initialCategory?: TicketCategory;
   initialDescription?: string;
   isSubmitting?: boolean;
+  /**
+   * Backend-provided response SLA in minutes. The SLA notice renders only
+   * when this is present — never invent response-time promises.
+   */
+  slaMinutes?: number | null;
   onSubmit: (data: {
     orderId?: string;
     orderShortCode?: string;
     category: TicketCategory;
     description: string;
     photos: string[];
+    photoFiles: File[];
   }) => Promise<void> | void;
   onCancel?: () => void;
 }
@@ -44,41 +50,62 @@ export function CreateTicketForm({
   initialCategory,
   initialDescription,
   isSubmitting = false,
+  slaMinutes = null,
   onSubmit,
   onCancel,
 }: CreateTicketFormProps) {
   const [selectedOrderId, setSelectedOrderId] = useState<string>(preselectedOrderId || (orders[0]?.id || ""));
   const [category, setCategory] = useState<TicketCategory>(initialCategory ?? "FOOD_QUALITY");
   const [description, setDescription] = useState(initialDescription ?? "");
-  const [photos, setPhotos] = useState<string[]>([]);
+  // Local files only — previews use object URLs, uploads go to Storage via
+  // the ticket hook. Nothing base64 is ever produced or persisted here.
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    return () => {
+      for (const url of previews) URL.revokeObjectURL(url);
+    };
+  }, [previews]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    if (photos.length + files.length > 3) {
+    if (photoFiles.length + files.length > 3) {
       toast.error("You can upload a maximum of 3 photos");
       return;
     }
 
-    Array.from(files).forEach((file) => {
+    const accepted: File[] = [];
+    const newPreviews: string[] = [];
+    for (const file of Array.from(files)) {
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`File ${file.name} exceeds 5MB limit`);
-        return;
+        continue;
       }
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setPhotos((prev) => [...prev, String(event.target?.result)].slice(0, 3));
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+      if (!file.type.startsWith("image/")) {
+        toast.error(`File ${file.name} is not an image`);
+        continue;
+      }
+      accepted.push(file);
+      newPreviews.push(URL.createObjectURL(file));
+    }
+    if (accepted.length > 0) {
+      setPhotoFiles((prev) => [...prev, ...accepted].slice(0, 3));
+      setPreviews((prev) => [...prev, ...newPreviews].slice(0, 3));
+    }
+    // Reset the input so the same file can be re-picked after removal.
+    e.target.value = "";
   };
 
   const handleRemovePhoto = (index: number) => {
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
+    setPhotoFiles((prev) => prev.filter((_, i) => i !== index));
+    setPreviews((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -100,7 +127,8 @@ export function CreateTicketForm({
       orderShortCode: shortCode || undefined,
       category,
       description: description.trim(),
-      photos,
+      photos: [],
+      photoFiles,
     });
   };
 
@@ -188,7 +216,7 @@ export function CreateTicketForm({
         </label>
 
         <div className="flex items-center gap-2">
-          {photos.map((src, index) => (
+          {previews.map((src, index) => (
             <div key={index} className="relative w-16 h-16 rounded-xl overflow-hidden border border-neutral-700 group">
               <img src={src} alt={`Attachment ${index + 1}`} className="w-full h-full object-cover" />
               <button
@@ -201,7 +229,7 @@ export function CreateTicketForm({
             </div>
           ))}
 
-          {photos.length < 3 && (
+          {photoFiles.length < 3 && (
             <label className="w-16 h-16 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/60 hover:bg-neutral-850 flex flex-col items-center justify-center cursor-pointer text-neutral-400 hover:text-white transition-colors">
               <Camera className="w-5 h-5 mb-0.5" />
               <span className="text-[9px] font-bold">Add Photo</span>
@@ -217,14 +245,25 @@ export function CreateTicketForm({
         </div>
       </div>
 
-      {/* 5. 3-Tier SLA Escalation Notice */}
+      {/* 5. Escalation notice — SLA copy only when backend-provided */}
       <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs text-emerald-300">
         <div className="flex items-center gap-1.5 font-bold">
           <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>Transparent 15-Min SLA Guarantee</span>
+          <span>
+            {typeof slaMinutes === "number" && Number.isFinite(slaMinutes)
+              ? `Transparent ${slaMinutes}-Min SLA Guarantee`
+              : "How support works"}
+          </span>
         </div>
         <p className="text-[11px] text-neutral-300 leading-relaxed">
-          Our store manager responds in &lt;15 mins. If unaddressed, your ticket automatically escalates to the Regional Operations Lead.
+          {typeof slaMinutes === "number" && Number.isFinite(slaMinutes) ? (
+            <>
+              Our store manager responds in &lt;{slaMinutes} mins. If unaddressed, your ticket
+              automatically escalates to the Regional Operations Lead.
+            </>
+          ) : (
+            "Our store team is notified as soon as you submit. Track status and responses under Your Tickets below."
+          )}
         </p>
       </div>
 

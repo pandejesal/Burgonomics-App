@@ -77,12 +77,21 @@ function OrderConfirmationPage() {
     let unsub: (() => void) | null = null;
     let cancelled = false;
 
-    // 1. Initial fetch via repository
-    void orderRepository.getOrder(orderId).then((res) => {
-      if (cancelled) return;
-      if (res.success) setOrder(res.data);
-      setLoading(false);
-    });
+    // 1. Initial fetch via repository — .catch guarantees no stuck skeleton
+    // on transport throw (B4-S2-resume leftover).
+    void orderRepository
+      .getOrder(orderId)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success) setOrder(res.data);
+      })
+      .catch(() => {
+        // Keep the cached order (or the not-found empty state); the
+        // realtime listener below still gets a chance to fill in.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     // 2. Real-time Firestore document listener if db is initialized
     try {

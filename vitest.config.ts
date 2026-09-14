@@ -7,7 +7,13 @@ export default defineConfig({
   test: {
     include: [
       "tests/**/*.test.ts",
+      "tests/**/*.test.tsx",
       "src/core/**/*.test.ts",
+      "src/core/**/*.test.tsx",
+      "src/shared/**/*.test.ts",
+      "src/shared/**/*.test.tsx",
+      "src/lib/**/*.test.ts",
+      "src/lib/**/*.test.tsx",
       "src/features/**/*.test.tsx",
       "src/features/**/*.test.ts",
       "src/routes/**/*.test.tsx",

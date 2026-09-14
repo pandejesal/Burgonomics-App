@@ -173,12 +173,12 @@
 
   --sidebar: #0E4825;
   --sidebar-foreground: #FFFFFF;
-  --sidebar-primary: #FF6600;
+  --sidebar-primary: #C2410C;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #175E33;
   --sidebar-accent-foreground: #FFFFFF;
   --sidebar-border: #1B5934;
-  --sidebar-ring: #FF6600;
+  --sidebar-ring: #C2410C;
 }
 
 .dark {

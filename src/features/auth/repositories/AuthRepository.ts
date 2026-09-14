@@ -9,12 +9,13 @@
  * code needs to move.
  */
 import { authService, type AuthService } from "@/features/auth/services/authService";
+import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import type { ApiResult } from "@/core/network/http";
 
 export class AuthRepository {
   constructor(private readonly service: AuthService = authService) {}
 
-  requestOtp(phone: string, deliveryMethod: "whatsapp" | "sms" = "whatsapp", otpToken?: string) {
+  requestOtp(phone: string, deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD, otpToken?: string) {
     return this.service.requestOtp(phone, deliveryMethod, otpToken);
   }
 

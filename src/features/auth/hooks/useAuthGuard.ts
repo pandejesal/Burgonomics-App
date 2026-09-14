@@ -35,12 +35,29 @@ export function useRequireAuth({ redirectTo = "/auth/login" }: Partial<GuardOpti
   const navigate = useNavigate();
   const isBootstrapped = useAuthStore((s) => s.isBootstrapped);
   const status = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const currentHref = useRouterState({
     select: (s) => s.location.href,
   });
 
+  // Fail-closed: an "authenticated" status without a user identity (unknown
+  // role / empty scope) is never a session — sign out and deny entry.
+  const hasIdentity = !!user?.id && !!user?.phone;
+
   useEffect(() => {
     if (!isBootstrapped) return;
+    if (status === "authenticated" && !hasIdentity) {
+      void (async () => {
+        await logout();
+        await navigate({
+          to: "/auth/login",
+          replace: true,
+          search: { redirect: currentHref },
+        });
+      })();
+      return;
+    }
     if (status !== "authenticated") {
       void navigate({
         to: redirectTo,
@@ -48,9 +65,9 @@ export function useRequireAuth({ redirectTo = "/auth/login" }: Partial<GuardOpti
         search: { redirect: currentHref },
       });
     }
-  }, [isBootstrapped, status, navigate, redirectTo, currentHref]);
+  }, [isBootstrapped, status, hasIdentity, logout, navigate, redirectTo, currentHref]);
 
-  return { isBootstrapped, isAuthenticated: status === "authenticated" };
+  return { isBootstrapped, isAuthenticated: status === "authenticated" && hasIdentity };
 }
 
 /**

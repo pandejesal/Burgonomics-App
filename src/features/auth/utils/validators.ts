@@ -6,48 +6,46 @@
 export const PHONE_LENGTH = 10;
 export const COUNTRY_CODE = "+91" as const;
 
+/** Single OTP delivery default (L3): login + store + service all use SMS. */
+export const DEFAULT_DELIVERY_METHOD: "whatsapp" | "sms" = "sms";
+
+/** Strict Indian mobile rule, single source (M7): first digit 6–9. */
+export const INDIAN_MOBILE_RE = /^[6-9]\d{9}$/;
+
 export interface ValidationResult {
   valid: boolean;
   error?: string;
 }
 
-/**
- * Normalises raw input to a 10-digit string, stripping +91 country codes and leading zeroes.
- */
+/** Normalises raw input to a digits-only string, trimmed to PHONE_LENGTH. */
 export function sanitizePhone(raw: string): string {
-  let clean = raw.trim();
-  if (clean.startsWith("+91")) {
-    clean = clean.slice(3);
-  } else if (clean.startsWith("91") && clean.replace(/\D/g, "").length > 10) {
-    clean = clean.slice(2);
-  } else if (clean.startsWith("0")) {
-    clean = clean.replace(/^0+/, "");
+  let digits = raw.replace(/\D/g, "");
+  // Strip the +91/91 country prefix so "+919825012345" → "9825012345".
+  if (digits.length > PHONE_LENGTH && digits.startsWith("91")) {
+    digits = digits.slice(2);
   }
-  return clean.replace(/\D/g, "").slice(0, PHONE_LENGTH);
+  // Strip trunk-prefix zeros so "09825012345" → "9825012345".
+  digits = digits.replace(/^0+/, "");
+  return digits.slice(0, PHONE_LENGTH);
+}
+
+/** Normalise without truncation — validation must see overlong input. */
+function normalizePhone(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.length > PHONE_LENGTH && digits.startsWith("91")) {
+    digits = digits.slice(2);
+  }
+  return digits.replace(/^0+/, "");
 }
 
 export function validatePhone(raw: string): ValidationResult {
-  const rawClean = raw.trim();
-  if (!rawClean) return { valid: false, error: "Mobile number is required." };
-  
-  const rawDigits = rawClean.replace(/\D/g, "");
-  // Check if raw length without country code is oversized
-  if (rawClean.startsWith("+91") || (rawClean.startsWith("91") && rawDigits.length > 10)) {
-    const stripped = rawClean.startsWith("+91") ? rawClean.slice(3).replace(/\D/g, "") : rawDigits.slice(2);
-    if (stripped.length !== PHONE_LENGTH) {
-      return { valid: false, error: `Enter a ${PHONE_LENGTH}-digit mobile number.` };
-    }
-  } else if (rawDigits.length !== PHONE_LENGTH) {
+  if (!raw.replace(/\D/g, "")) return { valid: false, error: "Mobile number is required." };
+  const digits = normalizePhone(raw);
+  if (digits.length !== PHONE_LENGTH)
     return { valid: false, error: `Enter a ${PHONE_LENGTH}-digit mobile number.` };
-  }
-
-  const digits = sanitizePhone(raw);
-  if (digits.length !== PHONE_LENGTH) {
-    return { valid: false, error: `Enter a ${PHONE_LENGTH}-digit mobile number.` };
-  }
-  if (!/^[6-9]/.test(digits)) {
+  // Fail-closed: 0000000000, 1234567890, 5-series etc. are all rejected here.
+  if (!INDIAN_MOBILE_RE.test(digits))
     return { valid: false, error: "Please enter a valid 10-digit Indian mobile number." };
-  }
   return { valid: true };
 }
 

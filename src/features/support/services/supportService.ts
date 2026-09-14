@@ -1,15 +1,34 @@
 /**
- * SupportService — mock implementation of the future
+ * SupportService — live-backend implementation of
  *   GET  /v1/support/faqs
  *   GET  /v1/support/channels
  *   GET  /v1/support/issue-categories
+ *   GET  /v1/support/tickets
  *   POST /v1/support/tickets
  *   POST /v1/support/feedback
- * endpoints. All content is repository-driven so backend teams can
- * ship FAQ / channel / category edits without a mobile release.
+ *
+ * Honesty contract (H-R4/H-R6/H-R7, M12/M13):
+ * - No mock FAQs, channels, or categories. List calls hit the backend and
+ *   resolve to `ok([])` when the backend is unreachable so the UI renders
+ *   its honest empty state instead of fabricated content.
+ * - SLA/response-time copy is NEVER invented here. Ticket responses may
+ *   carry a backend SLA field (`slaMinutes`); callers gate all SLA wording
+ *   on its presence.
+ * - Photo evidence is uploaded to Firebase Storage (storage-backed URLs).
+ *   Base64 data-URLs are never produced or persisted by this module.
+ *
+ * Backend contract assumption (Batch-5 S1 owns the ticket/notify API):
+ * POST /v1/support/tickets exists and returns the created ticket, which
+ * may include a backend SLA field. Shapes are parsed defensively —
+ * `{ ticket: {...} }` or the ticket object directly, `slaMinutes` or
+ * `sla_minutes` — and if the landed contract differs, adapt here, never
+ * invent a parallel one.
  */
-import { delay, fail, ok, type ApiResult } from "@/core/network/http";
+import { fail, ok, type ApiResult } from "@/core/network/http";
+import { httpClient } from "@/core/network/httpClient";
+import { auth } from "@/core/config/firebase";
 import type {
+  BackendTicket,
   FaqItem,
   FeedbackInput,
   FeedbackRecord,
@@ -19,140 +38,277 @@ import type {
   SupportTicketInput,
 } from "@/features/support/models";
 
-const MOCK_FAQS: FaqItem[] = [
-  {
-    id: "faq_1",
-    category: "Orders",
-    question: "How do I track my order?",
-    answer:
-      "Open Orders from your Profile. Active orders show a live timeline with the current step highlighted.",
-  },
-  {
-    id: "faq_2",
-    category: "Orders",
-    question: "Can I cancel an order after placing it?",
-    answer:
-      "You can cancel within the first minute from the tracking screen. Once the kitchen starts preparing, cancellations aren't possible.",
-  },
-  {
-    id: "faq_3",
-    category: "Payments",
-    question: "Which payment methods do you accept?",
-    answer:
-      "UPI, credit and debit cards, net banking and popular wallets — all handled via Razorpay's secure gateway.",
-  },
-  {
-    id: "faq_4",
-    category: "Delivery",
-    question: "What are your delivery hours?",
-    answer:
-      "Delivery hours vary by store. The store card on Home shows current status, opening hours and estimated delivery time.",
-  },
-  {
-    id: "faq_5",
-    category: "Menu",
-    question: "Is every item 100% vegetarian?",
-    answer:
-      "Yes. Every Burgonomics kitchen is strictly 100% pure vegetarian, with zero cross-contact with non-veg ingredients.",
-  },
-];
+/** Raw ticket shape returned by POST/GET /v1/support/tickets (B5-S1 contract). */
+export interface BackendTicketResponse {
+  ticket?: BackendTicket;
+  id?: string;
+  ticketNumber?: string;
+  ticket_number?: string;
+  status?: string;
+  createdAt?: string | number;
+  created_at?: string | number;
+  slaMinutes?: number;
+  sla_minutes?: number;
+  responseSlaMinutes?: number;
+}
 
-const MOCK_CHANNELS: SupportChannel[] = [
-  {
-    id: "ch_call",
-    label: "Call the store",
-    kind: "call",
-    value: "+911800123123",
-    available: true,
-    helper: "Fastest for order-day issues",
-  },
-  {
-    id: "ch_email",
-    label: "Email support",
-    kind: "email",
-    value: "support@burgonomics.example",
-    available: true,
-    helper: "We reply within one business day",
-  },
-  {
-    id: "ch_whatsapp",
-    label: "WhatsApp us",
-    kind: "whatsapp",
-    value: "https://wa.me/911800123123",
-    available: false,
-    helper: "Rolling out soon",
-  },
-  {
-    id: "ch_chat",
-    label: "Live chat",
-    kind: "chat",
-    available: false,
-    helper: "Coming soon",
-  },
-  {
-    id: "ch_ai",
-    label: "Burg AI assistant",
-    kind: "ai",
-    available: false,
-    helper: "Coming soon",
-  },
-];
+/** Backend SLA in minutes, or null when the backend did not provide one. */
+export function extractSlaMinutes(raw: BackendTicketResponse | null | undefined): number | null {
+  if (!raw) return null;
+  const nested = raw.ticket;
+  const candidates = [
+    raw.slaMinutes,
+    raw.sla_minutes,
+    raw.responseSlaMinutes,
+    nested?.slaMinutes,
+    nested?.sla_minutes,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "number" && Number.isFinite(c) && c > 0) return c;
+  }
+  return null;
+}
 
-const MOCK_ISSUE_CATEGORIES: IssueCategory[] = [
-  { id: "order", label: "Order issue", helper: "Wrong items, missing items, quality" },
-  { id: "payment", label: "Payment issue", helper: "Failed, double-charged, refund" },
-  { id: "delivery", label: "Delivery issue", helper: "Late, address, courier" },
-  { id: "technical", label: "Technical issue", helper: "App crashes, bugs" },
-  { id: "other", label: "Something else" },
-];
+function normalizeTicketId(raw: BackendTicketResponse, fallback: string): string {
+  const nested = raw.ticket;
+  const id =
+    nested?.id ??
+    (typeof raw.id === "string" ? raw.id : undefined) ??
+    (typeof nested?.id === "string" ? nested.id : undefined);
+  return id || fallback;
+}
+
+function normalizeTicketNumber(raw: BackendTicketResponse, fallback: string): string {
+  const nested = raw.ticket;
+  return (
+    nested?.ticketNumber ??
+    raw.ticketNumber ??
+    raw.ticket_number ??
+    nested?.ticket_number ??
+    fallback
+  );
+}
+
+function normalizeStatus(
+  raw: BackendTicketResponse,
+): SupportTicket["status"] {
+  const nested = raw.ticket;
+  const s = (nested?.status ?? raw.status ?? "open").toLowerCase();
+  if (s === "in_progress" || s === "in-progress" || s === "progress") return "in_progress";
+  if (s === "resolved" || s === "closed" || s === "done") return "resolved";
+  return "open";
+}
+
+function normalizeCreatedAt(raw: BackendTicketResponse): number {
+  const nested = raw.ticket;
+  const v = nested?.createdAt ?? raw.createdAt ?? raw.created_at;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    if (Number.isFinite(t)) return t;
+  }
+  return Date.now();
+}
+
+function asArray<T>(data: unknown, key?: string): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (key && Array.isArray(obj[key])) return obj[key] as T[];
+    for (const k of ["items", "data", "results"]) {
+      if (Array.isArray(obj[k])) return obj[k] as T[];
+    }
+  }
+  return [];
+}
+
+function isChannel(v: unknown): v is SupportChannel {
+  if (!v || typeof v !== "object") return false;
+  const c = v as Record<string, unknown>;
+  return typeof c.id === "string" && typeof c.label === "string" && typeof c.kind === "string";
+}
+
+function isFaq(v: unknown): v is FaqItem {
+  if (!v || typeof v !== "object") return false;
+  const f = v as Record<string, unknown>;
+  return typeof f.id === "string" && typeof f.question === "string" && typeof f.answer === "string";
+}
+
+function isIssueCategory(v: unknown): v is IssueCategory {
+  if (!v || typeof v !== "object") return false;
+  const c = v as Record<string, unknown>;
+  return typeof c.id === "string" && typeof c.label === "string";
+}
+
+/** Best-effort Firebase ID token for authenticated support calls. */
+async function authHeaders(): Promise<Record<string, string>> {
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch {
+    // Offline / token fetch failed — server decides as unauthenticated.
+  }
+  return {};
+}
 
 export const supportService = {
   async listFaqs(): Promise<ApiResult<FaqItem[]>> {
-    await delay(120);
-    return ok(MOCK_FAQS);
+    try {
+      const res = await httpClient.get<unknown>("/v1/support/faqs", {
+        headers: await authHeaders(),
+      });
+      const items = asArray<FaqItem>(res.data, "faqs").filter(isFaq);
+      return ok(items);
+    } catch (err) {
+      // Backend unreachable — honest empty list, never mock FAQs.
+      if (import.meta.env?.DEV) {
+        console.warn("[support] listFaqs failed, returning []", err);
+      }
+      return ok([]);
+    }
   },
+
   async listChannels(): Promise<ApiResult<SupportChannel[]>> {
-    await delay(100);
-    return ok(MOCK_CHANNELS);
+    try {
+      const res = await httpClient.get<unknown>("/v1/support/channels", {
+        headers: await authHeaders(),
+      });
+      const items = asArray<SupportChannel>(res.data, "channels").filter(isChannel);
+      return ok(items);
+    } catch (err) {
+      // Backend unreachable — honest empty list, never fabricated channels.
+      if (import.meta.env?.DEV) {
+        console.warn("[support] listChannels failed, returning []", err);
+      }
+      return ok([]);
+    }
   },
+
   async listIssueCategories(): Promise<ApiResult<IssueCategory[]>> {
-    await delay(80);
-    return ok(MOCK_ISSUE_CATEGORIES);
+    try {
+      const res = await httpClient.get<unknown>("/v1/support/issue-categories", {
+        headers: await authHeaders(),
+      });
+      const items = asArray<IssueCategory>(res.data, "categories").filter(isIssueCategory);
+      return ok(items);
+    } catch (err) {
+      if (import.meta.env?.DEV) {
+        console.warn("[support] listIssueCategories failed, returning []", err);
+      }
+      return ok([]);
+    }
   },
+
+  async listTickets(): Promise<ApiResult<BackendTicketResponse[]>> {
+    try {
+      const res = await httpClient.get<unknown>("/v1/support/tickets", {
+        headers: await authHeaders(),
+      });
+      return ok(asArray<BackendTicketResponse>(res.data, "tickets"));
+    } catch (err) {
+      if (import.meta.env?.DEV) {
+        console.warn("[support] listTickets failed, returning []", err);
+      }
+      return ok([]);
+    }
+  },
+
   async submitTicket(input: SupportTicketInput): Promise<ApiResult<SupportTicket>> {
-    await delay(200);
     if (!input.subject.trim() || !input.message.trim()) {
       return fail("INVALID_TICKET", "Please add a subject and a short message.");
     }
-    return ok({
-      id: `tkt_${Date.now().toString(36)}`,
-      status: "open",
-      createdAt: Date.now(),
-      ...input,
-    });
+    try {
+      const res = await httpClient.post<BackendTicketResponse>(
+        "/v1/support/tickets",
+        {
+          subject: input.subject.trim(),
+          message: input.message.trim(),
+          category: input.category,
+          orderId: input.orderId,
+          photoUrls: input.photoUrls ?? [],
+        },
+        { headers: await authHeaders() },
+      );
+      const raw = (res.data ?? {}) as BackendTicketResponse;
+      const fallbackId =
+        typeof raw.id === "string" && raw.id
+          ? raw.id
+          : `tkt_${Date.now().toString(36)}`;
+      return ok({
+        id: normalizeTicketId(raw, fallbackId),
+        subject: input.subject.trim(),
+        message: input.message.trim(),
+        category: input.category,
+        orderId: input.orderId,
+        photoUrls: input.photoUrls ?? [],
+        ticketNumber: normalizeTicketNumber(raw, fallbackId.toUpperCase()),
+        status: normalizeStatus(raw),
+        createdAt: normalizeCreatedAt(raw),
+        slaMinutes: extractSlaMinutes(raw) ?? undefined,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not reach support. Please try again.";
+      return fail("TICKET_SUBMIT_FAILED", message, true);
+    }
   },
+
+  /**
+   * Upload photo evidence to Firebase Storage and return download URLs.
+   * Never resolves to base64 data-URLs. Fails closed when Storage is
+   * unavailable so the ticket POST carries `photoUrls: []` honestly.
+   */
+  async uploadEvidence(files: File[], ticketRef: string): Promise<ApiResult<string[]>> {
+    if (files.length === 0) return ok([]);
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
+      const uid = auth.currentUser?.uid ?? "anonymous";
+      const safeRef = ticketRef.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48) || "pending";
+      const storage = getStorage();
+      const urls: string[] = [];
+      for (const file of files.slice(0, 3)) {
+        const name = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 64) || "photo.jpg";
+        const path = `support-evidence/${uid}/${safeRef}/${Date.now()}_${name}`;
+        const snap = await uploadBytes(ref(storage, path), file, {
+          contentType: file.type || "image/jpeg",
+        });
+        urls.push(await getDownloadURL(snap.ref));
+      }
+      return ok(urls);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Photo upload failed. Please try again.";
+      return fail("EVIDENCE_UPLOAD_FAILED", message, true);
+    }
+  },
+
   async submitFeedback(input: FeedbackInput): Promise<ApiResult<FeedbackRecord>> {
-    await delay(180);
     if (!Number.isFinite(input.rating) || input.rating < 1 || input.rating > 5) {
       return fail("INVALID_RATING", "Please select a rating between 1 and 5.");
     }
-    const record: FeedbackRecord = {
-      id: `fb_${Date.now().toString(36)}`,
-      createdAt: Date.now(),
-      ...input,
-    };
-    // Loop: feedback previously vanished (ok + toast, persisted nowhere).
-    // Keep it on-device until POST /v1/support/feedback ships.
     try {
-      const key = "burgonomics_customer_feedback";
-      const stored = localStorage.getItem(key);
-      const list = stored ? JSON.parse(stored) : [];
-      list.unshift(record);
-      localStorage.setItem(key, JSON.stringify(list.slice(0, 100)));
-    } catch {
-      // Persistence is best-effort; the success receipt below still holds
-      // for this session only.
+      const res = await httpClient.post<{ id?: string; createdAt?: number }>(
+        "/v1/support/feedback",
+        {
+          rating: input.rating,
+          comment: input.comment,
+          suggestion: input.suggestion,
+        },
+        { headers: await authHeaders() },
+      );
+      const data = (res.data ?? {}) as { id?: string; createdAt?: number };
+      return ok({
+        id: typeof data.id === "string" && data.id ? data.id : `fb_${Date.now().toString(36)}`,
+        createdAt:
+          typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
+            ? data.createdAt
+            : Date.now(),
+        ...input,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not send feedback. Please try again.";
+      return fail("FEEDBACK_SUBMIT_FAILED", message, true);
     }
-    return ok(record);
   },
 };

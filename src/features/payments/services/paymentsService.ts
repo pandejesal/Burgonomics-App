@@ -41,6 +41,8 @@ export interface CreateOrderInput {
   branchId?: string;
   couponCode?: string;
   loyaltyPointsToRedeem?: number;
+  /** Delivery-partner tip (₹) — a server-repriced input, like loyalty. */
+  tipAmount?: number;
   /** Stable per checkout: retries reuse the open gateway order, no double charge. */
   idempotencyKey?: string;
   checkoutToken?: string;

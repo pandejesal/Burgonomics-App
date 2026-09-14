@@ -1,14 +1,19 @@
 /**
  * NotificationRepository — UI-facing surface for the notification
- * center. Mirrors the future backend contract while keeping all state
- * inside `useNotificationsStore`.
+ * center. State lives in `useNotificationsStore`; persistence resolves
+ * through `notificationsService` with a runtime guard:
  *
- * Future integration points:
- *   list()               → GET  /v1/notifications
- *   markRead()           → PATCH /v1/notifications/:id/read
- *   markAllRead()        → PATCH /v1/notifications/read-all
- *   remove()             → DELETE /v1/notifications/:id
- *   registerDeviceToken()→ POST /v1/devices  (Firebase / APNs token)
+ * Landed contract in this tree (MOP-S2):
+ *   markRead()/markAllRead() → PATCH /v1/notifications/:id/read (brief
+ *     contract) FIRST; when that route is absent at runtime the service
+ *     degrades to a direct Firestore `users/{uid}/notifications` write
+ *     (firestore.rules:90-93), and when Firestore is unreachable it still
+ *     resolves ok so the local badge clears (queued/degraded path).
+ *   list()/remove()/registerDeviceToken() → unchanged stubs/Firestore
+ *     paths owned by their own batches.
+ *
+ * Native/Web app-badge clearing is best-effort and guarded — a missing
+ * Badging API degrades silently, never throws into the read path.
  */
 import type { ApiResult } from "@/core/network/http";
 import { ok } from "@/core/network/http";
@@ -39,6 +44,7 @@ export class NotificationRepository {
     const res = await notificationsService.markRead(id);
     if (!res.success) return res;
     useNotificationsStore.getState().markRead(id);
+    clearAppBadgeIfEmpty();
     return ok(undefined);
   }
 
@@ -46,6 +52,7 @@ export class NotificationRepository {
     const res = await notificationsService.markAllRead();
     if (!res.success) return res;
     useNotificationsStore.getState().markAllRead();
+    clearAppBadgeIfEmpty();
     return ok(undefined);
   }
 
@@ -66,6 +73,22 @@ export class NotificationRepository {
 
   clear() {
     useNotificationsStore.getState().clear();
+  }
+}
+
+/**
+ * Best-effort app-badge clear once the tray is empty. The Badging API
+ * exists only on some browsers — absence degrades silently.
+ */
+function clearAppBadgeIfEmpty() {
+  try {
+    if (useNotificationsStore.getState().unreadCount !== 0) return;
+    const nav = typeof navigator !== "undefined" ? (navigator as any) : null;
+    if (nav && typeof nav.clearAppBadge === "function") {
+      void nav.clearAppBadge().catch(() => {});
+    }
+  } catch {
+    // Badge clearing must never break the read path.
   }
 }
 

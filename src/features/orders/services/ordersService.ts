@@ -241,6 +241,8 @@ export const ordersService = {
       items: input.items,
       totals: input.totals,
       promo: input.promo ?? null,
+      tipAmount: input.tipAmount ?? 0,
+      loyaltyPointsRedeemed: input.loyaltyPointsRedeemed ?? 0,
       notes: input.notes,
       fulfillmentInstructions: input.fulfillmentInstructions,
       tableNumber: input.tableNumber,

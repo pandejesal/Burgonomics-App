@@ -17,17 +17,20 @@ export interface BillBreakdownProps {
 }
 
 /**
- * BillBreakdown — Fully transparent financial bill breakdown for QSR orders.
- * Calculates composite 5% Restaurant GST (2.5% CGST + 2.5% SGST), packaging fees,
- * tiered delivery fees, coupon deductions, Loyalty Points redemption, and delivery tips.
+ * BillBreakdown — PRESENTATIONAL ONLY. Renders exactly the numbers the
+ * caller passes (which come from the canonical pricing engine via
+ * cartRepository.calculateTotals). It never recomputes delivery fees,
+ * GST, or thresholds itself: a second schedule here once showed FREE
+ * over ₹349 while the footer charged ₹40. Single source of truth is
+ * DEFAULT_PRICING_CONFIG (free delivery over ₹499, ₹40 flat fee).
  */
 export function BillBreakdown({
   subtotal,
   discountAmount = 0,
   coinsRedeemed = 0,
-  deliveryFee = 35,
-  packagingFee = 15,
-  gstAmount,
+  deliveryFee = 0,
+  packagingFee = 0,
+  gstAmount = 0,
   tipAmount = 0,
   fulfillment = "delivery",
   className,
@@ -35,14 +38,13 @@ export function BillBreakdown({
   const isDelivery = fulfillment === "delivery";
   const isDineIn = fulfillment === "dinein";
 
-  // Packaging fee waived for Dine-In
+  // Display-only mirroring of caller-provided values: dine-in never shows
+  // packaging, non-delivery never shows a delivery fee.
   const actualPackagingFee = isDineIn ? 0 : packagingFee;
+  const actualDeliveryFee = isDelivery ? deliveryFee : 0;
 
-  // Delivery fee: Free for subtotal >= 349 or non-delivery orders
-  const actualDeliveryFee = isDelivery ? (subtotal >= 349 ? 0 : deliveryFee) : 0;
-
-  // 5% Restaurant GST composite (2.5% CGST + 2.5% SGST)
-  const calculatedGST = gstAmount !== undefined ? gstAmount : Math.round(subtotal * 0.05);
+  // GST is passed post-discount from the engine — never recompute here.
+  const calculatedGST = gstAmount;
   const cgst = (calculatedGST / 2).toFixed(1);
   const sgst = (calculatedGST / 2).toFixed(1);
 

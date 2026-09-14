@@ -171,6 +171,8 @@ export class OrderRepository {
       items: cart.lines,
       totals: totalsRes.data,
       promo: cart.promo,
+      tipAmount: checkout.tipAmount,
+      loyaltyPointsRedeemed: checkout.loyaltyPointsToRedeem,
       address: addressSnapshot,
       notes: checkout.orderNotes,
       fulfillmentInstructions,

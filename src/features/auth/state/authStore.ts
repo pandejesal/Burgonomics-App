@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { authRepository } from "@/features/auth/repositories/AuthRepository";
 import { isJwtExpired } from "@/features/auth/utils/mockJwt";
+import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
 import { auth as firebaseAuth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
@@ -189,7 +190,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  async requestOtp(phone, deliveryMethod = "whatsapp", otpToken) {
+  async requestOtp(phone, deliveryMethod = DEFAULT_DELIVERY_METHOD, otpToken) {
     set({ status: "authenticating", error: null });
     const res = await authRepository.requestOtp(phone, deliveryMethod, otpToken);
     if (!res.success) {
@@ -246,7 +247,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (remainingSec > 0) {
       return { ok: false, error: `Please wait ${remainingSec}s before requesting a new code.` };
     }
-    return get().requestOtp(challenge.phone, challenge.deliveryMethod || "whatsapp");
+    return get().requestOtp(challenge.phone, challenge.deliveryMethod || DEFAULT_DELIVERY_METHOD);
   },
 
   changePhone() {

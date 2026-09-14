@@ -1,12 +1,11 @@
 /**
  * Mobile / Capacitor build config.
  *
- * Produces a plain static SPA in `dist/mobile` (with `index.html`) so
- * `npx cap sync` can package Android + iOS shells. Kept intentionally
- * separate from `vite.config.ts` (SSR + Nitro) to avoid regressing the
- * production web deployment.
+ * Static SPA in `dist/mobile` (with `index.html`) for `npx cap sync`
+ * into Android + iOS shells. Separate output from `vite.config.ts`
+ * (web → `dist` for Netlify) so the two deployments never share a folder.
  *
- *   bun run build:mobile   # emits dist/mobile/index.html + hashed assets
+ *   npm run build:mobile   # emits dist/mobile/index.html + hashed assets
  *   npx cap sync           # copies dist/mobile into android/ + ios/
  */
 import { defineConfig } from "vite";
