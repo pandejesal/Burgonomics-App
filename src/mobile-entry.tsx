@@ -6,6 +6,9 @@
  * (Nitro / TanStack Start) is unaffected and continues to use
  * `src/server.ts` + `src/start.ts`.
  */
+// Web Crypto API polyfill for Android WebView < 105 — must load first
+import './shared/utils/webCryptoPolyfill';
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
