@@ -1,21 +1,31 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-let HttpPetpoojaGateway: any;
-let createPetpoojaGateway: any;
+// Mock appConfig to return petpoojaEnabled: true so the gateway factory
+// loads the live gateway instead of throwing. This must be hoisted so
+// it runs before the gateway module is evaluated.
+vi.mock("@/core/config/env", () => ({
+  appConfig: {
+    env: "development",
+    appName: "Burgonomics",
+    appVersion: "1.0.0",
+    api: { baseUrl: "https://test", timeoutMs: 15000, retry: { attempts: 2, backoffMs: 500 } },
+    featureFlags: { offlineMode: false, orderTracking: true, referrals: false, adminOps: true },
+    analytics: { enabled: false, writeKey: "" },
+    push: { enabled: true, vapidPublicKey: "" },
+    integrations: {
+      razorpayKeyId: "",
+      paymentsApiBaseUrl: "https://test",
+      petpoojaEnabled: true,
+      mapsApiKey: "",
+      firebaseConfig: "",
+    },
+  },
+  isDev: () => true,
+  isProd: () => false,
+}));
 
-beforeEach(async () => {
-  vi.stubEnv("VITE_PETPOOJA_ENABLED", "true");
-  try {
-    localStorage.clear();
-  } catch {
-    // non-DOM env — outbox storage is guarded
-  }
-  // Dynamically import after env is set
-  const httpGateway = await import("./httpGateway");
-  const gateway = await import("./gateway");
-  HttpPetpoojaGateway = httpGateway.HttpPetpoojaGateway;
-  createPetpoojaGateway = gateway.createPetpoojaGateway;
-});
+import { HttpPetpoojaGateway } from "./httpGateway";
+import { createPetpoojaGateway } from "./gateway";
 
 const okFetch = (body: unknown = {}) =>
   (async () =>
@@ -37,7 +47,7 @@ describe("petpooja gateway wiring", () => {
     }
   });
 
-  it("creates live gateway when VITE_PETPOOJA_ENABLED=true", () => {
+  it("creates live gateway when petpoojaEnabled=true", () => {
     expect(createPetpoojaGateway().implementation).toBe("live");
   });
 
