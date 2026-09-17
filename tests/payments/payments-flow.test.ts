@@ -4,6 +4,36 @@ import {
   verifyRazorpaySignature,
 } from "../../netlify/functions/lib/verifySignature";
 import { computeServerPrice } from "../../netlify/functions/lib/server-price";
+
+// Mock Firebase SDK to avoid PERMISSION_DENIED errors in test environment
+vi.mock("firebase/firestore", () => ({
+  collection: vi.fn(),
+  doc: vi.fn(),
+  getDoc: vi.fn(),
+  getDocs: vi.fn(),
+  query: vi.fn(),
+  where: vi.fn(),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
+  setDoc: vi.fn(),
+  updateDoc: vi.fn(),
+  deleteDoc: vi.fn(),
+  writeBatch: vi.fn(() => ({
+    set: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    commit: vi.fn().mockResolvedValue(undefined),
+  })),
+  runTransaction: vi.fn(),
+  Timestamp: { now: () => ({ toMillis: () => Date.now() }) },
+}));
+
+vi.mock("firebase/app", () => ({
+  initializeApp: vi.fn(),
+  getApps: vi.fn(() => []),
+}));
+
+// Import after mocks
 import { ordersService, resolveStatus } from "../../src/features/orders/services/ordersService";
 
 describe("Payments API — Idempotency, COD, Server Pricing & Auto-Refund", () => {
