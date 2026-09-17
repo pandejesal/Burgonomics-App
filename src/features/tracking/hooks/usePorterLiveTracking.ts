@@ -83,14 +83,18 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     eta = 0;
   }
 
-  // Rider coordinates interpolation
+  // Rider coordinates — only when the backend actually provides live GPS.
+  // No fabricated interpolation: when GPS is unavailable, riderLocation stays
+  // null and the UI must show "live location unavailable" instead of a fake pin.
   const rawRiderLoc = (order as any)?.delivery?.riderLocation;
   const riderLocation: GeoCoordinates | null =
-    stage === 3 && !isTakeaway
-      ? {
-          lat: rawRiderLoc?.lat ?? defaultStore.lat + (defaultDrop.lat - defaultStore.lat) * 0.6,
-          lng: rawRiderLoc?.lng ?? defaultStore.lng + (defaultDrop.lng - defaultStore.lng) * 0.6,
-        }
+    stage === 3 &&
+    !isTakeaway &&
+    rawRiderLoc?.lat != null &&
+    rawRiderLoc?.lng != null &&
+    Number.isFinite(rawRiderLoc.lat) &&
+    Number.isFinite(rawRiderLoc.lng)
+      ? { lat: rawRiderLoc.lat, lng: rawRiderLoc.lng }
       : null;
 
   const deliveryObj = (order as any)?.delivery || order?.deliveryPartner;
@@ -110,7 +114,9 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     riderPhone: deliveryObj?.phone || deliveryObj?.riderPhone || (order as any)?.riderPhone || undefined,
     riderVehicleNumber: deliveryObj?.vehicleNumber || deliveryObj?.riderVehicleNumber || undefined,
     partnerName: isSelfDelivery ? "Burgonomics In-House Fleet" : "Porter Express 2-Wheeler",
-    trackingUrl: (order as any)?.delivery?.trackingUrl || (order?.id ? `https://porter.in/track/${order.id}` : undefined),
+    // Tracking URL only when the real backend provides one — never a
+    // fabricated porter.in link derived from the order id.
+    trackingUrl: (order as any)?.delivery?.trackingUrl || undefined,
     isTakeawayOrDineIn: isTakeaway,
     isDelivered: stage === 4,
     isCancelled: false,
