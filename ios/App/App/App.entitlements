@@ -4,5 +4,17 @@
 <dict>
 	<key>aps-environment</key>
 	<string>production</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:burgonomics.com</string>
+		<string>applinks:partner.burgonomics.com</string>
+		<string>applinks:burgonomics.netlify.app</string>
+		<string>applinks:checkout.razorpay.com</string>
+		<string>applinks:api.razorpay.com</string>
+		<string>applinks:apis.google.com</string>
+		<string>applinks:www.google.com</string>
+		<string>applinks:www.gstatic.com</string>
+		<string>applinks:burgonomics-7faa8.firebaseapp.com</string>
+	</array>
 </dict>
 </plist>
