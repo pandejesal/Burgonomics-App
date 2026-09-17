@@ -46,11 +46,10 @@ describe('storesService directory bounds (Loop 11/120)', () => {
     expect(seen.limits).toEqual([100, 100]);
   });
 
-  it('falls back to the DEV-gated catalog only (prod returns [] — vitest runs DEV=true)', async () => {
+  it('returns empty array when Firestore has no stores (no mock fallback in prod or DEV)', async () => {
     const res = await storesService.list();
     expect(res.success).toBe(true);
-    // Under vitest import.meta.env.DEV is true, so the fallback leg serves
-    // the mock catalog. In prod builds the same leg returns [] (see service).
-    expect(res.data.map((s) => s.id).sort()).toEqual(LOCAL_MOCK_STORES.map((s) => s.id).sort());
+    // No mock fallback in any environment — honest empty state
+    expect(res.data).toEqual([]);
   });
 });
