@@ -23,7 +23,8 @@ describe("JWT expiry validation (real helpers)", () => {
     const forge = (body: object) => `h.${b64url(JSON.stringify(body))}.sig`;
     expect(isJwtExpired(forge({ sub: "x" }))).toBe(true);
     expect(isJwtExpired(forge({ sub: "x", exp: "never" }))).toBe(true);
-    expect(isJwtExpired(forge({ exp: 9999999999 }))).toBe(true);
+    // Past timestamp (expired) — 999999999 is year 2001
+    expect(isJwtExpired(forge({ exp: 999999999 }))).toBe(true);
     expect(isJwtExpired("not-a-token")).toBe(true);
   });
 });
