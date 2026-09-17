@@ -1,15 +1,13 @@
 import { appConfig } from "@/core/config/env";
 import type { PetpoojaGateway } from "./types";
 import { HttpPetpoojaGateway } from "./httpGateway";
-import { MockPetpoojaGateway } from "./mockGateway";
 
 /**
- * Gateway factory — the ONE place that decides mock vs live Petpooja.
+ * Gateway factory — the ONE place that creates the Petpooja gateway.
  *
  *   VITE_PETPOOJA_ENABLED=true  → HttpPetpoojaGateway ("live": Cloud
  *                                  Functions proxy + server-held key)
- *   anything else (default)     → MockPetpoojaGateway ("mock": current
- *                                  offline/demo behavior, unchanged)
+ *   anything else (default)     → THROWS (fail-closed, no mock fallback)
  *
  * Going live = set the flag, add PETPOOJA_APP_KEY / APP_SECRET /
  * ACCESS_TOKEN to the Functions env, redeploy functions + client.
@@ -19,7 +17,10 @@ export function createPetpoojaGateway(): PetpoojaGateway {
   if (appConfig.integrations.petpoojaEnabled) {
     return new HttpPetpoojaGateway();
   }
-  return new MockPetpoojaGateway();
+  throw new Error(
+    "[Petpooja] VITE_PETPOOJA_ENABLED is not set to true — refusing to start with mock gateway. " +
+    "Set VITE_PETPOOJA_ENABLED=true and provide PETPOOJA_APP_KEY, PETPOOJA_APP_SECRET, PETPOOJA_ACCESS_TOKEN to go live."
+  );
 }
 
 /** Shared singleton — import this, never instantiate gateways directly. */

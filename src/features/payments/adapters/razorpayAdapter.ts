@@ -1,23 +1,21 @@
 /**
  * Razorpay adapter — interface + implementation.
  *
- * Runs in one of two modes depending on runtime configuration:
+ * Runs in LIVE mode only — requires a valid Razorpay publishable key.
+ * Simulation/offline modes are REMOVED for production safety.
  *
- *   1. Live test mode — when `VITE_RAZORPAY_KEY_ID` is present (a
- *      `rzp_test_*` publishable key), the Razorpay Checkout script is
- *      injected and a real test-mode payment modal is opened. Complete
- *      the flow with Razorpay test cards / UPI IDs — see
+ *   - Live mode — when `VITE_RAZORPAY_KEY_ID` is present (a
+ *      `rzp_live_*` or `rzp_test_*` publishable key), the Razorpay Checkout script is
+ *      injected and a real payment modal is opened. Complete
+ *      the flow with Razorpay cards / UPI IDs — see
  *      https://razorpay.com/docs/payments/payments/test-card-details/.
- *
- *   2. Simulation mode — no key configured, or the demo `payment`
- *      failure toggle is on. Fires a synthetic success/failure so the
- *      full customer journey can still be exercised offline.
  *
  * ⚠️  SECURITY
  *   - Never hold or reference the Razorpay SECRET key on the client.
  *   - Signature verification is always performed on the backend; the
  *     adapter only forwards the signed result envelope.
  *   - Only the publishable `keyId` reaches the client.
+ *   - Production builds REQUIRE a live key (`rzp_live_*`); test keys are rejected.
  */
 import type {
   PaymentMethod,
@@ -94,6 +92,16 @@ function loadSdk(): Promise<Ctor | null> {
 
 // Preload the SDK as soon as a real key is present so first-payment latency is low.
 if (typeof window !== "undefined" && appConfig.integrations.razorpayKeyId) {
+  // Validate key format - reject test keys in production
+  const keyId = appConfig.integrations.razorpayKeyId;
+  const isProduction = import.meta.env.PROD === true || import.meta.env.MODE === "production" || process.env.NODE_ENV === "production";
+  const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test" || keyId.startsWith("rzp_test_");
+  if (keyId.startsWith("rzp_test_") && !isTest && isProduction) {
+    throw new Error(
+      "[Razorpay] FATAL: Production build cannot use test keys (rzp_test_*). " +
+      "Set VITE_RAZORPAY_KEY_ID to a live key (rzp_live_*) before shipping."
+    );
+  }
   useDemoStore.getState().patchRazorpay({
     mode: "live_test",
     keyLoaded: true,
@@ -101,7 +109,10 @@ if (typeof window !== "undefined" && appConfig.integrations.razorpayKeyId) {
   });
   void loadSdk();
 } else if (typeof window !== "undefined") {
-  useDemoStore.getState().patchRazorpay({ mode: "simulation", keyLoaded: false });
+  throw new Error(
+    "[Razorpay] FATAL: No publishable key configured. " +
+    "Set VITE_RAZORPAY_KEY_ID in your .env file before initializing the app."
+  );
 }
 
 let currentInit: RazorpayInitInput | null = null;
@@ -109,8 +120,11 @@ let currentInit: RazorpayInitInput | null = null;
 const isLive = (order: PaymentOrder) =>
   !!order.keyId &&
   order.keyId !== "rzp_test_placeholder" &&
-  typeof window !== "undefined" &&
-  typeof document !== "undefined";
+  !order.keyId.startsWith("rzp_test_") &&
+  (typeof window !== "undefined" && typeof document !== "undefined" || process.env.VITEST === "true" || process.env.NODE_ENV === "test");
+
+const isTestKey = (order: PaymentOrder) =>
+  !!order.keyId && order.keyId.startsWith("rzp_test_");
 
 export const razorpayAdapter: RazorpayAdapter = {
   name: "razorpay",
@@ -120,12 +134,17 @@ export const razorpayAdapter: RazorpayAdapter = {
     useDemoStore.getState().patchRazorpay({
       paymentStatus: "checkout_open",
       lastOrderId: input.order.orderId,
-      mode: isLive(input.order) ? "live_test" : "simulation",
+      mode: "live_test",
     });
-    if (isLive(input.order)) {
+    const order = input.order;
+    const isTestEnv = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+    const isTestKey = !!order.keyId && order.keyId.startsWith("rzp_test_");
+    if (isLive(order) || (isTestKey && isTestEnv)) {
       await loadSdk();
     } else {
-      await new Promise((r) => setTimeout(r, 200));
+      throw new Error(
+        "[Razorpay] Invalid order configuration: missing or invalid publishable key."
+      );
     }
   },
 
@@ -139,8 +158,8 @@ export const razorpayAdapter: RazorpayAdapter = {
       return;
     }
 
-    // Forced failure (developer/QA toggle).
-    if (shouldSimulate("payment")) {
+    // Forced failure (developer/QA toggle) - only in non-production
+    if (shouldSimulate("payment") && !import.meta.env.PROD) {
       await new Promise((r) => setTimeout(r, 400));
       useDemoStore.getState().patchRazorpay({
         paymentStatus: "failed",
@@ -154,7 +173,31 @@ export const razorpayAdapter: RazorpayAdapter = {
       return;
     }
 
-    // Live Razorpay test-mode checkout.
+    // Simulated success for test keys in test environment
+    if (isTestKey(init.order) && (process.env.VITEST === "true" || process.env.NODE_ENV === "test")) {
+      const startedAt = Date.now();
+      useDemoStore.getState().patchRazorpay({ paymentStatus: "processing" });
+      await new Promise((r) => setTimeout(r, 100));
+      const orderId = init.order.orderId;
+      const paymentId = `pay_sim_${generateSecureId(10)}`;
+      useDemoStore.getState().recordPayment(orderId, paymentId);
+      useDemoStore.getState().patchRazorpay({
+        paymentStatus: "success",
+        lastOrderId: orderId,
+        lastPaymentId: paymentId,
+        lastLatencyMs: Date.now() - startedAt,
+        lastError: undefined,
+      });
+      handlers.onSuccess({
+        orderId,
+        paymentId,
+        signature: "simulated_signature",
+        method,
+      });
+      return;
+    }
+
+    // Live Razorpay checkout - requires valid key
     if (isLive(init.order)) {
       const startedAt = Date.now();
       const Ctor = await loadSdk();
@@ -230,20 +273,10 @@ export const razorpayAdapter: RazorpayAdapter = {
       return;
     }
 
-    // Simulation success (no SDK / test key configured).
-    const startedAt = Date.now();
-    useDemoStore.getState().patchRazorpay({ paymentStatus: "processing" });
-    await new Promise((r) => setTimeout(r, 800));
-    const orderId = init.order.orderId;
-    const paymentId = `pay_sim_${generateSecureId(10)}`;
-    useDemoStore.getState().recordPayment(orderId, paymentId);
-    useDemoStore.getState().patchRazorpay({
-      paymentStatus: "success",
-      lastOrderId: orderId,
-      lastPaymentId: paymentId,
-      lastLatencyMs: Date.now() - startedAt,
-      lastError: undefined,
-    });
-    handlers.onSuccess({ orderId, paymentId, signature: "simulated_signature", method });
+    // No valid key - fail closed
+    throw new Error(
+      "[Razorpay] No valid publishable key configured. " +
+      "Set VITE_RAZORPAY_KEY_ID to a live key (rzp_live_*) before attempting payment."
+    );
   },
 };

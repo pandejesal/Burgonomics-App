@@ -3,3 +3,4 @@
  * feature module and depend on `@/core/network` for transport.
  */
 export { HapticService } from "./haptics";
+export { firestoreService } from "./firebase/firestoreService";

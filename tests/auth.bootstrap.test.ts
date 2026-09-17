@@ -12,9 +12,27 @@ import { describe, it, expect, beforeEach } from "vitest";
 
 import { useAuthStore } from "../src/features/auth/state/authStore";
 import { secureStorage, SECURE_KEYS } from "../src/core/storage/secureStorage";
-import { generateMockJwt } from "../src/features/auth/utils/mockJwt";
 
 const USER = { id: "uid_aaa", phone: "+919825012345", name: "Aarav" };
+
+/**
+ * Generates a simple JWT-like token for testing purposes.
+ * This is a test-only utility that creates a JWT-like string without
+ * cryptographic signing (for testing purposes only).
+ */
+function generateMockJwt(userId: string, phone: string): { accessToken: string; refreshToken: string } {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = btoa(JSON.stringify({
+    sub: userId,
+    phone,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  }));
+  const signature = btoa("test-signature");
+  const accessToken = `${header}.${payload}.${signature}`;
+  const refreshToken = `refresh_${btoa(JSON.stringify({ sub: userId, iat: Date.now() }))}`;
+  return { accessToken, refreshToken };
+}
 
 async function seedSession(accessToken: string, refreshToken = "refresh_opaque") {
   await secureStorage.set(SECURE_KEYS.ACCESS_TOKEN, accessToken);

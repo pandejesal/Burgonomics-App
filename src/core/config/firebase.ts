@@ -2,14 +2,32 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+const requiredFirebaseKeys = [
+  "VITE_FIREBASE_API_KEY",
+  "VITE_FIREBASE_AUTH_DOMAIN",
+  "VITE_FIREBASE_PROJECT_ID",
+  "VITE_FIREBASE_STORAGE_BUCKET",
+  "VITE_FIREBASE_MESSAGING_SENDER_ID",
+  "VITE_FIREBASE_APP_ID",
+] as const;
+
+for (const key of requiredFirebaseKeys) {
+  if (!import.meta.env[key]) {
+    throw new Error(
+      `[Firebase] FATAL: Missing required environment variable ${key}. ` +
+      `Set ${key} in your .env file before initializing Firebase.`
+    );
+  }
+}
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAuoa6yU-S8bNR3QDI3DjTUvbKNyBu3_Fs",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "burgonomics-7faa8.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "burgonomics-7faa8",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "burgonomics-7faa8.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "738930066637",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:738930066637:web:fc1aa0f0e2a52a19df9584",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-HQ218Q7CXF",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);

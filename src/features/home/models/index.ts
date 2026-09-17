@@ -5,6 +5,8 @@
 import type { MenuCategory, MenuItem } from "@/features/menu/services/menuService";
 import type { Offer } from "@/features/offers/models";
 
+export type { MenuCategory, MenuItem, Offer };
+
 export interface Banner {
   id: string;
   title: string;

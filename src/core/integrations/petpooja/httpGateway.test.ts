@@ -1,6 +1,21 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { HttpPetpoojaGateway } from "./httpGateway";
-import { createPetpoojaGateway } from "./gateway";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+let HttpPetpoojaGateway: any;
+let createPetpoojaGateway: any;
+
+beforeEach(async () => {
+  vi.stubEnv("VITE_PETPOOJA_ENABLED", "true");
+  try {
+    localStorage.clear();
+  } catch {
+    // non-DOM env — outbox storage is guarded
+  }
+  // Dynamically import after env is set
+  const httpGateway = await import("./httpGateway");
+  const gateway = await import("./gateway");
+  HttpPetpoojaGateway = httpGateway.HttpPetpoojaGateway;
+  createPetpoojaGateway = gateway.createPetpoojaGateway;
+});
 
 const okFetch = (body: unknown = {}) =>
   (async () =>
@@ -22,8 +37,8 @@ describe("petpooja gateway wiring", () => {
     }
   });
 
-  it("defaults to the mock gateway (keyless dev behavior unchanged)", () => {
-    expect(createPetpoojaGateway().implementation).toBe("mock");
+  it("creates live gateway when VITE_PETPOOJA_ENABLED=true", () => {
+    expect(createPetpoojaGateway().implementation).toBe("live");
   });
 
   it("live pushOrder acknowledges via the proxy contract", async () => {

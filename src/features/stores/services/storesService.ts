@@ -1,6 +1,5 @@
 import { ok, fail, type ApiResult } from "@/core/network/http";
 import type { Store } from "@/features/stores/models/Store";
-import { MOCK_STORES } from "@/features/stores/data/mockStores";
 import { haversineKm } from "@/features/stores/utils/distance";
 import { db } from "@/core/config/firebase";
 import { collection, getDocs, doc, getDoc, query, limit } from "firebase/firestore";
@@ -67,9 +66,8 @@ async function fetchFirestoreStores(): Promise<Store[]> {
   } catch (err) {
     console.warn("storesService: Firestore fetch error:", err);
   }
-  // Dev-only built-in catalog (Runbook §8) — production shows no outlets
-  // rather than invented stores when the backend is empty/unreachable.
-  return import.meta.env.DEV ? MOCK_STORES : [];
+  // No mock fallback in production — return empty array
+  return [];
 }
 
 export const storesService = {
@@ -100,8 +98,7 @@ export const storesService = {
     }
     // Loop: list() is DEV-gated; byId must match — a prod lookup miss must
     // return null (honest not-found), never a mock store.
-    const found = import.meta.env.DEV ? (MOCK_STORES.find((s) => s.id === id) ?? null) : null;
-    return ok(found);
+    return ok(null);
   },
 
   async search(query: string, coords?: { lat: number; lng: number }): Promise<ApiResult<Store[]>> {

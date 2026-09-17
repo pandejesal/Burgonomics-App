@@ -20,5 +20,6 @@ export default defineConfig({
       "src/routes/**/*.test.ts",
     ],
     environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

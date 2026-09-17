@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { authRepository } from "@/features/auth/repositories/AuthRepository";
-import { isJwtExpired } from "@/features/auth/utils/mockJwt";
+import { isJwtExpired } from "@/features/auth/utils/validators";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
 import { auth as firebaseAuth } from "@/core/config/firebase";

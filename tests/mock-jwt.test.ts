@@ -2,16 +2,21 @@ import { describe, it, expect } from "vitest";
 
 // Pins the expiry-less/forged token hole: bodies without numeric exp used to
 // report NOT-expired and restore sessions without refresh.
-import { generateMockJwt, isJwtExpired, decodeMockJwt } from "../src/features/auth/utils/mockJwt";
+import { isJwtExpired } from "../src/features/auth/utils/validators";
 
 const b64url = (s: string) =>
   Buffer.from(s, "utf-8").toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 
-describe("mockJwt expiry validation (real helpers)", () => {
+function generateTestJwt(payload: object): string {
+  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = b64url(JSON.stringify(payload));
+  return `${header}.${body}.sig`;
+}
+
+describe("JWT expiry validation (real helpers)", () => {
   it("treats fresh tokens as live and expired ones as expired", () => {
-    const { accessToken } = generateMockJwt("u1", "+919825012345");
-    expect(isJwtExpired(accessToken)).toBe(false);
-    expect(decodeMockJwt(accessToken)?.sub).toBe("u1");
+    const token = generateTestJwt({ sub: "u1", exp: Math.floor(Date.now() / 1000) + 3600 });
+    expect(isJwtExpired(token)).toBe(false);
   });
 
   it("treats expiry-less and malformed bodies as expired", () => {

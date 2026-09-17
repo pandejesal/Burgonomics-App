@@ -8,61 +8,81 @@ import type {
   QuickReorderItem,
   RecommendationItem,
 } from "@/features/home/models";
-import {
-  MOCK_BANNERS,
-  MOCK_BEST_SELLERS,
-  MOCK_CATEGORIES,
-  MOCK_COMBOS,
-  MOCK_FEATURED_OFFERS,
-  MOCK_QUICK_REORDER,
-  MOCK_RECENTLY_VIEWED,
-  MOCK_RECOMMENDATIONS,
-} from "@/features/home/data/mockHome";
+import { firestoreService } from "@/core/services/firebase/firestoreService";
 
 /**
- * Standalone home service with realistic delays for honest skeleton/loading UX.
+ * Home service — fetches real data from Firestore.
+ * No mock data in production paths.
  */
 
-/** ~10% simulated failure surface, controllable per call. */
-function maybeFail<T>(data: T, chance = 0): ApiResult<T> {
-  if (chance > 0 && Math.random() < chance) {
-    return fail("HOME_UPSTREAM", "Unable to load right now. Please try again.", true);
-  }
-  return ok(data);
+function toError(message: string, code = "HOME_UPSTREAM"): { code: string; message: string; retryable?: boolean } {
+  return { code, message, retryable: true };
 }
 
 export const homeService = {
   async getBanners(): Promise<ApiResult<Banner[]>> {
-    await delay(200);
-    return maybeFail(MOCK_BANNERS);
+    try {
+      const banners = await firestoreService.getBanners();
+      return ok(banners);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load banners");
+    }
   },
   async getCategories(): Promise<ApiResult<MenuCategory[]>> {
-    await delay(180);
-    return maybeFail(MOCK_CATEGORIES);
+    try {
+      const categories = await firestoreService.getCategories();
+      return ok(categories);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load categories");
+    }
   },
   async getFeaturedOffers(): Promise<ApiResult<Offer[]>> {
-    await delay(220);
-    return maybeFail(MOCK_FEATURED_OFFERS);
+    try {
+      const offers = await firestoreService.getFeaturedOffers();
+      return ok(offers);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load offers");
+    }
   },
-  async getBestSellers(_storeId: string): Promise<ApiResult<MenuItem[]>> {
-    await delay(260);
-    return maybeFail(MOCK_BEST_SELLERS);
+  async getBestSellers(storeId: string): Promise<ApiResult<any[]>> {
+    try {
+      const items = await firestoreService.getBestSellers(storeId);
+      return ok(items);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load best sellers");
+    }
   },
-  async getPopularCombos(_storeId: string): Promise<ApiResult<Combo[]>> {
-    await delay(240);
-    return maybeFail(MOCK_COMBOS);
+  async getPopularCombos(storeId: string): Promise<ApiResult<any[]>> {
+    try {
+      const combos = await firestoreService.getPopularCombos(storeId);
+      return ok(combos);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load combos");
+    }
   },
-  async getRecommendations(_storeId: string): Promise<ApiResult<RecommendationItem[]>> {
-    await delay(300);
-    return maybeFail(MOCK_RECOMMENDATIONS);
+  async getRecommendations(storeId: string): Promise<ApiResult<any[]>> {
+    try {
+      const recommendations = await firestoreService.getRecommendations(storeId);
+      return ok(recommendations);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load recommendations");
+    }
   },
-  async getRecentlyViewed(): Promise<ApiResult<MenuItem[]>> {
-    await delay(120);
-    return ok(MOCK_RECENTLY_VIEWED);
+  async getRecentlyViewed(): Promise<ApiResult<any[]>> {
+    try {
+      const items = await firestoreService.getRecentlyViewed();
+      return ok(items);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load recently viewed");
+    }
   },
-  async getQuickReorder(_userId: string): Promise<ApiResult<QuickReorderItem[]>> {
-    await delay(200);
-    return ok(MOCK_QUICK_REORDER);
+  async getQuickReorder(userId: string): Promise<ApiResult<any[]>> {
+    try {
+      const items = await firestoreService.getQuickReorder(userId);
+      return ok(items);
+    } catch (error) {
+      return fail("HOME_UPSTREAM", "Unable to load quick reorder");
+    }
   },
 
   /**
@@ -70,7 +90,7 @@ export const homeService = {
    * expose as `GET /v1/home?storeId=…`. Fan-outs to the individual
    * mock endpoints so partial failures still degrade gracefully.
    */
-  async getHome(storeId: string, userId?: string): Promise<ApiResult<HomeBundle>> {
+  async getHome(storeId: string, userId?: string): Promise<ApiResult<any>> {
     const [
       banners,
       categories,
@@ -88,7 +108,7 @@ export const homeService = {
       this.getPopularCombos(storeId),
       this.getRecommendations(storeId),
       this.getRecentlyViewed(),
-      userId ? this.getQuickReorder(userId) : Promise.resolve(ok([] as QuickReorderItem[])),
+      userId ? this.getQuickReorder(userId) : Promise.resolve({ success: true, data: [] }),
     ]);
 
     return ok({
