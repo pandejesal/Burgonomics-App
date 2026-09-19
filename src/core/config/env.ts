@@ -118,3 +118,19 @@ if (ENV_NAME === "production") {
 export const isProd = () => appConfig.env === "production";
 export const isStaging = () => appConfig.env === "staging";
 export const isDev = () => appConfig.env === "development";
+
+/**
+ * True when the API base URL points at a real backend. The built-in
+ * fallbacks are `.example` fixture hosts (no backend exists there), so
+ * firing requests at them only produces CSP violations and console noise —
+ * callers should short-circuit to offline/empty states instead.
+ * (Mirrors the `.example` fixture rule in shared/utils/urlSafety.ts.)
+ */
+export const isLiveApiBaseUrl = (): boolean => {
+  try {
+    const host = new URL(appConfig.api.baseUrl).hostname.toLowerCase();
+    return host !== "example.com" && !host.endsWith(".example");
+  } catch {
+    return false;
+  }
+};

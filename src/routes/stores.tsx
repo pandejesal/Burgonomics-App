@@ -307,7 +307,7 @@ function StoreSelectionPage() {
           <div className="flex items-center gap-2">
             <div className="relative flex-1 min-w-0">
               <SearchBar
-                placeholder="Search by city, area, or store"
+                placeholder="City, area or store"
                 value={query}
                 onChange={(e) => setQuery(e.currentTarget.value)}
                 aria-label="Search stores"
@@ -391,7 +391,7 @@ function StoreSelectionPage() {
                   onClick={() => void onUseLocation()}
                   loading={permission.status === "prompting"}
                   iconLeft={<Locate className="h-3.5 w-3.5" />}
-                  className="bg-surface text-xs font-semibold"
+                  className="bg-surface text-xs font-semibold shrink-0 whitespace-nowrap"
                 >
                   Retry Detection
                 </AppButton>

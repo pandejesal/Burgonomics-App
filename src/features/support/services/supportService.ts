@@ -27,6 +27,7 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { httpClient } from "@/core/network/httpClient";
 import { auth } from "@/core/config/firebase";
+import { isLiveApiBaseUrl } from "@/core/config/env";
 import type {
   BackendTicket,
   FaqItem,
@@ -153,6 +154,9 @@ async function authHeaders(): Promise<Record<string, string>> {
 
 export const supportService = {
   async listFaqs(): Promise<ApiResult<FaqItem[]>> {
+    // No live backend (`.example` fixture base URL) — skip the doomed fetch
+    // (it only trips CSP violations and console noise) and resolve honest [].
+    if (!isLiveApiBaseUrl()) return ok([]);
     try {
       const res = await httpClient.get<unknown>("/v1/support/faqs", {
         headers: await authHeaders(),
@@ -169,6 +173,7 @@ export const supportService = {
   },
 
   async listChannels(): Promise<ApiResult<SupportChannel[]>> {
+    if (!isLiveApiBaseUrl()) return ok([]);
     try {
       const res = await httpClient.get<unknown>("/v1/support/channels", {
         headers: await authHeaders(),
@@ -185,6 +190,7 @@ export const supportService = {
   },
 
   async listIssueCategories(): Promise<ApiResult<IssueCategory[]>> {
+    if (!isLiveApiBaseUrl()) return ok([]);
     try {
       const res = await httpClient.get<unknown>("/v1/support/issue-categories", {
         headers: await authHeaders(),
@@ -200,6 +206,7 @@ export const supportService = {
   },
 
   async listTickets(): Promise<ApiResult<BackendTicketResponse[]>> {
+    if (!isLiveApiBaseUrl()) return ok([]);
     try {
       const res = await httpClient.get<unknown>("/v1/support/tickets", {
         headers: await authHeaders(),
@@ -216,6 +223,9 @@ export const supportService = {
   async submitTicket(input: SupportTicketInput): Promise<ApiResult<SupportTicket>> {
     if (!input.subject.trim() || !input.message.trim()) {
       return fail("INVALID_TICKET", "Please add a subject and a short message.");
+    }
+    if (!isLiveApiBaseUrl()) {
+      return fail("BACKEND_UNAVAILABLE", "Support backend is not connected yet. Please try again later.");
     }
     try {
       const res = await httpClient.post<BackendTicketResponse>(
@@ -285,6 +295,9 @@ export const supportService = {
   async submitFeedback(input: FeedbackInput): Promise<ApiResult<FeedbackRecord>> {
     if (!Number.isFinite(input.rating) || input.rating < 1 || input.rating > 5) {
       return fail("INVALID_RATING", "Please select a rating between 1 and 5.");
+    }
+    if (!isLiveApiBaseUrl()) {
+      return fail("BACKEND_UNAVAILABLE", "Support backend is not connected yet. Please try again later.");
     }
     try {
       const res = await httpClient.post<{ id?: string; createdAt?: number }>(
