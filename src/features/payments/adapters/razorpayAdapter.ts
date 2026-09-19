@@ -109,9 +109,13 @@ if (typeof window !== "undefined" && appConfig.integrations.razorpayKeyId) {
   });
   void loadSdk();
 } else if (typeof window !== "undefined") {
-  throw new Error(
-    "[Razorpay] FATAL: No publishable key configured. " +
-    "Set VITE_RAZORPAY_KEY_ID in your .env file before initializing the app."
+  // No publishable key: stay in simulation mode (the demo store default)
+  // instead of throwing at module scope — a throw here aborts the entire
+  // app boot (blank screen, React never mounts). initialize() below still
+  // rejects at use-time if a real payment is attempted without a key.
+  console.warn(
+    "[Razorpay] No publishable key configured (VITE_RAZORPAY_KEY_ID). " +
+    "Running in simulation mode; set VITE_RAZORPAY_KEY_ID to go live."
   );
 }
 

@@ -11,22 +11,33 @@ const requiredFirebaseKeys = [
   "VITE_FIREBASE_APP_ID",
 ] as const;
 
-for (const key of requiredFirebaseKeys) {
-  if (!import.meta.env[key]) {
-    throw new Error(
-      `[Firebase] FATAL: Missing required environment variable ${key}. ` +
-      `Set ${key} in your .env file before initializing Firebase.`
-    );
-  }
+const missingFirebaseKeys = requiredFirebaseKeys.filter((key) => !import.meta.env[key]);
+
+/**
+ * True when every Firebase env key is present. Exported so call sites can
+ * degrade gracefully instead of crashing.
+ */
+export const isFirebaseConfigured = missingFirebaseKeys.length === 0;
+
+if (!isFirebaseConfigured) {
+  // Never throw at module scope: this module is imported by the app entry
+  // point, and a throw here aborts the entire boot (blank screen, React never
+  // mounts). Real deployments provide these keys; without them Firebase is
+  // initialized with placeholder values and Firebase-backed calls fail at
+  // use-time instead of killing the app at startup.
+  console.warn(
+    `[Firebase] Missing environment variables: ${missingFirebaseKeys.join(", ")}. ` +
+      `Firebase initialized with placeholder config; Firebase-backed features will fail at use-time.`,
+  );
 }
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "missing-api-key",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "missing-auth-domain",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "missing-project-id",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? "missing-storage-bucket",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "missing-sender-id",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "missing-app-id",
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
