@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <rect width="2732" height="2732" fill="#2E7D32"/>
+  <circle cx="1366" cy="1100" r="300" fill="#FFFFFF"/>
+  <path d="M1366 900 L1366 1300" stroke="#2E7D32" stroke-width="40" stroke-linecap="round"/>
+  <ellipse cx="1366" cy="1100" rx="200" ry="80" fill="#2E7D32"/>
+  <ellipse cx="1366" cy="1100" rx="160" ry="60" fill="#FFFFFF"/>
+  <ellipse cx="1366" cy="1100" rx="120" ry="40" fill="#2E7D32"/>
+  <text x="1366" y="1800" font-family="system-ui, sans-serif" font-size="120" font-weight="bold" fill="#FFFFFF" text-anchor="middle">BURGONOMICS</text>
+  <text x="1366" y="1950" font-family="system-ui, sans-serif" font-size="60" fill="#A5D6A7" text-anchor="middle">Pure Veg Burgers</text>
+</svg>
