@@ -6,7 +6,7 @@
 
       colorPrimary      = #023020  (dark teal — splash background)
       colorPrimaryDark  = #012313  (darker variant for status bar)
-      colorAccent       = #C2410C  (AA accent — matches --accent in styles.css)
+      colorAccent       = #C2410C  (AA accent — matches the accent token in styles.css)
     -->
     <color name="colorPrimary">#023020</color>
     <color name="colorPrimaryDark">#012313</color>
