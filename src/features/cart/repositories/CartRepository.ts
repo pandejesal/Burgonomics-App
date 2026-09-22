@@ -25,11 +25,7 @@ import type {
   CartValidation,
   Fulfillment,
 } from "@/features/cart/models";
-import {
-  calculateTotals,
-  prepareCheckoutMock,
-  validateCartMock,
-} from "@/features/cart/services/cartService";
+import { calculateTotals } from "@/features/cart/services/cartService";
 import { offerRepository } from "@/features/offers/repositories/OfferRepository";
 import { useAppConfig } from "@/core/state/appConfigStore";
 
@@ -261,8 +257,14 @@ export class CartRepository {
     if (s.isPriceLockExpired()) {
       await this.validateAndRefreshPriceLock();
     }
-    const res = await validateCartMock(useCartStore.getState().lines);
-    if (!res.success) return res;
+    const issues = s.lines
+      .filter((line) => line.availability === "unavailable")
+      .map((line) => ({
+        lineId: line.lineId,
+        code: "unavailable" as const,
+        message: line.unavailableReason ?? `${line.name} is currently out of stock.`,
+      }));
+    const res: ApiResult<CartValidation> = ok({ valid: issues.length === 0, issues });
     // Revalidate any persisted promo against the repository (active
     // status, min-order, context) at the CURRENT subtotal. A tampered or
     // stale burg.cart promo is dropped and reported — checkout never sees
@@ -333,7 +335,14 @@ export class CartRepository {
   }
 
   async prepareCheckout(): Promise<ApiResult<{ checkoutToken: string }>> {
-    const res = await prepareCheckoutMock(useCartStore.getState().lines);
+    const lines = useCartStore.getState().lines;
+    if (!lines.length) {
+      return {
+        success: false,
+        error: { code: "EMPTY_CART", message: "Your cart is empty. Please add items to proceed." },
+      };
+    }
+    const res = ok({ checkoutToken: `chk_${generateSecureId(16)}` });
     if (res.success) this.markSyncState();
     return res;
   }

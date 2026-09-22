@@ -2,8 +2,6 @@ import type { Timestamp } from "firebase/firestore";
 import type { Order } from "@/features/orders/models";
 import type { PetpoojaSaveOrderPayload } from "./mapper";
 
-export type GatewayImplementation = "mock" | "live";
-
 export interface GatewayStore {
   id: string;
   name: string;
@@ -53,7 +51,6 @@ export interface SyncReport {
   errors: number;
   warnings: number;
   conflicts: number;
-  simulated: boolean;
 }
 
 export interface SyncLogRecord {
@@ -72,7 +69,6 @@ export interface SyncLogRecord {
   deleted: number;
   conflicts: number;
   error: string | null;
-  simulated: boolean;
   source: string;
 }
 
@@ -164,7 +160,6 @@ export interface GatewayMetrics {
     deleted: number;
   }>;
   prometheusText: string;
-  simulated: boolean;
 }
 
 export interface GatewayAlert {
@@ -189,7 +184,7 @@ export interface PetpoojaOrderPushResult {
 }
 
 export interface PetpoojaGateway {
-  readonly implementation: GatewayImplementation;
+  readonly implementation: "live";
   getStores(): Promise<GatewayStore[]>;
   getStoreStatus(storeId: string): Promise<StoreOperationalState>;
   runSync(storeId: string, mode: "full" | "incremental" | "stock" | "status"): Promise<SyncReport>;

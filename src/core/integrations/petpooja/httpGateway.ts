@@ -11,7 +11,6 @@ import {
 } from "firebase/firestore";
 import { mapOrderToPetpoojaSaveOrder, type PetpoojaSaveOrderPayload } from "./mapper";
 import { useAuthStore } from "@/features/auth/state/authStore";
-import { useDemoStore } from "@/features/demo/state/demoStore";
 import { useOrdersStore } from "@/features/orders/state/ordersStore";
 import type { Order } from "@/features/orders/models";
 import type {
@@ -252,14 +251,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     });
   }
 
-  private traceApiCall(label: string, status: "ok" | "fail", ms: number, meta: Record<string, any>) {
-    try {
-      useDemoStore.getState().pushApiCall({ label, status, ms, meta });
-    } catch {
-      // demo store unavailable — skip debug trace
-    }
-  }
-
   // -- outbox ------------------------------------------------------------
 
   private readOutbox(): OutboxEntry[] {
@@ -296,7 +287,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   // -- POS-critical paths --------------------------------------------------
 
   async pushOrder(orderId: string, customOrder?: Order): Promise<PetpoojaOrderPushResult> {
-    const started = Date.now();
     let order = customOrder;
     if (!order) {
       order = useOrdersStore.getState().byId[orderId];
@@ -318,25 +308,18 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         { orderId, order: payload },
         `push:${payload.restID}`
       );
-      this.traceApiCall("POST petpooja/save_order", "ok", Date.now() - started, {
-        orderId,
-        restID: payload.restID,
-        kotNumber: res.kotNumber || res.petpoojaOrderId,
-      });
       return {
         acknowledged: res.success !== false,
         kotNumber: res.kotNumber || res.petpoojaOrderId,
         payload,
       };
     } catch (err) {
-      this.traceApiCall("POST petpooja/save_order", "fail", Date.now() - started, { orderId });
       this.enqueueOutbox(orderId, payload);
       return { acknowledged: false, payload };
     }
   }
 
   async pushMenu(storeId: string): Promise<PetpoojaMenuSyncResult> {
-    const started = Date.now();
     try {
       const res = await this.post<{ itemCount?: number; categoriesCount?: number; syncedItems?: number; syncedCategories?: number }>(
         "/petpooja/syncMenu",
@@ -345,16 +328,10 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
       );
       const itemsSynced = res.itemCount ?? res.syncedItems ?? 0;
       const categoriesCount = res.categoriesCount ?? res.syncedCategories ?? 0;
-      this.traceApiCall("POST petpooja/menu_push", "ok", Date.now() - started, {
-        storeId,
-        itemsSynced,
-        categoriesCount,
-      });
       await this.writeSyncLog(storeId, "FULL", itemsSynced, categoriesCount, null);
       return { itemsSynced, categoriesCount, addonGroupsCount: 0, syncedAt: new Date().toISOString() };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Menu sync failed";
-      this.traceApiCall("POST petpooja/menu_push", "fail", Date.now() - started, { storeId });
       await this.writeSyncLog(storeId, "FULL", 0, 0, message);
       return { itemsSynced: 0, categoriesCount: 0, addonGroupsCount: 0, syncedAt: new Date().toISOString() };
     }
@@ -382,7 +359,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         errors: res.itemsSynced > 0 ? 0 : 1,
         warnings: 0,
         conflicts: 0,
-        simulated: false,
       };
     }
     try {
@@ -402,7 +378,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         errors: 0,
         warnings: 0,
         conflicts: 0,
-        simulated: false,
       };
     } catch {
       const ms = Date.now() - started;

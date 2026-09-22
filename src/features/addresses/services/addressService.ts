@@ -1,6 +1,6 @@
 /**
- * AddressService — mock CRUD implementation. The public shape mirrors
- * the future backend contract:
+ * AddressService — CRUD implementation. The public shape mirrors the
+ * future backend contract:
  *   GET    /v1/addresses           → list
  *   POST   /v1/addresses           → create
  *   PATCH  /v1/addresses/:id       → update
@@ -8,8 +8,7 @@
  *   POST   /v1/addresses/:id/default → setDefault
  *
  * State is held inside the addressStore; this file only encapsulates
- * validation + latency simulation so the swap to HTTP is a body-only
- * change per method.
+ * validation so the swap to HTTP is a body-only change per method.
  */
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import type { Address, AddressInput } from "@/features/addresses/models";

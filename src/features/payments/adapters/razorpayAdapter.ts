@@ -22,8 +22,6 @@ import type {
   PaymentOrder,
   PaymentResult,
 } from "@/core/integrations/razorpay/types";
-import { generateSecureId } from "@/shared/utils/cryptoUtils";
-import { useDemoStore, shouldSimulate } from "@/features/demo/state/demoStore";
 import { appConfig } from "@/core/config/env";
 import { logger } from "@/core/logging/logger";
 
@@ -58,7 +56,6 @@ let sdkPromise: Promise<Ctor | null> | null = null;
 function loadSdk(): Promise<Ctor | null> {
   if (typeof window === "undefined") return Promise.resolve(null);
   if (window.Razorpay) {
-    useDemoStore.getState().patchRazorpay({ sdkLoaded: true });
     return Promise.resolve(window.Razorpay);
   }
   if (sdkPromise) return sdkPromise;
@@ -68,20 +65,11 @@ function loadSdk(): Promise<Ctor | null> {
     s.async = true;
     s.onload = () => {
       const ok = Boolean(window.Razorpay);
-      useDemoStore.getState().patchRazorpay({ sdkLoaded: ok });
       if (!ok) logger.warn("razorpay.sdk_missing_after_load");
       resolve(window.Razorpay ?? null);
     };
     s.onerror = () => {
       sdkPromise = null;
-      useDemoStore.getState().patchRazorpay({
-        sdkLoaded: false,
-        lastError: {
-          code: "SDK_LOAD_FAILED",
-          message: "Could not load Razorpay Checkout script.",
-          at: new Date().toISOString(),
-        },
-      });
       logger.error("razorpay.sdk_load_failed", new Error("Checkout script failed to load"));
       resolve(null);
     };
@@ -102,20 +90,15 @@ if (typeof window !== "undefined" && appConfig.integrations.razorpayKeyId) {
       "Set VITE_RAZORPAY_KEY_ID to a live key (rzp_live_*) before shipping."
     );
   }
-  useDemoStore.getState().patchRazorpay({
-    mode: "live_test",
-    keyLoaded: true,
-    backendConnected: Boolean(appConfig.integrations.paymentsApiBaseUrl),
-  });
   void loadSdk();
 } else if (typeof window !== "undefined") {
-  // No publishable key: stay in simulation mode (the demo store default)
-  // instead of throwing at module scope — a throw here aborts the entire
-  // app boot (blank screen, React never mounts). initialize() below still
-  // rejects at use-time if a real payment is attempted without a key.
+  // No publishable key: warn instead of throwing at module scope — a throw
+  // here aborts the entire app boot (blank screen, React never mounts).
+  // initialize() below still rejects at use-time if a real payment is
+  // attempted without a key.
   console.warn(
     "[Razorpay] No publishable key configured (VITE_RAZORPAY_KEY_ID). " +
-    "Running in simulation mode; set VITE_RAZORPAY_KEY_ID to go live."
+    "Payments will fail closed until a key is set."
   );
 }
 
@@ -127,19 +110,11 @@ const isLive = (order: PaymentOrder) =>
   !order.keyId.startsWith("rzp_test_") &&
   (typeof window !== "undefined" && typeof document !== "undefined" || process.env.VITEST === "true" || process.env.NODE_ENV === "test");
 
-const isTestKey = (order: PaymentOrder) =>
-  !!order.keyId && order.keyId.startsWith("rzp_test_");
-
 export const razorpayAdapter: RazorpayAdapter = {
   name: "razorpay",
 
   async initialize(input) {
     currentInit = input;
-    useDemoStore.getState().patchRazorpay({
-      paymentStatus: "checkout_open",
-      lastOrderId: input.order.orderId,
-      mode: "live_test",
-    });
     const order = input.order;
     const isTestEnv = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
     const isTestKey = !!order.keyId && order.keyId.startsWith("rzp_test_");
@@ -162,48 +137,8 @@ export const razorpayAdapter: RazorpayAdapter = {
       return;
     }
 
-    // Forced failure (developer/QA toggle) - only in non-production
-    if (shouldSimulate("payment") && !import.meta.env.PROD) {
-      await new Promise((r) => setTimeout(r, 400));
-      useDemoStore.getState().patchRazorpay({
-        paymentStatus: "failed",
-        lastError: {
-          code: "SIMULATED_FAILURE",
-          message: "Simulated payment failure (QA toggle).",
-          at: new Date().toISOString(),
-        },
-      });
-      handlers.onFailure({ code: "SIMULATED_FAILURE", description: "Simulated payment failure." });
-      return;
-    }
-
-    // Simulated success for test keys in test environment
-    if (isTestKey(init.order) && (process.env.VITEST === "true" || process.env.NODE_ENV === "test")) {
-      const startedAt = Date.now();
-      useDemoStore.getState().patchRazorpay({ paymentStatus: "processing" });
-      await new Promise((r) => setTimeout(r, 100));
-      const orderId = init.order.orderId;
-      const paymentId = `pay_sim_${generateSecureId(10)}`;
-      useDemoStore.getState().recordPayment(orderId, paymentId);
-      useDemoStore.getState().patchRazorpay({
-        paymentStatus: "success",
-        lastOrderId: orderId,
-        lastPaymentId: paymentId,
-        lastLatencyMs: Date.now() - startedAt,
-        lastError: undefined,
-      });
-      handlers.onSuccess({
-        orderId,
-        paymentId,
-        signature: "simulated_signature",
-        method,
-      });
-      return;
-    }
-
     // Live Razorpay checkout - requires valid key
     if (isLive(init.order)) {
-      const startedAt = Date.now();
       const Ctor = await loadSdk();
       if (!Ctor) {
         handlers.onFailure({
@@ -212,7 +147,6 @@ export const razorpayAdapter: RazorpayAdapter = {
         });
         return;
       }
-      useDemoStore.getState().patchRazorpay({ paymentStatus: "processing" });
       const isRealRzpOrder = /^order_[A-Za-z0-9]{14}$/.test(init.order.orderId);
       const options: Record<string, unknown> = {
         key: init.order.keyId,
@@ -225,7 +159,6 @@ export const razorpayAdapter: RazorpayAdapter = {
         theme: { color: init.theme?.color ?? "#0E4825" },
         modal: {
           ondismiss: () => {
-            useDemoStore.getState().patchRazorpay({ paymentStatus: "cancelled" });
             handlers.onCancel();
           },
         },
@@ -234,16 +167,7 @@ export const razorpayAdapter: RazorpayAdapter = {
           razorpay_payment_id: string;
           razorpay_signature?: string;
         }) => {
-          const latency = Date.now() - startedAt;
           const orderId = resp.razorpay_order_id ?? init.order.orderId;
-          useDemoStore.getState().recordPayment(orderId, resp.razorpay_payment_id);
-          useDemoStore.getState().patchRazorpay({
-            paymentStatus: "success",
-            lastOrderId: orderId,
-            lastPaymentId: resp.razorpay_payment_id,
-            lastLatencyMs: latency,
-            lastError: undefined,
-          });
           handlers.onSuccess({
             orderId,
             paymentId: resp.razorpay_payment_id,
@@ -267,10 +191,6 @@ export const razorpayAdapter: RazorpayAdapter = {
           )?.error ?? {};
         const code = err.code ?? "PAYMENT_FAILED";
         const description = err.description ?? err.reason ?? "Payment could not be completed.";
-        useDemoStore.getState().patchRazorpay({
-          paymentStatus: "failed",
-          lastError: { code, message: description, at: new Date().toISOString() },
-        });
         handlers.onFailure({ code, description, source: err.source });
       });
       rzp.open();

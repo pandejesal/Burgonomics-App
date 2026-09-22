@@ -33,7 +33,7 @@ async function fetchOffersFromFirebase(): Promise<Offer[]> {
   return [];
 }
 
-function mockComputeDiscount(offer: Offer, subtotal: number): number {
+function computeDiscountPreview(offer: Offer, subtotal: number): number {
   const d = offer.discount;
   if (d.mode === "percent" && typeof d.value === "number") {
     const raw = Math.round((subtotal * d.value) / 100);
@@ -162,7 +162,7 @@ export const offersService = {
       return fail("OFFER_INELIGIBLE", "This offer isn't available right now.");
     }
 
-    const discountAmount = mockComputeDiscount(offer, input.subtotal);
+    const discountAmount = computeDiscountPreview(offer, input.subtotal);
     return ok({
       offerId: offer.id,
       code: offer.code ?? offer.id,

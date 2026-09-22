@@ -20,11 +20,18 @@ const missingFirebaseKeys = requiredFirebaseKeys.filter((key) => !import.meta.en
 export const isFirebaseConfigured = missingFirebaseKeys.length === 0;
 
 if (!isFirebaseConfigured) {
-  // Never throw at module scope: this module is imported by the app entry
-  // point, and a throw here aborts the entire boot (blank screen, React never
-  // mounts). Real deployments provide these keys; without them Firebase is
-  // initialized with placeholder values and Firebase-backed calls fail at
-  // use-time instead of killing the app at startup.
+  if (import.meta.env.PROD === true) {
+    // Fail fast in production: booting with placeholder credentials would
+    // surface opaque use-time errors instead of the real misconfiguration.
+    // Naming the missing keys makes the failure actionable.
+    throw new Error(
+      `[Firebase] Missing required environment variables: ${missingFirebaseKeys.join(", ")}. ` +
+        `Set these in the production environment before initializing Firebase.`,
+    );
+  }
+  // Local development only: warn and initialize with placeholder values so the
+  // app still boots without real credentials. Firebase-backed calls fail at
+  // use-time instead of killing the dev server.
   console.warn(
     `[Firebase] Missing environment variables: ${missingFirebaseKeys.join(", ")}. ` +
       `Firebase initialized with placeholder config; Firebase-backed features will fail at use-time.`,

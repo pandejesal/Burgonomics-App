@@ -9,7 +9,6 @@ export interface RequestOtpResponse {
   expiresInSec: number;
   resendAfterSec: number;
   code?: string;
-  simulated?: boolean;
   deliveryMethod?: "whatsapp" | "sms";
 }
 
@@ -111,7 +110,6 @@ export const authService = {
         expiresInSec: 300,
         resendAfterSec: 60,
         deliveryMethod,
-        simulated: false,
       });
     } catch (error: any) {
       // Code only: the raw Firebase error embeds the phone in message/customData.
