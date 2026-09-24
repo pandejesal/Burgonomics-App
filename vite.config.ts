@@ -13,6 +13,7 @@ export default defineConfig({
       autoCodeSplitting: true,
       routesDirectory: path.resolve(__dirname, "src/routes"),
       generatedRouteTree: path.resolve(__dirname, "src/routeTree.gen.ts"),
+      routeFileIgnorePattern: "\\.test\\.(ts|tsx)$",
     }),
     react(),
     tailwindcss(),

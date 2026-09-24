@@ -38,9 +38,9 @@ export function ReviewItemsList({ lines }: Props) {
                   <AppBadge tone="warning">{line.unavailableReason ?? "Unavailable"}</AppBadge>
                 )}
               </div>
-              {line.modifiers.length > 0 && (
+              {(line.modifiers ?? []).length > 0 && (
                 <ul className="mt-0.5 space-y-0.5">
-                  {line.modifiers.map((m) => (
+                  {(line.modifiers ?? []).map((m) => (
                     <li
                       key={`${m.groupId}-${m.optionId}`}
                       className="type-caption text-text-secondary"

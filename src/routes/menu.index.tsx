@@ -14,7 +14,6 @@ import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSy
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { cartRepository, FloatingCartBar } from "@/features/cart";
 import { useMenuStore } from "@/features/menu/state/menuStore";
-import { useDemoStore } from "@/features/demo/state/demoStore";
 import { CategoryNavRail } from "@/features/menu/components/CategoryNavRail";
 import { MenuProductCard } from "@/features/menu/components/MenuProductCard";
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
@@ -63,7 +62,6 @@ function MenuPage() {
   const online = useAppConfig((s) => s.isOnline);
   const store = useStoreSelection((s) => s.activeStore);
   const isHydrated = useStoreSelection((s) => s.isHydrated);
-  const simulationMode = useDemoStore((s) => s.simulationMode);
 
   const status = useMenuStore((s) => s.status);
   const error = useMenuStore((s) => s.error);
@@ -294,20 +292,7 @@ function MenuPage() {
             onRetry={() => load(store.id, { refresh: true })}
           />
         ) : status === "empty" || categories.length === 0 ? (
-          !simulationMode ? (
-            <PetpoojaSyncPlaceholder storeId={store.id} />
-          ) : (
-            <EmptyState
-              title="No menu available"
-              description={
-                store.isOpen === false
-                  ? "This store is currently closed. Try again during opening hours."
-                  : "The menu for this store hasn't been published yet."
-              }
-              actionLabel="Change store"
-              onAction={() => navigate({ to: "/stores" })}
-            />
-          )
+          <PetpoojaSyncPlaceholder storeId={store.id} />
         ) : (
           <>
             {/* Sticky Category Nav Rail + View Toggle */}

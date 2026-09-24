@@ -57,7 +57,7 @@ export function CartItemList({ className }: CartItemListProps) {
                 {line.modifiers && line.modifiers.length > 0 && (
                   <div className="space-y-0.5">
                     {line.modifiers.map((m, idx) => (
-                      <p key={idx} className="text-[11px] text-text-secondary leading-tight line-clamp-1">
+                      <p key={`${m.groupId ?? "g"}-${m.optionId ?? m.name}-${idx}`} className="text-[11px] text-text-secondary leading-tight line-clamp-1">
                         • {m.name} {m.priceDelta > 0 ? `(+₹${m.priceDelta})` : ""}
                       </p>
                     ))}

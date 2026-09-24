@@ -3,13 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/shared/layouts/AppShell";
 import { FailureState } from "@/shared/components/feedback/FailureState";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { FulfillmentSheet } from "@/features/stores/components/FulfillmentSheet";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
-import { useDemoStore } from "@/features/demo/state/demoStore";
 
 import { useHomeStore } from "@/features/home";
 import { CategoryPills } from "@/features/menu/components/CategoryPills";
@@ -59,7 +57,6 @@ function HomePage() {
   const bundle = useHomeStore((s) => s.bundle);
   const error = useHomeStore((s) => s.error);
   const load = useHomeStore((s) => s.load);
-  const simulationMode = useDemoStore((s) => s.simulationMode);
 
   // Bounce guests without a chosen store to Store Selection.
   useEffect(() => {
@@ -140,20 +137,9 @@ function HomePage() {
             />
           </div>
         ) : status === "empty" || !bundle ? (
-          !simulationMode ? (
-            <div className="mt-4 px-4">
-              <PetpoojaSyncPlaceholder storeId={store.id} />
-            </div>
-          ) : (
-            <div className="mt-6 px-4">
-              <EmptyState
-                title="Nothing to show yet"
-                description="Menu and offers for this store will appear here soon."
-                actionLabel="Browse menu"
-                onAction={() => navigate({ to: "/menu" })}
-              />
-            </div>
-          )
+          <div className="mt-4 px-4">
+            <PetpoojaSyncPlaceholder storeId={store.id} />
+          </div>
         ) : (
           <div className="mt-4 space-y-6">
             {/* POS-driven Promo Banner Carousel — single source of truth */}

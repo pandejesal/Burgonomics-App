@@ -426,7 +426,11 @@ function CartPage() {
           subtotal={subtotal}
           redeemedCoins={coinsRedeemed}
           onToggleRedemption={(redeem, coins) => {
-            setCoinsRedeemed(redeem ? coins : 0);
+            const v = redeem ? coins : 0;
+            setCoinsRedeemed(v);
+            // Persist so order + payment payloads see it (OrderRepository and
+            // PaymentRepository read checkout.loyaltyPointsToRedeem, not this).
+            useCheckoutStore.getState().setLoyaltyPointsToRedeem(v);
           }}
         />
 
@@ -434,7 +438,12 @@ function CartPage() {
         {fulfillment === "delivery" && (
           <DeliveryTipSelector
             selectedTip={tipAmount}
-            onSelectTip={(tip) => setTipAmount(tip)}
+            onSelectTip={(tip) => {
+              setTipAmount(tip);
+              // Persist so the order record + gateway carry the tip
+              // (createFromCurrentContext reads checkout.tipAmount).
+              useCheckoutStore.getState().setTipAmount(tip);
+            }}
           />
         )}
 

@@ -5,41 +5,25 @@
  * that Capacitor packages into Android + iOS shells. The SSR web build
  * (Nitro / TanStack Start) is unaffected and continues to use
  * `src/server.ts` + `src/start.ts`.
+ *
+ * Boot goes through a dynamic import so a boot-time throw (e.g. the FR-004
+ * Firebase misconfiguration fail-fast) renders ConfigErrorScreen instead
+ * of a blank white page. The fail-fast itself is untouched — the app still
+ * refuses to boot without configuration, loudly.
  */
 // Web Crypto API polyfill for Android WebView < 105 — must load first
-import './shared/utils/webCryptoPolyfill';
-
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { RouterProvider } from "@tanstack/react-router";
+import "./shared/utils/webCryptoPolyfill";
 
 import "./styles.css";
-import { getRouter } from "./router";
-import { bootstrapNativePlatform } from "./shared/platform/mobileBootstrap";
-import { initWebPush } from "./shared/platform/pushNotifications";
-import { initAppCheck } from "./core/config/firebase";
-
-import { GlobalErrorBoundary } from "./shared/components/feedback/GlobalErrorBoundary";
-
-const router = getRouter();
+import { createRoot } from "react-dom/client";
+import { ConfigErrorScreen } from "./shared/components/feedback/ConfigErrorScreen";
 
 const rootEl = document.getElementById("app");
 if (!rootEl) throw new Error("Missing #app root element");
 
-createRoot(rootEl).render(
-  <StrictMode>
-    <GlobalErrorBoundary>
-      <RouterProvider router={router} />
-    </GlobalErrorBoundary>
-  </StrictMode>,
+void import("./boot").then(
+  ({ boot }) => boot(rootEl),
+  (err: unknown) => {
+    createRoot(rootEl).render(<ConfigErrorScreen error={err} />);
+  },
 );
-
-// Fire-and-forget: wires splash-screen hide, status bar, keyboard resize,
-// deep links and app lifecycle when running inside a Capacitor shell.
-void bootstrapNativePlatform();
-
-// Web push: resumes only when permission was already granted (never prompts).
-void initWebPush();
-
-// App Check attestation (web only; no-op without VITE_RECAPTCHA_SITE_KEY).
-void initAppCheck();

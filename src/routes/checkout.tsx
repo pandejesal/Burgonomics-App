@@ -265,6 +265,12 @@ export function CheckoutPage() {
       return;
     }
 
+    // Sync the checkout-screen loyalty toggle into the persisted store BEFORE
+    // any create call: OrderRepository/PaymentRepository read
+    // checkout.loyaltyPointsToRedeem (which nothing else sets), not this
+    // component's local redeemPoints flag.
+    useCheckoutStore.getState().setLoyaltyPointsToRedeem(pointsDiscount);
+
     // 2. Cash on Delivery / Pay at Counter Flow
     if (paymentMethod === "cash") {
       try {
@@ -312,6 +318,40 @@ export function CheckoutPage() {
     }
 
     // 3. Online Razorpay Flow
+    // Free-order branch (cash already returned above): promo + loyalty
+    // covering the full bill must NOT touch the gateway (Razorpay rejects
+    // ₹0; payment.tsx blocks it too).
+    if (finalPayable <= 0) {
+      try {
+        const free = await orderRepository.createFromCurrentContext({
+          paymentMethod: "online",
+          paymentStatus: "paid",
+          paymentLabel: "Paid Online (₹0)",
+        });
+        setBusy(false);
+        placeOrderInFlight.current = false;
+        if (!free.success) {
+          setValidationError(free.error.message);
+          toast.error("Could not place order", { description: free.error.message });
+          return;
+        }
+        AudioService.playSuccess();
+        void HapticService.notification("success");
+        void cartRepository.clear();
+        void navigate({
+          to: "/orders/$orderId/track",
+          params: { orderId: free.data.id },
+          replace: true,
+        });
+      } catch (err) {
+        setBusy(false);
+        placeOrderInFlight.current = false;
+        const msg = err instanceof Error ? err.message : "Error placing free order.";
+        setValidationError(msg);
+        toast.error("Could not place order", { description: msg });
+      }
+      return;
+    }
     try {
       setPaymentStatus("preparing");
       const orderRes = await paymentRepository.createPaymentOrder({
@@ -358,7 +398,23 @@ export function CheckoutPage() {
               });
 
               setBusy(false);
-      placeOrderInFlight.current = false;
+              placeOrderInFlight.current = false;
+              // Paid-but-no-order is NOT success: money moved, no order record.
+              // Never clear the cart or navigate to tracking here — surface the
+              // failure with the gateway payment id for support recovery.
+              if (!created.success) {
+                setPaymentStatus("failed");
+                setPaymentFailure({
+                  code: created.error.code,
+                  message: created.error.message,
+                  retryable: false,
+                  paymentId: result.paymentId,
+                });
+                toast.error("Payment went through but the order was not created", {
+                  description: `Payment ID ${result.paymentId}. ${created.error.message} Contact support — do not pay again.`,
+                });
+                return;
+              }
               setPaymentStatus("success");
               AudioService.playSuccess();
               void HapticService.notification("success");
@@ -612,7 +668,7 @@ export function CheckoutPage() {
             <div className="flex justify-between text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="font-mono font-bold text-text">
-                {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : formatINR(totals?.packingFee ?? 15)}
+                {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning">unavailable</span>}
               </span>
             </div>
             <div className="flex justify-between text-text-secondary">
@@ -620,8 +676,10 @@ export function CheckoutPage() {
               <span className="font-mono font-bold text-text">
                 {totals?.deliveryFee === 0 || !isDelivery ? (
                   <span className="font-bold text-[#4ADE80] uppercase text-[10px]">FREE</span>
+                ) : totals ? (
+                  formatINR(totals.deliveryFee)
                 ) : (
-                  formatINR(totals?.deliveryFee ?? 35)
+                  <span className="text-warning">unavailable</span>
                 )}
               </span>
             </div>

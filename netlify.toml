@@ -2,26 +2,8 @@
   publish = "dist/mobile"
   command = "npm run build"
 
-[functions.environment]
-  PETPOOJA_ENABLED = "false"
-  PETPOOJA_APP_KEY = ""
-  PETPOOJA_APP_SECRET = ""
-  PETPOOJA_ACCESS_TOKEN = ""
-  PETPOOJA_REST_ID = ""
-  PORTER_API_KEY = ""
-  PORTER_CUSTOMER_ID = ""
-  PORTER_CITY = "Ahmedabad"
-  PORTER_WEBHOOK_SECRET = ""
-  FCM_ENABLED = "false"
-  VITE_FCM_VAPID_KEY = ""
-
-# Scheduled Nightly Reconciliation:
-# Netlify Scheduled Functions trigger (e.g. schedule = "@daily" in functions directory or via Netlify cron plugin)
-# Runs /.netlify/functions/reconcile to audit payment discrepancies and retry pending Petpooja orders.
-# ARCHIVED 2026-09-02: Netlify functions archived to _archive/netlify-legacy/ per CODEBASE_IMPROVEMENT_REPORT Phase 0. Firebase Cloud Functions v2 (asia-south1, functions/src) is now sole backend. Redirects to /.netlify/functions/* removed.
-
-[[plugins]]
-  package = "@netlify/plugin-functions-install-core"
+# Netlify functions removed 2026-09-23: Firebase Cloud Functions v2
+# (asia-south1, functions/src) is the sole backend. No functions plugin needed.
 
 [[headers]]
   for = "/.well-known/apple-app-site-association"

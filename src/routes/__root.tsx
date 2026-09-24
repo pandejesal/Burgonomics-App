@@ -101,17 +101,18 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   const router = useRouter();
+  const err = error instanceof Error ? error : new Error(String(error));
 
   useEffect(() => {
-    logger.error("route.error", error, { message: error.message });
-    reportAppError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+    logger.error("route.error", err, { message: err.message });
+    reportAppError(err, { boundary: "tanstack_root_error_component" });
+  }, [err]);
 
   return (
     <GlobalErrorFallback
-      error={error}
+      error={err}
       resetErrorBoundary={() => {
         router.invalidate();
         reset();

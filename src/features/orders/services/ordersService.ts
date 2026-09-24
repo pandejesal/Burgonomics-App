@@ -193,37 +193,18 @@ function shortCode(id: string): string {
 
 export const ordersService = {
   async createOrder(input: CreateOrderInput): Promise<ApiResult<Order>> {
-    // Demo-only simulated failure paths — see DebugPanel > Errors.
-    const { shouldSimulate, useDemoStore } = await import("@/features/demo/state/demoStore");
-    if (shouldSimulate("stock_unavailable")) {
+    // Fail-closed for guests: a memory-only order is invisible to Partner
+    // (no Firestore doc, no KOT). Checkout/payment screens force login via
+    // the auth sheet; this is the backstop for stale sessions and direct
+    // calls. Guest checkout is NOT supported (product decision 2026-09-23).
+    const { auth: gateAuth } = await import("@/core/config/firebase");
+    if (!gateAuth.currentUser) {
       return {
         success: false,
         error: {
-          code: "STOCK_UNAVAILABLE",
-          message: "One or more items are out of stock (simulated).",
+          code: "MISSING_AUTH",
+          message: "Please sign in to place your order.",
           retryable: false,
-        },
-      };
-    }
-    if (shouldSimulate("order_rejected")) {
-      return {
-        success: false,
-        error: {
-          code: "ORDER_REJECTED",
-          message: "Store rejected the order (simulated).",
-          retryable: false,
-        },
-      };
-    }
-    const petpoojaDown = shouldSimulate("petpooja_down");
-    const canFallback = useDemoStore.getState().petpoojaSimulateSuccess;
-    if (petpoojaDown && !canFallback) {
-      return {
-        success: false,
-        error: {
-          code: "PETPOOJA_UNAVAILABLE",
-          message: "PETPOOJA is currently unavailable (simulated).",
-          retryable: true,
         },
       };
     }
@@ -252,17 +233,23 @@ export const ordersService = {
       estimatedAt: new Date(Date.now() + etaMs).toISOString(),
     };
 
+    // Petpooja KOT push (best-effort): failures must surface on the order
+    // record + logs, never fail silently in console only (FR-003, FR-014).
+    let petpoojaStatus: Order["petpoojaStatus"] = "Pending";
+    let petpoojaError: string | null = null;
     try {
       const { petpoojaGateway } = await import("@/core/integrations/petpooja");
-      const pushResult = await petpoojaGateway.pushOrder(id, order);
-
-      // Record PETPOOJA acknowledgement KOT id.
-      const demoStore = useDemoStore.getState();
-      demoStore.recordPetpoojaOrder(pushResult.kotNumber || `KOT-${id.slice(-6).toUpperCase()}`);
+      await petpoojaGateway.pushOrder(id, order);
     } catch (err) {
-      // Petpooja POS push issue shouldn't block customer order placement.
-      console.warn("ordersService: Petpooja push failed silently:", err);
+      petpoojaStatus = "Failed";
+      petpoojaError = err instanceof Error ? err.message : String(err);
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.petpooja_push_failed", {
+        id,
+        message: petpoojaError,
+      });
     }
+    order.petpoojaStatus = petpoojaStatus;
 
     try {
       const { auth, db } = await import("@/core/config/firebase");
@@ -272,7 +259,8 @@ export const ordersService = {
         await setDoc(doc(db, "orders", id), {
           ...order,
           userId: user.uid,
-          petpoojaStatus: "Pending",
+          petpoojaStatus,
+          ...(petpoojaError ? { petpoojaError } : {}),
           // Query-compatible mirrors for the Partner app (additive only —
           // customer readers ignore unknown fields):
           // - Partner useCustomer queries where('customerId','==',…)
@@ -286,7 +274,11 @@ export const ordersService = {
         });
       }
     } catch (err) {
-      console.warn("ordersService: Firestore sync failed:", err);
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.firestore_sync_failed", {
+        id,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
 
     orders.set(id, order);
@@ -335,13 +327,36 @@ export const ordersService = {
         historyFetchedFor.add(user.uid);
       }
     } catch (err) {
-      console.warn("ordersService: Firestore read failed, falling back to memory:", err);
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.history_read_failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
 
     // Advance every order's status before returning.
     all = Array.from(orders.values()).map(tickOrder);
 
-    let filtered = all;
+    // Quarantine malformed docs (legacy/guest records missing shape): one bad
+    // doc must never wipe the entire history list with a TypeError. Dropped
+    // ids go to telemetry instead of the screen.
+    const valid = all.filter((o) => {
+      const okShape =
+        o &&
+        typeof o.id === "string" &&
+        o.status &&
+        typeof o.status.kind === "string" &&
+        typeof o.placedAt === "string";
+      if (!okShape) {
+        void import("@/core/logging/logger").then(({ logger }) =>
+          logger.warn("ordersService.quarantined_malformed_order", {
+            id: (o as { id?: unknown })?.id ?? null,
+          }),
+        );
+      }
+      return okShape;
+    });
+
+    let filtered = valid;
     if (query.bucket) {
       filtered = filtered.filter((o) => {
         if (query.bucket === "ongoing")
@@ -355,9 +370,9 @@ export const ordersService = {
       const q = query.search.toLowerCase();
       filtered = filtered.filter(
         (o) =>
-          o.shortCode.toLowerCase().includes(q) ||
-          o.store.name.toLowerCase().includes(q) ||
-          o.items.some((it) => it.name.toLowerCase().includes(q)),
+          (o.shortCode ?? "").toLowerCase().includes(q) ||
+          (o.store?.name ?? "").toLowerCase().includes(q) ||
+          (o.items ?? []).some((it) => (it.name ?? "").toLowerCase().includes(q)),
       );
     }
 
@@ -365,8 +380,9 @@ export const ordersService = {
     filtered.sort((a, b) => {
       if (sort === "recent") return +new Date(b.placedAt) - +new Date(a.placedAt);
       if (sort === "oldest") return +new Date(a.placedAt) - +new Date(b.placedAt);
-      if (sort === "amount_high") return b.totals.grandTotal - a.totals.grandTotal;
-      return a.totals.grandTotal - b.totals.grandTotal;
+      if (sort === "amount_high")
+        return (b.totals?.grandTotal ?? 0) - (a.totals?.grandTotal ?? 0);
+      return (a.totals?.grandTotal ?? 0) - (b.totals?.grandTotal ?? 0);
     });
 
     const page = query.page ?? 1;
@@ -430,8 +446,14 @@ export const ordersService = {
       if (!isOrderVisibleTo(data, myUid)) return;
       const { userId, ...orderData } = data;
       orders.set(id, orderData as Order);
-    } catch {
-      // Best-effort: keep memory (caller logs if it needs to).
+    } catch (err) {
+      // Best-effort: keep memory, but say so — a silent refresh failure
+      // leaves tracking showing pre-terminal states forever.
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.refresh_failed", {
+        id,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   },
 
@@ -487,7 +509,11 @@ export const ordersService = {
         { merge: true }
       );
     } catch (err) {
-      console.warn("ordersService: cancel persist failed (kept in memory):", err);
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.cancel_persist_failed", {
+        id,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
     return ok(cancelled);
   },

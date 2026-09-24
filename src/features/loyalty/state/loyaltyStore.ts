@@ -84,10 +84,15 @@ export const useLoyaltyStore = create<LoyaltyState>((set, get) => ({
       // Server is truth: adopt unconditionally, even downward (post-purchase
       // debits must show).
       set({ balance: server, lastSyncedAt: at });
-    } catch {
+    } catch (err) {
       // Offline / denied / missing doc: keep the last cached value.
       // Callers (checkout) already clamp display; charge-time truth is
-      // enforced server-side (Loop 62 400s on over-claim).
+      // enforced server-side (Loop 62 400s on over-claim). Logged so a
+      // permanently stale balance is diagnosable.
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("loyalty.refresh_failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   },
 }));

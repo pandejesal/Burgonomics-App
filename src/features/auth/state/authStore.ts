@@ -279,9 +279,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 }));
 
-// Selector helpers to avoid re-renders.
+// Selector helpers to avoid re-renders. Single definition of
+// "authenticated" for the whole app (mirrors useRequireAuth's identity
+// check): status + token + user identity (id + phone). A token-only
+// session (corrupt/partial restore) is NOT authenticated anywhere —
+// payment, checkout, and repository gates all share this.
 export const selectIsAuthenticated = (s: AuthState) =>
-  s.status === "authenticated" && !!s.accessToken;
+  s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone;
 
 export const selectIsGuest = (s: AuthState) => s.status !== "authenticated";
 

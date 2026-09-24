@@ -1,15 +1,13 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, ShoppingBag, Tag } from "lucide-react";
+import { RefreshCw, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/shared/layouts/AppShell";
 import { Text } from "@/shared/components/common/Text";
-import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
-import { useDemoStore } from "@/features/demo/state/demoStore";
 
 import { cn } from "@/lib/utils";
 
@@ -115,7 +113,6 @@ function OffersPage() {
   const fetchedAt = useOffersStore((s) => s.fetchedAt);
   const error = useOffersStore((s) => s.error);
   const load = useOffersStore((s) => s.load);
-  const simulationMode = useDemoStore((s) => s.simulationMode);
 
   const promo = useCartStore((s) => s.promo);
   const hasItems = useCartStore(selectHasItems);
@@ -345,18 +342,9 @@ function OffersPage() {
         )}
 
         {/* Empty */}
-        {status === "empty" &&
-          (!simulationMode ? (
-            <PetpoojaSyncPlaceholder storeId={storeId || undefined} />
-          ) : (
-            <EmptyState
-              icon={<Tag className="h-8 w-8" aria-hidden />}
-              title="No offers right now"
-              description="Check back soon — offers are refreshed every few minutes."
-              actionLabel={hasItems ? "Back to cart" : "Explore menu"}
-              onAction={() => navigate({ to: hasItems ? "/cart" : "/menu" })}
-            />
-          ))}
+        {status === "empty" && (
+          <PetpoojaSyncPlaceholder storeId={storeId || undefined} />
+        )}
 
         {/* Sections */}
         {(status === "ready" || status === "refreshing") &&

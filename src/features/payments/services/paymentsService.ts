@@ -73,8 +73,14 @@ async function backendPost<T>(path: string, body: unknown): Promise<T> {
     const { getAppCheckToken } = await import("@/core/config/firebase");
     const appCheckToken = await getAppCheckToken();
     if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
-  } catch {
+  } catch (err) {
     // Attestation unavailable — server runs monitor mode until enforced.
+    // Logged (not silent): a broken attestation path must be visible before
+    // enforcement day, or launch-day payments start failing attestation.
+    const { logger } = await import("@/core/logging/logger");
+    logger.warn("payments.appcheck_unavailable", {
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 
   // Adjust path if base already contains /payments

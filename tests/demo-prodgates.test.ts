@@ -1,36 +1,35 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// Loop 10/120: simulation flags persisted by a dev/QA build share
-// localStorage with prod builds on-device. Prod must hard-refuse them.
+// Mock-removal production gate (FR-001, FR-005, FR-011):
+// the demo/simulation store was deleted. Production must never
+// reintroduce it, and production routes/services must not import it.
 
-const mode = vi.hoisted(() => ({ prod: true }));
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 
-vi.mock('../src/core/config/env', async (importOriginal) => {
-  const actual: any = await importOriginal();
-  return { ...actual, isProd: () => mode.prod };
-});
+function walk(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) walk(full, out);
+    else if (/\.(ts|tsx)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
 
-import {
-  useDemoStore,
-  shouldSimulate,
-  isSimulationMode,
-} from '../src/features/demo/state/demoStore';
-
-describe('demoStore production gate', () => {
-  it('prod: sims stay off even when force-set', () => {
-    mode.prod = true;
-    useDemoStore.getState().setError('payment', true);
-    useDemoStore.getState().setSimulationMode(true);
-    expect(shouldSimulate('payment')).toBe(false);
-    expect(isSimulationMode()).toBe(false);
-    expect(useDemoStore.getState().simulationMode).toBe(false);
+describe('demo-removal production gate', () => {
+  it('demoStore module does not exist', () => {
+    expect(existsSync(join(root, 'features', 'demo', 'state', 'demoStore.ts'))).toBe(false);
+    expect(existsSync(join(root, 'features', 'demo', 'state', 'demoStore.tsx'))).toBe(false);
   });
 
-  it('dev: sims engage normally', () => {
-    mode.prod = false;
-    useDemoStore.getState().setError('payment', true);
-    useDemoStore.getState().setSimulationMode(true);
-    expect(shouldSimulate('payment')).toBe(true);
-    expect(isSimulationMode()).toBe(true);
+  it('no production source imports demoStore', () => {
+    const offenders: string[] = [];
+    for (const file of walk(root)) {
+      const content = readFileSync(file, 'utf8');
+      if (content.includes('features/demo/state/demoStore')) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
   });
 });

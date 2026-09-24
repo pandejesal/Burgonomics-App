@@ -7,7 +7,7 @@ import {
   TIMELINE_RECIPES,
   type OrderState,
   type FulfillmentType,
-} from "../netlify/functions/lib/order-status";
+} from "../src/features/orders/utils/orderStatusEngine";
 
 describe("order-status pure logic", () => {
   const baseOrder = (fulfillment: FulfillmentType, placedAtIso: string): OrderState => ({

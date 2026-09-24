@@ -36,7 +36,8 @@ export const notificationsService = {
    * Brief contract: badge clears via the markRead endpoint —
    *   PATCH /v1/notifications/:id/read
    * Landed contract in this tree: NO HTTP notifications route exists
-   * (netlify/functions serves payments/porter/petpooja/account only);
+   * (Firebase Cloud Functions v2 serves payments/porter/petpooja/account;
+   * legacy Netlify functions were removed 2026-09-23);
    * the in-app source of truth is Firestore `users/{uid}/notifications`
    * (firestore.rules:90-93, writable by the owning uid).
    *
@@ -149,45 +150,16 @@ export const notificationsService = {
   },
 
   /**
-   * Associates the current device token with an authenticated user ID —
-   * both on the token doc and on the user's `fcmTokens` array, which is
-   * what the server multicast sender actually reads for order updates.
+   * Associates the current device token with an authenticated user ID.
+   * Delegates to the server-owned registerToken endpoint (which links both
+   * the token doc and the user's `fcmTokens` array via Admin SDK). The old
+   * direct device_tokens/users writes are gone: firestore.rules denies all
+   * client writes there, so they failed on every login while looking linked.
    */
-  async linkUserToDeviceToken(userId: string): Promise<ApiResult<null>> {
+  async linkUserToDeviceToken(_userId: string): Promise<ApiResult<null>> {
     const token = getCachedDeviceToken();
     if (!token) return ok(null);
-
-    try {
-      const { db } = await import("@/core/config/firebase");
-      const { doc, setDoc, updateDoc, arrayUnion, serverTimestamp } = await import(
-        "firebase/firestore"
-      );
-
-      await setDoc(
-        doc(db, "device_tokens", token),
-        {
-          userId,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      try {
-        await updateDoc(doc(db, "users", userId), {
-          fcmTokens: arrayUnion(token),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (userErr: any) {
-        // Rules may forbid user-doc writes — token doc link above still holds.
-        logger.warn("notifications.linkUserTokensError", userErr);
-      }
-
-      logger.info("notifications.userLinkedToToken", { userId });
-      return ok(null);
-    } catch (err: any) {
-      logger.warn("notifications.linkUserError", err);
-      return ok(null);
-    }
+    return this.registerDeviceToken(token);
   },
 
   /**

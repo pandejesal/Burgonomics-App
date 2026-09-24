@@ -40,8 +40,11 @@ export function InvoiceDownloadButton({
       timeStyle: "short",
     });
 
-    const itemsHtml = order.items
-      ?.map(
+    // Guarded: a corrupt/partial order doc without items must render an
+    // empty table, never throw (?.map guards map, but .join on undefined
+    // throws and leaves isGenerating stuck with a blank tab).
+    const itemsHtml = (order.items ?? [])
+      .map(
         (item) => `
         <tr>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5;">${esc(item.name)}</td>

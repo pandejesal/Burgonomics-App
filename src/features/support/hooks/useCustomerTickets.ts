@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { supportService } from "@/features/support/services/supportService";
 import { useAuthStore } from "@/features/auth/state/authStore";
-import type { IssueCategoryId } from "@/features/support/models";
 
 export type TicketCategory =
   | "LATE_DELIVERY"
@@ -57,15 +56,6 @@ const CATEGORY_LABELS: Record<TicketCategory, string> = {
   WRONG_ORDER: "Wrong Item / Order Delivered",
   PAYMENT_ISSUE: "Payment / Duplicate Charge",
   OTHER: "General Query or Feedback",
-};
-
-const TICKET_CATEGORY_TO_ISSUE: Record<TicketCategory, IssueCategoryId> = {
-  LATE_DELIVERY: "delivery",
-  MISSING_ITEM: "order",
-  FOOD_QUALITY: "order",
-  WRONG_ORDER: "order",
-  PAYMENT_ISSUE: "payment",
-  OTHER: "other",
 };
 
 const LEGACY_TICKETS_KEY = "burgonomics_customer_tickets";
@@ -272,13 +262,37 @@ export function useCustomerTickets() {
           }
         }
 
-        // 2. Server POST is the ticket creation. No local fabrication.
-        const res = await supportService.submitTicket({
-          subject: CATEGORY_LABELS[params.category],
-          message: params.description.trim(),
-          category: TICKET_CATEGORY_TO_ISSUE[params.category],
+        // 2. Server POST is the ticket creation — the LIVE
+        // POST /tickets/create backend (no local fabrication). Category and
+        // branch map onto the server's createTicketSchema; identity comes
+        // from the signed-in session (server binds customerId to the caller).
+        const serverCategory =
+          params.category === "LATE_DELIVERY"
+            ? "late_delivery"
+            : params.category === "MISSING_ITEM" || params.category === "WRONG_ORDER"
+              ? "wrong_item"
+              : params.category === "FOOD_QUALITY"
+                ? "food_quality"
+                : params.category === "PAYMENT_ISSUE"
+                  ? "payment_issue"
+                  : "general_inquiry";
+        const sessionUser = useAuthStore.getState().user;
+        const { useStoreSelection } = await import("@/features/stores/state/storeStore");
+        const activeStore = useStoreSelection.getState().activeStore;
+        const res = await supportService.submitTicketToLiveBackend({
+          customerName: sessionUser?.name || sessionUser?.phone || "Customer",
+          customerPhone: sessionUser?.phone,
           orderId: params.orderId,
-          photoUrls,
+          branchId:
+            params.branchId || (activeStore as { partnerBranchId?: string } | null)?.partnerBranchId || "",
+          category: serverCategory,
+          priority:
+            params.category === "PAYMENT_ISSUE" || params.category === "WRONG_ORDER"
+              ? "urgent"
+              : "medium",
+          subject: CATEGORY_LABELS[params.category],
+          description: params.description.trim(),
+          attachments: photoUrls,
         });
         if (!res.success) {
           toast.error(res.error.message);
@@ -295,15 +309,20 @@ export function useCustomerTickets() {
           categoryLabel: CATEGORY_LABELS[params.category],
           description: params.description.trim(),
           photos: photoUrls,
-          status: server.status === "resolved" ? "RESOLVED" : server.status === "in_progress" ? "IN_PROGRESS" : "OPEN",
+          status: "OPEN",
           priority:
             params.category === "PAYMENT_ISSUE" || params.category === "WRONG_ORDER"
               ? "urgent"
               : "normal",
           escalationLevel: 1,
-          branchId: params.branchId || "branch_cg_road",
-          createdAt: new Date(server.createdAt).toISOString(),
-          slaMinutes: server.slaMinutes ?? null,
+          branchId: params.branchId,
+          createdAt:
+            typeof server.createdAt === "number"
+              ? new Date(server.createdAt).toISOString()
+              : typeof server.createdAt === "string"
+                ? server.createdAt
+                : new Date().toISOString(),
+          slaMinutes: null,
         };
 
         setTickets((prev) => {
@@ -311,16 +330,11 @@ export function useCustomerTickets() {
           persistTickets(storageKey, next);
           return next;
         });
-        // SLA copy is gated on the backend field — no invented "15 minutes".
-        if (typeof server.slaMinutes === "number" && Number.isFinite(server.slaMinutes)) {
-          toast.success(
-            `Support Ticket #${newTicket.ticketNumber} raised! Our store manager will respond within ${server.slaMinutes} minutes.`,
-          );
-        } else {
-          toast.success(
-            `Support Ticket #${newTicket.ticketNumber} raised! Our store team has been notified.`,
-          );
-        }
+        // The live backend sends no SLA field — generic confirmation only,
+        // never an invented response-time promise.
+        toast.success(
+          `Support Ticket #${newTicket.ticketNumber} raised! Our store team has been notified.`,
+        );
         return { success: true, ticket: newTicket };
       } catch {
         toast.error("Failed to submit support ticket");

@@ -152,6 +152,34 @@ async function authHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
+/** Base URL of the live Cloud Functions backend (same resolution as the
+ * Petpooja gateway — env override, then the canonical project URL). */
+function liveFunctionsBase(): string {
+  const env = import.meta.env as Record<string, string | undefined>;
+  if (env.VITE_FUNCTIONS_API_URL) return env.VITE_FUNCTIONS_API_URL.replace(/\/$/, "");
+  const projectId = env.VITE_FIREBASE_PROJECT_ID || "burgonomics-7faa8";
+  return `https://asia-south1-${projectId}.cloudfunctions.net/api`;
+}
+
+/** Input shape for the LIVE POST /tickets/create route (server schema). */
+export interface LiveTicketSubmitInput {
+  customerName: string;
+  customerPhone?: string;
+  orderId?: string;
+  branchId: string;
+  category:
+    | "wrong_item"
+    | "late_delivery"
+    | "food_quality"
+    | "payment_issue"
+    | "app_bug"
+    | "general_inquiry";
+  priority?: "low" | "medium" | "high" | "urgent";
+  subject: string;
+  description: string;
+  attachments?: string[];
+}
+
 export const supportService = {
   async listFaqs(): Promise<ApiResult<FaqItem[]>> {
     // No live backend (`.example` fixture base URL) — skip the doomed fetch
@@ -322,6 +350,65 @@ export const supportService = {
       const message =
         err instanceof Error ? err.message : "Could not send feedback. Please try again.";
       return fail("FEEDBACK_SUBMIT_FAILED", message, true);
+    }
+  },
+
+  /**
+   * LIVE ticket creation against POST /tickets/create (Cloud Functions).
+   * This is the real backend — the legacy submitTicket above targets the
+   * never-landed /v1/support/* contract. Field contract mirrors
+   * createTicketSchema server-side; failures are honest (no local ticket
+   * fabrication — the caller keeps its own draft UX).
+   */
+  async submitTicketToLiveBackend(input: LiveTicketSubmitInput): Promise<
+    ApiResult<{ id: string; ticketNumber?: string; status?: string; createdAt?: string | number }>
+  > {
+    try {
+      const headers = await authHeaders();
+      try {
+        const { getAppCheckToken } = await import("@/core/config/firebase");
+        const appCheckToken = await getAppCheckToken();
+        if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
+      } catch {
+        // Attestation unavailable — server runs monitor mode until enforced.
+      }
+      const res = await fetch(`${liveFunctionsBase()}/tickets/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          customerName: input.customerName,
+          customerPhone: input.customerPhone,
+          orderId: input.orderId,
+          branchId: input.branchId,
+          category: input.category,
+          priority: input.priority,
+          subject: input.subject,
+          description: input.description,
+          attachments: input.attachments ?? [],
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return fail("TICKET_SUBMIT_FAILED", `Ticket service refused the request (HTTP ${res.status}): ${text}`);
+      }
+      const data = (await res.json()) as {
+        id?: string;
+        ticketNumber?: string;
+        status?: string;
+        createdAt?: string | number;
+      };
+      if (typeof data.id !== "string" || !data.id) {
+        return fail("TICKET_SUBMIT_FAILED", "Ticket service returned no ticket id.");
+      }
+      return ok({
+        id: data.id,
+        ticketNumber: data.ticketNumber,
+        status: data.status,
+        createdAt: data.createdAt,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not reach support. Please try again.";
+      return fail("TICKET_SUBMIT_FAILED", message, true);
     }
   },
 };

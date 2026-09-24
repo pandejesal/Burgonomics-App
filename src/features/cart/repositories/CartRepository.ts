@@ -324,8 +324,11 @@ export class CartRepository {
         const res = s.revalidateWithProducts(productsRes.data.items);
         return ok({ revalidated: true, messages: res.messages });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("cart.revalidate_failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
     // Loop: do NOT renew the lock when revalidation failed (offline/canary).
     // Renewing would stamp a fresh lock on stale, unverified prices and the
