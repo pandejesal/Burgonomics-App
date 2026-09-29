@@ -127,17 +127,57 @@ export const useAddressStore = create<AddressState>()(
   ),
 );
 
-// Loop 36/120: re-scope on identity change — reset in-memory rows (never
-// carry user A's addresses into user B's session) and rehydrate the new
-// scope. Runs on module import; no-ops until the first login/logout.
+// Loop 36/120: re-scope on identity change — never carry user A's rows into
+// user B's session. The incoming scope is read FIRST and set directly:
+// setState's persist write-back is synchronous while a rehydrate read is
+// async, so clearing first would persist [] over the incoming scope before
+// its read lands (guest→login address loss). Setting the just-read rows
+// makes the write-back echo identical content.
 let lastAddressUid: string | null | undefined = undefined;
 useAuthStore.subscribe((s) => {
   const uid = s.user?.id ?? null;
   if (uid === lastAddressUid) return;
   lastAddressUid = uid;
-  useAddressStore.setState({ addresses: [], selectedId: null });
-  void useAddressStore.persist.rehydrate();
+  useAddressStore.setState(readScope(uid));
 });
+
+interface ScopedAddresses {
+  addresses: Address[];
+  selectedId: string | null;
+}
+
+// Read a scope straight from storage (same key scheme as namespacedStorage,
+// plus the legacy-key fallback for first-login handoff).
+function readScope(uid: string | null): ScopedAddresses {
+  const empty: ScopedAddresses = { addresses: [], selectedId: null };
+  if (typeof window === 'undefined') return empty;
+  try {
+    const raw =
+      window.localStorage.getItem(addressStorageKey('burg.addresses', uid)) ??
+      window.localStorage.getItem('burg.addresses');
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as {
+      state?: { addresses?: unknown; selectedId?: unknown };
+    };
+    const addresses = Array.isArray(parsed?.state?.addresses)
+      ? (parsed.state.addresses as Address[])
+      : [];
+    const selectedId =
+      typeof parsed?.state?.selectedId === 'string' ? parsed.state.selectedId : null;
+    return { addresses, selectedId };
+  } catch {
+    return empty;
+  }
+}
+
+// Lazy-chunk case: this module can load after login already completed (e.g.
+// direct navigation to /profile/addresses), so no uid *change* ever fires
+// the subscriber above — set the current scope directly (same poisoning-safe
+// path: no empty write-back happens first).
+if (useAuthStore.getState().user?.id) {
+  lastAddressUid = useAuthStore.getState().user?.id ?? null;
+  useAddressStore.setState(readScope(lastAddressUid));
+}
 
 export const selectAddresses = (s: AddressState) => s.addresses;
 export const selectSelectedAddress = (s: AddressState): Address | null => {

@@ -102,7 +102,7 @@ function Page() {
         </AppCard>
 
         <Text variant="caption" tone="secondary" className="text-center">
-          {APP.name} v1.0.0 · Made with ♥ in India
+          {APP.name} v{APP.version} · Made with ♥ in India
         </Text>
       </div>
     </AppShell>

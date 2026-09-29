@@ -166,19 +166,16 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                   </>
                 )}
                 {store.supports.delivery && (
-                  <>
-                    <span>·</span>
-                    <span className="whitespace-nowrap text-text-secondary truncate">
-                      Delivery in {store.etaMinutes} min
-                    </span>
-                  </>
+                  <span className="hidden whitespace-nowrap text-text-secondary min-[400px]:inline">
+                    · Delivery in {store.etaMinutes} min
+                  </span>
                 )}
               </div>
             </div>
           </button>
 
           {/* Right-side Actions: Info button & Chevron */}
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={(e) => {
@@ -188,7 +185,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
               }}
               title="Store info & actions"
               aria-label={`View info and actions for ${store.name}`}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-primary transition-colors cursor-pointer"
+              className="relative flex h-8 w-8 items-center justify-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-primary transition-colors cursor-pointer after:absolute after:-inset-2 after:content-['']"
             >
               <Info className="h-4 w-4" />
             </button>
@@ -200,7 +197,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
               }}
               aria-hidden="true"
               tabIndex={-1}
-              className="flex h-8 w-5 items-center justify-center text-text-secondary/50 cursor-pointer"
+              className="flex h-8 w-8 items-center justify-center text-text-secondary/50 cursor-pointer"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -325,7 +322,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                   className="flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] bg-bg-secondary p-3 text-xs font-medium text-text-secondary hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
                 >
                   {copied ? (
-                    <Check className="h-4 w-4 text-emerald-500" />
+                    <Check className="h-4 w-4 text-success" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -341,7 +338,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 className="flex items-center justify-center gap-2 rounded-[var(--radius-medium)] border border-divider p-2.5 text-xs font-medium text-text-secondary hover:border-primary/40 hover:text-primary transition-colors cursor-pointer"
               >
                 {copied ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  <Check className="h-3.5 w-3.5 text-success" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}

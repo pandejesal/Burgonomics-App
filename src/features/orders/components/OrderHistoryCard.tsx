@@ -79,7 +79,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
   return (
     <div className="p-5 rounded-3xl bg-[#0D0D0D] border border-neutral-800 space-y-4 shadow-md hover:border-neutral-700 transition-colors">
       {/* Header: Order #, Store Name, Status Badge */}
-      <div className="flex items-start justify-between gap-3 border-b border-neutral-850 pb-3">
+      <div className="flex items-start justify-between gap-3 border-b border-neutral-800 pb-3">
         <div>
           <div className="flex items-center gap-2">
             <span className="font-mono font-black text-sm text-white">#{shortCode}</span>
@@ -209,7 +209,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
             type="button"
             disabled={isReordering}
             onClick={() => void reorder(order)}
-            className="flex-1 py-2.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+            className="flex-1 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isReordering ? "animate-spin" : ""}`} />
             <span>{isReordering ? "Adding..." : "1-Tap Reorder"}</span>
@@ -255,7 +255,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
               <button
                 type="button"
                 onClick={confirmReorderRemaining}
-                className="px-4 py-2 rounded-xl bg-[#FF6600] text-white font-black text-xs uppercase tracking-wider shadow-md hover:bg-[#e05a00]"
+                className="px-4 py-2 rounded-xl bg-accent text-white font-black text-xs uppercase tracking-wider shadow-md hover:bg-accent-hover"
               >
                 Reorder Remaining
               </button>

@@ -19,7 +19,7 @@ function mapStoreDoc(data: any, id: string): Store {
     area: data.area || data.city || "Ahmedabad",
     lat,
     lng,
-    phone: data.phone || "+91 79 4000 0000",
+    phone: data.phone || "",
     imageUrl: data.imageUrl || null,
     hours: data.hours || { open: "11:00", close: "23:00" },
     isOpen: data.isOpen !== false && data.status !== "CLOSED",

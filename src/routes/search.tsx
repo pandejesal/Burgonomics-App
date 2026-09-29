@@ -34,6 +34,15 @@ const DIET_FILTER_TAGS = [
   { id: "protein", label: "High Protein", icon: Tag },
 ];
 
+// Explicit plural labels for the kind tabs — naive `+ "s"` pluralization
+// produced "Categorys". Keep in sync with the kind union below.
+const KIND_PLURAL_LABELS = {
+  product: "Products",
+  combo: "Combos",
+  category: "Categories",
+  offer: "Offers",
+} as const;
+
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchParamsSchema => ({
     q: typeof search.q === "string" && search.q.trim() ? search.q.trim() : undefined,
@@ -290,7 +299,7 @@ function SearchPage() {
                         : "border-divider bg-surface text-text-secondary hover:text-primary"
                     )}
                   >
-                    {k === "all" ? "All" : k.charAt(0).toUpperCase() + k.slice(1) + "s"}
+                    {k === "all" ? "All" : KIND_PLURAL_LABELS[k]}
                   </button>
                 );
               })}

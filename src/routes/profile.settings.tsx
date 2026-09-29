@@ -143,7 +143,7 @@ function Body() {
         </div>
 
         <p className="text-[11px] text-text-secondary text-center">
-          {APP.name} v1.0.0 • 100% Pure Vegetarian
+          {APP.name} v{APP.version} • 100% Pure Vegetarian
         </p>
       </div>
 

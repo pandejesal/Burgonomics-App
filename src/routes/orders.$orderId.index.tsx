@@ -56,8 +56,10 @@ function OrderDetailsPage() {
         orderRepository.getOrder(orderId),
         orderRepository.getTracking(orderId),
       ]);
-      if (o.success) setOrder(o.data);
+      if (o.success && o.data) setOrder(o.data);
       if (t.success) setTracking(t.data);
+      // A backend miss/denial (ok(null)) must not wipe a cached order —
+      // same guard as the effect below and the track route.
       // A backend/network failure is NOT "not found" — surface a retry.
       if (!o.success) setLoadError(o.error.message);
     } catch (err) {

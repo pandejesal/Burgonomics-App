@@ -63,6 +63,25 @@ function OrderConfirmationPage() {
   const [whatsappOptIn, setWhatsappOptIn] = React.useState(true);
   const resetPayment = usePaymentStore((s) => s.reset);
 
+  // Loyalty sync hook lives here (above ALL early returns): it was below the
+  // `!order` return, so cache-miss→data transitions changed this component's
+  // hook count between renders (minified #310 crash for every real order).
+  // Loop 65/120: no local earn. The old effect credited 5% phantom points
+  // per order (celebrated below as wallet credit) with zero server backing —
+  // the server has no purchase-earn program. Refresh converges the display
+  // to ledger truth instead (post-confirm debits included).
+  const syncedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!order || syncedRef.current === order.id) return;
+    syncedRef.current = order.id;
+    try {
+      const uid = useAuthStore.getState().user?.id ?? null;
+      void useLoyaltyStore.getState().refreshFromServer(uid);
+    } catch {
+      // best-effort; wallet screen re-syncs on mount
+    }
+  }, [order]);
+
   // Guarantee cart is cleared and payment state is reset on arrival
   React.useEffect(() => {
     void cartRepository.clear();

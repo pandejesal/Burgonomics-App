@@ -283,6 +283,25 @@ function StoreSelectionPage() {
     [nearby, searchResults],
   );
 
+  // De-dupe rows already shown above: Recently viewed (2) and Nearby render
+  // their own cards, so the All-stores list skips those ids when not
+  // searching — no outlet appears twice. The map keeps the full set.
+  const visibleStores = useMemo(() => {
+    if (searchResults) return listStores;
+    const shown = new Set([
+      ...recentStores.slice(0, 2).map((s) => s.id),
+      ...nearbyList.map((s) => s.id),
+    ]);
+    if (shown.size === 0) return listStores;
+    return listStores.filter((s) => !shown.has(s.id));
+  }, [listStores, searchResults, recentStores, nearbyList]);
+
+  // Visual truth for the sort tabs: highlight Nearest only when live coords
+  // exist to order by (listStores already falls back to alphabetical sort
+  // without them, so highlighting sortBy alone would lie).
+  const effectiveSortBy =
+    sortBy === "distance" && (coords ?? permission.coords) ? "distance" : "alphabetical";
+
   const showEmpty = !initialLoading && !error && listStores.length === 0;
 
   return (
@@ -311,6 +330,7 @@ function StoreSelectionPage() {
                 value={query}
                 onChange={(e) => setQuery(e.currentTarget.value)}
                 aria-label="Search stores"
+                className={query ? "pr-12" : undefined}
               />
               {query && (
                 <button
@@ -347,10 +367,10 @@ function StoreSelectionPage() {
               <div className="flex items-start gap-2 text-destructive">
                 <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <Text variant="bodyMedium" className="font-semibold text-red-800">
+                  <Text variant="bodyMedium" className="font-semibold text-error">
                     GPS Signal Offline
                   </Text>
-                  <Text variant="caption" className="text-red-700 block">
+                  <Text variant="caption" className="text-text-secondary block">
                     Please make sure location service is enabled on your device and try again.
                   </Text>
                 </div>
@@ -373,14 +393,14 @@ function StoreSelectionPage() {
             status === "permission_denied") && (
             <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-3">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-warning" />
                 <div className="space-y-1">
-                  <Text variant="bodyMedium" className="font-semibold text-amber-800">
+                  <Text variant="bodyMedium" className="font-semibold text-text-primary">
                     Location Access Needed
                   </Text>
-                  <Text variant="caption" className="text-amber-700 block">
-                    To display nearest kitchens, calculate exact distances, and estimate delivery
-                    travel times, Burgonomics needs access to your location coordinates.
+                  <Text variant="caption" className="text-text-secondary block">
+                    To show nearest kitchens first with distance and delivery time, allow
+                    location access. You can still search or pick a kitchen below without it.
                   </Text>
                 </div>
               </div>
@@ -395,10 +415,20 @@ function StoreSelectionPage() {
                 >
                   Retry Detection
                 </AppButton>
-                <Text variant="caption" tone="secondary" className="text-[11px] font-medium">
+                <Text
+                  variant="caption"
+                  tone="secondary"
+                  className="text-[11px] font-medium min-w-0 flex-1"
+                >
                   or pick a kitchen manually below:
                 </Text>
               </div>
+              {permission.status === "blocked" && (
+                <Text variant="caption" className="text-[11px] font-medium text-text-secondary">
+                  Location is blocked: turn it on in your browser or site settings, then tap
+                  Retry Detection.
+                </Text>
+              )}
             </div>
           )}
 
@@ -406,7 +436,7 @@ function StoreSelectionPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Text variant="caption" tone="secondary" className="flex items-center gap-1">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
                   Showing stores near you.
                 </Text>
               </div>
@@ -430,29 +460,44 @@ function StoreSelectionPage() {
           )}
         </div>
 
-        {/* Error */}
+        {/* Error: friendly copy, never raw backend strings. */}
         {error && !initialLoading && (
           <FailureState
-            kind="UNKNOWN"
+            kind={
+              /offline|network|fetch|failed to fetch|unavailable|timeout/i.test(error)
+                ? "OFFLINE"
+                : "UNKNOWN"
+            }
             title="We couldn't load stores"
-            message={error}
+            message={
+              /offline|network|fetch|failed to fetch|unavailable|timeout/i.test(error)
+                ? "You're offline. Check your connection and try again."
+                : "Something went wrong. Please try again."
+            }
             onRetry={() => void refresh()}
           />
         )}
 
-        {/* Loading skeleton */}
+        {/* Loading skeleton mirrors the loaded card layout to avoid shift. */}
         {initialLoading && (
-          <div className="space-y-2" aria-busy="true" aria-live="polite">
-            {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            className="space-y-2"
+            role="status"
+            aria-label="Loading stores"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 rounded-[var(--radius-medium)] border border-divider bg-surface p-3"
+                className="flex items-center gap-3 rounded-[var(--radius-medium)] border border-divider bg-surface px-3 py-2.5"
               >
-                <Skeleton className="h-12 w-12 rounded-full shrink-0" />
+                <Skeleton className="h-9 w-9 rounded-full shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-4 w-2/3" />
                   <Skeleton className="h-3 w-1/2" />
                 </div>
+                <Skeleton className="h-8 w-8 rounded-full shrink-0" />
               </div>
             ))}
           </div>
@@ -528,16 +573,22 @@ function StoreSelectionPage() {
                   Searching…
                 </Text>
               ) : (
-                <div className="flex items-center gap-1 bg-bg-secondary p-0.5 rounded-lg border border-divider text-xs">
+                <div
+                  className="flex items-center gap-1 bg-bg-secondary p-0.5 rounded-lg border border-divider text-xs"
+                  role="radiogroup"
+                  aria-label="Sort stores"
+                >
                   <button
                     type="button"
+                    role="radio"
+                    aria-checked={effectiveSortBy === "alphabetical"}
                     onClick={() => {
                       setSortBy("alphabetical");
                       toast.success("Sorted alphabetically");
                     }}
                     className={cn(
                       "px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all cursor-pointer",
-                      sortBy === "alphabetical"
+                      effectiveSortBy === "alphabetical"
                         ? "bg-surface text-text shadow-sm border border-divider/10"
                         : "text-text-secondary hover:text-text",
                     )}
@@ -546,10 +597,12 @@ function StoreSelectionPage() {
                   </button>
                   <button
                     type="button"
+                    role="radio"
+                    aria-checked={effectiveSortBy === "distance"}
                     onClick={() => void handleSortByDistance()}
                     className={cn(
                       "flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all cursor-pointer",
-                      sortBy === "distance"
+                      effectiveSortBy === "distance"
                         ? "bg-surface text-text shadow-sm border border-divider/10"
                         : "text-text-secondary hover:text-text",
                     )}
@@ -574,7 +627,7 @@ function StoreSelectionPage() {
               />
             ) : (
               <div className="space-y-2">
-                {listStores.map((s) => (
+                {visibleStores.map((s) => (
                   <StoreCard
                     key={s.id}
                     store={s}
