@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Search as SearchIcon, X, Clock, Tag, Mic, ScanLine, Flame, Sparkles, ShieldCheck } from "lucide-react";
+import { Search as SearchIcon, X, Clock, Tag, Flame, Sparkles, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -252,25 +252,8 @@ function SearchPage() {
             )}
           </label>
 
-          {/* Quick Actions & Category Kind Tabs */}
+          {/* Category Kind Tabs */}
           <div className="mt-2.5 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => toast("Voice search will be enabled in next release")}
-              aria-label="Voice search (coming soon)"
-              className="inline-flex items-center gap-1 rounded-xl border border-divider bg-surface px-3 py-1.5 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer"
-            >
-              <Mic className="h-3.5 w-3.5" aria-hidden /> Voice
-            </button>
-            <button
-              type="button"
-              onClick={() => toast("Barcode scanner will be enabled in next release")}
-              aria-label="Scan barcode (coming soon)"
-              className="inline-flex items-center gap-1 rounded-xl border border-divider bg-surface px-3 py-1.5 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer"
-            >
-              <ScanLine className="h-3.5 w-3.5" aria-hidden /> Scan
-            </button>
-
             <div
               role="tablist"
               aria-label="Filter search by kind"
