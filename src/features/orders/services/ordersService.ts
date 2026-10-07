@@ -19,7 +19,7 @@
  * Push / WebSocket surfaces will layer on top of `getTracking` without
  * changing the repository interface (see `OrderRepository.subscribe`).
  */
-import { delay, ok, type ApiResult } from "@/core/network/http";
+import { delay, fail, ok, type ApiResult } from "@/core/network/http";
 import { generateSecureId } from "@/shared/utils/cryptoUtils";
 import type {
   CreateOrderInput,
@@ -227,6 +227,7 @@ export const ordersService = {
       notes: input.notes,
       fulfillmentInstructions: input.fulfillmentInstructions,
       tableNumber: input.tableNumber,
+      whatsappOptIn: input.whatsappOptIn ?? true,
       payment: input.payment,
       petpoojaStatus: "Pending",
       placedAt: nowIso,
@@ -482,6 +483,45 @@ export const ordersService = {
       tableNumber: order.tableNumber,
       refreshedAt: new Date().toISOString(),
     });
+  },
+
+  /**
+   * Persist the WhatsApp order-alert opt-in on the order document
+   * (P0-3). Merge-writes only the consent flag so status/payment/totals
+   * are untouched. Returns fail (no toast-worthy success) when the write
+   * does not land — the caller must keep the prior toggle state.
+   */
+  async setWhatsappOptIn(id: string, optIn: boolean): Promise<ApiResult<Order>> {
+    let existing = orders.get(id);
+    if (!existing) {
+      const loaded = await this.getOrder(id);
+      if (!loaded.success) return loaded;
+      if (!loaded.data) return fail("NOT_FOUND", "Order not found.");
+      existing = loaded.data;
+    }
+    try {
+      const { db } = await import("@/core/config/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      await setDoc(
+        doc(db, "orders", id),
+        { whatsappOptIn: optIn, updatedAt: new Date().toISOString() },
+        { merge: true },
+      );
+    } catch (err) {
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.whatsapp_optin_persist_failed", {
+        id,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return fail(
+        "WRITE_FAILED",
+        "We couldn't save your WhatsApp preference. Please try again.",
+        true,
+      );
+    }
+    const updated: Order = { ...existing, whatsappOptIn: optIn };
+    orders.set(id, updated);
+    return ok(updated);
   },
 
   async cancelOrder(id: string): Promise<ApiResult<Order | null>> {

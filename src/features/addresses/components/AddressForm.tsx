@@ -89,15 +89,29 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     lat: initial?.lat || DEFAULT_CENTER.lat,
     lng: initial?.lng || DEFAULT_CENTER.lng,
   });
+  // Only coordinates the customer actually confirmed (dragged pin or granted
+  // GPS) may be persisted — the default map center is never a real location.
+  const [pinPlaced, setPinPlaced] = useState(
+    () => Number.isFinite(initial?.lat) && Number.isFinite(initial?.lng),
+  );
 
   const markerRef = useRef<L.Marker>(null);
+  // GPS auto-center + auto-geocode runs once per mount; later watchPosition
+  // fixes must not yank the pin back or overwrite typed fields.
+  const autoLocatedRef = useRef(false);
+  // Monotonic token invalidates stale reverse-geocode responses: each new
+  // invocation captures the current token and bails before any setState if a
+  // newer invocation has since incremented it.
+  const geocodeTokenRef = useRef(0);
 
   const reverseGeocode = useCallback(async (lat: number, lng: number) => {
+    const token = ++geocodeTokenRef.current;
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
       );
       const data = await response.json();
+      if (token !== geocodeTokenRef.current) return;
 
       if (data && data.address) {
         const {
@@ -137,8 +151,10 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   }, [initial?.lat, requestLocation]);
 
   useEffect(() => {
-    if (!initial?.lat && locationStatus === "granted" && userCoords) {
+    if (!initial?.lat && locationStatus === "granted" && userCoords && !autoLocatedRef.current) {
+      autoLocatedRef.current = true;
       setMapCenter(userCoords);
+      setPinPlaced(true);
       reverseGeocode(userCoords.lat, userCoords.lng);
     }
   }, [locationStatus, userCoords, initial?.lat, reverseGeocode]);
@@ -146,8 +162,12 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   const onMarkerDragEnd = useCallback(() => {
     const marker = markerRef.current;
     if (marker != null) {
+      // A user-confirmed pin disables GPS auto-locate: a first fix that
+      // resolves after the drag must not yank the pin back.
+      autoLocatedRef.current = true;
       const position = marker.getLatLng();
       setMapCenter({ lat: position.lat, lng: position.lng });
+      setPinPlaced(true);
       reverseGeocode(position.lat, position.lng);
     }
   }, [reverseGeocode]);
@@ -187,8 +207,8 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       city: city.trim(),
       state: state.trim() || "Gujarat",
       pincode: pincode.replace(/\D/g, "").slice(0, 6),
-      lat: mapCenter.lat,
-      lng: mapCenter.lng,
+      lat: pinPlaced ? mapCenter.lat : undefined,
+      lng: pinPlaced ? mapCenter.lng : undefined,
       isDefault,
     };
 
@@ -220,27 +240,36 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         className="overflow-hidden rounded-[var(--radius-large)] border-[3px] border-primary/10 shadow-brand relative"
         style={{ height: "260px", zIndex: 0 }}
       >
-        <MapContainer center={mapCenter} zoom={16} style={{ height: "100%", width: "100%" }}>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker
-            draggable={true}
-            eventHandlers={{ dragend: onMarkerDragEnd }}
-            position={mapCenter}
-            ref={markerRef}
-            icon={customIcon}
-          />
-          <MapController center={mapCenter} />
-        </MapContainer>
+        <div role="img" aria-label="Delivery location map" className="h-full w-full">
+          <MapContainer center={mapCenter} zoom={16} zoomControl={false} style={{ height: "100%", width: "100%" }}>
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <Marker
+              draggable={true}
+              eventHandlers={{ dragend: onMarkerDragEnd }}
+              position={mapCenter}
+              ref={markerRef}
+              icon={customIcon}
+            />
+            <MapController center={mapCenter} />
+          </MapContainer>
+        </div>
 
         <div className="absolute top-3 right-3" style={{ zIndex: 1000 }}>
           <button
             type="button"
-            onClick={() => requestLocation()}
+            onClick={async () => {
+              const result = await requestLocation();
+              if (result?.coords) {
+                setMapCenter(result.coords);
+                setPinPlaced(true);
+                void reverseGeocode(result.coords.lat, result.coords.lng);
+              }
+            }}
             disabled={isLocating}
-            className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 shadow-lg shadow-accent/40 hover:bg-accent/90 text-white transition-all type-label-large border-2 border-white cursor-pointer"
+            className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 min-h-[44px] shadow-lg shadow-accent/40 hover:bg-accent/90 text-white transition-all type-label-large border-2 border-white cursor-pointer"
           >
             <Navigation className={cn("h-4 w-4", isLocating && "animate-spin")} />
             {isLocating ? "Locating..." : "Locate Me"}
@@ -256,6 +285,15 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
           </span>
         </div>
       </div>
+
+      {(locationStatus === "denied" ||
+        locationStatus === "blocked" ||
+        locationStatus === "unavailable") && (
+        <p role="status" className="type-caption text-text-secondary text-center">
+          Location unavailable — drag the pin manually, or enable location in your
+          browser settings and tap Locate Me.
+        </p>
+      )}
 
       {/* Form Fields */}
       <form

@@ -101,6 +101,9 @@ export function CheckoutPage() {
   const setPaymentVerification = usePaymentStore((s) => s.setVerification);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  // Fail-closed billing: when the totals computation fails (e.g. no store
+  // pricing available), PAY must stay disabled instead of charging ₹0.
+  const [totalsFailed, setTotalsFailed] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   // Loop 11: synchronous re-entry guard — setBusy is async, so rapid
   // double-tap fires handlePlaceOrder twice (double order creation) before
@@ -150,7 +153,12 @@ export function CheckoutPage() {
 
   const recompute = React.useCallback(async () => {
     const res = await cartRepository.calculateTotals();
-    if (res.success) setTotals(res.data);
+    if (res.success) {
+      setTotals(res.data);
+      setTotalsFailed(false);
+    } else {
+      setTotalsFailed(true);
+    }
   }, []);
 
   React.useEffect(() => {
@@ -233,8 +241,8 @@ export function CheckoutPage() {
       const storeLat = Number(activeStore.lat);
       const storeLng = Number(activeStore.lng);
       if (![userLat, userLng, storeLat, storeLng].every(Number.isFinite)) {
-        setValidationError("This address has no verified location. Please re-pin it on the map.");
-        toast.error("Address location is missing.");
+        setValidationError("This address has no verified location. Open Manage Addresses above, edit this address, and drag the pin on the map to verify it.");
+        toast.error("Address location is missing. Re-pin it on the map from Manage Addresses.");
         return;
       }
       const dist = calculateHaversineKm(userLat, userLng, storeLat, storeLng);
@@ -482,9 +490,9 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline}
-              aria-disabled={busy || !isOnline}
-              title={!isOnline ? "Back online to place your order" : undefined}
+              disabled={busy || !isOnline || totals === null}
+              aria-disabled={busy || !isOnline || totals === null}
+              title={!isOnline ? "Back online to place your order" : totals === null ? "Bill is still being computed" : undefined}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
@@ -513,6 +521,21 @@ export function CheckoutPage() {
         {validationError && (
           <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs">
             {validationError}
+          </div>
+        )}
+
+        {/* Bill unavailable: totals computation failed (e.g. no store pricing).
+            PAY stays disabled until recompute succeeds — never charge ₹0. */}
+        {totalsFailed && totals === null && (
+          <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs flex items-center justify-between gap-3">
+            <span>Couldn&apos;t compute your bill. Check your connection and retry.</span>
+            <button
+              type="button"
+              onClick={() => void recompute()}
+              className="shrink-0 px-3 py-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
           </div>
         )}
 

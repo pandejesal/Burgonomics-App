@@ -60,7 +60,19 @@ function OrderConfirmationPage() {
 
   const [order, setOrder] = React.useState<Order | null>(cachedOrder);
   const [loading, setLoading] = React.useState(!cachedOrder);
-  const [whatsappOptIn, setWhatsappOptIn] = React.useState(true);
+  // Legacy order documents have no whatsappOptIn field — render those as
+  // off (never assert consent the document does not store); new orders are
+  // stamped with a boolean at creation.
+  const [whatsappOptIn, setWhatsappOptIn] = React.useState(
+    cachedOrder?.whatsappOptIn === true,
+  );
+  const [waBusy, setWaBusy] = React.useState(false);
+
+  // Sync the toggle once the order document arrives (cache-miss deep
+  // links): it must reflect the stored opt-in, never a hardcoded default.
+  React.useEffect(() => {
+    if (typeof order?.whatsappOptIn === "boolean") setWhatsappOptIn(order.whatsappOptIn);
+  }, [order?.id, order?.whatsappOptIn]);
   const resetPayment = usePaymentStore((s) => s.reset);
 
   // Loyalty sync hook lives here (above ALL early returns): it was below the
@@ -102,7 +114,9 @@ function OrderConfirmationPage() {
       .getOrder(orderId)
       .then((res) => {
         if (cancelled) return;
-        if (res.success) setOrder(res.data);
+        // Preserve the cached order on ok(null): a backend miss/denial must
+        // not masquerade as "not found" nor wipe the just-placed order.
+        if (res.success && res.data) setOrder(res.data);
       })
       .catch(() => {
         // Keep the cached order (or the not-found empty state); the
@@ -127,6 +141,10 @@ function OrderConfirmationPage() {
                   ...prev,
                   status: liveData.status ? { ...prev.status, ...liveData.status } : prev.status,
                   payment: liveData.payment ? { ...prev.payment, ...liveData.payment } : prev.payment,
+                  whatsappOptIn:
+                    typeof liveData.whatsappOptIn === "boolean"
+                      ? liveData.whatsappOptIn
+                      : prev.whatsappOptIn,
                 };
               });
             }
@@ -172,21 +190,24 @@ function OrderConfirmationPage() {
         ? "Takeaway"
         : "Dine-in";
 
-  // Loop 65/120: no local earn. The old effect credited 5% phantom points
-  // per order (celebrated below as wallet credit) with zero server backing —
-  // the server has no purchase-earn program. Refresh converges the display
-  // to ledger truth instead (post-confirm debits included).
-  const syncedRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    if (!order || syncedRef.current === order.id) return;
-    syncedRef.current = order.id;
-    try {
-      const uid = useAuthStore.getState().user?.id ?? null;
-      void useLoyaltyStore.getState().refreshFromServer(uid);
-    } catch {
-      // best-effort; wallet screen re-syncs on mount
+  // Persist the opt-in to the order document — never toast before the
+  // write resolves (P0-3: simulated consent). On failure the toggle keeps
+  // its prior state and reports the error honestly.
+  const toggleWhatsappOptIn = async () => {
+    if (waBusy || !order) return;
+    const next = !whatsappOptIn;
+    void HapticService.selection();
+    setWaBusy(true);
+    const res = await orderRepository.setWhatsappOptIn(order.id, next);
+    setWaBusy(false);
+    if (!res.success) {
+      toast.error("Could not save your WhatsApp preference. Please try again.");
+      return;
     }
-  }, [order]);
+    setWhatsappOptIn(next);
+    setOrder((prev) => (prev ? { ...prev, whatsappOptIn: next } : prev));
+    toast.success(next ? "WhatsApp tracking updates enabled!" : "WhatsApp updates turned off");
+  };
 
   const shareOrder = async () => {
     const res = await orderRepository.buildShareMessage(order.id);
@@ -350,16 +371,14 @@ function OrderConfirmationPage() {
           </div>
           <button
             type="button"
+            role="switch"
+            aria-checked={whatsappOptIn}
+            aria-label="Send updates via WhatsApp"
+            disabled={waBusy}
             onClick={() => {
-              void HapticService.selection();
-              setWhatsappOptIn(!whatsappOptIn);
-              toast.success(
-                whatsappOptIn
-                  ? "WhatsApp updates turned off"
-                  : "WhatsApp tracking updates enabled!"
-              );
+              void toggleWhatsappOptIn();
             }}
-            className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer ${
+            className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer disabled:opacity-60 ${
               whatsappOptIn ? "bg-[#0E4825]" : "bg-neutral-300 dark:bg-neutral-700"
             }`}
           >

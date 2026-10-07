@@ -191,6 +191,16 @@ export class OrderRepository {
 
   // -- Actions ---------------------------------------------------------
 
+  /**
+   * Persist the WhatsApp order-alert opt-in (P0-3). Upserts the store on
+   * success so readers converge without a refetch.
+   */
+  async setWhatsappOptIn(id: string, optIn: boolean): Promise<ApiResult<Order>> {
+    const res = await this.service.setWhatsappOptIn(id, optIn);
+    if (res.success) useOrdersStore.getState().upsert(res.data);
+    return res;
+  }
+
   async cancelOrder(id: string): Promise<ApiResult<Order | null>> {
     const res = await this.service.cancelOrder(id);
     if (res.success && res.data) useOrdersStore.getState().upsert(res.data);

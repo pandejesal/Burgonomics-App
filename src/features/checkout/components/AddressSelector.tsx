@@ -77,15 +77,22 @@ export function AddressSelector({
         <div className="space-y-2.5">
           {addresses.map((addr) => {
             const isSelected = selectedAddress?.id === addr.id;
-            
-            // Calculate distance if coordinates exist, or estimate from store lat/lng
-            const userLat = addr.lat ?? (activeStore ? activeStore.lat + 0.015 : 0);
-            const userLng = addr.lng ?? (activeStore ? activeStore.lng + 0.015 : 0);
-            const branchLat = activeStore?.lat ?? userLat;
-            const branchLng = activeStore?.lng ?? userLng;
-            
-            const distanceKm = calculateHaversineKm(userLat, userLng, branchLat, branchLng);
-            const isDeliverable = distanceKm <= maxRadiusKm;
+
+            // Honest deliverability: never synthesize a user position from the
+            // store position. Without verified lat/lng on BOTH ends the
+            // distance is unknown — no figure, neither badge.
+            const storeLat = activeStore ? Number(activeStore.lat) : NaN;
+            const storeLng = activeStore ? Number(activeStore.lng) : NaN;
+            const hasVerifiedLocation =
+              Number.isFinite(addr.lat) &&
+              Number.isFinite(addr.lng) &&
+              Number.isFinite(storeLat) &&
+              Number.isFinite(storeLng);
+            const distanceKm = hasVerifiedLocation
+              ? calculateHaversineKm(addr.lat as number, addr.lng as number, storeLat, storeLng)
+              : null;
+            const isDeliverable: boolean | null =
+              distanceKm === null ? null : distanceKm <= maxRadiusKm;
 
             return (
               <div
@@ -97,9 +104,9 @@ export function AddressSelector({
                 className={cn(
                   "p-3.5 sm:p-4 rounded-2xl border transition-all select-none cursor-pointer flex flex-col gap-2",
                   isSelected
-                    ? isDeliverable
-                      ? "border-[#0E4825] bg-[#0E4825]/5 shadow-xs"
-                      : "border-amber-500 bg-amber-500/5 shadow-xs"
+                    ? isDeliverable === false
+                      ? "border-amber-500 bg-amber-500/5 shadow-xs"
+                      : "border-[#0E4825] bg-[#0E4825]/5 shadow-xs"
                     : "border-divider bg-surface hover:border-primary/40"
                 )}
               >
@@ -160,25 +167,43 @@ export function AddressSelector({
 
                 {/* Geofence Distance & Radius Status */}
                 <div className="pt-1.5 border-t border-divider/60 flex items-center justify-between text-[11px]">
-                  <span className="text-text-secondary font-medium">
-                    📍 {distanceKm} km from {activeStore?.name ?? "outlet"}
-                  </span>
+                  {distanceKm !== null ? (
+                    <>
+                      <span className="text-text-secondary font-medium">
+                        📍 {distanceKm} km from {activeStore?.name ?? "outlet"}
+                      </span>
 
-                  {isDeliverable ? (
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Deliverable</span>
-                    </span>
+                      {isDeliverable ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Deliverable</span>
+                        </span>
+                      ) : (
+                        <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>Out of {maxRadiusKm} km range</span>
+                        </span>
+                      )}
+                    </>
                   ) : (
-                    <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      <span>Out of {maxRadiusKm} km range</span>
-                    </span>
+                    <>
+                      <span className="text-text-secondary font-medium">
+                        Location not verified — add a pin
+                      </span>
+                      <Link
+                        to="/addresses/create"
+                        search={{ editId: addr.id, returnTo: "/checkout" }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-primary font-bold hover:underline"
+                      >
+                        Pin on map
+                      </Link>
+                    </>
                   )}
                 </div>
 
                 {/* Out of range alert banner with switch to takeaway CTA */}
-                {isSelected && !isDeliverable && (
+                {isSelected && isDeliverable === false && distanceKm !== null && (
                   <div className="mt-1 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs space-y-1.5">
                     <p className="font-medium">
                       This address is {distanceKm} km away (exceeds our {maxRadiusKm} km delivery limit).

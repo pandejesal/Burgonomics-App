@@ -12,7 +12,7 @@
  */
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import type { Address, AddressInput } from "@/features/addresses/models";
-import { INDIAN_MOBILE_RE } from "@/features/auth/utils/validators";
+import { INDIAN_MOBILE_RE, sanitizePhone } from "@/features/auth/utils/validators";
 
 /**
  * Shared create-path validation. Phone uses the same strict Indian
@@ -23,7 +23,7 @@ function validate(input: AddressInput): string | null {
   if (!input.line1?.trim()) return "Address line is required.";
   if (!input.city?.trim()) return "City is required.";
   if (!/^\d{6}$/.test(input.pincode ?? "")) return "Enter a valid 6-digit pincode.";
-  if (input.contactPhone && !INDIAN_MOBILE_RE.test(input.contactPhone)) {
+  if (input.contactPhone && !INDIAN_MOBILE_RE.test(sanitizePhone(input.contactPhone))) {
     return "Enter a valid 10-digit Indian mobile number.";
   }
   return null;
@@ -39,7 +39,7 @@ function validatePatch(patch: Partial<AddressInput>): string | null {
   if (patch.pincode !== undefined && !/^\d{6}$/.test(patch.pincode ?? "")) {
     return "Enter a valid 6-digit pincode.";
   }
-  if (patch.contactPhone !== undefined && !INDIAN_MOBILE_RE.test(patch.contactPhone)) {
+  if (patch.contactPhone && !INDIAN_MOBILE_RE.test(sanitizePhone(patch.contactPhone))) {
     return "Enter a valid 10-digit Indian mobile number.";
   }
   return null;
@@ -48,13 +48,24 @@ function validatePatch(patch: Partial<AddressInput>): string | null {
 let counter = 0;
 const nextId = () => `addr_${Date.now().toString(36)}_${(++counter).toString(36)}`;
 
+/**
+ * Firestore rejects `undefined` field values (invalid-argument). Optional
+ * address keys (customLabel/line2/landmark/lat/lng) are omitted rather than
+ * passed as undefined so create/update write instead of throwing.
+ */
+function clean<T extends object>(o: T): T {
+  return Object.fromEntries(
+    Object.entries(o).filter(([, v]) => v !== undefined),
+  ) as T;
+}
+
 export const addressService = {
   async list(): Promise<ApiResult<Address[]>> {
     try {
       const { auth, db } = await import("@/core/config/firebase");
       const { collection, getDocs } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (!user) return ok([]);
+      if (!user) return fail("AUTH_REQUIRED", "Please sign in to view your saved addresses.");
 
       const snap = await getDocs(collection(db, `users/${user.uid}/addresses`));
       const addresses: Address[] = [];
@@ -64,7 +75,7 @@ export const addressService = {
       return ok(addresses);
     } catch (error: any) {
       console.warn("Firestore address list error:", error);
-      return ok([]);
+      return fail("WRITE_FAILED", "We couldn't load your addresses. Please try again.");
     }
   },
 
@@ -82,11 +93,11 @@ export const addressService = {
       const { auth, db } = await import("@/core/config/firebase");
       const { doc, setDoc } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (user) {
-        await setDoc(doc(db, `users/${user.uid}/addresses`, created.id), created);
-      }
+      if (!user) return fail("AUTH_REQUIRED", "Please sign in to save your address.");
+      await setDoc(doc(db, `users/${user.uid}/addresses`, created.id), clean(created));
     } catch (error: any) {
       console.warn("Firestore address create error:", error);
+      return fail("WRITE_FAILED", "We couldn't save your address. Please try again.");
     }
 
     return ok(created);
@@ -98,13 +109,20 @@ export const addressService = {
 
     try {
       const { auth, db } = await import("@/core/config/firebase");
-      const { doc, updateDoc } = await import("firebase/firestore");
+      const { doc, updateDoc, deleteField } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (user) {
-        await updateDoc(doc(db, `users/${user.uid}/addresses`, id), patch);
+      if (!user) return fail("AUTH_REQUIRED", "Please sign in to update your address.");
+      // Optional keys cleared in the form arrive as `undefined`; map them to
+      // deleteField() so Firestore drops the stale value instead of keeping it.
+      const deletion = deleteField();
+      const payload: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(patch)) {
+        payload[key] = value === undefined ? deletion : value;
       }
+      await updateDoc(doc(db, `users/${user.uid}/addresses`, id), payload);
     } catch (error: any) {
       console.warn("Firestore address update error:", error);
+      return fail("WRITE_FAILED", "We couldn't update your address. Please try again.");
     }
 
     return ok({ id, ...patch });
@@ -115,17 +133,38 @@ export const addressService = {
       const { auth, db } = await import("@/core/config/firebase");
       const { doc, deleteDoc } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (user) {
-        await deleteDoc(doc(db, `users/${user.uid}/addresses`, id));
-      }
+      if (!user) return fail("AUTH_REQUIRED", "Please sign in to remove your address.");
+      await deleteDoc(doc(db, `users/${user.uid}/addresses`, id));
     } catch (error: any) {
       console.warn("Firestore address delete error:", error);
+      return fail("WRITE_FAILED", "We couldn't remove your address. Please try again.");
     }
     return ok({ id });
   },
 
   async setDefault(id: string): Promise<ApiResult<{ id: string }>> {
-    return ok({ id });
+    try {
+      const { auth, db } = await import("@/core/config/firebase");
+      const { collection, doc, getDocs, writeBatch } = await import("firebase/firestore");
+      const user = auth.currentUser;
+      if (!user) return fail("AUTH_REQUIRED", "Please sign in to manage your addresses.");
+      const colRef = collection(db, `users/${user.uid}/addresses`);
+      const snap = await getDocs(colRef);
+      let found = false;
+      const batch = writeBatch(db);
+      snap.forEach((d) => {
+        if (d.id === id) found = true;
+        batch.update(doc(db, `users/${user.uid}/addresses`, d.id), {
+          isDefault: d.id === id,
+        });
+      });
+      if (!found) return fail("WRITE_FAILED", "We couldn't find that address. Please try again.");
+      await batch.commit();
+      return ok({ id });
+    } catch (error: any) {
+      console.warn("Firestore address setDefault error:", error);
+      return fail("WRITE_FAILED", "We couldn't update your default address. Please try again.");
+    }
   },
 
   async listDeliveryInstructionPresets(): Promise<ApiResult<string[]>> {

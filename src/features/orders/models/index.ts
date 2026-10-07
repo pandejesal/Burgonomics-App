@@ -138,6 +138,8 @@ export interface Order {
   notes?: string;
   fulfillmentInstructions?: string;
   tableNumber?: string;
+  /** WhatsApp order-alert opt-in, persisted on the order doc (P0-3). */
+  whatsappOptIn?: boolean;
 
   payment: OrderPaymentInfo;
 
@@ -210,6 +212,8 @@ export interface CreateOrderInput {
   notes?: string;
   fulfillmentInstructions?: string;
   tableNumber?: string;
+  /** WhatsApp order-alert opt-in at placement time (defaults true). */
+  whatsappOptIn?: boolean;
   payment: OrderPaymentInfo;
   /** Backend confirmed order id (from payment verification). */
   confirmedOrderId?: string;

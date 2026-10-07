@@ -44,7 +44,7 @@ function Body() {
       : null);
 
   return (
-    <AppShell title="Edit profile" backTo="/profile" showTabs showTopBar>
+    <AppShell title="Edit profile" backTo="/profile" showTabs={false} showTopBar>
       <div className="mx-auto max-w-[520px] px-4 py-4">
         {activeProfile ? (
           <EditProfileForm

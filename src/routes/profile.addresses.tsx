@@ -43,6 +43,7 @@ function Body() {
     const res = await addressRepository.remove(pendingDelete.id);
     setPendingDelete(null);
     if (res.success) toast.success("Address removed");
+    else toast.error(res.error.message);
   };
 
   const handleAddAddress = () => {
@@ -78,8 +79,11 @@ function Body() {
                           <button
                             type="button"
                             onClick={() => {
-                              void addressRepository.setDefault(a.id);
-                              toast.success("Default address updated");
+                              void (async () => {
+                                const res = await addressRepository.setDefault(a.id);
+                                if (res.success) toast.success("Default address updated");
+                                else toast.error(res.error.message);
+                              })();
                             }}
                             className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-bold text-[#0E4825] dark:text-[#4ADE80] hover:bg-[#0E4825]/10 cursor-pointer transition-colors"
                           >

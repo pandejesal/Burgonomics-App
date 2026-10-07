@@ -1,10 +1,52 @@
 import * as React from "react";
-import { X, Home, Briefcase, MapPin, Check } from "lucide-react";
+import { X, Home, Briefcase, MapPin, Check, Navigation } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
 import { addressRepository } from "@/features/addresses/repositories/AddressRepository";
 import type { Address, AddressLabel } from "@/features/addresses/models";
+import { useLocationPermission } from "@/features/stores/hooks/useLocationPermission";
+
+// Leaflet imports
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+
+// Orange (Accent) marker pin for the map
+const customMarkerHtml = `
+  <div style="
+    background-color: var(--color-accent);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    box-shadow: 0 6px 12px rgba(194, 65, 12, 0.4);
+    border: 3px solid white;
+  ">
+    <div style="width: 14px; height: 14px; background: white; border-radius: 50%; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);"></div>
+  </div>
+`;
+
+const customIcon = L.divIcon({
+  html: customMarkerHtml,
+  className: "custom-leaflet-marker border-none bg-transparent",
+  iconSize: [40, 40],
+  iconAnchor: [20, 40],
+});
+
+const DEFAULT_CENTER = { lat: 23.0225, lng: 72.5714 }; // Default Ahmedabad, Gujarat
+
+// Helper component to center map when coordinates change programmatically
+function MapController({ center }: { center: { lat: number; lng: number } }) {
+  const map = useMap();
+  React.useEffect(() => {
+    map.flyTo(center, map.getZoom());
+  }, [center, map]);
+  return null;
+}
 
 interface AddressFormModalProps {
   isOpen: boolean;
@@ -15,8 +57,10 @@ interface AddressFormModalProps {
 
 /**
  * AddressFormModal — Modal bottom-sheet for creating and editing delivery addresses.
- * Handles address tag selection (Home, Work, Other), line 1/2, landmark, city,
- * 6-digit PIN code, and the default address toggle.
+ * Handles address tag selection (Home, Work, Other), a draggable map pin with
+ * reverse-geocoding (lat/lng captured into the payload so checkout geofence can
+ * verify the location), line 1/2, landmark, city, 6-digit PIN code, and the
+ * default address toggle.
  */
 export function AddressFormModal({
   isOpen,
@@ -33,8 +77,66 @@ export function AddressFormModal({
   const [pincode, setPincode] = React.useState("");
   const [isDefault, setIsDefault] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [mapCenter, setMapCenter] = React.useState(DEFAULT_CENTER);
+  // Only coordinates the customer actually confirmed (dragged pin or granted
+  // GPS) may be persisted — the default map center is never a real location.
+  const [pinPlaced, setPinPlaced] = React.useState(false);
+  const markerRef = React.useRef<L.Marker>(null);
+  // GPS auto-center + auto-geocode runs once per open; later watchPosition
+  // fixes must not yank the pin back or overwrite typed fields.
+  const autoLocatedRef = React.useRef(false);
+  // Monotonic token invalidates stale reverse-geocode responses: each new
+  // invocation captures the current token and bails before any setState if a
+  // newer invocation (or a modal reset) has started since.
+  const geocodeTokenRef = React.useRef(0);
+  const {
+    request: requestLocation,
+    coords: userCoords,
+    status: locationStatus,
+    isLoading: isLocating,
+  } = useLocationPermission();
+
+  const reverseGeocode = React.useCallback(async (lat: number, lng: number) => {
+    const token = ++geocodeTokenRef.current;
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+      );
+      const data = await response.json();
+      if (token !== geocodeTokenRef.current) return;
+
+      if (data && data.address) {
+        const {
+          road,
+          house_number,
+          city: fetchedCity,
+          town,
+          village,
+          postcode,
+        } = data.address;
+
+        const bestCity = fetchedCity || town || village;
+        if (bestCity) setCity(bestCity);
+        if (postcode) setPincode(postcode);
+
+        let streetLine = "";
+        if (house_number) streetLine += `${house_number} `;
+        if (road) streetLine += road;
+
+        if (streetLine) {
+          setLine1(streetLine.trim());
+        } else if (data.display_name) {
+          setLine1(data.display_name.split(",")[0]);
+        }
+      }
+    } catch (err) {
+      console.warn("Reverse geocoding failed", err);
+    }
+  }, []);
 
   React.useEffect(() => {
+    autoLocatedRef.current = false;
+    geocodeTokenRef.current += 1;
     if (addressToEdit) {
       setLabel(addressToEdit.label);
       setCustomLabel(addressToEdit.customLabel || "");
@@ -44,6 +146,13 @@ export function AddressFormModal({
       setCity(addressToEdit.city);
       setPincode(addressToEdit.pincode);
       setIsDefault(addressToEdit.isDefault);
+      const hasCoords =
+        Number.isFinite(addressToEdit.lat) && Number.isFinite(addressToEdit.lng);
+      setPinPlaced(hasCoords);
+      setMapCenter({
+        lat: hasCoords ? (addressToEdit.lat as number) : DEFAULT_CENTER.lat,
+        lng: hasCoords ? (addressToEdit.lng as number) : DEFAULT_CENTER.lng,
+      });
     } else {
       setLabel("home");
       setCustomLabel("");
@@ -53,8 +162,36 @@ export function AddressFormModal({
       setCity("Mumbai");
       setPincode("");
       setIsDefault(false);
+      setMapCenter(DEFAULT_CENTER);
+      setPinPlaced(false);
     }
   }, [addressToEdit, isOpen]);
+
+  React.useEffect(() => {
+    if (isOpen && !Number.isFinite(addressToEdit?.lat)) {
+      void requestLocation();
+    }
+  }, [isOpen, addressToEdit?.lat, requestLocation]);
+
+  React.useEffect(() => {
+    if (isOpen && !Number.isFinite(addressToEdit?.lat) && locationStatus === "granted" && userCoords && !autoLocatedRef.current) {
+      autoLocatedRef.current = true;
+      setMapCenter(userCoords);
+      setPinPlaced(true);
+      void reverseGeocode(userCoords.lat, userCoords.lng);
+    }
+  }, [isOpen, locationStatus, userCoords, addressToEdit?.lat, reverseGeocode]);
+
+  const onMarkerDragEnd = React.useCallback(() => {
+    const marker = markerRef.current;
+    if (marker != null) {
+      const position = marker.getLatLng();
+      autoLocatedRef.current = true;
+      setMapCenter({ lat: position.lat, lng: position.lng });
+      setPinPlaced(true);
+      void reverseGeocode(position.lat, position.lng);
+    }
+  }, [reverseGeocode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +215,8 @@ export function AddressFormModal({
       landmark: landmark.trim() || undefined,
       city: city.trim(),
       pincode: pincode.trim(),
+      lat: pinPlaced ? mapCenter.lat : undefined,
+      lng: pinPlaced ? mapCenter.lng : undefined,
       isDefault,
     };
 
@@ -129,6 +268,66 @@ export function AddressFormModal({
 
         {/* Scrollable Form */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)] no-scrollbar">
+          {/* Map pin — drag the orange pin to set the exact delivery location */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+              Pin your location
+            </p>
+            <div
+              className="overflow-hidden rounded-xl border-2 border-primary/10 relative"
+              style={{ height: "220px", zIndex: 0 }}
+            >
+              <div role="img" aria-label="Delivery location map" className="h-full w-full">
+                <MapContainer
+                  center={mapCenter}
+                  zoom={16}
+                  zoomControl={false}
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <Marker
+                    draggable={true}
+                    eventHandlers={{ dragend: onMarkerDragEnd }}
+                    position={mapCenter}
+                    ref={markerRef}
+                    icon={customIcon}
+                  />
+                  <MapController center={mapCenter} />
+                </MapContainer>
+              </div>
+
+              <div className="absolute top-2 right-2" style={{ zIndex: 1000 }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const result = await requestLocation();
+                    if (result?.coords) {
+                      setMapCenter(result.coords);
+                      setPinPlaced(true);
+                      void reverseGeocode(result.coords.lat, result.coords.lng);
+                    }
+                  }}
+                  disabled={isLocating}
+                  className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2.5 min-h-[44px] shadow-lg shadow-accent/40 hover:bg-accent/90 text-white text-xs font-bold transition-all border-2 border-white cursor-pointer disabled:opacity-50"
+                >
+                  <Navigation className={cn("h-3.5 w-3.5", isLocating && "animate-spin")} />
+                  {isLocating ? "Locating..." : "Locate Me"}
+                </button>
+              </div>
+            </div>
+            {(locationStatus === "denied" ||
+              locationStatus === "blocked" ||
+              locationStatus === "unavailable") && (
+              <p role="status" className="text-[11px] text-text-secondary text-center">
+                Location unavailable — drag the pin manually, or enable location in your
+                browser settings and tap Locate Me.
+              </p>
+            )}
+          </div>
+
           {/* Label Type Selector */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">

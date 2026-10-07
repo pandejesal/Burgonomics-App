@@ -47,10 +47,19 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      {/* Photo placeholder */}
+      {/* Photo placeholder — honest static note (no fake upload affordance) */}
       <div className="flex items-center gap-3">
-        <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary type-headline-medium">
-          {(fullName || profile.phone).slice(0, 1).toUpperCase()}
+        <div
+          aria-hidden
+          className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary type-headline-medium font-black"
+        >
+          {(fullName || profile.phone)
+            .split(" ")
+            .map((s) => s[0])
+            .filter(Boolean)
+            .slice(0, 2)
+            .join("")
+            .toUpperCase()}
         </div>
         <div className="flex-1">
           <Text variant="titleMedium">Profile photo</Text>
@@ -58,9 +67,6 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
             Photo uploads are coming soon.
           </Text>
         </div>
-        <AppButton type="button" variant="outlined" size="sm" disabled>
-          Change
-        </AppButton>
       </div>
 
       <TextField
@@ -129,7 +135,8 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
         </div>
       )}
 
-      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
+      {/* Thumb-reach action bar: Save stays visible while editing. */}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sticky bottom-0 bg-background/95 backdrop-blur-sm pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
         <AppButton type="button" variant="outlined" fullWidth onClick={onCancel}>
           Cancel
         </AppButton>

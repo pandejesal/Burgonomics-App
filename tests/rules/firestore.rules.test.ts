@@ -385,4 +385,24 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
       })
     );
   });
+
+  it("27. [CUSTOMER-WHATSAPP-OPTIN-ALLOW] Customer can toggle their own whatsappOptIn preference", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(
+      updateDoc(doc(custDb, "orders", "order_501"), {
+        whatsappOptIn: false,
+        updatedAt: new Date().toISOString(),
+      })
+    );
+  });
+
+  it("28. [CUSTOMER-ORDER-FIELD-DENY] Customer cannot write money fields on their own order", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      updateDoc(doc(custDb, "orders", "order_501"), {
+        totals: { grandTotal: 1 },
+        whatsappOptIn: false,
+      })
+    );
+  });
 });
