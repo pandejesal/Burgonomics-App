@@ -7,7 +7,7 @@ import { DeliveryStepTracker } from "../features/tracking/components/DeliverySte
 import type { Order } from "../features/orders";
 
 describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
-  describe("1. Domino's 4-Stage Stepper State Mapping", () => {
+  describe("1. 4-Stage Stepper State Mapping", () => {
     it("maps ORDER_PLACED status code to Stage 1", () => {
       const order = {
         id: "ord_101",

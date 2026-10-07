@@ -1,17 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 
 import { AppShell } from "@/shared/layouts/AppShell";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 
 import { useStoreSelection } from "@/features/stores/state/storeStore";
-import { FulfillmentSheet } from "@/features/stores/components/FulfillmentSheet";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 
 import { useHomeStore } from "@/features/home";
 import { CategoryPills } from "@/features/menu/components/CategoryPills";
-import { LaPinozHeader } from "@/features/home/components/LaPinozHeader";
+import { BrandHeader } from "@/features/home/components/BrandHeader";
 import { BannerCarousel } from "@/features/home/components/BannerCarousel";
 import { CategoryGrid } from "@/features/home/components/CategoryGrid";
 import { HorizontalRail } from "@/features/home/components/HorizontalRail";
@@ -48,10 +47,6 @@ function HomePage() {
 
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const user = useAuthStore((s) => s.user);
-
-  const fulfillment = useStoreSelection((s) => s.fulfillment);
-  const setFulfillment = useStoreSelection((s) => s.setFulfillment);
-  const [fulfillmentOpen, setFulfillmentOpen] = useState(false);
 
   const status = useHomeStore((s) => s.status);
   const bundle = useHomeStore((s) => s.bundle);
@@ -100,7 +95,7 @@ function HomePage() {
     >
       <div className="mx-auto max-w-[520px] pb-10">
         {/* Full-bleed Header — single fulfillment switch inside (Delivery / Takeaway / Dine-In) */}
-        <LaPinozHeader onSearchClick={() => void navigate({ to: "/search" })} />
+        <BrandHeader onSearchClick={() => void navigate({ to: "/search" })} />
 
         {/* Category shortcut pills — real categories from POS (not hardcoded) */}
         {bundle && (
@@ -234,20 +229,6 @@ function HomePage() {
 
       {/* Floating Mini Cart Bar */}
       <FloatingCartBar />
-
-      <FulfillmentSheet
-        open={fulfillmentOpen}
-        onOpenChange={(o) => {
-          if (!o && !fulfillment) return;
-          setFulfillmentOpen(o);
-        }}
-        store={store}
-        value={fulfillment}
-        onConfirm={(f) => {
-          setFulfillment(f);
-          setFulfillmentOpen(false);
-        }}
-      />
     </AppShell>
   );
 }

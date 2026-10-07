@@ -312,7 +312,7 @@ function OffersPage() {
           </section>
         )}
 
-        {/* Signature La Pino'z BOGO Promotion Banner */}
+        {/* Signature BOGO Promotion Banner */}
         <BOGOBanner onApplyCode={(code) => void submitCoupon(code)} />
 
         {/* Coupon entry */}

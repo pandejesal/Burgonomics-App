@@ -61,7 +61,7 @@ function TermsPage() {
               <Clock className="h-4 w-4 text-primary" /> 2. Pricing, Taxes & Delivery (India)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup: <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is <strong>FREE above ₹499</strong>, otherwise a flat Porter bike fee (≈ ₹40 base + ₹10/km) applies. No international shipping — India only.
+              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup: <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is <strong>FREE above ₹499</strong>, otherwise a flat delivery fee (as shown at checkout) applies. No international shipping — India only.
             </Text>
           </section>
 

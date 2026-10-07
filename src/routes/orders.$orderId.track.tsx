@@ -158,7 +158,7 @@ function TrackOrderPage() {
         }
       >
         <div className="mx-auto max-w-[540px] space-y-4 px-4 py-3 pb-16 select-none">
-          {/* 1. 4-Stage Visual Progress Stepper (Domino's Tracker Standard) */}
+          {/* 1. 4-Stage Visual Progress Stepper */}
           <DeliveryStepTracker
             tracking={trackingState}
             // Loop: the sandbox stepper fakes Delivered locally with no server

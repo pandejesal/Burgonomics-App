@@ -9,12 +9,12 @@ import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
 import { HapticService } from "@/core/services/haptics";
 
-interface LaPinozHeaderProps {
+interface BrandHeaderProps {
   onSearchClick?: () => void;
   className?: string;
 }
 
-export function LaPinozHeader({ onSearchClick, className }: LaPinozHeaderProps) {
+export function BrandHeader({ onSearchClick, className }: BrandHeaderProps) {
   const navigate = useNavigate();
   const activeStore = useStoreSelection((s) => s.activeStore);
   const fulfillment = useStoreSelection((s) => s.fulfillment);
