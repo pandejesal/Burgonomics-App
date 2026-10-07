@@ -189,7 +189,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
       {ratingSubmitted && (
         <div className="p-2.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4" />
-          <span>Rating saved on this device — detailed reviews launching soon.</span>
+          <span>Thanks — your rating is saved on this device.</span>
         </div>
       )}
 

@@ -1,14 +1,5 @@
 import React, { useState } from "react";
-import {
-  AlertCircle,
-  Camera,
-  X,
-  UploadCloud,
-  CheckCircle2,
-  Clock,
-  ShieldAlert,
-  ShoppingBag,
-} from "lucide-react";
+import { Camera, X, Clock } from "lucide-react";
 import { toast } from "sonner";
 import type { TicketCategory } from "../hooks/useCustomerTickets";
 import type { Order } from "@/features/orders";
@@ -19,11 +10,6 @@ interface CreateTicketFormProps {
   initialCategory?: TicketCategory;
   initialDescription?: string;
   isSubmitting?: boolean;
-  /**
-   * Backend-provided response SLA in minutes. The SLA notice renders only
-   * when this is present — never invent response-time promises.
-   */
-  slaMinutes?: number | null;
   onSubmit: (data: {
     orderId?: string;
     orderShortCode?: string;
@@ -50,7 +36,6 @@ export function CreateTicketForm({
   initialCategory,
   initialDescription,
   isSubmitting = false,
-  slaMinutes = null,
   onSubmit,
   onCancel,
 }: CreateTicketFormProps) {
@@ -245,25 +230,14 @@ export function CreateTicketForm({
         </div>
       </div>
 
-      {/* 5. Escalation notice — SLA copy only when backend-provided */}
+      {/* 5. Support-flow notice — honest generic copy (no unverifiable SLA guarantee) */}
       <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs text-emerald-300">
         <div className="flex items-center gap-1.5 font-bold">
           <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>
-            {typeof slaMinutes === "number" && Number.isFinite(slaMinutes)
-              ? `Transparent ${slaMinutes}-Min SLA Guarantee`
-              : "How support works"}
-          </span>
+          <span>How support works</span>
         </div>
         <p className="text-[11px] text-neutral-300 leading-relaxed">
-          {typeof slaMinutes === "number" && Number.isFinite(slaMinutes) ? (
-            <>
-              Our store manager responds in &lt;{slaMinutes} mins. If unaddressed, your ticket
-              automatically escalates to the Regional Operations Lead.
-            </>
-          ) : (
-            "Our store team is notified as soon as you submit. Track status and responses under Your Tickets below."
-          )}
+          Our store team is notified as soon as you submit. Track status and responses under Your Tickets below.
         </p>
       </div>
 

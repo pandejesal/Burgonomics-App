@@ -76,7 +76,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
         <div className="flex-1">
           <Text variant="titleMedium">Profile photo</Text>
           <Text variant="caption" tone="secondary">
-            Photo uploads are coming soon.
+            Profile photo upload isn't available in the app.
           </Text>
         </div>
       </div>
@@ -93,7 +93,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
         label="Mobile number"
         value={`+91 ${profile.phone}`}
         readOnly
-        helper="Changing your number requires OTP verification (coming soon)."
+        helper="Registered numbers can't be changed in the app."
       />
 
       <TextField
