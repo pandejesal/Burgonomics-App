@@ -454,7 +454,9 @@ export function CheckoutPage() {
             setBusy(false);
       placeOrderInFlight.current = false;
             setPaymentStatus("failed");
-            toast.error("Payment not completed", { description: err.description });
+            // P1-8: gateway description text is not customer copy — log raw.
+            console.error("[checkout] gateway onFailure:", err);
+            toast.error("Payment not completed", { description: "Please try again or choose another payment method." });
           },
           onCancel: () => {
             setBusy(false);
@@ -469,8 +471,12 @@ export function CheckoutPage() {
       setBusy(false);
       placeOrderInFlight.current = false;
       setPaymentStatus("failed");
-      const msg = payErr instanceof Error ? payErr.message : "Payment gateway error.";
-      setValidationError(msg);
+      // P1-8: raw gateway/exception text never reaches the red alert box —
+      // customers get an honest recovery path instead.
+      console.error("[checkout] payment initiation failed:", payErr);
+      setValidationError(
+        "Payment couldn't be completed. Please try again — if your amount was debited, contact support before retrying."
+      );
     }
   };
 

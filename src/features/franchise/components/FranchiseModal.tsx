@@ -60,9 +60,9 @@ export function FranchiseModal({ isOpen, onClose }: FranchiseModalProps) {
       });
     } catch (err) {
       setBusy(false);
-      toast.error("Enquiry NOT sent — please try again.", {
-        description: err instanceof Error ? err.message : String(err),
-      });
+      // P1-8: raw exception text goes to the console, never the toast.
+      console.error("[franchise] enquiry submit failed:", err);
+      toast.error("Enquiry NOT sent — please try again.");
       return;
     }
 

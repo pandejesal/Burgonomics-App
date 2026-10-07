@@ -4,6 +4,7 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
 import { Text } from "@/shared/components/common/Text";
 import { FileText, ShoppingCart, Clock, RotateCcw, HelpCircle } from "lucide-react";
+import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
 
 export const Route = createFileRoute("/terms")({
   head: () => ({
@@ -17,6 +18,13 @@ export const Route = createFileRoute("/terms")({
   }),
   component: TermsPage,
 });
+
+// P1-7: statutory IDs render only once real values replace the X-masked
+// placeholders — never print filler on customer-facing legal surfaces.
+const CIN = isUnsetRegistrationValue(APP.cin) ? null : APP.cin;
+const GSTIN = isUnsetRegistrationValue(APP.gstin) ? null : APP.gstin;
+const FSSAI = isUnsetRegistrationValue(APP.fssaiLicense) ? null : APP.fssaiLicense;
+const HAS_REG_IDS = !!(CIN || GSTIN || FSSAI);
 
 function TermsPage() {
   return (
@@ -63,8 +71,17 @@ function TermsPage() {
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
               <strong>Seller:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.<br />
-              <strong>CIN:</strong> UXXXXXGJ2024PTCXXXXXX · <strong>GSTIN:</strong> 24XXXXXXXXXX1Z5 · <strong>FSSAI Lic. No.:</strong> 1072XXXXXXXXXX (per store, displayed on menu &amp; checkout).<br />
-              <strong>Helpline:</strong> support@burgonomics.com · +91-7XXXXXXXXX (Mon–Sun 10am–11pm IST).<br />
+              {/* P1-7: registration IDs render only once real values replace the
+                  X-masked placeholders — never print filler. */}
+              {HAS_REG_IDS && (
+                <>
+                  {CIN && <><strong>CIN:</strong> {CIN} · </>}
+                  {GSTIN && <><strong>GSTIN:</strong> {GSTIN} · </>}
+                  {FSSAI && <><strong>FSSAI Lic. No.:</strong> {FSSAI} (per store, displayed on menu &amp; checkout).</>}
+                  <br />
+                </>
+              )}
+              <strong>Helpline:</strong> {APP.supportEmail} · via the in-app Help &amp; Support channel.<br />
               <strong>100% Pure Veg:</strong> All items are strictly vegetarian; FSSAI-licensed kitchens with zero cross-contamination.
             </Text>
           </section>
@@ -88,7 +105,7 @@ function TermsPage() {
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
               If you have any questions regarding your order or these terms, please contact our
-              support team at <strong>support@burgonomics.com</strong> or via the in-app Help &
+              support team at <strong>{APP.supportEmail}</strong> or via the in-app Help &amp;
               Support channel.
             </Text>
           </section>

@@ -15,18 +15,61 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { cartRepository, FloatingCartBar } from "@/features/cart";
 import { useMenuStore } from "@/features/menu/state/menuStore";
 import { CategoryNavRail } from "@/features/menu/components/CategoryNavRail";
+import type { MenuCategoryModel } from "@/features/menu/models";
 import { MenuProductCard } from "@/features/menu/components/MenuProductCard";
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
 import { ProductCustomizerModal } from "@/features/menu/components/ProductCustomizerModal";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
-import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll";
+// import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll"; // REMOVED 2026-10-06: blocked native swipe
 import type { Product } from "@/features/menu/models";
 import { cn } from "@/lib/utils";
 
 interface MenuSearchSchema {
   category?: string;
   view?: "list" | "grid";
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Resolve `?category=` against the categories actually loaded for this store.
+ *
+ * Home's category pills and the Explore grid send shortcut ids (`beverages`,
+ * `sides`, `cat_burgers`, …) that may not exist in the menu store's id space.
+ * The old exact-id match dropped those silently, so the menu opened on
+ * whatever category happened to be first and the tap looked dead. Matching
+ * by id still wins; name/slug matching is the fallback.
+ */
+function resolveCategoryId(
+  param: string | undefined,
+  categories: { id: string; name: string }[],
+): string | undefined {
+  if (!param) return undefined;
+  const raw = param.trim().toLowerCase();
+  if (!raw) return undefined;
+
+  const byId = categories.find((c) => c.id.toLowerCase() === raw);
+  if (byId) return byId.id;
+
+  const target = slugify(raw);
+  if (!target) return undefined;
+
+  const byName = categories.find((c) => slugify(c.name) === target);
+  if (byName) return byName.id;
+
+  const targetTokens = new Set(target.split(" "));
+  const byToken = categories.find((c) =>
+    slugify(c.name)
+      .split(" ")
+      .some((token) => targetTokens.has(token)),
+  );
+  return byToken?.id;
 }
 
 /**
@@ -91,12 +134,13 @@ function MenuPage() {
     return () => unsub();
   }, [isHydrated, store, load, subscribeToLiveMenu, navigate]);
 
-  // Sync category from URL search params into store if provided
+  // Sync category from URL search params into store if provided.
+  // `resolveCategoryId` (id → name → slug token) keeps shortcut ids coming
+  // from Home pills landing on a real category instead of being discarded.
   useEffect(() => {
-    if (searchParams.category && categories.some((c) => c.id === searchParams.category)) {
-      if (activeCategoryId !== searchParams.category) {
-        setActiveCategory(searchParams.category);
-      }
+    const resolved = resolveCategoryId(searchParams.category, categories);
+    if (resolved && activeCategoryId !== resolved) {
+      setActiveCategory(resolved);
     }
   }, [searchParams.category, categories, activeCategoryId, setActiveCategory]);
 
@@ -123,19 +167,35 @@ function MenuPage() {
 
   const handleViewModeToggle = React.useCallback(
     (mode: "list" | "grid") => {
+      isViewModeChanging.current = true;
       setViewMode(mode);
       void navigate({
         to: "/menu",
         search: (prev: MenuSearchSchema) => ({ ...prev, view: mode }),
         replace: true,
       });
+      // Reset flag after navigation settles
+      setTimeout(() => { isViewModeChanging.current = false; }, 100);
     },
     [setViewMode, navigate],
   );
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScroll = useRef(false);
-  useDirectionalScroll(scrollerRef as React.RefObject<HTMLElement | null>);
+  const isViewModeChanging = useRef(false);
+  /**
+   * Marks the active-category change that came FROM the pager itself.
+   *
+   * The old code re-scrolled on every `activeCategoryId` change, including the
+   * ones its own scroll listener produced. Mid-swipe that cancelled the
+   * in-flight momentum + `snap-mandatory` settling and re-targeted the pager at
+   * an intermediate panel, stranding the view between categories (blank
+   * windowed panels either side) with no way to recover — the exact
+   * "frozen between A/B/C" report.
+   */
+  const scrollDrivenFor = useRef<string | null>(null);
+  // Native scroll + snap works better than useDirectionalScroll or custom pointer drag
+  // for full-width snap pagers on Android WebView.
 
   // Keep CategoryNavRail and horizontal pager in sync — tap rail scrolls pager, swipe pager updates rail.
   useEffect(() => {
@@ -143,12 +203,13 @@ function MenuPage() {
     if (!el || categories.length === 0) return;
     let raf: number | null = null;
     const onScroll = () => {
-      if (isProgrammaticScroll.current) return;
+      if (isProgrammaticScroll.current || isViewModeChanging.current) return;
       if (raf !== null) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const idx = Math.round(el.scrollLeft / el.clientWidth);
         const cat = categories[idx];
         if (cat && cat.id !== activeCategoryId) {
+          scrollDrivenFor.current = cat.id;
           setActiveCategory(cat.id);
           void navigate({
             to: "/menu",
@@ -165,20 +226,68 @@ function MenuPage() {
     };
   }, [categories, activeCategoryId, setActiveCategory, navigate]);
 
+  // Rail / pill / URL driven selection → bring the target panel into view.
+  // Changes flagged by the scroll listener above skip this: the pager is
+  // already there (or still settling), and forcing a scroll would fight it.
   useEffect(() => {
-    if (!activeCategoryId || !scrollerRef.current) return;
+    if (scrollDrivenFor.current === activeCategoryId) {
+      scrollDrivenFor.current = null;
+      return;
+    }
+    // Drop a marker left behind by a change that never reached this effect.
+    scrollDrivenFor.current = null;
+
+    const el = scrollerRef.current;
+    if (!el || !activeCategoryId || categories.length === 0) return;
     const idx = categories.findIndex((c) => c.id === activeCategoryId);
     if (idx < 0) return;
-    const el = scrollerRef.current;
     const targetLeft = idx * el.clientWidth;
     if (Math.abs(el.scrollLeft - targetLeft) < 4) return;
+
+    const currentIndex = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
     isProgrammaticScroll.current = true;
-    el.scrollTo({ left: targetLeft, behavior: "smooth" });
-    const t = window.setTimeout(() => {
+    // Use instant for ALL programmatic scrolls (including adjacent) to avoid:
+    // - race between scroll listener reverting activeCategoryId mid-smooth-animation
+    // - useDirectionalScroll momentum cancelling smooth scroll (both write scrollLeft)
+    // - 550ms timeout expiring before animation completes on slow WebView
+    // The "smooth" path was intended for UX but caused the exact "adjacent tap ignored"
+    // bug because the listener at L199-L212 reads scrollLeft mid-flight, rounds to
+    // the origin panel, and reverts the tap.
+    el.scrollTo({
+      left: targetLeft,
+      behavior: "instant",
+    });
+
+    // Release the guard only once the scroll has actually settled. The old
+    // fixed 550ms guess could expire while momentum/snap was still running,
+    // which let the listener above retarget the pager mid-flight again.
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      el.removeEventListener("scrollend", settle);
       isProgrammaticScroll.current = false;
-    }, 550);
-    return () => window.clearTimeout(t);
+    };
+    el.addEventListener("scrollend", settle);
+    const timer = window.setTimeout(settle, 550);
+    return () => {
+      window.clearTimeout(timer);
+      el.removeEventListener("scrollend", settle);
+      // Never leave the pager ignoring user scrolls (cleanup also runs on
+      // unmount and before the next selection's scroll starts).
+      isProgrammaticScroll.current = false;
+    };
   }, [activeCategoryId, categories]);
+
+  // A category can become active without ever having a bucket (deep link,
+  // live category subscription, store switch). The list sentinel below only
+  // renders once `buckets[activeCategoryId]` exists, so without priming the
+  // panel stayed blank — the tap looked dead.
+  useEffect(() => {
+    if (!activeCategoryId) return;
+    if (!buckets[activeCategoryId]) void loadMore(activeCategoryId);
+  }, [activeCategoryId, buckets, loadMore]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -292,13 +401,19 @@ function MenuPage() {
             onRetry={() => load(store.id, { refresh: true })}
           />
         ) : status === "empty" || categories.length === 0 ? (
-          <PetpoojaSyncPlaceholder storeId={store.id} />
+          <PetpoojaSyncPlaceholder
+            storeId={store.id}
+            onRetry={() => load(store.id, { refresh: true })}
+          />
         ) : (
           <>
             {/* Sticky Category Nav Rail + View Toggle */}
             <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 backdrop-blur-md shadow-sm border-b border-divider">
               <CategoryNavRail
-                categories={categories}
+                categories={categories.map((cat) => ({
+                  ...cat,
+                  itemCount: buckets[cat.id]?.items.length ?? cat.itemCount ?? 0,
+                }))}
                 activeCategoryId={activeCategoryId}
                 onSelectCategory={handleCategorySelect}
               />
@@ -342,25 +457,11 @@ function MenuPage() {
             {/* Horizontal swipe pager — each category is a full-width snap panel */}
             <div
               ref={scrollerRef}
-              className="flex w-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar overscroll-x-contain touch-pan-y"
-              style={{ WebkitOverflowScrolling: "touch" }}
+              className="flex w-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar overscroll-x-contain overscroll-y-auto"
+              style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}
             >
               {categories.map((cat, idx) => {
                 const b = buckets[cat.id];
-                // Windowed pager: only the active panel + immediate neighbours
-                // mount cards. The old code mounted EVERY category's cards
-                // (200 cards × ~4 motion nodes ≈ 800 animated nodes) — scroll
-                // jank on low-end WebViews. Off-window panels keep an empty
-                // full-width section so snap math (idx × width) still holds.
-                if (Math.abs(idx - activeIdx) > 1) {
-                  return (
-                    <section
-                      key={cat.id}
-                      aria-hidden
-                      className="w-full shrink-0 snap-start snap-always"
-                    />
-                  );
-                }
                 return (
                   <section
                     key={cat.id}

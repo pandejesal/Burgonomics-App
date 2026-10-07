@@ -131,7 +131,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
                   1-Tap Instant Login
                 </h3>
                 <p className="text-[11px] text-text-secondary">
-                  Complete order & unlock Loyalty Points
+                  Sign in to continue
                 </p>
               </div>
             </div>
@@ -172,7 +172,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
               <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2.5 flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-xs">
                 <Sparkles className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                <span>Get 50 Loyalty Points instantly on this order!</span>
+                <span>Get 50 welcome points on your first order! (once per number)</span>
               </div>
 
               <button

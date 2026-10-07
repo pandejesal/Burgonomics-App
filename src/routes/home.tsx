@@ -79,6 +79,9 @@ function HomePage() {
     [navigate],
   );
 
+  // Wait for the persisted store before deciding: with isHydrated starting
+  // false, the /stores bounce below only fires for a genuine no-store state.
+  if (!isHydrated) return null;
   if (!store) return null;
 
   const isLoading = status === "loading" || (status === "idle" && !bundle);
@@ -99,17 +102,28 @@ function HomePage() {
         {/* Full-bleed Header — single fulfillment switch inside (Delivery / Takeaway / Dine-In) */}
         <LaPinozHeader onSearchClick={() => void navigate({ to: "/search" })} />
 
-        {/* Category shortcut pills — POS category list */}
-        <div className="px-4 mt-3">
-          <CategoryPills
-            selectedCategory="all"
-            onSelectCategory={(catId) => {
-              if (catId === "all") void navigate({ to: "/menu" });
-              else void navigate({ to: "/menu", search: { category: catId } });
-            }}
-            className="mt-3"
-          />
-        </div>
+        {/* Category shortcut pills — real categories from POS (not hardcoded) */}
+        {bundle && (
+          <div className="px-4 mt-3">
+            <CategoryPills
+              categories={[
+                { id: "all", name: "All Items" },
+                ...bundle.categories.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  count: c.itemCount,
+                  isVeg: true,
+                })),
+              ]}
+              selectedCategory="all"
+              onSelectCategory={(catId) => {
+                if (catId === "all") void navigate({ to: "/menu" });
+                else void navigate({ to: "/menu", search: { category: catId } });
+              }}
+              className="mt-3"
+            />
+          </div>
+        )}
 
         {/* Offline strip */}
         {!online && (
@@ -138,7 +152,7 @@ function HomePage() {
           </div>
         ) : status === "empty" || !bundle ? (
           <div className="mt-4 px-4">
-            <PetpoojaSyncPlaceholder storeId={store.id} />
+            <PetpoojaSyncPlaceholder storeId={store.id} onRetry={handleRefresh} />
           </div>
         ) : (
           <div className="mt-4 space-y-6">
@@ -197,7 +211,7 @@ function HomePage() {
               <section aria-labelledby="combos-heading">
                 <SectionHeader
                   title="Value Combos"
-                  subtitle="Pre-bundled savings straight from POS"
+                  subtitle="Pre-bundled savings"
                   actionLabel="See all combos"
                   actionTo="/menu"
                 />

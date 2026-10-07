@@ -11,7 +11,6 @@ import { FailureState } from "@/shared/components/feedback/FailureState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import {
   StoreCard,
-  StoreMapViewer,
   NearestStoreSheet,
   FulfillmentSheet,
   useStoreSelection,
@@ -19,11 +18,18 @@ import {
   useLocationPermission,
   type Store,
 } from "@/features/stores";
+import { useAddressStore, selectSelectedAddress } from "@/features/addresses/state/addressStore";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { cartRepository, useCartStore, selectHasItems } from "@/features/cart";
 import { cn } from "@/lib/utils";
 import { haversineKm } from "@/features/stores/utils/distance";
+import { isStoreInDeliveryArea, getDeliveryDistanceKm } from "@/features/stores/utils/serviceArea";
+
+/** Rounds a km distance to 1 decimal, or undefined when it is not usable. */
+function roundKm(km: number): number | undefined {
+  return Number.isFinite(km) ? Number.parseFloat(km.toFixed(1)) : undefined;
+}
 
 /**
  * SCR-004 Store Selection.
@@ -68,6 +74,9 @@ function StoreSelectionPage() {
   } = useStoreSelection();
 
   const permission = useLocationPermission();
+  
+  // Get selected delivery address for coordinate precedence
+  const selectedAddress = useAddressStore(selectSelectedAddress);
 
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Store[] | null>(null);
@@ -81,6 +90,37 @@ function StoreSelectionPage() {
   const cartStoreId = useCartStore((s) => s.storeId);
 
   const [sortBy, setSortBy] = useState<"distance" | "alphabetical">("alphabetical");
+
+  // Compute user coordinates with precedence:
+  // (a) selected delivery address with lat/lng
+  // (b) device/cached GPS
+  // (c) null -> show all unblocked
+  const userCoords = useMemo(() => {
+    if (selectedAddress?.lat !== undefined && selectedAddress?.lng !== undefined) {
+      return { lat: selectedAddress.lat, lng: selectedAddress.lng };
+    }
+    return coords ?? permission.coords ?? null;
+  }, [selectedAddress, coords, permission.coords]);
+
+  /**
+   * Delivery-area annotation for one card.
+   *
+   * Out-of-area is only ever true for DELIVERY mode when we actually know
+   * where the user is (no position -> nothing is blocked). The distance is
+   * backfilled from the user's coordinates so the badge can always say
+   * "· X km away" even for a store row that never carried one.
+   */
+  const annotateForArea = (s: Store): { store: Store; outOfArea: boolean } => {
+    const uc = userCoords;
+    if (!uc) return { store: s, outOfArea: false };
+
+    const distanceKm = s.distanceKm ?? roundKm(getDeliveryDistanceKm(s, uc.lat, uc.lng));
+    const store =
+      s.distanceKm === undefined && distanceKm !== undefined ? { ...s, distanceKm } : s;
+    const outOfArea =
+      fulfillment === "delivery" && !isStoreInDeliveryArea(s, uc.lat, uc.lng);
+    return { store, outOfArea };
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -182,10 +222,13 @@ function StoreSelectionPage() {
         setNearestSheet(first);
       }
       if (res.error) {
-        // This occurs if it fell back to mock in dev mode
-        toast("Using simulated location", {
-          description: "GPS failed: " + res.error + ". Fell back to mock Bandra coordinates.",
-        });
+        // P1-8: dev-only diagnostics — production never exposes raw GPS
+        // errors or the mock Bandra fallback coordinates to customers.
+        if (import.meta.env.DEV) {
+          toast("Using simulated location", {
+            description: "GPS failed: " + res.error + ". Fell back to mock Bandra coordinates.",
+          });
+        }
       } else {
         toast.success("Location updated", {
           description: "Showing stores nearest to your GPS position.",
@@ -218,8 +261,18 @@ function StoreSelectionPage() {
     }
   };
 
-  const commitSelection = (s: Store) => {
+  /**
+   * Applies the selection and navigates home.
+   * Returns false when the delivery-area guard rejected it (that path has
+   * already toasted the reason) so callers never announce or clean up as if
+   * the switch had happened.
+   */
+  const commitSelection = (s: Store): boolean => {
     setActiveStore(s);
+    // setActiveStore rejects out-of-area stores while DELIVERY is active (it
+    // toasts the reason) — bail before we announce a selection that never
+    // happened or navigate away as if it had.
+    if (useStoreSelection.getState().activeStore?.id !== s.id) return false;
     if (query.trim()) addSearchTerm(query.trim());
     toast.success(`${s.name} selected`);
     let current = useStoreSelection.getState().fulfillment;
@@ -230,6 +283,7 @@ function StoreSelectionPage() {
       if (current) setFulfillment(current);
     }
     void navigate({ to: "/home" });
+    return true;
   };
 
   const onSelect = (s: Store) => {
@@ -242,13 +296,16 @@ function StoreSelectionPage() {
     commitSelection(s);
   };
 
-  const confirmSwitch = async () => {
+  const confirmSwitch = () => {
     if (!pendingSwitch) return;
-    await cartRepository.clear();
     const next = pendingSwitch;
     setPendingSwitch(null);
     setTimeout(() => {
-      commitSelection(next);
+      // Commit FIRST: if the delivery-area guard rejects the switch, the
+      // cart must survive — a rejection that already cost the items would
+      // be worse than no switch at all.
+      if (!commitSelection(next)) return;
+      void cartRepository.clear();
     }, 200);
   };
 
@@ -264,7 +321,8 @@ function StoreSelectionPage() {
 
   const listStores = useMemo(() => {
     const baseList = searchResults ?? stores;
-    const activeCoords = coords ?? permission.coords;
+    // Use userCoords which includes selected address coords as highest precedence
+    const activeCoords = userCoords;
 
     if (sortBy === "distance" && activeCoords) {
       return [...baseList]
@@ -275,8 +333,16 @@ function StoreSelectionPage() {
         .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
     }
 
+    // Even when not sorting by distance, compute distance for delivery area checking
+    if (activeCoords) {
+      return [...baseList].map((s) => ({
+        ...s,
+        distanceKm: s.distanceKm ?? haversineKm(activeCoords, { lat: s.lat, lng: s.lng }),
+      }));
+    }
+
     return [...baseList].sort((a, b) => a.name.localeCompare(b.name));
-  }, [searchResults, stores, sortBy, coords, permission.coords]);
+  }, [searchResults, stores, sortBy, userCoords]);
 
   const nearbyList = useMemo(
     () => (searchResults ? [] : nearby.slice(0, 3)),
@@ -309,6 +375,12 @@ function StoreSelectionPage() {
       title="Choose a store"
       showTabs={false}
       showTopBar={true}
+      // In-app back: Store Selection sits behind Home in the stack, so the
+      // TopBar must render a real back control. Without `backTo` the header
+      // rendered an empty placeholder and the only way out was the OS back
+      // gesture. Gated on an existing selection so a cold launch (no store
+      // yet) can't bounce back to Home's `replace`-to-/stores redirect loop.
+      backTo={activeStore ? "/home" : undefined}
       rightSlot={
         <button
           type="button"
@@ -516,14 +588,19 @@ function StoreSelectionPage() {
               Recently viewed
             </Text>
             <div className="space-y-2">
-              {recentStores.slice(0, 2).map((s) => (
-                <StoreCard
-                  key={`recent-${s.id}`}
-                  store={s}
-                  selected={activeStore?.id === s.id}
-                  onSelect={onSelect}
-                />
-              ))}
+              {recentStores.slice(0, 2).map((s) => {
+                const { store, outOfArea } = annotateForArea(s);
+                return (
+                  <StoreCard
+                    key={`recent-${s.id}`}
+                    store={store}
+                    selected={activeStore?.id === s.id}
+                    onSelect={onSelect}
+                    outOfArea={outOfArea}
+                    fulfillment={fulfillment}
+                  />
+                );
+              })}
             </div>
           </section>
         )}
@@ -541,14 +618,19 @@ function StoreSelectionPage() {
               Nearby
             </Text>
             <div className="space-y-2">
-              {nearbyList.map((s) => (
-                <StoreCard
-                  key={`nearby-${s.id}`}
-                  store={s}
-                  selected={activeStore?.id === s.id}
-                  onSelect={onSelect}
-                />
-              ))}
+              {nearbyList.map((s) => {
+                const { store, outOfArea } = annotateForArea(s);
+                return (
+                  <StoreCard
+                    key={`nearby-${s.id}`}
+                    store={store}
+                    selected={activeStore?.id === s.id}
+                    onSelect={onSelect}
+                    outOfArea={outOfArea}
+                    fulfillment={fulfillment}
+                  />
+                );
+              })}
             </div>
           </section>
         )}
@@ -556,12 +638,6 @@ function StoreSelectionPage() {
         {/* All / Search results */}
         {!initialLoading && !error && (
           <section aria-labelledby="all-stores">
-            <StoreMapViewer
-              stores={listStores}
-              selectedStore={activeStore}
-              onSelectStore={onSelect}
-              className="mb-4"
-            />
             <div className="mb-3 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
               <Text as="h2" variant="titleMedium" tone="secondary" id="all-stores">
                 {searchResults
@@ -627,14 +703,19 @@ function StoreSelectionPage() {
               />
             ) : (
               <div className="space-y-2">
-                {visibleStores.map((s) => (
-                  <StoreCard
-                    key={s.id}
-                    store={s}
-                    selected={activeStore?.id === s.id}
-                    onSelect={onSelect}
-                  />
-                ))}
+                {visibleStores.map((s) => {
+                  const { store, outOfArea } = annotateForArea(s);
+                  return (
+                    <StoreCard
+                      key={s.id}
+                      store={store}
+                      selected={activeStore?.id === s.id}
+                      onSelect={onSelect}
+                      outOfArea={outOfArea}
+                      fulfillment={fulfillment}
+                    />
+                  );
+                })}
               </div>
             )}
           </section>
@@ -647,6 +728,8 @@ function StoreSelectionPage() {
         store={nearestSheet}
         onConfirm={onConfirmNearest}
         onChoose={() => setNearestSheet(null)}
+        fulfillment={fulfillment}
+        userCoords={userCoords}
       />
 
       <ConfirmDialog

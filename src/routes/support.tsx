@@ -122,12 +122,11 @@ function Page() {
               <ShieldCheck className="w-5 h-5 text-emerald-300" />
               <span>Burgonomics Customer Care</span>
             </div>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 font-bold text-[10px] uppercase">
-              On-Device Drafts
-            </span>
           </div>
           <p className="text-xs text-emerald-100 leading-relaxed">
-            Need help with your meal or delivery? Tickets save on this device for now — for urgent help, contact the store directly. Team inbox coming soon.
+            Need help with your meal or delivery? Send a ticket below and our support team will
+            get back to you — track its status right on this page. For urgent help, contact the
+            store directly.
           </p>
           <button
             type="button"
@@ -239,7 +238,7 @@ function Page() {
         open={openTicket}
         onOpenChange={setOpenTicket}
         title="Report an Issue"
-        description="Tickets save on this device for now — for urgent help, contact the store directly."
+        description="Your ticket is sent to our support team — track it under Your Tickets below. For urgent help, contact the store directly."
       >
         <CreateTicketForm
           key={paymentPrefill ? `pay-${paymentPrefill.paymentId}` : "blank"}

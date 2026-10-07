@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Download, FileText, CheckCircle2, Printer } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
+import { APP } from "@/core/constants/app";
 import type { Order } from "../models";
 
 interface InvoiceDownloadButtonProps {
@@ -148,7 +149,7 @@ export function InvoiceDownloadButton({
         </div>
 
         <div class="footer">
-          Thank you for choosing Burgonomics! • For feedback & support: support@burgonomics.in<br>
+          Thank you for choosing Burgonomics! • For feedback &amp; support: ${esc(APP.supportEmail)}<br>
           This is a computer-generated tax invoice. No physical signature required.
         </div>
 

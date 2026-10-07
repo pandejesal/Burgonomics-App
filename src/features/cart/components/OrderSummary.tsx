@@ -69,7 +69,7 @@ export function OrderSummary({ totals, itemCount, pricingSnapshot, isFallback }:
       {isPricingFallback && (
         <div className="mt-2.5 flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-400 border border-amber-500/20">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-          <span>Prices from cache — Petpooja unavailable</span>
+          <span>Prices from cache — menu service unavailable</span>
         </div>
       )}
 

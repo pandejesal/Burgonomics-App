@@ -38,7 +38,7 @@ export const Route = createFileRoute("/offers")({
       { title: "Offers — Burgonomics" },
       {
         name: "description",
-        content: "Coupons, combos, and limited-time promos, synced from PETPOOJA.",
+        content: "Coupons, combos, and limited-time promos.",
       },
     ],
   }),
@@ -343,7 +343,7 @@ function OffersPage() {
 
         {/* Empty */}
         {status === "empty" && (
-          <PetpoojaSyncPlaceholder storeId={storeId || undefined} />
+          <PetpoojaSyncPlaceholder storeId={storeId || undefined} onRetry={() => void onRefresh()} />
         )}
 
         {/* Sections */}

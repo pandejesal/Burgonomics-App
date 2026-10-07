@@ -3,6 +3,7 @@ import { X, Home, Briefcase, MapPin, Check, Navigation } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { addressRepository } from "@/features/addresses/repositories/AddressRepository";
 import type { Address, AddressLabel } from "@/features/addresses/models";
 import { useLocationPermission } from "@/features/stores/hooks/useLocationPermission";
@@ -228,7 +229,8 @@ export function AddressFormModal({
         onSuccess?.();
         onClose();
       } else {
-        toast.error(res.error.message);
+        console.error("[address] update failed:", res.error);
+        toast.error(toUserMessage(res));
       }
     } else {
       const res = await addressRepository.create(payload);
@@ -238,7 +240,8 @@ export function AddressFormModal({
         onSuccess?.();
         onClose();
       } else {
-        toast.error(res.error.message);
+        console.error("[address] create failed:", res.error);
+        toast.error(toUserMessage(res));
       }
     }
   };
