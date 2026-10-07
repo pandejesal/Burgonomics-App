@@ -37,9 +37,8 @@ function Body() {
           id: authUser.id,
           phone: authUser.phone,
           fullName: authUser.name || "Burger Lover",
-          email: `${authUser.phone}@burgonomics.in`,
-          membershipTier: "silver" as const,
-          createdAt: new Date().toISOString(),
+          // email / membershipTier / createdAt omitted on purpose: the edit
+          // form must never prefill values the backend never stored.
         }
       : null);
 

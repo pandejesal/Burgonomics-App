@@ -4,6 +4,7 @@ import { TextField } from "@/shared/components/common/TextField";
 import { Text } from "@/shared/components/common/Text";
 import { cn } from "@/lib/utils";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
+import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import type { Gender, UserProfile } from "@/features/profile/models";
 
 const GENDERS: Array<{ value: Gender; label: string }> = [
@@ -21,7 +22,12 @@ interface Props {
 
 export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
   const [fullName, setFullName] = React.useState(profile.fullName ?? "");
-  const [email, setEmail] = React.useState(profile.email ?? "");
+  // Prefill only a real, customer-visible address (`?? ""` covers null and
+  // absent); a synthetic `<phone>@burgonomics.in` value is never shown as
+  // if the customer entered it.
+  const [email, setEmail] = React.useState(
+    profile.email && !isSyntheticEmail(profile.email) ? profile.email : "",
+  );
   const [dateOfBirth, setDateOfBirth] = React.useState(profile.dateOfBirth ?? "");
   const [gender, setGender] = React.useState<Gender | undefined>(profile.gender);
   const [error, setError] = React.useState<string | null>(null);
@@ -31,9 +37,15 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
     e.preventDefault();
     setError(null);
     setBusy(true);
+    const typedEmail = email.trim();
+    // Email tri-state — never "": a typed address sets it, a synthetic one
+    // (typed or still stored) is erased with null, empty means untouched.
+    let emailValue: string | null | undefined;
+    if (typedEmail) emailValue = isSyntheticEmail(typedEmail) ? null : typedEmail;
+    else emailValue = isSyntheticEmail(profile.email) ? null : undefined;
     const res = await profileRepository.update({
       fullName: fullName.trim(),
-      email: email.trim() || undefined,
+      email: emailValue,
       dateOfBirth: dateOfBirth || undefined,
       gender,
     });
