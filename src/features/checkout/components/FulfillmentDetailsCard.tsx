@@ -121,7 +121,11 @@ export function FulfillmentDetailsCard({
 
           <div className="flex items-center gap-2 p-2 rounded-xl bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-xs font-medium">
             <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Ready for self-pickup in ~{store?.pickupEtaMinutes ?? 15} mins after ordering</span>
+            <span>
+              {(store?.pickupEtaMinutes ?? store?.etaMinutes) != null
+                ? `Ready for self-pickup in ~${store?.pickupEtaMinutes ?? store?.etaMinutes} mins after ordering`
+                : "Ready for self-pickup after ordering"}
+            </span>
           </div>
         </div>
       ) : (

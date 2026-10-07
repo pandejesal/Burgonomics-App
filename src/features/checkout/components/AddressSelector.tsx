@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 import type { Address } from "@/features/addresses/models";
 import type { Store } from "@/features/stores/models/Store";
+import { DEFAULT_DELIVERY_RADIUS_KM } from "@/features/stores/utils/serviceArea";
 
 export function calculateHaversineKm(
   lat1: number,
@@ -42,7 +43,10 @@ export function AddressSelector({
   onSwitchToTakeaway,
   className,
 }: AddressSelectorProps) {
-  const maxRadiusKm = activeStore?.deliveryRadiusKm ?? 8.0;
+  const maxRadiusKm = activeStore?.deliveryRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM;
+  // Doc-stated radius — display sites may only show a number that the store
+  // actually declared; the fallback above is for logic comparisons alone.
+  const docRadiusKm = activeStore?.deliveryRadiusKm;
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -181,7 +185,7 @@ export function AddressSelector({
                       ) : (
                         <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
                           <AlertTriangle className="w-3.5 h-3.5" />
-                          <span>Out of {maxRadiusKm} km range</span>
+                          <span>{docRadiusKm != null ? `Out of ${docRadiusKm} km range` : "Out of delivery range"}</span>
                         </span>
                       )}
                     </>
@@ -206,7 +210,7 @@ export function AddressSelector({
                 {isSelected && isDeliverable === false && distanceKm !== null && (
                   <div className="mt-1 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs space-y-1.5">
                     <p className="font-medium">
-                      This address is {distanceKm} km away (exceeds our {maxRadiusKm} km delivery limit).
+                      This address is {distanceKm} km away (exceeds our {docRadiusKm != null ? `${docRadiusKm} km ` : ""}delivery limit).
                     </p>
                     {onSwitchToTakeaway && (
                       <button

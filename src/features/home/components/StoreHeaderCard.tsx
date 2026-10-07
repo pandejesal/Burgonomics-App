@@ -66,11 +66,19 @@ export function StoreHeaderCard({ store, fulfillment, className }: Props) {
             <div className="mt-1 inline-flex items-center gap-1 text-text-secondary">
               <Clock className="h-3.5 w-3.5" aria-hidden />
               <span className="type-caption">
+                {/* P1-3: only ever state a time the store doc actually
+                    carries — no derived/derived-from-derived estimates. */}
                 {store.isOpen
                   ? fulfillment === "takeaway"
-                    ? `Ready in ${store.pickupEtaMinutes ?? Math.max(8, Math.floor(store.etaMinutes / 2))} min`
-                    : `${store.etaMinutes} min delivery`
-                  : `Opens at ${store.hours.open}`}
+                    ? store.pickupEtaMinutes != null
+                      ? `Ready in ${store.pickupEtaMinutes} min`
+                      : "Pickup time unavailable"
+                    : store.etaMinutes != null
+                      ? `${store.etaMinutes} min delivery`
+                      : "Delivery time unavailable"
+                  : store.hours
+                    ? `Opens at ${store.hours.open}`
+                    : "Opening hours unavailable"}
               </span>
             </div>
           )}

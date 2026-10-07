@@ -84,9 +84,7 @@ export function FulfillmentSheet({
           <div className="flex flex-wrap items-center gap-2">
             <AppBadge tone="neutral">
               <Clock className="mr-1 inline h-3 w-3" aria-hidden />
-              Ready in {s?.pickupEtaMinutes ??
-                Math.max(8, Math.floor((s?.etaMinutes ?? 20) / 2))}{" "}
-              min
+              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Ready time unavailable"}
             </AppBadge>
             {s?.address && (
               <Text variant="caption" tone="secondary" className="line-clamp-1">

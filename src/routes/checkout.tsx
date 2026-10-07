@@ -40,6 +40,7 @@ import {
 import type { CartTotals } from "@/features/cart/models";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
+import { DEFAULT_DELIVERY_RADIUS_KM } from "@/features/stores/utils/serviceArea";
 import {
   useCheckoutStore,
   AddressSelector,
@@ -246,9 +247,10 @@ export function CheckoutPage() {
         return;
       }
       const dist = calculateHaversineKm(userLat, userLng, storeLat, storeLng);
-      if (dist > (activeStore.deliveryRadiusKm ?? 8.0)) {
+      const docRadiusKm = activeStore.deliveryRadiusKm;
+      if (dist > (docRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM)) {
         setValidationError(
-          `This address is ${dist} km away, which exceeds our ${activeStore.deliveryRadiusKm ?? 8.0} km delivery zone. Please switch to Takeaway.`
+          `This address is ${dist} km away, which exceeds ${docRadiusKm != null ? `our ${docRadiusKm} km delivery zone` : "our delivery zone"}. Please switch to Takeaway.`
         );
         toast.error("Address is outside delivery range.");
         return;
@@ -566,7 +568,7 @@ export function CheckoutPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold text-text">Standard Delivery</p>
-                  <p className="text-[11px] text-text-secondary">Delivered hot in 25-35 mins • No scheduling needed</p>
+                  <p className="text-[11px] text-text-secondary">{activeStore?.etaMinutes != null ? `Delivered hot in ~${activeStore.etaMinutes} mins • No scheduling needed` : "Delivered hot • No scheduling needed"}</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-[#0E4825] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white">
                   ASAP

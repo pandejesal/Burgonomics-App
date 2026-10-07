@@ -97,6 +97,10 @@ function PaymentPage() {
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  // Hoisted above the early returns below: a hook below a conditional return
+  // flips the hook count between renders (guest/empty → authed+filled) and
+  // crashes with minified React #310.
+  const isOnline = useAppConfig((s) => s.isOnline);
   const [preflightIssue, setPreflightIssue] = React.useState<string | null>(null);
   const [abandonmentOpen, setAbandonmentOpen] = React.useState(false);
   // Loop 11: synchronous re-entry guard — status flips async, so rapid
@@ -374,7 +378,6 @@ function PaymentPage() {
   };
 
   const busy = status === "preparing" || status === "waiting" || status === "retrying";
-  const isOnline = useAppConfig((s) => s.isOnline);
   const eta =
     fulfillment === "delivery"
       ? activeStore?.etaMinutes

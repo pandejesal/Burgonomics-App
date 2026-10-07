@@ -181,7 +181,7 @@ function OrderConfirmationPage() {
 
   const eta = order.estimatedAt
     ? Math.max(0, Math.round((+new Date(order.estimatedAt) - Date.now()) / 60_000))
-    : 25;
+    : undefined;
 
   const fulfillmentLabel =
     order.fulfillment === "delivery"
@@ -304,7 +304,7 @@ function OrderConfirmationPage() {
                 </span>
               </div>
               <span className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 px-3 py-1 text-xs font-bold">
-                KOT Dispatched ✓
+                Order sent to kitchen ✓
               </span>
             </div>
           )}
