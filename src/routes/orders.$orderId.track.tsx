@@ -27,7 +27,7 @@ export const Route = createFileRoute("/orders/$orderId/track")({
   head: () => ({
     meta: [
       { title: "Track Order — Burgonomics" },
-      { name: "description", content: "Live real-time status of your Burgonomics order with Porter GPS tracking." },
+      { name: "description", content: "Track your Burgonomics order status, stages, and estimated time." },
     ],
   }),
   component: TrackOrderPage,
@@ -53,7 +53,9 @@ function TrackOrderPage() {
       .getOrder(orderId)
       .then((res) => {
         if (cancelled) return;
-        if (res.success) setOrder(res.data);
+        // Preserve the cached order on ok(null): a backend miss/denial must
+        // not masquerade as "not found" nor wipe the just-placed order.
+        if (res.success && res.data) setOrder(res.data);
         setLoadingOrder(false);
       })
       .catch(() => {
@@ -121,6 +123,21 @@ function TrackOrderPage() {
     order.address?.label ||
     "Delivery Destination";
 
+  // Real outlet + destination coordinates only — no default store/drop
+  // coordinates. Without them the map is replaced by an honest caption.
+  const storeCoords = trackingState.storeLocation;
+  const dropCoords = trackingState.dropLocation;
+  const hasRouteCoords =
+    storeCoords != null &&
+    Number.isFinite(storeCoords.lat) &&
+    Number.isFinite(storeCoords.lng) &&
+    dropCoords != null &&
+    Number.isFinite(dropCoords.lat) &&
+    Number.isFinite(dropCoords.lng);
+
+  // Row renders only for a fee the order actually recorded — never a default.
+  const packingFee = order.totals?.packingFee;
+
   return (
     <ProtectedRoute>
       <AppShell
@@ -149,12 +166,24 @@ function TrackOrderPage() {
             onAdvanceDevStatus={import.meta.env.DEV ? handleDevAdvanceStatus : undefined}
           />
 
-          {/* 2. Live Porter GPS Map with Route Polyline */}
-          <LiveOrderMap
-            tracking={trackingState}
-            storeName={order.store?.name || "Burgonomics Outlet"}
-            customerAddressText={addressText}
-          />
+          {/* 2. Live route map — real outlet + destination coordinates only.
+              Otherwise the stage diagram above stands alone with an honest caption. */}
+          {hasRouteCoords ? (
+            <LiveOrderMap
+              tracking={trackingState}
+              storeName={order.store?.name || "Burgonomics Outlet"}
+              customerAddressText={addressText}
+            />
+          ) : (
+            <div className="rounded-3xl border border-neutral-800 bg-[#0D0D0D] p-5 text-center space-y-1 shadow-md">
+              <p className="text-xs font-black text-white">Live location unavailable</p>
+              <p className="text-[11px] text-neutral-400">
+                {trackingState.isTakeawayOrDineIn
+                  ? "The map appears once outlet coordinates are confirmed."
+                  : "The map appears once outlet and delivery coordinates are confirmed."}
+              </p>
+            </div>
+          )}
 
           {/* 3. Rider Contact Card & Support Escalation CTAs */}
           <RiderContactCard
@@ -211,10 +240,12 @@ function TrackOrderPage() {
                     <span>GST & Taxes</span>
                     <span>{formatINR(order.totals?.taxes ?? 0)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Packaging Charge</span>
-                    <span>{formatINR(order.totals?.packingFee ?? 5)}</span>
-                  </div>
+                  {packingFee != null && (
+                    <div className="flex justify-between">
+                      <span>Packaging Charge</span>
+                      <span>{formatINR(packingFee)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span>Delivery Fee</span>
                     <span>{order.totals?.deliveryFee === 0 ? "FREE" : formatINR(order.totals?.deliveryFee ?? 0)}</span>

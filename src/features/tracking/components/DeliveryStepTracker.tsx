@@ -11,8 +11,18 @@ export function DeliveryStepTracker({
   tracking,
   onAdvanceDevStatus,
 }: DeliveryStepTrackerProps) {
-  const { currentStage, stageName, stageDescription, etaMinutes, isTakeawayOrDineIn, isCancelled } =
-    tracking;
+  const {
+    currentStage,
+    stageName,
+    stageDescription,
+    etaMinutes,
+    isTakeawayOrDineIn,
+    isCancelled,
+    isDelivered,
+    riderName,
+    riderPhone,
+    riderVehicleNumber,
+  } = tracking;
 
   if (isCancelled) {
     return (
@@ -25,6 +35,14 @@ export function DeliveryStepTracker({
       </div>
     );
   }
+
+  // Stage copy must not claim a courier exists before dispatch has actually
+  // assigned one (DISPATCH / TRANSIT / READY land ahead of rider details).
+  const hasCourierDetails = Boolean(riderName || riderPhone || riderVehicleNumber);
+  const courierUnconfirmed = currentStage === 3 && !isTakeawayOrDineIn && !hasCourierDetails;
+  const description = courierUnconfirmed
+    ? "Out for delivery — courier details appear after dispatch"
+    : stageDescription;
 
   const steps = [
     {
@@ -42,7 +60,7 @@ export function DeliveryStepTracker({
     {
       stage: 3,
       title: isTakeawayOrDineIn ? "Ready" : "On the Way",
-      sub: isTakeawayOrDineIn ? "At Counter" : "With Courier",
+      sub: isTakeawayOrDineIn ? "At Counter" : courierUnconfirmed ? "Out for delivery" : "With Courier",
       icon: isTakeawayOrDineIn ? Utensils : Bike,
     },
     {
@@ -64,21 +82,27 @@ export function DeliveryStepTracker({
           <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
             <span>{stageName}</span>
           </h2>
-          <p className="text-xs text-neutral-400 mt-0.5">{stageDescription}</p>
+          <p className="text-xs text-neutral-400 mt-0.5">{description}</p>
         </div>
 
-        {etaMinutes > 0 ? (
+        {isDelivered ? (
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/30 px-3 py-1.5 text-right shrink-0">
+            <span className="text-[9px] font-bold text-emerald-400 block uppercase">Order Status</span>
+            <span className="font-mono font-black text-xs text-emerald-300">Complete ✓</span>
+          </div>
+        ) : etaMinutes == null ? (
+          // No estimate on the order — say so rather than inventing a countdown.
+          <div className="rounded-2xl border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-right shrink-0">
+            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Estimated ETA</span>
+            <span className="font-mono font-black text-xs text-neutral-300">Estimate unavailable</span>
+          </div>
+        ) : (
           <div className="rounded-2xl border border-orange-500/30 bg-orange-950/30 px-3 py-1.5 text-right shrink-0">
             <span className="text-[9px] font-bold text-orange-400 block uppercase">Estimated ETA</span>
             <span className="font-mono font-black text-sm text-[#FF6600] flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              <span>{etaMinutes} mins</span>
+              <span>{etaMinutes > 0 ? `${etaMinutes} mins` : "Due now"}</span>
             </span>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/30 px-3 py-1.5 text-right shrink-0">
-            <span className="text-[9px] font-bold text-emerald-400 block uppercase">Order Status</span>
-            <span className="font-mono font-black text-xs text-emerald-300">Complete ✓</span>
           </div>
         )}
       </div>

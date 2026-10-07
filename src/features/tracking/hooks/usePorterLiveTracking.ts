@@ -10,9 +10,12 @@ export interface PorterTrackingState {
   currentStage: 1 | 2 | 3 | 4;
   stageName: string;
   stageDescription: string;
-  etaMinutes: number;
-  storeLocation: GeoCoordinates;
-  dropLocation: GeoCoordinates;
+  /** Minutes until order.estimatedAt — null when no estimate was provided. */
+  etaMinutes: number | null;
+  /** Real outlet coordinates — null when the order carries none. */
+  storeLocation: GeoCoordinates | null;
+  /** Real destination coordinates — null when the order carries none. */
+  dropLocation: GeoCoordinates | null;
   riderLocation: GeoCoordinates | null;
   riderName?: string;
   riderPhone?: string;
@@ -26,35 +29,56 @@ export interface PorterTrackingState {
 }
 
 /**
+ * Real coordinates only — a non-finite / missing / stringy value yields null
+ * so the UI can hide the map instead of pointing at an invented location.
+ */
+function toCoords(lat: unknown, lng: unknown): GeoCoordinates | null {
+  if (!Number.isFinite(lat as number) || !Number.isFinite(lng as number)) return null;
+  return { lat: lat as number, lng: lng as number };
+}
+
+/**
+ * ETA is derived from the only real source: order.estimatedAt (written at
+ * placement). No stage constants — an order without an estimate has no ETA.
+ */
+function minutesUntilEstimate(estimatedAt?: string): number | null {
+  if (!estimatedAt) return null;
+  const ts = Date.parse(estimatedAt);
+  if (!Number.isFinite(ts)) return null;
+  return Math.max(0, Math.round((ts - Date.now()) / 60_000));
+}
+
+/**
  * Derives normalized 4-stage tracking state from an Order model
  */
 export function getTrackingStateFromOrder(order: Order | null): PorterTrackingState {
-  const defaultStore: GeoCoordinates = {
-    lat: order?.store?.lat ?? 23.0131,
-    lng: order?.store?.lng ?? 72.5085,
-  };
-
-  const defaultDrop: GeoCoordinates = {
-    lat: (order?.address as any)?.lat ?? (order as any)?.deliveryAddress?.lat ?? 23.0338,
-    lng: (order?.address as any)?.lng ?? (order as any)?.deliveryAddress?.lng ?? 72.5262,
-  };
+  // No fabricated coordinates: without real finite values these stay null and
+  // the route renders "Live location unavailable" instead of a fake map.
+  const storeLocation = toCoords(order?.store?.lat, order?.store?.lng);
 
   const isTakeaway = order?.fulfillment === "takeaway" || order?.fulfillment === "dinein";
   const statusCode = (order?.status?.code || "ORDER_PLACED").toUpperCase();
 
+  const addressLat = (order?.address as any)?.lat ?? (order as any)?.deliveryAddress?.lat;
+  const addressLng = (order?.address as any)?.lng ?? (order as any)?.deliveryAddress?.lng;
+  const addressLocation = toCoords(addressLat, addressLng);
+  // Takeaway / dine-in: the outlet IS the destination, so reuse the real
+  // outlet coordinates rather than inventing a drop point.
+  const dropLocation = addressLocation ?? (isTakeaway ? storeLocation : null);
+
   let stage: 1 | 2 | 3 | 4 = 1;
   let stageName = "Order Placed & Confirmed";
   let stageDescription = "Kitchen has acknowledged your meal and is queueing ingredients.";
-  let eta = 25;
 
   if (statusCode.includes("CANCEL")) {
     return {
       currentStage: 1,
       stageName: "Order Cancelled",
       stageDescription: "This order was cancelled. Refund reversal has been initiated.",
-      etaMinutes: 0,
-      storeLocation: defaultStore,
-      dropLocation: defaultDrop,
+      // A cancelled order has nothing left to estimate.
+      etaMinutes: null,
+      storeLocation,
+      dropLocation,
       riderLocation: null,
       partnerName: "Porter Express",
       isTakeawayOrDineIn: isTakeaway,
@@ -68,19 +92,16 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     stage = 2;
     stageName = "Freshly Grilling in Kitchen";
     stageDescription = "Chefs are assembling your fresh artisanal smash burgers.";
-    eta = 18;
   } else if (statusCode.includes("DELIVERY") || statusCode.includes("DISPATCH") || statusCode.includes("TRANSIT") || statusCode.includes("READY")) {
     stage = 3;
     stageName = isTakeaway ? "Packed & Ready for Counter Pickup" : "Out for Delivery with Porter";
     stageDescription = isTakeaway
       ? "Your food is packed warm. Show your Order PIN at the counter."
       : "Porter 2-wheeler courier is en-route with your insulated food pack.";
-    eta = isTakeaway ? 5 : 10;
   } else if (statusCode.includes("DELIVER") || statusCode.includes("COMPLETE") || statusCode.includes("PICKED_UP")) {
     stage = 4;
     stageName = isTakeaway ? "Collected at Counter" : "Delivered at Doorstep";
     stageDescription = "Meal successfully handed over. Enjoy your feast!";
-    eta = 0;
   }
 
   // Rider coordinates — only when the backend actually provides live GPS.
@@ -104,9 +125,10 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     currentStage: stage,
     stageName,
     stageDescription,
-    etaMinutes: eta,
-    storeLocation: defaultStore,
-    dropLocation: defaultDrop,
+    // ETA from order.estimatedAt only — no hardcoded stage countdowns.
+    etaMinutes: minutesUntilEstimate(order?.estimatedAt),
+    storeLocation,
+    dropLocation,
     riderLocation,
     // Loop: no fabricated fallback rider — stage 3 with no assigned rider
     // must show "contact upon dispatch", never a fake name/phone/plate.

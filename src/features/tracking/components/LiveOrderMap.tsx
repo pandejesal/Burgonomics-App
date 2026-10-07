@@ -17,6 +17,11 @@ interface LiveOrderMapProps {
   customerAddressText?: string;
 }
 
+/** Real coordinates only — missing / non-finite values fail closed. */
+function hasCoords(c: { lat: number; lng: number } | null): c is { lat: number; lng: number } {
+  return c != null && Number.isFinite(c.lat) && Number.isFinite(c.lng);
+}
+
 export function LiveOrderMap({
   tracking,
   storeName = "Burgonomics Outlet",
@@ -26,6 +31,9 @@ export function LiveOrderMap({
     storeLocation,
     dropLocation,
     riderLocation,
+    riderName,
+    riderPhone,
+    riderVehicleNumber,
     currentStage,
     isTakeawayOrDineIn,
     trackingUrl,
@@ -37,41 +45,74 @@ export function LiveOrderMap({
   const safeTrackingUrl =
     trackingUrl && isSafeTrackingUrl(trackingUrl) ? trackingUrl : undefined;
 
+  // Route only renders on REAL finite coordinates — never on invented ones.
+  const hasRouteCoords = hasCoords(storeLocation) && hasCoords(dropLocation);
+
+  // A courier pin / GPS chip is only honest when the backend supplied live
+  // rider GPS. Stage 3 can also arrive before dispatch names a rider.
+  const hasCourierDetails = Boolean(riderName || riderPhone || riderVehicleNumber);
+  const courierUnconfirmed =
+    currentStage === 3 && !isTakeawayOrDineIn && !hasCourierDetails;
+  const hasRiderGps = riderLocation != null && hasCoords(riderLocation) && !isTakeawayOrDineIn;
+
   // Normalized coordinate projection for SVG viewport (400x260)
   const mapCoords = useMemo(() => {
-    // Map bounds encompassing store, drop, and rider
+    // Map bounds encompassing store and drop
     const storeX = 70;
     const storeY = 190;
     const dropX = 330;
     const dropY = 60;
 
-    // Rider position interpolated or default to 60% along the path
-    let riderX = storeX + (dropX - storeX) * 0.58;
-    let riderY = storeY + (dropY - storeY) * 0.58;
-
-    if (riderLocation && storeLocation && dropLocation) {
+    // Rider position only when real GPS exists — no default pin at a fixed
+    // percentage along the path.
+    if (riderLocation && hasCoords(riderLocation) && storeLocation && dropLocation) {
       const latSpan = dropLocation.lat - storeLocation.lat || 0.01;
       const lngSpan = dropLocation.lng - storeLocation.lng || 0.01;
       const progress = Math.min(
         Math.max((riderLocation.lat - storeLocation.lat) / latSpan, 0.1),
         0.9
       );
-      riderX = storeX + (dropX - storeX) * progress;
-      riderY = storeY + (dropY - storeY) * progress;
+      return {
+        storeX,
+        storeY,
+        dropX,
+        dropY,
+        riderX: storeX + (dropX - storeX) * progress,
+        riderY: storeY + (dropY - storeY) * progress,
+      };
     }
 
-    return { storeX, storeY, dropX, dropY, riderX, riderY };
+    return { storeX, storeY, dropX, dropY, riderX: null, riderY: null };
   }, [storeLocation, dropLocation, riderLocation]);
 
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${storeLocation.lat},${storeLocation.lng}&destination=${dropLocation.lat},${dropLocation.lng}`;
+  const riderPos =
+    hasRiderGps && mapCoords.riderX != null && mapCoords.riderY != null
+      ? { x: mapCoords.riderX, y: mapCoords.riderY }
+      : null;
+
+  // Directions link from real coordinates only; omitted otherwise.
+  const googleMapsUrl =
+    hasRouteCoords && storeLocation && dropLocation
+      ? `https://www.google.com/maps/dir/?api=1&origin=${storeLocation.lat},${storeLocation.lng}&destination=${dropLocation.lat},${dropLocation.lng}`
+      : null;
+
+  // Defensive backstop — the route already hides the map without coordinates.
+  if (!hasRouteCoords || !storeLocation || !dropLocation) return null;
 
   return (
     <div className="relative rounded-3xl border border-neutral-800 bg-[#080808] overflow-hidden shadow-xl">
       {/* Map Header Overlay */}
       <div className="absolute top-3 left-3 right-3 z-20 flex items-center justify-between pointer-events-none">
+        {/* Header chip: the "live GPS" label + pulsing dot only with real rider GPS */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/80 backdrop-blur-md border border-neutral-700 text-[11px] font-bold text-white shadow-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span>{isTakeawayOrDineIn ? "Outlet Directions Map" : "Live Porter Courier GPS"}</span>
+          {hasRiderGps && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
+          <span>
+            {hasRiderGps
+              ? "Live Porter Courier GPS"
+              : isTakeawayOrDineIn
+                ? "Outlet Directions Map"
+                : "Route overview"}
+          </span>
         </div>
 
         {isReconnecting && (
@@ -147,9 +188,12 @@ export function LiveOrderMap({
             <circle r="22" fill="#FF6600" opacity="0.25" className="animate-pulse" />
           </g>
 
-          {/* Rider Pin (if stage 3) */}
-          {currentStage === 3 && !isTakeawayOrDineIn && (
-            <g transform={`translate(${mapCoords.riderX}, ${mapCoords.riderY})`}>
+          {/* Rider Pin — only when the backend supplied live rider GPS */}
+          {riderPos && (
+            <g
+              data-testid="rider-pin"
+              transform={`translate(${riderPos.x}, ${riderPos.y})`}
+            >
               <circle r="18" fill="#06B6D4" stroke="#FFFFFF" strokeWidth="2" />
               <circle r="28" fill="#06B6D4" opacity="0.3" className="animate-ping" />
             </g>
@@ -179,11 +223,11 @@ export function LiveOrderMap({
           </div>
         </div>
 
-        {/* 3. Rider Marker Tooltip */}
-        {currentStage === 3 && !isTakeawayOrDineIn && (
+        {/* 3. Rider Marker Tooltip — real GPS only */}
+        {riderPos && (
           <div
             className="absolute z-10 -translate-x-1/2 -translate-y-full mb-1 pointer-events-none"
-            style={{ left: `${(mapCoords.riderX / 400) * 100}%`, top: `${(mapCoords.riderY / 260) * 100}%` }}
+            style={{ left: `${(riderPos.x / 400) * 100}%`, top: `${(riderPos.y / 260) * 100}%` }}
           >
             <div className="px-2 py-1 rounded-lg bg-cyan-600 border border-white text-[10px] font-black text-white whitespace-nowrap shadow-lg flex items-center gap-1 animate-bounce">
               <Bike className="w-3.5 h-3.5" />
@@ -191,21 +235,33 @@ export function LiveOrderMap({
             </div>
           </div>
         )}
+
+        {/* 4. No assigned courier yet — honest caption instead of a courier claim */}
+        {courierUnconfirmed && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-black/80 backdrop-blur-md border border-neutral-700 text-[11px] font-bold text-neutral-200 whitespace-nowrap shadow-md pointer-events-none">
+            Out for delivery — courier details appear after dispatch
+          </div>
+        )}
       </div>
 
       {/* Map Action Bar Footer */}
       <div className="p-3 bg-neutral-900/90 border-t border-neutral-800 flex items-center justify-between text-xs">
-        <a
-          href={googleMapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
-        >
-          <Navigation className="w-3.5 h-3.5" />
-          <span>Open in Google Maps</span>
-        </a>
+        {/* Directions button only when both endpoints are real coordinates */}
+        {googleMapsUrl ? (
+          <a
+            href={googleMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
+          >
+            <Navigation className="w-3.5 h-3.5" />
+            <span>Open in Google Maps</span>
+          </a>
+        ) : (
+          <span className="text-[11px] text-neutral-500 italic">Directions unavailable</span>
+        )}
 
-        {safeTrackingUrl && !isTakeawayOrDineIn && (
+        {safeTrackingUrl && riderPos && !isTakeawayOrDineIn && (
           <a
             href={safeTrackingUrl}
             target="_blank"
