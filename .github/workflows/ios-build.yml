@@ -123,3 +123,38 @@ jobs:
           path: Burgonomics-iOS-Simulator-App.zip
           if-no-files-found: error
           retention-days: 14
+
+  ios-archive:
+    name: iOS Archive (unsigned scaffold)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js (v22)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: 📦 Install Node Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: ⚡ Build Web Bundle & Sync Capacitor iOS
+        run: |
+          npm run build:mobile
+          npx cap sync ios
+
+      - name: 🛠️ Show Xcode Version (macos-15 default)
+        run: xcodebuild -version
+
+      - name: 🏗️ Archive iOS App (unsigned)
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath build/App.xcarchive CODE_SIGNING_ALLOWED=NO archive
+
+      - name: 📤 Upload Unsigned iOS Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-unsigned-xcarchive
+          path: build/App.xcarchive
+          if-no-files-found: error
