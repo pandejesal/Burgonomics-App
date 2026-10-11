@@ -24,11 +24,7 @@ export const Route = createFileRoute("/profile/addresses")({
 });
 
 function Page() {
-  return (
-    <ProtectedRoute>
-      <Body />
-    </ProtectedRoute>
-  );
+  return <Body />;
 }
 
 function Body() {

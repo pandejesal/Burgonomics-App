@@ -1,8 +1,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { toast } from "sonner";
 import { storeRepository } from "@/features/stores/repositories/StoreRepository";
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
-import type { Coords } from "@/features/stores/hooks/useLocationPermission";
+import { readCachedCoords, type Coords } from "@/features/stores/hooks/useLocationPermission";
+import { useAddressStore, selectSelectedAddress } from "@/features/addresses/state/addressStore";
+import {
+  isStoreInDeliveryArea,
+  OUT_OF_AREA_MESSAGE,
+} from "@/features/stores/utils/serviceArea";
 
 export type { Store, Fulfillment } from "@/features/stores/models/Store";
 /**
@@ -50,6 +56,26 @@ interface StoreState {
   setError: (message: string | null) => void;
 }
 
+/**
+ * User position in precedence order, shared by the delivery-area guard and
+ * any consumer that needs "where the customer is" (e.g. the Directions origin):
+ * (a) selected delivery address with lat/lng,
+ * (b) device coords from `loadNearby`/`loadStores`, then the cached GPS fix,
+ * (c) null → no blocking (a missing location must never lock the user out).
+ */
+export function resolveDeliveryCoords(deviceCoords: Coords | null): Coords | null {
+  const address = selectSelectedAddress(useAddressStore.getState());
+  if (
+    typeof address?.lat === "number" &&
+    typeof address?.lng === "number" &&
+    Number.isFinite(address.lat) &&
+    Number.isFinite(address.lng)
+  ) {
+    return { lat: address.lat, lng: address.lng };
+  }
+  return deviceCoords ?? readCachedCoords();
+}
+
 /** Check whether a store supports a given fulfillment method. */
 export function storeSupportsFulfillment(
   store: Store | null | undefined,
@@ -73,7 +99,11 @@ export const useStoreSelection = create<StoreState>()(
       searchHistory: [],
       fulfillment: "delivery",
 
-      isHydrated: true,
+      // isHydrated starts FALSE and flips only in onRehydrateStorage below:
+      // the home/menu store-gates treat it as the rehydrate signal, so an
+      // optimistic true here bounces fresh boots to /stores before the
+      // persisted selection loads.
+      isHydrated: false,
       fulfillmentStatus: "none",
       status: "ready",
       stores: [],
@@ -86,18 +116,36 @@ export const useStoreSelection = create<StoreState>()(
           set({ activeStore: null, fulfillmentStatus: "none", isHydrated: true });
           return;
         }
+        // Defensive check: prevent selecting out-of-area stores for delivery mode.
+        // Takeaway/dine-in are never blocked — only DELIVERY enforces the radius,
+        // and only when we actually know where the user is.
+        const state = get();
+        const currentF = state.fulfillment;
+        if (currentF === "delivery") {
+          const where = resolveDeliveryCoords(state.coords);
+          if (where && !isStoreInDeliveryArea(s, where.lat, where.lng)) {
+            // Rejected with user-visible feedback: the UI (StoreCard) dims these
+            // stores, but any non-visual caller must hear why nothing happened.
+            toast.error(OUT_OF_AREA_MESSAGE);
+            return;
+          }
+        }
         const recents = [s, ...get().recentStores.filter((r) => r.id !== s.id)].slice(
           0,
           MAX_RECENTS,
         );
         // Re-evaluate current fulfillment against the new store's support.
-        const currentF = get().fulfillment;
         const stillSupported = storeSupportsFulfillment(s, currentF);
         set({
           activeStore: s,
           recentStores: recents,
           fulfillment: stillSupported ? currentF : null,
           fulfillmentStatus: stillSupported ? (currentF ? "selected" : "none") : "unsupported",
+          // Selecting a store means persistence already happened (this set()
+          // is itself persisted by the middleware). Boot-time hydration is
+          // handled by RootComponent's rehydrate() on mount; flipping this
+          // back to false here would strand /home and /menu on `return null`
+          // forever, because nothing re-hydrates after an in-session selection.
           isHydrated: true,
         });
       },
@@ -229,17 +277,11 @@ export const useStoreSelection = create<StoreState>()(
           return { ...(persisted as object), fulfillment: null } as Partial<StoreState>;
         }
         if (version < 3) {
-          // Loop: v3 drops mock-booted state. Mock catalog ids are str_NNN
-          // (real outlets are branch_* / Firestore ids) — strip them so
-          // upgraded installs re-pick a real store instead of checking out
-          // against a fake outlet. Genuine selections survive untouched.
-          const p = persisted as Record<string, any>;
-          const isMockId = (id: unknown) => typeof id === "string" && /^str_\d+$/.test(id);
-          const activeStore = p.activeStore && !isMockId(p.activeStore.id) ? p.activeStore : null;
-          const recentStores = Array.isArray(p.recentStores)
-            ? p.recentStores.filter((s: any) => s && !isMockId(s.id))
-            : [];
-          return { ...p, activeStore, recentStores } as Partial<StoreState>;
+          // v3 used to strip str_NNN ids as mock-booted state — but the live
+          // backend issues real outlet ids in exactly that shape (str_001…),
+          // so stripping wiped genuine user selections on upgrade. Keep the
+          // persisted selection untouched.
+          return { ...(persisted as object) } as Partial<StoreState>;
         }
         return persisted as Partial<StoreState>;
       },

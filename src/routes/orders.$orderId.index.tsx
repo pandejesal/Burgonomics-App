@@ -24,6 +24,7 @@ import {
   type OrderTrackingSnapshot,
 } from "@/features/orders";
 import { ReviewItemsList } from "@/features/checkout";
+import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/orders/$orderId/")({
@@ -81,7 +82,7 @@ function OrderDetailsPage() {
           orderRepository.getTracking(orderId),
         ]);
         if (cancelled) return;
-        if (o.success) setOrder(o.data);
+        if (o.success && o.data) setOrder(o.data);
         if (t.success) setTracking(t.data);
         if (!o.success) setLoadError(o.error.message);
       } catch (err) {
@@ -131,11 +132,11 @@ function OrderDetailsPage() {
     );
   }
 
+  const { reorder: triggerReorder } = useReorderItems();
+
   const reorder = async () => {
-    const res = await orderRepository.reorder(order.id);
-    if (res.success && res.data) {
-      // Placeholder — takes the user to the menu of the same store.
-      navigate({ to: "/menu" });
+    if (order) {
+      await triggerReorder(order);
     }
   };
 

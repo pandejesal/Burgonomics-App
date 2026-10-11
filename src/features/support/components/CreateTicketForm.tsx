@@ -132,13 +132,13 @@ export function CreateTicketForm({
       {/* 1. Order Selector */}
       {orders.length > 0 && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-bold uppercase text-neutral-400">
+          <label className="block text-xs font-bold uppercase text-text-secondary">
             Select Related Order
           </label>
           <select
             value={selectedOrderId}
             onChange={(e) => setSelectedOrderId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 text-white text-xs font-semibold focus:outline-none focus:border-[#FF6600]"
+            className="w-full px-3 py-2 rounded-xl bg-bg-secondary border border-divider text-text text-xs font-semibold focus:outline-none focus:border-[#FF6600]"
           >
             <option value="">-- No specific order --</option>
             {orders.map((o) => (
@@ -152,7 +152,7 @@ export function CreateTicketForm({
 
       {/* 2. Issue Category Grid */}
       <div className="space-y-1.5">
-        <label className="block text-xs font-bold uppercase text-neutral-400">
+        <label className="block text-xs font-bold uppercase text-text-secondary">
           Issue Category
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -164,7 +164,7 @@ export function CreateTicketForm({
               className={`p-2.5 rounded-2xl border text-left transition-colors cursor-pointer ${
                 category === cat.code
                   ? "bg-[#0E4825] border-emerald-500 text-white shadow-xs"
-                  : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white"
+                  : "bg-bg-secondary border-divider text-text-secondary hover:text-text"
               }`}
             >
               <div className="text-base mb-1">{cat.icon}</div>
@@ -177,10 +177,10 @@ export function CreateTicketForm({
       {/* 3. Description Field */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs">
-          <label className="font-bold uppercase text-neutral-400">
+          <label className="font-bold uppercase text-text-secondary">
             Describe the Problem
           </label>
-          <span className={`text-[11px] ${description.length >= 10 ? "text-emerald-400" : "text-neutral-500"}`}>
+          <span className={`text-[11px] ${description.length >= 10 ? "text-emerald-500 dark:text-emerald-400" : "text-text-secondary"}`}>
             {description.length}/10 min chars
           </span>
         </div>
@@ -189,20 +189,20 @@ export function CreateTicketForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Please share specific details (e.g. burger was cold upon arrival, or missing Peri Peri dip)..."
-          className="w-full px-3 py-2 rounded-2xl bg-neutral-900 border border-neutral-700 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-[#FF6600]"
+          className="w-full px-3 py-2 rounded-2xl bg-bg-secondary border border-divider text-text text-xs placeholder:text-text-secondary focus:outline-none focus:border-[#FF6600]"
           required
         />
       </div>
 
       {/* 4. Photo Upload Area */}
       <div className="space-y-2">
-        <label className="block text-xs font-bold uppercase text-neutral-400">
+        <label className="block text-xs font-bold uppercase text-text-secondary">
           Attach Photos (Optional, max 3)
         </label>
 
         <div className="flex items-center gap-2">
           {previews.map((src, index) => (
-            <div key={index} className="relative w-16 h-16 rounded-xl overflow-hidden border border-neutral-700 group">
+            <div key={index} className="relative w-16 h-16 rounded-xl overflow-hidden border border-divider group">
               <img src={src} alt={`Attachment ${index + 1}`} className="w-full h-full object-cover" />
               <button
                 type="button"
@@ -215,7 +215,7 @@ export function CreateTicketForm({
           ))}
 
           {photoFiles.length < 3 && (
-            <label className="w-16 h-16 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/60 hover:bg-neutral-850 flex flex-col items-center justify-center cursor-pointer text-neutral-400 hover:text-white transition-colors">
+            <label className="w-16 h-16 rounded-xl border border-dashed border-divider bg-bg-secondary hover:bg-surface flex flex-col items-center justify-center cursor-pointer text-text-secondary hover:text-text transition-colors">
               <Camera className="w-5 h-5 mb-0.5" />
               <span className="text-[9px] font-bold">Add Photo</span>
               <input
@@ -231,23 +231,23 @@ export function CreateTicketForm({
       </div>
 
       {/* 5. Support-flow notice — honest generic copy (no unverifiable SLA guarantee) */}
-      <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs text-emerald-300">
+      <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs text-emerald-800 dark:text-emerald-300">
         <div className="flex items-center gap-1.5 font-bold">
-          <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
+          <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>How support works</span>
         </div>
-        <p className="text-[11px] text-neutral-300 leading-relaxed">
+        <p className="text-[11px] text-text-secondary leading-relaxed">
           Our store team is notified as soon as you submit. Track status and responses under Your Tickets below.
         </p>
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-divider">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-xl bg-neutral-900 text-neutral-300 hover:text-white font-bold text-xs"
+            className="px-4 py-2 rounded-xl bg-bg-secondary text-text-secondary hover:text-text border border-divider font-bold text-xs"
           >
             Cancel
           </button>

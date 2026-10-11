@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { useFavoritesStore } from "@/features/favorites/state/favoritesStore";
 import { favoritesRepository } from "@/features/favorites/repositories/FavoritesRepository";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
+import { menuRepository } from "@/features/menu/repositories/MenuRepository";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { HapticService } from "@/core/services/haptics";
 import type { FavoriteKind, Favorite } from "@/features/favorites/models";
@@ -58,15 +59,43 @@ function Body() {
       return;
     }
     void HapticService.impact("light");
+
+    // Never invent a price. The stored price label is trusted only when it
+    // parses to a real amount; otherwise the product document is fetched for
+    // the current menu price. If neither is available the add is refused —
+    // the old `|| 199` fallback could have charged a customer a made-up ₹199.
+    const parsedLabel = fav.priceLabel
+      ? parseInt(fav.priceLabel.replace(/\D/g, ""), 10)
+      : Number.NaN;
+    let unitPrice = Number.isFinite(parsedLabel) && parsedLabel > 0 ? parsedLabel : Number.NaN;
+    let veg = fav.kind === "product";
+    let imageUrl = fav.imageUrl;
+    let fallbackImageUrl = fav.fallbackImageUrl;
+
+    if (!Number.isFinite(unitPrice)) {
+      const res = await menuRepository.getProduct(fav.refId, store.id);
+      const product = res.success ? res.data : null;
+      if (!product || !(product.price > 0)) {
+        toast.error(
+          `We couldn't verify the price for ${fav.name} — please add it from the menu.`,
+        );
+        return;
+      }
+      unitPrice = product.price;
+      veg = product.veg ?? true;
+      imageUrl = product.imageUrl ?? imageUrl;
+      fallbackImageUrl = product.fallbackImageUrl ?? fallbackImageUrl;
+    }
+
     await cartRepository.addItem({
       storeId: store.id,
       productId: fav.refId,
       name: fav.name,
-      unitPrice: fav.priceLabel ? parseInt(fav.priceLabel.replace(/\D/g, ""), 10) || 199 : 199,
+      unitPrice,
       quantity: 1,
-      veg: true,
-      imageUrl: fav.imageUrl,
-      fallbackImageUrl: fav.fallbackImageUrl,
+      veg,
+      imageUrl,
+      fallbackImageUrl,
     });
     toast.success(`Added ${fav.name} to basket`);
   };

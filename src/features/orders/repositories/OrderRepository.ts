@@ -153,6 +153,8 @@ export class OrderRepository {
             city: address.city,
             state: address.state ?? "",
             pincode: address.pincode,
+            lat: address.lat,
+            lng: address.lng,
           }
         : undefined;
 
@@ -174,6 +176,7 @@ export class OrderRepository {
       tipAmount: checkout.tipAmount,
       loyaltyPointsRedeemed: checkout.loyaltyPointsToRedeem,
       address: addressSnapshot,
+      deliveryAddress: addressSnapshot,
       notes: checkout.orderNotes,
       fulfillmentInstructions,
       tableNumber: sel.fulfillment === "dinein" ? checkout.tableNumber : undefined,

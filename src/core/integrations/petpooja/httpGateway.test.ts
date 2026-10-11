@@ -132,7 +132,6 @@ describe("petpooja gateway wiring", () => {
     await gw.pushMenu("str_001");
     const metrics = await gw.getMetrics();
     expect(metrics.openBreakersCount).toBe(1);
-    expect(metrics.simulated).toBe(false);
     const health = await gw.getHealth();
     expect(health.connected).toBe(false);
   });

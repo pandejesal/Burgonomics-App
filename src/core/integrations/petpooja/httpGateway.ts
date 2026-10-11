@@ -395,7 +395,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         errors: 1,
         warnings: 0,
         conflicts: 0,
-        simulated: false,
       };
     }
   }
@@ -523,7 +522,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
           deleted: data.deleted ?? 0,
           conflicts: data.conflicts ?? 0,
           error: data.error ?? null,
-          simulated: data.simulated ?? false,
           source: data.source ?? "httpGateway",
         };
       });
@@ -658,7 +656,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         "# TYPE petpooja_gateway_status gauge",
         "petpooja_gateway_status 1",
       ].join("\n"),
-      simulated: false,
     };
   }
 

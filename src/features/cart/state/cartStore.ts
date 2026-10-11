@@ -5,6 +5,9 @@ import type { Product } from "@/features/menu/models";
 
 export const PRICE_LOCK_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
+/** Money rounding — 2 decimals, matching `pricingEngine`. */
+const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
+
 interface CartState {
   // Persisted
   storeId: string | null;
@@ -150,11 +153,21 @@ export const useCartStore = create<CartState>()(
           let newPrice = line.unitPrice;
           let newAvailability = line.availability;
 
-          if (prod.price !== line.unitPrice) {
+          // `unitPrice` is all-in (base + modifiers), while `prod.price` is the
+          // base menu price. Compare like-for-like on the base so customized
+          // lines don't get a bogus "price updated" message — and so the add-on
+          // deltas survive a menu price change instead of being stripped.
+          const modifierDelta = (line.modifiers ?? []).reduce(
+            (sum, m) => sum + (Number(m.priceDelta) || 0),
+            0,
+          );
+          const lineBasePrice = round2(line.unitPrice - modifierDelta);
+
+          if (prod.price !== lineBasePrice) {
             messages.push(
-              `Price for ${line.name} updated from ₹${line.unitPrice} to ₹${prod.price}.`,
+              `Price for ${line.name} updated from ₹${lineBasePrice} to ₹${prod.price}.`,
             );
-            newPrice = prod.price;
+            newPrice = round2(prod.price + modifierDelta);
             lineChanged = true;
           }
 

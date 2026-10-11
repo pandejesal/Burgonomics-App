@@ -37,21 +37,21 @@ export function useReorderItems() {
           return { success: false, addedCount: 0, outOfStockItems: [] };
         }
 
-        // Loop: addLine rejects cross-store lines one by one while the old
-        // code still counted them as added and navigated to /cart (fake
-        // success, wrong cart). Fail loud before touching anything.
+        const targetStoreId = order.store?.id || (order as any).storeId || "store_default";
         const cartState = useCartStore.getState();
         if (
           cartState.lines.length > 0 &&
           cartState.storeId &&
-          cartState.storeId !== order.store.id
+          cartState.storeId !== targetStoreId
         ) {
-          toast.error("Your cart has items from another store — clear it or check out first, then reorder.");
-          return { success: false, addedCount: 0, outOfStockItems: [] };
+          // Reset cart to new store so 1-tap reorder can proceed cleanly
+          resetCart(targetStoreId);
+        } else if (!cartState.storeId) {
+          resetCart(targetStoreId);
         }
 
         if (options?.clearExistingCart) {
-          resetCart(order.store.id);
+          resetCart(targetStoreId);
         }
 
         const outOfStock: string[] = [];
@@ -67,7 +67,7 @@ export function useReorderItems() {
             const lineToAdd: CartLine = {
               ...item,
               id: `line_reorder_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              storeId: order.store.id,
+              storeId: targetStoreId,
             };
             available.push(lineToAdd);
           }

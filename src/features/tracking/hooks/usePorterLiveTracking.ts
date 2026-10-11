@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Order } from "@/features/orders";
+import { useStoreSelection } from "@/features/stores/state/storeStore";
 
 export interface GeoCoordinates {
   lat: number;
@@ -54,7 +55,26 @@ function minutesUntilEstimate(estimatedAt?: string): number | null {
 export function getTrackingStateFromOrder(order: Order | null): PorterTrackingState {
   // No fabricated coordinates: without real finite values these stay null and
   // the route renders "Live location unavailable" instead of a fake map.
-  const storeLocation = toCoords(order?.store?.lat, order?.store?.lng);
+  let storeLocation = toCoords(order?.store?.lat, order?.store?.lng);
+  // Outlet identified but not coordinate-snapshotted at placement: resolve it
+  // from the already-loaded outlet registry. Real registry entries only — an
+  // unknown id still yields null (no invented pin).
+  if (!storeLocation) {
+    const storeId =
+      order?.store?.id || (order as any)?.branchId || (order as any)?.storeId;
+    if (storeId) {
+      try {
+        const matched = useStoreSelection
+          .getState()
+          .stores.find((s) => s.id === storeId || s.partnerBranchId === storeId);
+        if (matched && Number.isFinite(matched.lat) && Number.isFinite(matched.lng)) {
+          storeLocation = { lat: matched.lat, lng: matched.lng };
+        }
+      } catch {
+        // Store registry unavailable (SSR / test harness) — keep null.
+      }
+    }
+  }
 
   const isTakeaway = order?.fulfillment === "takeaway" || order?.fulfillment === "dinein";
   const statusCode = (order?.status?.code || "ORDER_PLACED").toUpperCase();
@@ -148,6 +168,10 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
 
 export function usePorterLiveTracking(order: Order | null) {
   const [isReconnecting, setIsReconnecting] = useState(false);
+  // The outlet-registry fallback inside getTrackingStateFromOrder reads
+  // useStoreSelection.getState().stores — tracking its identity lets a
+  // transient null (registry not loaded yet) recompute into real coords.
+  const stores = useStoreSelection((s) => s.stores);
 
   // Monitor network online / offline
   useEffect(() => {
@@ -165,7 +189,7 @@ export function usePorterLiveTracking(order: Order | null) {
   const trackingState = useMemo(() => {
     const s = getTrackingStateFromOrder(order);
     return { ...s, isReconnecting };
-  }, [order, isReconnecting]);
+  }, [order, isReconnecting, stores]);
 
   return trackingState;
 }

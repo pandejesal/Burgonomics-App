@@ -23,6 +23,9 @@ import { FloatingCartBar } from "@/features/cart/components/FloatingCartBar";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import type { Product } from "@/features/menu/models";
+import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
+import { orderRepository } from "@/features/orders/repositories/OrderRepository";
+import type { QuickReorderItem } from "@/features/home/models";
 
 export const Route = createFileRoute("/home")({
   head: () => ({
@@ -66,6 +69,24 @@ function HomePage() {
       void load(store.id, user?.id);
     }
   }, [store, user?.id, load]);
+
+  const { reorder } = useReorderItems();
+
+  const handleQuickReorder = useCallback(
+    async (item: QuickReorderItem) => {
+      try {
+        const res = await orderRepository.getOrder(item.orderId);
+        if (res.success && res.data) {
+          await reorder(res.data);
+        } else {
+          void navigate({ to: "/orders" });
+        }
+      } catch {
+        void navigate({ to: "/orders" });
+      }
+    },
+    [reorder, navigate],
+  );
 
   const handleCardClick = useCallback(
     (productId: string) => {
@@ -176,7 +197,7 @@ function HomePage() {
                   actionLabel="View all orders"
                   actionTo="/orders"
                 />
-                <QuickReorderRail items={bundle.quickReorder} />
+                <QuickReorderRail items={bundle.quickReorder} onReorder={handleQuickReorder} />
               </section>
             )}
 

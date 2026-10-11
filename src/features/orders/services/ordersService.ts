@@ -12,7 +12,10 @@
  *   Firestore `orders` (write + read)     → createOrder / listOrders /
  *                                            getOrder / cancelOrder
  *   Petpooja gateway push                  → createOrder (KOT, best-effort)
- *   In-memory ticking                      → getTracking demo progression
+ *   In-memory ticking                      → DEV-only status progression
+ *                                            (compiled OUT of production:
+ *                                            release builds never move an
+ *                                            order's status on-device)
  *   POST   /v1/orders/:id/reorder          → reorder (placeholder: rebuilds
  *                                            cart via menu, backend to follow)
  *
@@ -55,7 +58,8 @@ const STATUS_CATALOG: Record<string, Omit<OrderStatusMeta, "code">> = {
 };
 
 export function resolveStatus(code: OrderStatusCode): OrderStatusMeta {
-  const known = STATUS_CATALOG[code as string];
+  const normalizedKey = (code as string)?.toUpperCase();
+  const known = STATUS_CATALOG[normalizedKey];
   if (known) return { code, ...known };
   return { code, label: "Update in progress", kind: "unknown", terminal: false };
 }
@@ -107,13 +111,33 @@ const TIMELINE_RECIPES: Record<
   ],
 };
 
+function normalizeCodeForFulfillment(
+  fulfillment: Fulfillment,
+  code: OrderStatusCode,
+): OrderStatusCode {
+  if (fulfillment === "dinein") {
+    if (code === "READY_FOR_PICKUP") return "READY_TO_SERVE";
+    if (code === "DELIVERED" || code === "PICKED_UP") return "COMPLETED";
+  }
+  if (fulfillment === "takeaway") {
+    if (code === "READY_TO_SERVE") return "READY_FOR_PICKUP";
+    if (code === "DELIVERED" || code === "COMPLETED") return "PICKED_UP";
+  }
+  if (fulfillment === "delivery") {
+    if (code === "READY_TO_SERVE") return "READY_FOR_PICKUP";
+    if (code === "PICKED_UP" || code === "COMPLETED") return "DELIVERED";
+  }
+  return code;
+}
+
 function buildTimeline(
   fulfillment: Fulfillment,
   currentCode: OrderStatusCode,
   timestamps: Partial<Record<OrderStatusCode, string>>,
 ): OrderTimelineStep[] {
   const recipe = TIMELINE_RECIPES[fulfillment];
-  const currentIdx = recipe.findIndex((s) => s.code === currentCode);
+  const normalizedCode = normalizeCodeForFulfillment(fulfillment, currentCode);
+  const currentIdx = recipe.findIndex((s) => s.code === normalizedCode);
   return recipe.map((step, idx) => {
     const isCurrent = idx === currentIdx;
     const isCompleted = currentIdx >= 0 ? idx < currentIdx : false;
@@ -162,11 +186,19 @@ function nextStatusCode(
 }
 
 /**
- * Advance the status of the mock order based on elapsed time — one step
- * every ~30s. Deterministic so re-opening the app after a while shows
- * realistic progress. Delegates pure status progression to advanceOrder.
+ * Client-side status progression — DEV ONLY.
+ *
+ * Advances a status one step every ~30s so local work without a KDS bump
+ * still shows movement. ZERO-MOCK policy: production builds must never
+ * fabricate order status on-device. Real statuses are written by the
+ * server (`functions` orderStatus bump, dispatch webhooks) and the Partner
+ * KDS, and arrive through `refreshOrder` / `onSnapshot`. The guard is a
+ * compile-time constant, so release bundles drop the whole branch.
  */
+const CLIENT_STATUS_TICK_ENABLED: boolean = import.meta.env.DEV === true;
+
 function tickOrder(order: Order): Order {
+  if (!CLIENT_STATUS_TICK_ENABLED) return order;
   const times = progression.get(order.id) ?? {};
   const result = advanceOrder(order, Date.now(), times as Record<string, string>, 30);
   if (!result.advanced) {
@@ -187,6 +219,44 @@ function tickOrder(order: Order): Order {
 
 function shortCode(id: string): string {
   return `BG-${id.slice(-6).toUpperCase()}`;
+}
+
+/** Unwrap ISO strings and Firestore serverTimestamps; anything else → null. */
+function asIso(value: unknown): string | null {
+  if (typeof value === "string" && !Number.isNaN(+new Date(value))) return value;
+  const ts = value as { toDate?: () => Date } | null;
+  if (ts && typeof ts.toDate === "function") {
+    const d = ts.toDate();
+    if (!Number.isNaN(+d)) return d.toISOString();
+  }
+  return null;
+}
+
+/**
+ * Record the timeline clock for an order hydrated from Firestore.
+ *
+ * Replaces the timestamps the DEV ticker used to synthesise: `PLACED` comes
+ * from the document, and the current step's time from the server's own status
+ * write (`updatedAt`). Missing/odd server values simply leave the step's
+ * timestamp blank — the UI omits it rather than showing an invented time.
+ */
+function seedProgression(id: string, order: Order, server?: Record<string, unknown>): void {
+  const times = { ...(progression.get(id) ?? {}) };
+  const placedAt = times.PLACED ?? order.placedAt;
+  if (!times.PLACED && typeof placedAt === "string") times.PLACED = placedAt;
+
+  const code = order.status?.code;
+  const changedAt = asIso(server?.statusChangedAt ?? server?.updatedAt);
+  const placedMs = placedAt ? +new Date(placedAt) : 0;
+  if (
+    code &&
+    code !== "PLACED" &&
+    changedAt &&
+    (!placedMs || +new Date(changedAt) >= placedMs)
+  ) {
+    times[code] = changedAt;
+  }
+  progression.set(id, times);
 }
 
 // -- Public service ---------------------------------------------------
@@ -219,6 +289,7 @@ export const ordersService = {
       fulfillment: input.fulfillment,
       store: input.store,
       address: input.address,
+      deliveryAddress: input.deliveryAddress ?? input.address,
       items: input.items,
       totals: input.totals,
       promo: input.promo ?? null,
@@ -259,6 +330,7 @@ export const ordersService = {
       if (user) {
         await setDoc(doc(db, "orders", id), {
           ...order,
+          deliveryAddress: input.deliveryAddress ?? input.address,
           userId: user.uid,
           petpoojaStatus,
           ...(petpoojaError ? { petpoojaError } : {}),
@@ -272,6 +344,10 @@ export const ordersService = {
           // Partner branch scoping + server KOT restID resolution read this.
           // Set by ops as stores/{id}.partnerBranchId when outlets are linked.
           branchId: input.store.partnerBranchId ?? null,
+          branchCoordinates:
+            typeof input.store.lat === "number" && typeof input.store.lng === "number"
+              ? { lat: input.store.lat, lng: input.store.lng }
+              : undefined,
         });
       }
     } catch (err) {
@@ -310,20 +386,21 @@ export const ordersService = {
           ),
         ]);
 
-        const fsOrders: Order[] = [];
+        const fsOrders: Array<{ order: Order; server: Record<string, any> }> = [];
         snapshot.forEach((doc) => {
           const data = doc.data() as any;
           // Ensure we don't accidentally leak userId in the frontend Order model
           const { userId, ...orderData } = data;
-          fsOrders.push(orderData as Order);
+          fsOrders.push({ order: orderData as Order, server: data });
         });
 
-        // Merge with memory map for the demo (to allow tickOrder progress)
-        for (const order of fsOrders) {
+        // Merge with the memory map (createOrder/cancelOrder writes land here
+        // too) and re-anchor the timeline clock to the server's own timestamps.
+        for (const { order, server } of fsOrders) {
           if (!orders.has(order.id)) {
             orders.set(order.id, order);
-            progression.set(order.id, { PLACED: order.placedAt });
           }
+          seedProgression(order.id, order, server);
         }
         historyFetchedFor.add(user.uid);
       }
@@ -415,7 +492,7 @@ export const ordersService = {
           if (!isOrderVisibleTo(data, myUid)) return ok(null);
           const { userId, ...orderData } = data;
           orders.set(id, orderData as Order);
-          progression.set(id, { PLACED: orderData.placedAt });
+          seedProgression(id, orderData as Order, data);
         }
       } catch (err: unknown) {
         // Permission/offline failures used to masquerade as not-found with
@@ -447,6 +524,8 @@ export const ordersService = {
       if (!isOrderVisibleTo(data, myUid)) return;
       const { userId, ...orderData } = data;
       orders.set(id, orderData as Order);
+      // Server truth just landed: keep the timeline clock in step with it.
+      seedProgression(id, orderData as Order, data);
     } catch (err) {
       // Best-effort: keep memory, but say so — a silent refresh failure
       // leaves tracking showing pre-terminal states forever.
@@ -468,7 +547,7 @@ export const ordersService = {
     }
     const existing = orders.get(id);
     if (!existing) return ok(null);
-    const order = tickOrder(existing);
+    const order = existing;
     const times = progression.get(id) ?? {};
     const steps = buildTimeline(order.fulfillment, order.status.code, times);
     const etaMinutes = order.estimatedAt

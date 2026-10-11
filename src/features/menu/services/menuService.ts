@@ -20,6 +20,7 @@ import type {
   ProductPage,
   SearchSuggestion,
 } from "@/features/menu/models";
+import { resolveItemImage } from "./menuImageMap";
 
 export type MenuCategory = MenuCategoryModel & { itemCount: number };
 export type MenuItem = Product;
@@ -86,8 +87,10 @@ function mapProductDoc(data: any, docId: string): Product {
 
   const customizations = mapToCustomizationGroups(data.customizations || []);
 
-  const imageUrl =
+  const rawImageUrl =
     data.imageUrl || data.image || data.image_url || data.itemimage_url || undefined;
+  const productName = data.name || data.itemname || "Product";
+  const imageUrl = resolveItemImage(productName, rawImageUrl);
 
   const badges = Array.isArray(data.badges) ? [...data.badges] : [];
   if (
@@ -238,7 +241,7 @@ export const menuService = {
     storeId: string | undefined,
     categoryId: string | undefined,
     page = 1,
-    pageSize = 20,
+    pageSize = 100,
   ): Promise<ApiResult<ProductPage>> {
     try {
       const restId = await resolveRestId(storeId);
@@ -367,12 +370,48 @@ export const menuService = {
     );
   },
 
-  async listTrending(_storeId?: string): Promise<ApiResult<SearchSuggestion[]>> {
-    return ok(
-      ["Classic Veggie Burger", "Spicy Paneer Blast", "Salted Fries", "Chocolate Shake"].map(
-        (label, i) => ({ id: `tr_${i}`, label, kind: "product" as const }),
-      ),
-    );
+  /**
+   * "Trending" seeds the search screen's chips — so they must be real product
+   * names from the store's `products` collection (a fabricated chip that
+   * matches nothing is a dead tap). Ranked bestseller-first, in-stock only;
+   * empty when the menu can't be read, so the section simply hides.
+   */
+  async listTrending(storeId?: string): Promise<ApiResult<SearchSuggestion[]>> {
+    try {
+      const restId = await resolveRestId(storeId);
+      const products = await fetchStoreProductsCached(restId);
+      const candidates = products.filter((p) => p.inStock !== false);
+      if (candidates.length === 0) return ok([]);
+
+      const rank = (p: Product): number => {
+        const signals = [
+          ...(p.badges ?? []).map((b) => b.label),
+          ...(p.tags ?? []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (signals.includes("bestseller") || signals.includes("best seller")) return 0;
+        if (signals.includes("chef") || signals.includes("special")) return 1;
+        if (signals.includes("new")) return 2;
+        return 3;
+      };
+
+      const ranked = candidates
+        .map((product, index) => ({ product, index }))
+        .sort((a, b) => rank(a.product) - rank(b.product) || a.index - b.index)
+        .slice(0, 6);
+
+      return ok(
+        ranked.map(({ product }) => ({
+          id: `tr_${product.id}`,
+          label: product.name,
+          kind: "product" as const,
+          targetId: product.id,
+        })),
+      );
+    } catch {
+      return ok([]);
+    }
   },
 
   async listItems(categoryId?: string): Promise<ApiResult<MenuItem[]>> {

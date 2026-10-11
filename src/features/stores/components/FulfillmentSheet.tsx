@@ -8,6 +8,18 @@ import { Text } from "@/shared/components/common/Text";
 import { formatINR } from "@/core/utils/format";
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
 import { storeSupportsFulfillment } from "@/features/stores/state/storeStore";
+import { MAX_PICKUP_DISTANCE_KM } from "@/features/stores/utils/serviceArea";
+
+/**
+ * MT-05 pickup geofence: Dine-In and Takeaway mean the customer physically
+ * travels to the branch, so they are blocked beyond
+ * {@link MAX_PICKUP_DISTANCE_KM}. Unknown distance (`null`) fails open.
+ */
+function isPickupTooFar(store: Store | null, fulfillment: Fulfillment): boolean {
+  if (fulfillment !== "takeaway" && fulfillment !== "dinein") return false;
+  const distanceKm = store?.distanceKm;
+  return distanceKm != null && distanceKm > MAX_PICKUP_DISTANCE_KM;
+}
 
 interface Props {
   open: boolean;
@@ -79,13 +91,14 @@ export function FulfillmentSheet({
         title: "Takeaway",
         Icon: ShoppingBag,
         description: "Pick up your order directly from the restaurant.",
-        supported: !!s?.supports.takeaway,
+        supported: !!s?.supports.takeaway && !isPickupTooFar(s, "takeaway"),
         detail: (
           <div className="flex flex-wrap items-center gap-2">
             <AppBadge tone="neutral">
               <Clock className="mr-1 inline h-3 w-3" aria-hidden />
-              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Ready time unavailable"}
+              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Ready in 20–25 min"}
             </AppBadge>
+            {isPickupTooFar(s, "takeaway") && <AppBadge tone="error">Too far (&gt;25 km)</AppBadge>}
             {s?.address && (
               <Text variant="caption" tone="secondary" className="line-clamp-1">
                 <MapPin className="mr-1 inline h-3 w-3" aria-hidden />
@@ -100,7 +113,7 @@ export function FulfillmentSheet({
         title: "Dine-In",
         Icon: Utensils,
         description: "Enjoy your meal at the restaurant.",
-        supported: !!s?.supports.dineIn,
+        supported: !!s?.supports.dineIn && !isPickupTooFar(s, "dinein"),
         detail: (
           <div className="flex flex-wrap items-center gap-2">
             <Text variant="caption" tone="secondary" className="line-clamp-1">
@@ -109,13 +122,21 @@ export function FulfillmentSheet({
             <AppBadge tone={s?.isOpen ? "success" : "error"}>
               {s?.isOpen ? "Open now" : "Closed"}
             </AppBadge>
+            <AppBadge tone="neutral">
+              <Clock className="mr-1 inline h-3 w-3" aria-hidden />
+              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Ready in 20–25 min"}
+            </AppBadge>
+            {isPickupTooFar(s, "dinein") && <AppBadge tone="error">Too far (&gt;25 km)</AppBadge>}
           </div>
         ),
       },
     ];
   }, [store]);
 
-  const canConfirm = selected != null && storeSupportsFulfillment(store, selected);
+  const canConfirm =
+    selected != null &&
+    storeSupportsFulfillment(store, selected) &&
+    !isPickupTooFar(store, selected);
 
   return (
     <BottomSheet

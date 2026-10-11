@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_DELIVERY_RADIUS_KM,
+  MAX_PICKUP_DISTANCE_KM,
   OUT_OF_AREA_MESSAGE,
+  PICKUP_TOO_FAR_MESSAGE,
   getDeliveryDistanceKm,
   isStoreInDeliveryArea,
 } from "../src/features/stores/utils/serviceArea";
@@ -73,5 +75,21 @@ describe("serviceArea", () => {
   it("exposes the user-facing out-of-area message with the Takeaway escape hatch", () => {
     expect(OUT_OF_AREA_MESSAGE).toContain("outside your delivery area");
     expect(OUT_OF_AREA_MESSAGE).toContain("Takeaway");
+  });
+});
+
+/**
+ * MT-05 pickup geofence — Takeaway & Dine-In mean the customer travels to
+ * the branch, so both are capped app-wide at MAX_PICKUP_DISTANCE_KM (the
+ * same rule StoreCard, FulfillmentSheet and the stores route enforce).
+ */
+describe("pickup geofence (MT-05)", () => {
+  it("caps Takeaway & Dine-In at 25 km", () => {
+    expect(MAX_PICKUP_DISTANCE_KM).toBe(25);
+  });
+
+  it("exposes the too-far message bound to the same 25 km constant", () => {
+    expect(PICKUP_TOO_FAR_MESSAGE).toContain("Takeaway and Dine-In");
+    expect(PICKUP_TOO_FAR_MESSAGE).toContain(`< ${MAX_PICKUP_DISTANCE_KM} km`);
   });
 });

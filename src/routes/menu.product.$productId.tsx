@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { ShoppingBag, ArrowLeft, Clock, Flame, Sparkles, Plus, Minus, ShieldCheck, Check } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ShoppingBag, ArrowLeft, Clock, ShieldCheck, Plus, Minus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
 
@@ -19,7 +19,7 @@ import type { CartModifier } from "@/features/cart/models";
 import { formatINR } from "@/core/utils/format";
 import { cn } from "@/lib/utils";
 import { ModifierGroupSelector, type ModifierSelections } from "@/features/menu/components/ModifierGroupSelector";
-import { AddonUpsellSection } from "@/features/menu/components/AddonUpsellSection";
+import { NutritionAllergenPanel } from "@/features/menu/components/NutritionAllergenPanel";
 
 export const Route = createFileRoute("/menu/product/$productId")({
   head: () => ({
@@ -33,6 +33,8 @@ export const Route = createFileRoute("/menu/product/$productId")({
 
 interface State {
   status: "loading" | "ready" | "error" | "notfound";
+  /** The `$productId` this state belongs to — guards against stale render. */
+  loadedFor?: string;
   error?: string;
   product?: ProductDetails;
   related: Product[];
@@ -54,25 +56,31 @@ function ProductPage() {
 
   // Customization selections
   const [selections, setSelections] = useState<ModifierSelections>({});
-  const [selectedComboId, setSelectedComboId] = useState<string | null>(null);
+
+  // Monotonic token so a slow response for a previous `$productId` can never
+  // overwrite the current one (that left the page stuck on a skeleton).
+  const loadSeq = useRef(0);
 
   const load = async () => {
+    const seq = ++loadSeq.current;
     setState((s) => ({ ...s, status: "loading", error: undefined }));
     const [pr, rr] = await Promise.all([
       menuRepository.getProduct(productId, store?.id),
       menuRepository.listRelatedProducts(productId, store?.id),
     ]);
+    if (seq !== loadSeq.current) return;
     if (!pr.success) {
-      setState({ status: "error", error: pr.error.message, related: [] });
+      setState({ status: "error", loadedFor: productId, error: pr.error.message, related: [] });
       return;
     }
     if (!pr.data) {
-      setState({ status: "notfound", related: [] });
+      setState({ status: "notfound", loadedFor: productId, related: [] });
       return;
     }
     pushRecentlyViewed(pr.data);
     setState({
       status: "ready",
+      loadedFor: productId,
       product: pr.data,
       related: rr.success ? rr.data : [],
     });
@@ -92,8 +100,19 @@ function ProductPage() {
   };
 
   useEffect(() => {
+    // Same route, new `$productId`: reset per-product UI state so the
+    // previous product's quantity, image index and modifier selections never
+    // leak into the next one.
+    setQty(1);
+    setActiveImage(0);
+    setSelections({});
     void load();
   }, [productId, store?.id]);
+
+  // Rendering gate: `state` lags the route param by one commit, so without
+  // this the previous product paints for a frame (and stayed visible whenever
+  // the navigation was animated) — reported as "tap opens the wrong product".
+  const status = state.loadedFor === productId ? state.status : "loading";
 
   const p = state.product;
   const groups: CustomizationGroup[] = p?.customizations || [];
@@ -136,11 +155,8 @@ function ProductPage() {
       });
     });
 
-    if (selectedComboId === "combo_upgrade_regular") price += 99;
-    if (selectedComboId === "combo_upgrade_premium") price += 149;
-
     return Math.max(0, price);
-  }, [p, groups, selections, selectedComboId]);
+  }, [p, groups, selections]);
 
   const totalPrice = unitPrice * qty;
 
@@ -156,7 +172,7 @@ function ProductPage() {
     return true;
   }, [groups, selections]);
 
-  if (state.status === "loading") {
+  if (status === "loading") {
     return (
       <AppShell title="Product" backTo="/menu" showTabs={false} showTopBar={false}>
         <div className="p-4 space-y-4 max-w-[560px] mx-auto">
@@ -169,7 +185,7 @@ function ProductPage() {
     );
   }
 
-  if (state.status === "error") {
+  if (status === "error") {
     return (
       <AppShell title="Product" backTo="/menu" showTabs={false}>
         <FailureState title="We couldn't load this product" message={state.error} onRetry={load} />
@@ -177,7 +193,7 @@ function ProductPage() {
     );
   }
 
-  if (state.status === "notfound" || !p) {
+  if (status === "notfound" || !p) {
     return (
       <AppShell title="Product" backTo="/menu" showTabs={false}>
         <EmptyState
@@ -196,6 +212,13 @@ function ProductPage() {
   const handleAddToCart = async () => {
     if (!store) {
       toast.error("Please select a store first");
+      return;
+    }
+
+    // Belt-and-braces behind the disabled CTA: an 86ed product must never
+    // reach the cart, even if the button state raced a menu refresh.
+    if (p.inStock === false) {
+      toast.error(`${p.name} is out of stock right now.`);
       return;
     }
 
@@ -222,24 +245,6 @@ function ProductPage() {
         }
       });
     });
-
-    if (selectedComboId === "combo_upgrade_regular") {
-      modifiersList.push({
-        groupId: "meal_combo",
-        groupName: "Combo Upgrade",
-        optionId: "combo_upgrade_regular",
-        name: "Regular Meal: Fries + Drink",
-        priceDelta: 99,
-      });
-    } else if (selectedComboId === "combo_upgrade_premium") {
-      modifiersList.push({
-        groupId: "meal_combo",
-        groupName: "Combo Upgrade",
-        optionId: "combo_upgrade_premium",
-        name: "Gourmet Meal: Loaded Fries + Shake",
-        priceDelta: 149,
-      });
-    }
 
     await cartRepository.addItem({
       storeId: store.id,
@@ -272,7 +277,7 @@ function ProductPage() {
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
           <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3">
             {/* Quantity Stepper (mirrors QuantityStepper: grouped, live, 44px) */}
-            <div role="group" aria-label={`Quantity for ${p.name}`} className="flex h-11 items-center rounded-xl bg-bg-secondary border border-divider p-1">
+            <div role="group" aria-label={`Quantity for ${p.name}`} className="flex h-11 shrink-0 items-center rounded-xl bg-bg-secondary border border-divider p-1">
               <button
                 type="button"
                 onClick={() => {
@@ -281,19 +286,20 @@ function ProductPage() {
                 }}
                 disabled={qty <= 1}
                 aria-label="Decrease quantity"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-text hover:bg-surface active:scale-90 transition disabled:opacity-30 cursor-pointer"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text hover:bg-surface active:scale-90 transition disabled:opacity-30 cursor-pointer"
               >
                 <Minus className="h-4 w-4" />
               </button>
-              <span aria-live="polite" className="w-8 text-center text-xs font-black font-mono text-text">{qty}</span>
+              <span aria-live="polite" className="w-8 min-w-8 shrink-0 text-center text-xs font-black font-mono tabular-nums text-text">{qty}</span>
               <button
                 type="button"
                 onClick={() => {
                   void HapticService.impact("light");
-                  setQty((q) => q + 1);
+                  setQty((q) => Math.min(99, q + 1));
                 }}
+                disabled={qty >= 99}
                 aria-label="Increase quantity"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-text hover:bg-surface active:scale-90 transition cursor-pointer"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text hover:bg-surface active:scale-90 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -384,48 +390,22 @@ function ProductPage() {
             </div>
           </div>
 
-          {/* Key Attributes Pills */}
+          {/* Key Attributes Pills — only claims backed by the product doc */}
           <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
-              <Clock className="h-3.5 w-3.5 text-[#0E4825]" />
-              <span>Prep: {p.prepTimeMinutes ?? 12} mins</span>
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
-              <Flame className="h-3.5 w-3.5 text-[#FF6600]" />
-              <span>Smash Grilled</span>
-            </span>
+            {typeof p.prepTimeMinutes === "number" && p.prepTimeMinutes > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
+                <Clock className="h-3.5 w-3.5 text-[#0E4825]" />
+                <span>Prep: {p.prepTimeMinutes} mins</span>
+              </span>
+            )}
             <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-              <span>Zero Cross-Contamination</span>
+              <span>100% Vegetarian Kitchen</span>
             </span>
           </div>
 
-          {/* Nutrition & Allergen Transparency */}
-          <div className="rounded-2xl border border-divider bg-bg-secondary/50 p-4 space-y-3 shadow-xs">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-amber-400" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                Nutritional & Quality Highlights
-              </h3>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
-                <span className="text-[10px] font-medium text-text-secondary block">Energy</span>
-                <p className="font-mono text-xs font-bold text-text mt-0.5">380 kcal</p>
-              </div>
-              <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
-                <span className="text-[10px] font-medium text-text-secondary block">Protein</span>
-                <p className="font-mono text-xs font-bold text-text mt-0.5">14g</p>
-              </div>
-              <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
-                <span className="text-[10px] font-medium text-text-secondary block">Dietary</span>
-                <p className="text-xs font-bold text-emerald-600 mt-0.5">100% Veg</p>
-              </div>
-            </div>
-            <p className="text-[11px] text-text-secondary leading-snug">
-              <strong>Allergen Notice:</strong> Contains gluten and dairy. Prepared in a dedicated 100% vegetarian kitchen facility.
-            </p>
-          </div>
+          {/* Nutrition & Allergen Transparency — real product data only */}
+          <NutritionAllergenPanel veg={p.veg} nutrition={p.nutrition} />
 
           {/* Interactive Modifier Groups */}
           {groups.map((group) => (
@@ -436,14 +416,6 @@ function ProductPage() {
               onToggleOption={handleToggleOption}
             />
           ))}
-
-          {/* Combo Meal Upsell Section */}
-          <AddonUpsellSection
-            selectedComboId={selectedComboId}
-            onToggleCombo={(id) =>
-              setSelectedComboId((prev) => (prev === id ? null : id))
-            }
-          />
         </div>
       </div>
     </AppShell>

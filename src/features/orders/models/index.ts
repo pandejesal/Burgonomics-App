@@ -105,6 +105,8 @@ export interface OrderAddressSnapshot {
   city: string;
   state: string;
   pincode: string;
+  lat?: number;
+  lng?: number;
 }
 
 /** Placeholder — the real integration owns partner assignment. */
@@ -125,6 +127,8 @@ export interface Order {
 
   store: OrderStoreSnapshot;
   address?: OrderAddressSnapshot;
+  /** Delivery address mirror (with coords) for downstream partner/dispatch readers. */
+  deliveryAddress?: OrderAddressSnapshot;
 
   /** Read-only snapshot of the cart at placement time. */
   items: CartLine[];
@@ -209,6 +213,8 @@ export interface CreateOrderInput {
   /** Loyalty points redeemed (1 pt = ₹1, server re-caps at 20%). */
   loyaltyPointsRedeemed?: number;
   address?: OrderAddressSnapshot;
+  /** Delivery address pass-through for downstream (partner/dispatch) systems. */
+  deliveryAddress?: OrderAddressSnapshot;
   notes?: string;
   fulfillmentInstructions?: string;
   tableNumber?: string;

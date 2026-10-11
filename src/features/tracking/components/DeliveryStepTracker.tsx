@@ -72,17 +72,17 @@ export function DeliveryStepTracker({
   ];
 
   return (
-    <div className="rounded-3xl border border-neutral-800 bg-[#0D0D0D] p-5 space-y-5 shadow-lg">
+    <div className="rounded-3xl border border-divider bg-surface p-5 space-y-5 shadow-lg">
       {/* Tracker Status Banner & ETA */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-500 block mb-0.5">
             Live Order Progress
           </span>
-          <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+          <h2 className="text-base sm:text-lg font-black tracking-tight text-text flex items-center gap-2">
             <span>{stageName}</span>
           </h2>
-          <p className="text-xs text-neutral-400 mt-0.5">{description}</p>
+          <p className="text-xs text-text-secondary mt-0.5">{description}</p>
         </div>
 
         {isDelivered ? (
@@ -92,9 +92,9 @@ export function DeliveryStepTracker({
           </div>
         ) : etaMinutes == null ? (
           // No estimate on the order — say so rather than inventing a countdown.
-          <div className="rounded-2xl border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-right shrink-0">
-            <span className="text-[9px] font-bold text-neutral-400 block uppercase">Estimated ETA</span>
-            <span className="font-mono font-black text-xs text-neutral-300">Estimate unavailable</span>
+          <div className="rounded-2xl border border-divider bg-bg-secondary px-3 py-1.5 text-right shrink-0">
+            <span className="text-[9px] font-bold text-text-secondary block uppercase">Estimated ETA</span>
+            <span className="font-mono font-black text-xs text-text-secondary">Estimate unavailable</span>
           </div>
         ) : (
           <div className="rounded-2xl border border-orange-500/30 bg-orange-950/30 px-3 py-1.5 text-right shrink-0">
@@ -110,7 +110,7 @@ export function DeliveryStepTracker({
       {/* 4-Stage Stepper Progress Bar */}
       <div className="relative pt-2">
         {/* Background connector bar */}
-        <div className="absolute top-[26px] left-6 right-6 h-1 bg-neutral-800 -z-0 rounded-full" />
+        <div className="absolute top-[26px] left-6 right-6 h-1 bg-divider -z-0 rounded-full" />
 
         {/* Active progress fill */}
         <div
@@ -134,19 +134,19 @@ export function DeliveryStepTracker({
                       ? "bg-[#0E4825] border-emerald-500 text-emerald-300 shadow-xs"
                       : isActive
                       ? "bg-[#FF6600] border-orange-400 text-white shadow-md scale-110 animate-bounce"
-                      : "bg-neutral-900 border-neutral-800 text-neutral-500"
+                      : "bg-bg-secondary border-divider text-text-secondary"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
                 </div>
                 <span
                   className={`text-xs font-black mt-2 leading-none ${
-                    isActive ? "text-white font-bold" : isCompleted ? "text-emerald-400" : "text-neutral-500"
+                    isActive ? "text-text font-bold" : isCompleted ? "text-emerald-500" : "text-text-secondary"
                   }`}
                 >
                   {step.title}
                 </span>
-                <span className="text-[10px] text-neutral-400 mt-0.5 leading-tight">{step.sub}</span>
+                <span className="text-[10px] text-text-secondary mt-0.5 leading-tight">{step.sub}</span>
               </div>
             );
           })}
@@ -155,12 +155,12 @@ export function DeliveryStepTracker({
 
       {/* Developer Simulation Trigger */}
       {onAdvanceDevStatus && (
-        <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between text-[11px] text-neutral-400">
+        <div className="pt-2 border-t border-divider flex items-center justify-between text-[11px] text-text-secondary">
           <span className="italic">Sandbox Demo: Advance lifecycle</span>
           <button
             type="button"
             onClick={onAdvanceDevStatus}
-            className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 text-[11px] font-bold transition-colors cursor-pointer"
+            className="px-2.5 py-1 rounded-lg bg-surface hover:bg-bg-secondary border border-divider text-text text-[11px] font-bold transition-colors cursor-pointer"
           >
             Advance Stage ➔
           </button>

@@ -70,8 +70,9 @@ export function AddressSelector({
             No saved delivery addresses found.
           </p>
           <Link
-            to="/profile/addresses"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-xs hover:bg-primary-hover transition-colors"
+            to="/addresses/create"
+            search={{ returnTo: "/checkout" }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-xs hover:bg-primary-hover transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Delivery Address</span>
@@ -231,6 +232,17 @@ export function AddressSelector({
               </div>
             );
           })}
+
+          <div className="pt-1">
+            <Link
+              to="/addresses/create"
+              search={{ returnTo: "/checkout" }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Delivery Address</span>
+            </Link>
+          </div>
         </div>
       )}
     </div>

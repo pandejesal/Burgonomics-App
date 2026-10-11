@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import type { Banner } from "@/features/home/models";
 import { SafeImage } from "@/shared/components/common/SafeImage";
 import { HapticService } from "@/core/services/haptics";
-import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll";
 
 const AUTOPLAY_MS = 5000;
 
@@ -13,17 +12,95 @@ interface Props {
   className?: string;
 }
 
+/** Brand fallback used whenever a banner has no (or no in-scheme) gradient. */
+const BRAND_FALLBACK_GRADIENT = "linear-gradient(to bottom right, #0E4825, #1B5934)";
+
+/**
+ * 60-30-10 brand palette allowed in banner gradients (references/ui_ux_spec.md):
+ * forest greens + hovers, vibrant orange accent + hover, dark-mode emerald text,
+ * and the two sanctioned promo reds already in live banners. Everything else is
+ * off-scheme — notably the #4A2E7A/#6D47B8 purple that shipped on banner_myob —
+ * and renders as the brand green fallback instead. New sanctioned banner colors
+ * must be added here (and to the spec) to render.
+ */
+const BRAND_GRADIENT_HEXES = new Set([
+  // primary forest green + hovers
+  "#0E4825",
+  "#0A371C",
+  "#145830",
+  "#1B5934",
+  "#FF6600",
+  "#E55C00",
+  "#4ADE80",
+  // deep orange shades (dark canvas + --gradient-orange in styles.css)
+  "#CC5200",
+  "#B34700",
+  "#9A3412",
+  // in-use promo banner reds (Big Bang Meal, Peri Peri)
+  "#B2452B",
+  "#E06637",
+  "#7A1F1F",
+  "#C2452D",
+]);
+
+/**
+ * Convert Tailwind gradient utility classes to CSS linear-gradient().
+ * Firestore stores: "bg-gradient-to-br from-[#B2452B] to-[#E06637] text-white"
+ * Returns: "linear-gradient(to bottom right, #B2452B, #E06637)"
+ * Off-scheme colors (purple/blue/pink) never render — see BRAND_GRADIENT_HEXES.
+ */
+function parseTailwindGradient(gradient: string): string {
+  if (!gradient || typeof gradient !== "string") {
+    return BRAND_FALLBACK_GRADIENT;
+  }
+
+  // Extract direction: bg-gradient-to-{t|tr|r|br|b|bl|l|tl}
+  const dirMatch = gradient.match(/bg-gradient-to-(t|tr|r|br|b|bl|l|tl)/i);
+  const directionMap: Record<string, string> = {
+    t: "to top",
+    tr: "to top right",
+    r: "to right",
+    br: "to bottom right",
+    b: "to bottom",
+    bl: "to bottom left",
+    l: "to left",
+    tl: "to top left",
+  };
+  const direction = dirMatch ? directionMap[dirMatch[1]?.toLowerCase()] : "to bottom right";
+
+  // Extract colors from from-[#HEX] to-[#HEX] — handle optional whitespace and case-insensitive hex
+  const fromMatch = gradient.match(/from-\s*\[\s*#([a-fA-F0-9]{3,8})\s*\]/i);
+  const toMatch = gradient.match(/to-\s*\[\s*#([a-fA-F0-9]{3,8})\s*\]/i);
+  const fromColor = fromMatch ? `#${fromMatch[1].toUpperCase()}` : "#0E4825";
+  const toColor = toMatch ? `#${toMatch[1].toUpperCase()}` : "#1B5934";
+
+  // Guard: only brand-sanctioned hexes may render. Off-scheme colors (the
+  // banner_myob purple, or any future blue/pink) fall back to brand green.
+  if (!BRAND_GRADIENT_HEXES.has(fromColor) || !BRAND_GRADIENT_HEXES.has(toColor)) {
+    return BRAND_FALLBACK_GRADIENT;
+  }
+
+  return `linear-gradient(${direction}, ${fromColor}, ${toColor})`;
+}
+
+/**
+ * BannerCarousel — horizontal promo carousel.
+ *
+ * Swipe fixes (2026-10-06):
+ * - Removed `touch-pan-y` which disabled native horizontal panning.
+ * - Replaced useDirectionalScroll with native scroll + pointer drag handling.
+ * - Uses CSS scroll-snap only (no JS scrollLeft writes during drag).
+ * - Colors: gradient from Firestore (Tailwind classes) parsed to CSS linear-gradient()
+ *   so arbitrary runtime values work without build-time safelist.
+ */
 export function BannerCarousel({ banners, className }: Props) {
   const navigate = useNavigate();
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const [active, setActive] = React.useState(0);
   const [isInteracting, setIsInteracting] = React.useState(false);
-  const dragStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const dragRef = React.useRef<{ startX: number; startY: number; scrollLeft: number } | null>(null);
 
-  // Directional scroll: horizontal swipe drives carousel, vertical swipe drives page scroll.
-  useDirectionalScroll(scrollerRef as React.RefObject<HTMLElement | null>);
-
-  // Track active slide from scroll position.
+  // Track active slide from scroll position (native scroll events).
   React.useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -53,23 +130,56 @@ export function BannerCarousel({ banners, className }: Props) {
     el.scrollTo({ left: idx * el.clientWidth, behavior: "smooth" });
   };
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    dragStartRef.current = { x: e.clientX, y: e.clientY };
+  // Pointer drag for swipe (mouse + touch). Replaces useDirectionalScroll.
+  const onPointerDown = (e: React.PointerEvent) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    // Let the browser handle vertical scrolling naturally; only capture horizontal intent.
+    dragRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft };
     setIsInteracting(true);
+    // Set pointer capture so we get move/up even if finger leaves element
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handlePointerUp = (e: React.PointerEvent, ctaHref: string) => {
-    setIsInteracting(false);
-    if (!dragStartRef.current) return;
-    const dx = Math.abs(e.clientX - dragStartRef.current.x);
-    const dy = Math.abs(e.clientY - dragStartRef.current.y);
-    dragStartRef.current = null;
-
-    // Only treat as a tap if no meaningful drag occurred
-    if (dx < 10 && dy < 10) {
-      void HapticService.selection();
-      void navigate({ to: ctaHref });
+  const onPointerMove = (e: React.PointerEvent) => {
+    const el = scrollerRef.current;
+    const drag = dragRef.current;
+    if (!el || !drag) return;
+    // Horizontal drag delta
+    const dx = e.clientX - drag.startX;
+    // Vertical drag delta (to detect vertical scroll intent)
+    const dy = e.clientY - drag.startY;
+    // If mostly vertical, release capture and let page scroll
+    if (Math.abs(dx) < Math.abs(dy) && Math.abs(dy) > 10) {
+      onPointerUp(e);
+      return;
     }
+    el.scrollLeft = drag.scrollLeft - dx;
+  };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    const el = scrollerRef.current;
+    if (drag) {
+      // If minimal movement, treat as tap
+      const dx = Math.abs(e.clientX - drag.startX);
+      if (dx < 10) {
+        // Tap handling is on individual slides via onClick below
+      }
+    }
+    dragRef.current = null;
+    setIsInteracting(false);
+    // Release pointer capture
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const onPointerCancel = (e: React.PointerEvent) => {
+    dragRef.current = null;
+    setIsInteracting(false);
   };
 
   if (banners.length === 0) return null;
@@ -84,15 +194,21 @@ export function BannerCarousel({ banners, className }: Props) {
     >
       <div
         ref={scrollerRef}
-        className="flex w-full overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth touch-pan-y overscroll-x-contain"
+        className="flex w-full overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth overscroll-x-contain"
         style={{ WebkitOverflowScrolling: "touch" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
       >
         {banners.map((b, i) => (
           <div
             key={b.id}
             className="w-full shrink-0 px-4 snap-center cursor-pointer"
-            onPointerDown={handlePointerDown}
-            onPointerUp={(e) => handlePointerUp(e, b.ctaHref)}
+            onClick={() => {
+              void HapticService.selection();
+              void navigate({ to: b.ctaHref });
+            }}
           >
             <div
               role="group"
@@ -100,17 +216,24 @@ export function BannerCarousel({ banners, className }: Props) {
               aria-label={`${b.title}. ${b.subtitle}. ${b.ctaLabel}`}
               className={cn(
                 "relative flex w-full min-h-[160px] items-center justify-between gap-4 overflow-hidden rounded-2xl p-4 text-left shadow-medium transition-transform duration-200 active:scale-[0.99]",
-                b.gradient || "bg-gradient-to-br from-[#0E4825] to-[#1B5934] text-white",
+                // Tailwind utility for text color only (white); gradient is applied via inline style
+                "text-white",
               )}
+              // Apply gradient via inline style so arbitrary Firestore values work.
+              // Firestore stores Tailwind classes: "bg-gradient-to-br from-[#B2452B] to-[#E06637] text-white"
+              // We parse them to CSS linear-gradient() for runtime rendering.
+              style={{
+                background: b.gradient ? parseTailwindGradient(b.gradient) : BRAND_FALLBACK_GRADIENT,
+              }}
             >
               {/* Ambient lighting */}
               <div className="absolute inset-0 bg-black/10 mix-blend-overlay pointer-events-none" />
 
               <div className="relative min-w-0 flex-1 z-10">
                 <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 backdrop-blur-sm text-[10px] font-extrabold uppercase tracking-wider text-amber-300 border border-white/10">
-                  <span>BURG50</span>
+                  <span>CRAFT BURGERS</span>
                   <span>•</span>
-                  <span>50% OFF</span>
+                  <span>FRESH DAILY</span>
                 </div>
 
                 <h3 className="font-display text-2xl font-black mt-2 leading-tight tracking-tight text-white drop-shadow-sm">

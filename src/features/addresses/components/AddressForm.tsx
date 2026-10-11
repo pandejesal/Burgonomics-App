@@ -10,11 +10,13 @@ import type { Address, AddressLabel } from "@/features/addresses/models";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { useLocationPermission } from "@/features/stores/hooks/useLocationPermission";
 import { HapticService } from "@/core/services/haptics";
+import { toast } from "sonner";
+import { sanitizePhone } from "@/features/auth/utils/validators";
 
 // Leaflet imports
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 // Create a custom Orange (Accent 10%) marker pin for the map
 const customMarkerHtml = `
@@ -64,6 +66,15 @@ function MapController({ center }: { center: { lat: number; lng: number } }) {
   return null;
 }
 
+function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
 export function AddressForm({ initial, onCancel, onSaved }: Props) {
   const profile = useProfileStore((s) => s.profile);
   const {
@@ -96,6 +107,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   );
 
   const markerRef = useRef<L.Marker>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   // GPS auto-center + auto-geocode runs once per mount; later watchPosition
   // fixes must not yank the pin back or overwrite typed fields.
   const autoLocatedRef = useRef(false);
@@ -172,6 +184,13 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     }
   }, [reverseGeocode]);
 
+  const handleMapClick = useCallback((lat: number, lng: number) => {
+    autoLocatedRef.current = true;
+    setMapCenter({ lat, lng });
+    setPinPlaced(true);
+    void reverseGeocode(lat, lng);
+  }, [reverseGeocode]);
+
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     e.target.scrollIntoView({ behavior: "smooth", block: "center" });
   };
@@ -193,14 +212,43 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
 
     setBusy(true);
 
+    // Explicit JS validation — native constraint validation can fail
+    // silently inside Android WebView, so surface errors ourselves.
+    if (!line1.trim()) {
+      setError("Please enter your flat / house / building number.");
+      toast.error("Please enter your flat / house / building number.");
+      setBusy(false);
+      return;
+    }
+    if (!city.trim()) {
+      setError("Please enter your city.");
+      toast.error("Please enter your city.");
+      setBusy(false);
+      return;
+    }
+    const cleanPincode = pincode.replace(/\D/g, "");
+    if (cleanPincode.length !== 6) {
+      setError("Please enter a valid 6-digit pincode.");
+      toast.error("Please enter a valid 6-digit pincode.");
+      setBusy(false);
+      return;
+    }
+
+    if (!pinPlaced) {
+      setError("Please tap the map or use 'Locate Me' to confirm your delivery pin location.");
+      toast.error("Please tap the map or use 'Locate Me' to confirm your delivery pin location.");
+      setBusy(false);
+      return;
+    }
+
+    const rawPhone = profile?.phone ? sanitizePhone(profile.phone) : "";
+    const contactPhone = rawPhone && rawPhone.length === 10 ? rawPhone : "";
+
     const payload = {
       label,
       customLabel: label === "other" ? customLabel.trim() || undefined : undefined,
       contactName: profile?.fullName || "Guest Customer",
-      // Loop: was profile?.phone || "0000000000" — a fabricated number
-      // persisted into address records (rider/SMS downstream). Absent
-      // phone stays empty; update-path validation already skips empty.
-      contactPhone: profile?.phone || "",
+      contactPhone,
       line1: line1.trim(),
       line2: line2.trim() || undefined,
       landmark: landmark.trim() || undefined,
@@ -219,6 +267,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     setBusy(false);
     if (!res.success) {
       setError(res.error.message);
+      toast.error(res.error.message);
       return;
     }
     void HapticService.notification("success");
@@ -231,7 +280,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       <div className="text-center space-y-1">
         <h2 className="type-headline-large text-primary">WHERE'S THE FOOD GOING?</h2>
         <p className="type-body-medium text-text-secondary font-medium">
-          Drag the orange pin to set your exact location
+          Tap map or drag the orange pin to set your exact location
         </p>
       </div>
 
@@ -254,6 +303,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
               icon={customIcon}
             />
             <MapController center={mapCenter} />
+            <MapClickHandler onMapClick={handleMapClick} />
           </MapContainer>
         </div>
 
@@ -298,6 +348,8 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       {/* Form Fields */}
       <form
         id="address-entry-form"
+        ref={formRef}
+        noValidate
         onSubmit={submit}
         className="space-y-5 bg-surface rounded-[var(--radius-large)] p-1"
       >

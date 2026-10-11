@@ -20,6 +20,7 @@ import { Route as OffersRouteImport } from './routes/offers'
 import { Route as PaymentRouteImport } from './routes/payment'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SearchRouteImport } from './routes/search'
+import { Route as SplashRouteImport } from './routes/splash'
 import { Route as StoresRouteImport } from './routes/stores'
 import { Route as SupportRouteImport } from './routes/support'
 import { Route as TermsRouteImport } from './routes/terms'
@@ -92,6 +93,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SplashRoute = SplashRouteImport.update({
+  id: '/splash',
+  path: '/splash',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StoresRoute = StoresRouteImport.update({
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/payment': typeof PaymentRoute
   '/privacy': typeof PrivacyRoute
   '/search': typeof SearchRoute
+  '/splash': typeof SplashRoute
   '/stores': typeof StoresRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
@@ -229,6 +236,7 @@ export interface FileRoutesByTo {
   '/payment': typeof PaymentRoute
   '/privacy': typeof PrivacyRoute
   '/search': typeof SearchRoute
+  '/splash': typeof SplashRoute
   '/stores': typeof StoresRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
@@ -261,6 +269,7 @@ export interface FileRoutesById {
   '/payment': typeof PaymentRoute
   '/privacy': typeof PrivacyRoute
   '/search': typeof SearchRoute
+  '/splash': typeof SplashRoute
   '/stores': typeof StoresRoute
   '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
@@ -294,6 +303,7 @@ export interface FileRouteTypes {
     | '/payment'
     | '/privacy'
     | '/search'
+    | '/splash'
     | '/stores'
     | '/support'
     | '/terms'
@@ -325,6 +335,7 @@ export interface FileRouteTypes {
     | '/payment'
     | '/privacy'
     | '/search'
+    | '/splash'
     | '/stores'
     | '/support'
     | '/terms'
@@ -356,6 +367,7 @@ export interface FileRouteTypes {
     | '/payment'
     | '/privacy'
     | '/search'
+    | '/splash'
     | '/stores'
     | '/support'
     | '/terms'
@@ -388,6 +400,7 @@ export interface RootRouteChildren {
   PaymentRoute: typeof PaymentRoute
   PrivacyRoute: typeof PrivacyRoute
   SearchRoute: typeof SearchRoute
+  SplashRoute: typeof SplashRoute
   StoresRoute: typeof StoresRoute
   SupportRoute: typeof SupportRoute
   TermsRoute: typeof TermsRoute
@@ -485,6 +498,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/splash': {
+      id: '/splash'
+      path: '/splash'
+      fullPath: '/splash'
+      preLoaderRoute: typeof SplashRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stores': {
@@ -628,6 +648,7 @@ const rootRouteChildren: RootRouteChildren = {
   PaymentRoute: PaymentRoute,
   PrivacyRoute: PrivacyRoute,
   SearchRoute: SearchRoute,
+  SplashRoute: SplashRoute,
   StoresRoute: StoresRoute,
   SupportRoute: SupportRoute,
   TermsRoute: TermsRoute,

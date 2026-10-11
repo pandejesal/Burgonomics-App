@@ -14,6 +14,18 @@ export const OUT_OF_AREA_MESSAGE =
   "This store is outside your delivery area — switch to Takeaway or pick a nearer store.";
 
 /**
+ * Hard ceiling (km) for the Dine-In & Takeaway pickup geofence (MT-05).
+ * Delivery has its own per-store radius (`deliveryRadiusKm`); pickup modes
+ * are capped app-wide at this distance so food is never collected from a
+ * branch an hour away.
+ */
+export const MAX_PICKUP_DISTANCE_KM = 25;
+
+/** User-facing message shown when a branch is beyond the pickup geofence. */
+export const PICKUP_TOO_FAR_MESSAGE =
+  "Takeaway and Dine-In are restricted to nearby branches (< 25 km).";
+
+/**
  * Straight-line kilometres between a store and the user.
  * Returns `Infinity` when either side has no usable coordinates, so callers
  * can tell "unknown position" apart from "very far away".

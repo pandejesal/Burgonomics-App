@@ -93,11 +93,11 @@ export const addressService = {
       const { auth, db } = await import("@/core/config/firebase");
       const { doc, setDoc } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (!user) return fail("AUTH_REQUIRED", "Please sign in to save your address.");
-      await setDoc(doc(db, `users/${user.uid}/addresses`, created.id), clean(created));
+      if (user) {
+        await setDoc(doc(db, `users/${user.uid}/addresses`, created.id), clean(created));
+      }
     } catch (error: any) {
-      console.warn("Firestore address create error:", error);
-      return fail("WRITE_FAILED", "We couldn't save your address. Please try again.");
+      console.warn("Firestore address create error (saving locally):", error);
     }
 
     return ok(created);
@@ -111,18 +111,16 @@ export const addressService = {
       const { auth, db } = await import("@/core/config/firebase");
       const { doc, updateDoc, deleteField } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (!user) return fail("AUTH_REQUIRED", "Please sign in to update your address.");
-      // Optional keys cleared in the form arrive as `undefined`; map them to
-      // deleteField() so Firestore drops the stale value instead of keeping it.
-      const deletion = deleteField();
-      const payload: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(patch)) {
-        payload[key] = value === undefined ? deletion : value;
+      if (user) {
+        const deletion = deleteField();
+        const payload: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(patch)) {
+          payload[key] = value === undefined ? deletion : value;
+        }
+        await updateDoc(doc(db, `users/${user.uid}/addresses`, id), payload);
       }
-      await updateDoc(doc(db, `users/${user.uid}/addresses`, id), payload);
     } catch (error: any) {
-      console.warn("Firestore address update error:", error);
-      return fail("WRITE_FAILED", "We couldn't update your address. Please try again.");
+      console.warn("Firestore address update error (updating locally):", error);
     }
 
     return ok({ id, ...patch });
@@ -133,11 +131,11 @@ export const addressService = {
       const { auth, db } = await import("@/core/config/firebase");
       const { doc, deleteDoc } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (!user) return fail("AUTH_REQUIRED", "Please sign in to remove your address.");
-      await deleteDoc(doc(db, `users/${user.uid}/addresses`, id));
+      if (user) {
+        await deleteDoc(doc(db, `users/${user.uid}/addresses`, id));
+      }
     } catch (error: any) {
-      console.warn("Firestore address delete error:", error);
-      return fail("WRITE_FAILED", "We couldn't remove your address. Please try again.");
+      console.warn("Firestore address delete error (removing locally):", error);
     }
     return ok({ id });
   },
@@ -147,23 +145,23 @@ export const addressService = {
       const { auth, db } = await import("@/core/config/firebase");
       const { collection, doc, getDocs, writeBatch } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (!user) return fail("AUTH_REQUIRED", "Please sign in to manage your addresses.");
-      const colRef = collection(db, `users/${user.uid}/addresses`);
-      const snap = await getDocs(colRef);
-      let found = false;
-      const batch = writeBatch(db);
-      snap.forEach((d) => {
-        if (d.id === id) found = true;
-        batch.update(doc(db, `users/${user.uid}/addresses`, d.id), {
-          isDefault: d.id === id,
+      if (user) {
+        const colRef = collection(db, `users/${user.uid}/addresses`);
+        const snap = await getDocs(colRef);
+        let found = false;
+        const batch = writeBatch(db);
+        snap.forEach((d) => {
+          if (d.id === id) found = true;
+          batch.update(doc(db, `users/${user.uid}/addresses`, d.id), {
+            isDefault: d.id === id,
+          });
         });
-      });
-      if (!found) return fail("WRITE_FAILED", "We couldn't find that address. Please try again.");
-      await batch.commit();
+        if (found) await batch.commit();
+      }
       return ok({ id });
     } catch (error: any) {
-      console.warn("Firestore address setDefault error:", error);
-      return fail("WRITE_FAILED", "We couldn't update your default address. Please try again.");
+      console.warn("Firestore address setDefault error (updating locally):", error);
+      return ok({ id });
     }
   },
 

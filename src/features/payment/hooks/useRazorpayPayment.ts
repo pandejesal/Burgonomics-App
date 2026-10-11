@@ -97,6 +97,19 @@ export function useRazorpayPayment(options?: UseRazorpayPaymentOptions) {
                 transactionId: result.paymentId,
               });
 
+              // Paid-but-no-order must NEVER celebrate: mirror the fail-closed
+              // branches in payment.tsx/checkout.tsx (support CTA, no cart
+              // clear, no confirmation navigation).
+              if (!created.success) {
+                setStatus("failed");
+                const message =
+                  "Payment succeeded but the order record could not be created. Contact support with your payment ID — do not pay again.";
+                setFailure({ code: "ORDER_CREATE_FAILED", message, retryable: false });
+                toast.error("Payment received — order pending", { description: message });
+                options?.onFailure?.({ code: "ORDER_CREATE_FAILED", message });
+                return;
+              }
+
               setStatus("success");
               AudioService.playSuccess();
               void HapticService.notification("success");

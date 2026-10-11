@@ -1,9 +1,76 @@
-import { describe, it, expect } from "vitest";
+/** @vitest-environment jsdom */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as React from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
+
+// React act() needs this flag outside of Jest.
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("leaflet", () => ({
+  default: {
+    divIcon: () => ({}),
+    icon: () => ({}),
+    map: () => ({}),
+    marker: () => ({}),
+    latLng: () => ({}),
+    latLngBounds: () => ({ fitBounds: () => {} }),
+  },
+}));
+
+vi.mock("react-leaflet", () => ({
+  MapContainer: ({ children }: any) => <div className="leaflet-map-mock">{children}</div>,
+  TileLayer: () => null,
+  Marker: () => null,
+  Polyline: () => null,
+  useMap: () => ({ setView: () => {}, fitBounds: () => {} }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+// The card links through TanStack Router but mounts standalone here;
+// TanStack's Link dereferences the router, so stub it with a plain anchor
+// that still resolves the `search` object into query params.
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    Link: ({
+      to,
+      search,
+      className,
+      children,
+      ...rest
+    }: {
+      to: string;
+      search?: Record<string, string>;
+      className?: string;
+      children?: React.ReactNode;
+    }) => (
+      <a
+        href={search ? `${to}?${new URLSearchParams(search).toString()}` : String(to)}
+        className={className}
+        {...rest}
+      >
+        {children}
+      </a>
+    ),
+  };
+});
+
+vi.mock("@/features/orders/services/ordersService", () => ({
+  ordersService: { cancelOrder: vi.fn() },
+}));
+
 import { getTrackingStateFromOrder } from "../features/tracking/hooks/usePorterLiveTracking";
 import { LiveOrderMap } from "../features/tracking/components/LiveOrderMap";
 import { DeliveryStepTracker } from "../features/tracking/components/DeliveryStepTracker";
+import { CancellationGraceCard } from "./orders.$orderId.track";
+import { ordersService } from "@/features/orders/services/ordersService";
+import { toast } from "sonner";
 import type { Order } from "../features/orders";
 
 describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
@@ -156,9 +223,38 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
       expect(html).not.toContain("rider-pin");
       expect(html).not.toContain("Porter En-Route");
       expect(html).not.toContain("Porter Live Radar");
-      // Directions link uses only the real coordinates supplied above.
+      // Directions link: kitchen branch pickup is the ORIGIN, the customer's
+      // delivery address is the DESTINATION (mirrors the drawn polyline).
       expect(html).toContain("origin=23.0131,72.5085");
       expect(html).toContain("destination=23.0338,72.5262");
+    });
+
+    it("routes from the kitchen branch to the customer address", () => {
+      const state = getTrackingStateFromOrder(withCoordsOrder);
+      // Real delivery address coordinates become the route destination.
+      expect(state.dropLocation).toEqual({ lat: 23.0338, lng: 72.5262 });
+
+      const html = renderToStaticMarkup(<LiveOrderMap tracking={state} />);
+      const originIdx = html.indexOf("origin=23.0131,72.5085");
+      const destIdx = html.indexOf("destination=23.0338,72.5262");
+      expect(originIdx).toBeGreaterThan(-1);
+      // Origin precedes destination in the href.
+      expect(destIdx).toBeGreaterThan(originIdx);
+    });
+
+    it("sends no origin for takeaway, where the drop point IS the outlet", () => {
+      const order = {
+        id: "ord_404",
+        status: { code: "READY", label: "Ready", kind: "in_progress", terminal: false },
+        fulfillment: "takeaway",
+        store: { id: "s1", name: "Burgonomics CG Road", lat: 23.0131, lng: 72.5085 },
+      } as unknown as Order;
+
+      const html = renderToStaticMarkup(
+        <LiveOrderMap tracking={getTrackingStateFromOrder(order)} />,
+      );
+      expect(html).not.toContain("origin=");
+      expect(html).toContain("destination=23.0131,72.5085");
     });
 
     it("renders a rider pin and GPS chip only when the backend supplied rider GPS", () => {
@@ -189,7 +285,7 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
       const html = renderToStaticMarkup(<LiveOrderMap tracking={state} />);
       expect(html).not.toBe("");
       expect(html).toContain("Outlet Directions Map");
-      expect(html).toContain("origin=23.0131,72.5085");
+      expect(html).toContain("destination=23.0131,72.5085");
       expect(html).not.toContain("rider-pin");
     });
   });
@@ -257,5 +353,204 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
       expect(html).toContain("With Courier");
       expect(html).not.toContain("courier details appear after dispatch");
     });
+  });
+});
+
+describe("7. 60-Second Cancellation Grace Flow", () => {
+  const buildOrder = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: "ord_grace_1",
+      shortCode: "BG-GRACE1",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      fulfillment: "delivery",
+      store: { id: "s1", name: "Burgonomics CG Road", phone: "+91 98250 88991" },
+      items: [{ name: "Smashed Burger", quantity: 1, unitPrice: 299 }],
+      totals: { subtotal: 349, taxes: 50, deliveryFee: 0, grandTotal: 349 },
+      payment: { method: "online", label: "Paid Online", status: "paid" },
+      placedAt: new Date(Date.now() - 10_000).toISOString(),
+      ...overrides,
+    }) as unknown as Order;
+
+  async function mount(element: React.ReactElement) {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(element);
+    });
+    return {
+      container,
+      unmount: async () => {
+        await act(async () => {
+          root.unmount();
+        });
+        container.remove();
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.mocked(ordersService.cancelOrder).mockReset();
+    vi.mocked(toast.success).mockReset();
+    vi.mocked(toast.error).mockReset();
+    vi.mocked(ordersService.cancelOrder).mockImplementation(async (id: string) => ({
+      success: true,
+      data: {
+        ...buildOrder({ id }),
+        status: { code: "CANCELLED", label: "Cancelled", kind: "cancelled", terminal: true },
+      },
+    }));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders the live countdown while the order is still inside the 60s window", async () => {
+    const { container, unmount } = await mount(<CancellationGraceCard order={buildOrder()} />);
+
+    // placedAt is 10s old → 50s of grace remaining.
+    expect(container.textContent).toContain("Cancellation Grace Period: 50s remaining");
+    expect(container.querySelector('[data-testid="cancel-order-button"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="call-store-link"]')).toBeNull();
+    await unmount();
+  });
+
+  it("opens the confirm dialog and calls cancelOrder with a refund toast on confirm", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onOrderCancelled = vi.fn();
+    const { container, unmount } = await mount(
+      <CancellationGraceCard order={buildOrder()} onOrderCancelled={onOrderCancelled} />,
+    );
+
+    container.querySelector<HTMLButtonElement>('[data-testid="cancel-order-button"]')!.click();
+    await act(async () => {});
+
+    expect(confirmSpy).toHaveBeenCalledWith("Cancel order for an instant full refund?");
+    expect(ordersService.cancelOrder).toHaveBeenCalledWith("ord_grace_1");
+    expect(toast.success).toHaveBeenCalledWith("Order cancelled. Refund initiated.");
+    // Route reloads with the CANCELLED order the service returned.
+    expect(onOrderCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "ord_grace_1",
+        status: expect.objectContaining({ code: "CANCELLED" }),
+      }),
+    );
+    await unmount();
+  });
+
+  it("does not cancel when the customer dismisses the confirmation", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { container, unmount } = await mount(<CancellationGraceCard order={buildOrder()} />);
+
+    container.querySelector<HTMLButtonElement>('[data-testid="cancel-order-button"]')!.click();
+    await act(async () => {});
+
+    expect(ordersService.cancelOrder).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it("switches to 'Call Store' once the 60s window has expired", async () => {
+    const { container, unmount } = await mount(
+      <CancellationGraceCard
+        order={buildOrder({ placedAt: new Date(Date.now() - 61_000).toISOString() })}
+      />,
+    );
+
+    expect(container.querySelector('[data-testid="cancel-order-button"]')).toBeNull();
+    const callStore = container.querySelector('[data-testid="call-store-link"]');
+    expect(callStore?.getAttribute("href")).toBe("tel:+91 98250 88991");
+    expect(callStore?.textContent).toContain("Need changes? Call Store");
+    // MT-08: the WhatsApp thread is prefilled with this order's short code.
+    expect(
+      container.querySelector('[data-testid="whatsapp-support-link"]')?.getAttribute("href"),
+    ).toBe(
+      `https://wa.me/917878848480?text=${encodeURIComponent(
+        "Hello Burgonomics, I need help with order #BG-GRACE1",
+      )}`,
+    );
+    await unmount();
+  });
+
+  it("offers an in-app support ticket alongside WhatsApp once the window closes (MT-08)", async () => {
+    const { container, unmount } = await mount(
+      <CancellationGraceCard
+        order={buildOrder({ placedAt: new Date(Date.now() - 61_000).toISOString() })}
+      />,
+    );
+
+    const ticket = container.querySelector('[data-testid="raise-ticket-link"]');
+    expect(ticket?.textContent).toContain("Raise Support Ticket");
+    // Deep link carries the order context so the ticket can be traced at once.
+    expect(ticket?.getAttribute("href")).toBe(
+      "/support?topic=order&orderId=ord_grace_1",
+    );
+    // Both gateways are reachable at the same time — neither replaces the other.
+    expect(container.querySelector('[data-testid="whatsapp-support-link"]')).toBeTruthy();
+    await unmount();
+  });
+
+  it("falls back to the raw order id when the order carries no short code", async () => {
+    const { container, unmount } = await mount(
+      <CancellationGraceCard
+        order={buildOrder({
+          shortCode: "",
+          placedAt: new Date(Date.now() - 61_000).toISOString(),
+        })}
+      />,
+    );
+
+    expect(
+      container.querySelector('[data-testid="whatsapp-support-link"]')?.getAttribute("href"),
+    ).toBe(
+      `https://wa.me/917878848480?text=${encodeURIComponent(
+        "Hello Burgonomics, I need help with order ord_grace_1",
+      )}`,
+    );
+    await unmount();
+  });
+
+  it("switches to 'Call Store' as soon as the kitchen starts (PREPARING)", async () => {
+    const { container, unmount } = await mount(
+      <CancellationGraceCard
+        order={buildOrder({
+          status: { code: "PREPARING", label: "Preparing", kind: "in_progress", terminal: false },
+        })}
+      />,
+    );
+
+    // Still inside 60s, but the kitchen already accepted — no self-cancel.
+    expect(container.querySelector('[data-testid="cancel-order-button"]')).toBeNull();
+    expect(container.querySelector('[data-testid="call-store-link"]')).toBeTruthy();
+    await unmount();
+  });
+
+  it("renders no cancellation UI once the order is terminal", async () => {
+    const { container, unmount } = await mount(
+      <CancellationGraceCard
+        order={buildOrder({
+          status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
+        })}
+      />,
+    );
+
+    expect(container.innerHTML).toBe("");
+    await unmount();
+  });
+
+  it("never dials an unsafe staff-entered store phone", async () => {
+    const { container, unmount } = await mount(
+      <CancellationGraceCard
+        order={buildOrder({
+          store: { id: "s1", name: "Burgonomics CG Road", phone: "12345" },
+          placedAt: new Date(Date.now() - 61_000).toISOString(),
+        })}
+      />,
+    );
+
+    expect(container.querySelector('[data-testid="call-store-link"]')).toBeNull();
+    expect(container.textContent).toContain("Store phone unavailable");
+    await unmount();
   });
 });

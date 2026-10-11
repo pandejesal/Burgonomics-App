@@ -167,6 +167,7 @@ function OtpScreen() {
           loading={isVerifying}
           disabled={code.length !== OTP_LENGTH || isVerifying}
           onClick={() => void submit(code)}
+          className="rounded-[var(--radius-medium)]"
         >
           Verify & continue
         </AppButton>

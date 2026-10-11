@@ -29,7 +29,17 @@ const scopedKey = (key: string): string => {
 
 function namespacedStorage(base: Storage): Storage {
   return {
-    getItem: (key: string) => base.getItem(scopedKey(key)),
+    // Loop 36/120 privacy holds for WRITES (always scoped — never leak one
+    // device user's rows into another scope). Reads fall back to the legacy
+    // unscoped key only when the signed-in scope is EMPTY (same-device
+    // guest→login handoff, e.g. mid-checkout sign-in); a populated scope
+    // always wins, so scopes never mix.
+    getItem: (key: string) => {
+      const scoped = scopedKey(key);
+      const hit = base.getItem(scoped);
+      if (hit !== null || scoped === key) return hit;
+      return base.getItem(key);
+    },
     setItem: (key: string, value: string) => base.setItem(scopedKey(key), value),
     removeItem: (key: string) => base.removeItem(scopedKey(key)),
     clear: () => base.clear(),

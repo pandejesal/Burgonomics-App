@@ -149,18 +149,18 @@ function OrderHistoryPage() {
 
           {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search by Order # or item name..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-[#0D0D0D] border border-neutral-800 text-white placeholder-neutral-500 text-xs font-medium focus:outline-none focus:border-[#FF6600]"
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-surface border border-divider text-text placeholder-text-secondary text-xs font-medium focus:outline-none focus:border-primary"
             />
           </div>
 
           {/* Segmented Filter Tabs */}
-          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-[#0D0D0D] border border-neutral-800">
+          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-bg-secondary border border-divider">
             {BUCKETS.map((b) => (
               <button
                 key={b.id}
@@ -169,7 +169,7 @@ function OrderHistoryPage() {
                 className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer text-center ${
                   bucket === b.id
                     ? "bg-[#0E4825] border border-emerald-500/40 text-emerald-300 shadow-xs"
-                    : "text-neutral-400 hover:text-white"
+                    : "text-text-secondary hover:text-text"
                 }`}
               >
                 {b.label}
@@ -192,13 +192,13 @@ function OrderHistoryPage() {
               onAction={handleRefresh}
             />
           ) : orders.length === 0 ? (
-            <div className="text-center py-16 bg-[#0D0D0D]/60 rounded-3xl border border-dashed border-neutral-800 p-8 space-y-4">
+            <div className="text-center py-16 bg-surface rounded-3xl border border-dashed border-divider p-8 space-y-4">
               <div className="w-16 h-16 mx-auto rounded-full bg-[#0E4825]/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                 <ShoppingBag className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="font-black text-white text-base">No Orders Found</h3>
-                <p className="text-xs text-neutral-400 mt-1">
+                <h3 className="font-black text-text text-base">No Orders Found</h3>
+                <p className="text-xs text-text-secondary mt-1">
                   {bucket === "ongoing"
                     ? "You don't have any active orders cooking right now."
                     : "You haven't placed any past orders matching this filter."}
@@ -207,7 +207,7 @@ function OrderHistoryPage() {
 
               <Link
                 to="/menu"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-accent hover:bg-accent-hover text-white font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95"
               >
                 <span>Order Your First Burger</span>
                 <ArrowRight className="w-4 h-4" />
@@ -225,7 +225,7 @@ function OrderHistoryPage() {
                     type="button"
                     disabled={loadingMore}
                     onClick={() => void loadMore()}
-                    className="px-6 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                    className="px-6 py-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {loadingMore ? "Loading more..." : "Load Older Feasts"}
                   </button>

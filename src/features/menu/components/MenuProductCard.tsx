@@ -51,6 +51,35 @@ export function highlightText(text: string, query?: string): React.ReactNode {
 }
 
 /**
+ * MT-04 — Distinctive overlay badge drawn over the bottom-left of the
+ * product image. Explicit repository badges win, then curated series
+ * matches ("Big Bang", "Sizzling"), then the first product tag.
+ */
+export function getDistinctiveOverlayBadge(product: Product): {
+  label: string;
+  tone: "orange" | "emerald" | "amber" | "neutral";
+} | null {
+  if (product.badges && product.badges.length > 0) {
+    const b = product.badges[0];
+    const tone =
+      b.tone === "primary" ? "orange" : b.tone === "success" ? "emerald" : b.tone === "warning" ? "amber" : "orange";
+    return { label: b.label, tone };
+  }
+  const lowerName = (product.name || "").toLowerCase();
+  const lowerCat = (product.categoryName || "").toLowerCase();
+  if (lowerName.includes("big bang") || lowerCat.includes("big bang")) {
+    return { label: "Big Bang Series", tone: "orange" };
+  }
+  if (lowerName.includes("sizzling") || lowerCat.includes("sizzling")) {
+    return { label: "Sizzling Hot", tone: "amber" };
+  }
+  if (product.tags && product.tags.length > 0) {
+    return { label: product.tags[0], tone: "neutral" };
+  }
+  return null;
+}
+
+/**
  * MenuProductCard — supports "row" (list) and "grid" layouts, degrades
  * gracefully on missing fields, and renders repository-driven badges.
  * Upgraded with premium inline quantity morphing, 48px touch targets, and haptic confirmation.
@@ -132,6 +161,9 @@ export const MenuProductCard = React.memo(function MenuProductCard({
     }
   };
 
+  // MT-04: series/explicit badge overlaid on the product image.
+  const distinctiveBadge = getDistinctiveOverlayBadge(product);
+
   const image = (
     <div
       className={cn(
@@ -177,6 +209,20 @@ export const MenuProductCard = React.memo(function MenuProductCard({
           </span>
         </div>
       )}
+      {distinctiveBadge && (
+        <span
+          data-testid="product-image-badge"
+          className={cn(
+            "absolute bottom-1.5 left-1.5 z-10 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider shadow-md backdrop-blur-xs border",
+            distinctiveBadge.tone === "orange" && "bg-[#FF6600]/90 text-white border-[#FF6600]/40",
+            distinctiveBadge.tone === "emerald" && "bg-[#0E4825]/90 text-emerald-300 border-emerald-500/40",
+            distinctiveBadge.tone === "amber" && "bg-amber-600/90 text-white border-amber-500/40",
+            distinctiveBadge.tone === "neutral" && "bg-neutral-900/90 text-neutral-200 border-neutral-700/60",
+          )}
+        >
+          {distinctiveBadge.label}
+        </span>
+      )}
       <FavoriteHeart
         kind="product"
         refId={id}
@@ -191,42 +237,57 @@ export const MenuProductCard = React.memo(function MenuProductCard({
 
   const AddButton = (
     <div
-      className="relative min-h-[44px] flex items-center justify-end"
+      className={cn(
+        "relative flex items-center justify-end shrink-0 overflow-hidden",
+        layout === "grid" ? "min-h-[32px]" : "min-h-[44px]",
+      )}
       onClick={(e) => e.stopPropagation()}
     >
       <AnimatePresence mode="wait">
-        {quantity > 0 && !customizable ? (
+        {quantity > 0 && !disabled && !customizable ? (
           <motion.div
             key="quantity-controls"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ type: "spring", stiffness: 500, damping: 28 }}
-            className="flex items-center gap-1.5 bg-[#FF6600] text-white h-11 px-1 rounded-xl shadow-md border border-white/20"
+            className={cn(
+              "flex items-center bg-[#FF6600] text-white rounded-lg shadow-md border border-white/20 shrink-0 overflow-hidden",
+              layout === "grid" ? "h-7 px-1 gap-0.5" : "h-8 px-1.5 gap-1",
+            )}
           >
             <button
               type="button"
-              className="relative w-10 h-10 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-black/20 active:scale-90 transition font-bold cursor-pointer"
+              className={cn(
+                "relative flex items-center justify-center rounded-md hover:bg-black/20 active:scale-90 transition font-bold cursor-pointer shrink-0",
+                layout === "grid" ? "w-6 h-6 min-h-[24px] min-w-[24px]" : "w-7 h-7 min-h-[28px] min-w-[28px]",
+              )}
               onClick={handleQtySubtract}
               aria-label={`Decrease quantity of ${name}`}
             >
-              <Minus className="w-4 h-4" />
+              <Minus className={layout === "grid" ? "w-3 h-3" : "w-4 h-4"} />
             </button>
             <motion.span
               key={quantity}
               initial={{ scale: 0.7, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="font-bold min-w-[16px] text-center text-xs font-mono"
+              className={cn(
+                "font-bold text-center font-mono",
+                layout === "grid" ? "min-w-[14px] text-[11px] px-0.5" : "min-w-[16px] text-xs px-0.5",
+              )}
             >
               {quantity}
             </motion.span>
             <button
               type="button"
-              className="relative w-10 h-10 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-black/20 active:scale-90 transition font-bold cursor-pointer"
+              className={cn(
+                "relative flex items-center justify-center rounded-md hover:bg-black/20 active:scale-90 transition font-bold cursor-pointer shrink-0",
+                layout === "grid" ? "w-6 h-6 min-h-[24px] min-w-[24px]" : "w-7 h-7 min-h-[28px] min-w-[28px]",
+              )}
               onClick={handleQtyAdd}
               aria-label={`Increase quantity of ${name}`}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className={layout === "grid" ? "w-3 h-3" : "w-4 h-4"} />
             </button>
           </motion.div>
         ) : (
@@ -237,14 +298,15 @@ export const MenuProductCard = React.memo(function MenuProductCard({
             disabled={disabled}
             aria-label={`Add ${name} to cart`}
             className={cn(
-              "min-h-[44px] min-w-[72px] rounded-xl border-2 border-[#FF6600] px-4 type-label-large font-black text-[#FF6600] bg-surface",
+              "rounded-xl border-2 border-[#FF6600] font-black text-[#FF6600] bg-surface",
+              layout === "grid" ? "min-h-[32px] min-w-[50px] px-2 text-xs" : "min-h-[44px] min-w-[72px] px-4 type-label-large",
               "hover:bg-[#FF6600] hover:text-white active:scale-[0.95] transition duration-150 disabled:opacity-40 disabled:hover:bg-surface disabled:hover:text-[#FF6600] whitespace-nowrap shrink-0 cursor-pointer shadow-xs",
             )}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
           >
-            {customizable ? "ADD +" : "ADD"}
+            {disabled ? "Sold Out" : customizable ? "ADD +" : "ADD"}
           </motion.button>
         )}
       </AnimatePresence>
@@ -286,7 +348,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
         params={{ productId: id }}
         className={cn(
           "block select-none transition-transform duration-150 ease-out active:scale-[0.97] active:opacity-80",
-          disabled && "pointer-events-none opacity-60",
+          disabled && "opacity-60",
           className,
         )}
         aria-label={name}
@@ -315,11 +377,11 @@ export const MenuProductCard = React.memo(function MenuProductCard({
             )}
             {meta}
             {badgeRow}
-            <div className="mt-auto flex items-center justify-between pt-2">
-              <div className="flex items-baseline gap-2">
-                <Text variant="titleLarge" className="font-mono font-black">{formatINR(price)}</Text>
+            <div className="mt-auto flex items-center justify-between pt-2 gap-1 min-w-0">
+              <div className="flex items-baseline gap-1 min-w-0 shrink">
+                <Text variant="titleMedium" className="font-mono font-black truncate">{formatINR(price)}</Text>
                 {compareAtPrice && compareAtPrice > price && (
-                  <span className="type-caption text-text-secondary line-through font-mono">
+                  <span className="type-caption text-text-secondary line-through font-mono text-[10px] truncate">
                     {formatINR(compareAtPrice)}
                   </span>
                 )}
@@ -339,7 +401,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
       params={{ productId: id }}
       className={cn(
         "block select-none transition-transform duration-150 ease-out active:scale-[0.97] active:opacity-80",
-        disabled && "pointer-events-none opacity-60",
+        disabled && "opacity-60",
         className,
       )}
       aria-label={name}

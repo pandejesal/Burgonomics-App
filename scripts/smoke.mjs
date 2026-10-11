@@ -82,14 +82,14 @@ runStep("Firestore Security Rules Tests (npm run test:rules)", "npm run test:rul
 // 7. Capacitor Config App IDs
 process.stdout.write("\n[STEP] Capacitor App ID Verification ... ");
 const coreCapacitor = fs.readFileSync(path.resolve("capacitor.config.ts"), "utf-8");
-if (!coreCapacitor.includes('appId: "com.glassdoorsstudio.burgonomics"')) {
+if (!coreCapacitor.includes('appId: "com.burgonomics"')) {
   console.log("❌ FAILED: Core appId mismatch");
   process.exit(1);
 }
 const partnerCapacitorPath = path.resolve("../burgonomics-partner/capacitor.config.ts");
 if (fs.existsSync(partnerCapacitorPath)) {
   const partnerCap = fs.readFileSync(partnerCapacitorPath, "utf-8");
-  if (!partnerCap.includes("com.glassdoorsstudio.burgonomics.partner")) {
+  if (!partnerCap.includes("com.burgonomics.partner")) {
     console.log("❌ FAILED: Partner appId mismatch");
     process.exit(1);
   }

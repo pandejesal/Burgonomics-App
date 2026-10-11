@@ -178,9 +178,9 @@ export function InvoiceDownloadButton({
         onClick={handleDownloadInvoice}
         disabled={isGenerating}
         title="Download GST Invoice"
-        className={`p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50 ${className}`}
+        className={`p-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text transition-colors cursor-pointer disabled:opacity-50 ${className}`}
       >
-        <Download className="w-4 h-4 text-emerald-400" />
+        <Download className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
       </button>
     );
   }
@@ -190,9 +190,9 @@ export function InvoiceDownloadButton({
       type="button"
       onClick={handleDownloadInvoice}
       disabled={isGenerating}
-      className={`px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 hover:text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${className}`}
+      className={`px-3.5 py-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${className}`}
     >
-      <FileText className="w-3.5 h-3.5 text-emerald-400" />
+      <FileText className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
       <span>{isGenerating ? "Preparing Invoice..." : "Download Invoice"}</span>
     </button>
   );

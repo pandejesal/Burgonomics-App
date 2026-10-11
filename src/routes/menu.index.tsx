@@ -20,6 +20,7 @@ import { MenuProductCard } from "@/features/menu/components/MenuProductCard";
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
 import { ProductCustomizerModal } from "@/features/menu/components/ProductCustomizerModal";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
+import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
 import { useAppConfig } from "@/core/state/appConfigStore";
 // import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll"; // REMOVED 2026-10-06: blocked native swipe
 import type { Product } from "@/features/menu/models";
@@ -167,118 +168,59 @@ function MenuPage() {
 
   const handleViewModeToggle = React.useCallback(
     (mode: "list" | "grid") => {
-      isViewModeChanging.current = true;
       setViewMode(mode);
       void navigate({
         to: "/menu",
         search: (prev: MenuSearchSchema) => ({ ...prev, view: mode }),
         replace: true,
       });
-      // Reset flag after navigation settles
-      setTimeout(() => { isViewModeChanging.current = false; }, 100);
     },
     [setViewMode, navigate],
   );
 
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const isProgrammaticScroll = useRef(false);
-  const isViewModeChanging = useRef(false);
   /**
-   * Marks the active-category change that came FROM the pager itself.
+   * Horizontal swipe on the product list switches category.
    *
-   * The old code re-scrolled on every `activeCategoryId` change, including the
-   * ones its own scroll listener produced. Mid-swipe that cancelled the
-   * in-flight momentum + `snap-mandatory` settling and re-targeted the pager at
-   * an intermediate panel, stranding the view between categories (blank
-   * windowed panels either side) with no way to recover — the exact
-   * "frozen between A/B/C" report.
+   * MT-28: the old nested pager (a snap-x `scrollerRef` panel row with its own
+   * `overflow-y-auto` sections and a 550ms `isProgrammaticScroll` lock) made
+   * the two axes fight each other, dropping touch events and freezing both
+   * directions. Products now render in the natural page flow — vertical
+   * scrolling is native momentum scroll — and a single start/end comparison
+   * decides whether a gesture was a horizontal category swipe.
    */
-  const scrollDrivenFor = useRef<string | null>(null);
-  // Native scroll + snap works better than useDirectionalScroll or custom pointer drag
-  // for full-width snap pagers on Android WebView.
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Keep CategoryNavRail and horizontal pager in sync — tap rail scrolls pager, swipe pager updates rail.
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el || categories.length === 0) return;
-    let raf: number | null = null;
-    const onScroll = () => {
-      if (isProgrammaticScroll.current || isViewModeChanging.current) return;
-      if (raf !== null) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const idx = Math.round(el.scrollLeft / el.clientWidth);
-        const cat = categories[idx];
-        if (cat && cat.id !== activeCategoryId) {
-          scrollDrivenFor.current = cat.id;
-          setActiveCategory(cat.id);
-          void navigate({
-            to: "/menu",
-            search: (prev: MenuSearchSchema) => ({ ...prev, category: cat.id }),
-            replace: true,
-          });
-        }
-      });
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (raf !== null) cancelAnimationFrame(raf);
-    };
-  }, [categories, activeCategoryId, setActiveCategory, navigate]);
+  const handleTouchStart = React.useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    swipeStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }, []);
 
-  // Rail / pill / URL driven selection → bring the target panel into view.
-  // Changes flagged by the scroll listener above skip this: the pager is
-  // already there (or still settling), and forcing a scroll would fight it.
-  useEffect(() => {
-    if (scrollDrivenFor.current === activeCategoryId) {
-      scrollDrivenFor.current = null;
-      return;
-    }
-    // Drop a marker left behind by a change that never reached this effect.
-    scrollDrivenFor.current = null;
+  const handleTouchEnd = React.useCallback(
+    (e: React.TouchEvent) => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      const touch = e.changedTouches[0];
+      if (!start || !touch || categories.length < 2) return;
 
-    const el = scrollerRef.current;
-    if (!el || !activeCategoryId || categories.length === 0) return;
-    const idx = categories.findIndex((c) => c.id === activeCategoryId);
-    if (idx < 0) return;
-    const targetLeft = idx * el.clientWidth;
-    if (Math.abs(el.scrollLeft - targetLeft) < 4) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      // Genuine horizontal swipe: past 60px AND clearly more horizontal than
+      // vertical (|dx| > 1.5 × |dy|) so ordinary vertical scrolling — however
+      // slanted — never changes category.
+      if (Math.abs(dx) <= 60 || Math.abs(dx) <= 1.5 * Math.abs(dy)) return;
 
-    const currentIndex = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
-    isProgrammaticScroll.current = true;
-    // Use instant for ALL programmatic scrolls (including adjacent) to avoid:
-    // - race between scroll listener reverting activeCategoryId mid-smooth-animation
-    // - useDirectionalScroll momentum cancelling smooth scroll (both write scrollLeft)
-    // - 550ms timeout expiring before animation completes on slow WebView
-    // The "smooth" path was intended for UX but caused the exact "adjacent tap ignored"
-    // bug because the listener at L199-L212 reads scrollLeft mid-flight, rounds to
-    // the origin panel, and reverts the tap.
-    el.scrollTo({
-      left: targetLeft,
-      behavior: "instant",
-    });
+      const idx = categories.findIndex((c) => c.id === activeCategoryId);
+      if (idx < 0) return;
+      // Finger travelled left → next category; right → previous.
+      const target = dx < 0 ? categories[idx + 1] : categories[idx - 1];
+      if (target) handleCategorySelect(target.id);
+    },
+    [categories, activeCategoryId, handleCategorySelect],
+  );
 
-    // Release the guard only once the scroll has actually settled. The old
-    // fixed 550ms guess could expire while momentum/snap was still running,
-    // which let the listener above retarget the pager mid-flight again.
-    let settled = false;
-    const settle = () => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      el.removeEventListener("scrollend", settle);
-      isProgrammaticScroll.current = false;
-    };
-    el.addEventListener("scrollend", settle);
-    const timer = window.setTimeout(settle, 550);
-    return () => {
-      window.clearTimeout(timer);
-      el.removeEventListener("scrollend", settle);
-      // Never leave the pager ignoring user scrolls (cleanup also runs on
-      // unmount and before the next selection's scroll starts).
-      isProgrammaticScroll.current = false;
-    };
-  }, [activeCategoryId, categories]);
+  const resetSwipe = React.useCallback(() => {
+    swipeStartRef.current = null;
+  }, []);
 
   // A category can become active without ever having a bucket (deep link,
   // live category subscription, store switch). The list sentinel below only
@@ -290,6 +232,9 @@ function MenuPage() {
   }, [activeCategoryId, buckets, loadMore]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // `buckets` is a dependency so the observer re-attaches when the sentinel
+  // first mounts (the bucket arrives asynchronously) — without it the sentinel
+  // could render with no observer and pagination would stall.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !activeCategoryId) return;
@@ -303,7 +248,7 @@ function MenuPage() {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [activeCategoryId, loadMore]);
+  }, [activeCategoryId, loadMore, buckets]);
 
   const handleAdd = React.useCallback(
     (p: Product) => {
@@ -340,11 +285,8 @@ function MenuPage() {
 
   if (!store) return null;
 
-  const activeIdx = Math.max(
-    0,
-    categories.findIndex((c) => c.id === activeCategoryId)
-  );
   const bucket = activeCategoryId ? buckets[activeCategoryId] : undefined;
+  const activeCategory = categories.find((c) => c.id === activeCategoryId);
   const initialLoading = status === "loading" && categories.length === 0;
 
   return (
@@ -362,7 +304,7 @@ function MenuPage() {
         </Link>
       }
     >
-      <div className="mx-auto max-w-[720px] pb-32">
+      <div className="mx-auto max-w-[720px] pb-36">
         {!online && (
           <div className="px-4 pt-3">
             <div
@@ -392,6 +334,10 @@ function MenuPage() {
           </div>
         )}
 
+        {/* Kitchen closed (11:00–23:00 IST): menu browsing stays open — the
+            cart/checkout gates do the ordering. Renders nothing while open. */}
+        <KitchenClosedBanner className="mx-4 mt-3" />
+
         {initialLoading ? (
           <MenuSkeleton />
         ) : status === "error" && !categories.length ? (
@@ -407,7 +353,7 @@ function MenuPage() {
           />
         ) : (
           <>
-            {/* Sticky Category Nav Rail + View Toggle */}
+            {/* Sticky Category Nav Rail + View Toggle — pins below the top bar while the page scrolls */}
             <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 backdrop-blur-md shadow-sm border-b border-divider">
               <CategoryNavRail
                 categories={categories.map((cat) => ({
@@ -454,72 +400,64 @@ function MenuPage() {
               </div>
             </div>
 
-            {/* Horizontal swipe pager — each category is a full-width snap panel */}
+            {/* Active category products — natural vertical page flow.
+                Vertical scrolling is native momentum scroll; a horizontal
+                swipe on this container switches category (handleTouchEnd). */}
             <div
-              ref={scrollerRef}
-              className="flex w-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar overscroll-x-contain overscroll-y-auto"
-              style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}
+              className="px-4 py-3 touch-pan-y"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={resetSwipe}
             >
-              {categories.map((cat, idx) => {
-                const b = buckets[cat.id];
-                return (
-                  <section
-                    key={cat.id}
-                    aria-label={cat.name}
-                    className="w-full shrink-0 snap-start snap-always px-4 py-4"
-                  >
-                    <h2 className="sr-only">{cat.name}</h2>
-                    {b?.loading && !b.items.length ? (
-                      <MenuSkeleton rows={5} />
-                    ) : b?.error && !b.items.length ? (
-                      <FailureState
-                        title="We couldn't load this category"
-                        message={b.error}
-                        onRetry={() => loadMore(cat.id)}
+              <h2 className="sr-only">{activeCategory?.name ?? "Menu items"}</h2>
+              {bucket?.error && !bucket.items.length ? (
+                <FailureState
+                  title="We couldn't load this category"
+                  message={bucket.error}
+                  onRetry={() => {
+                    if (activeCategoryId) void loadMore(activeCategoryId);
+                  }}
+                />
+              ) : bucket && bucket.items.length > 0 ? (
+                <>
+                  <div className={cn(viewMode === "grid" ? "grid grid-cols-2 gap-3.5" : "space-y-3")}>
+                    {bucket.items.map((p) => (
+                      <MenuProductCard
+                        key={p.id}
+                        product={p}
+                        layout={viewMode === "grid" ? "grid" : "row"}
+                        onAdd={handleAdd}
                       />
-                    ) : b && b.items.length === 0 ? (
-                      <EmptyState
-                        title="Nothing here yet"
-                        description="This category has no available items right now."
-                        actionLabel="Try another category"
-                        onAction={() => {
-                          const next = categories.find((c) => (buckets[c.id]?.items.length ?? 0) > 0);
-                          if (next) handleCategorySelect(next.id);
-                        }}
-                      />
-                    ) : (
-                      <div className={cn(viewMode === "grid" ? "grid grid-cols-2 gap-3.5" : "space-y-3")}>
-                        {b?.items.map((p) => (
-                          <MenuProductCard
-                            key={p.id}
-                            product={p}
-                            layout={viewMode === "grid" ? "grid" : "row"}
-                            onAdd={handleAdd}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {cat.id === activeCategoryId && b?.hasMore && (
-                      <div ref={sentinelRef} className="py-6 text-center">
-                        <span className="type-caption text-text-secondary">
-                          {b.loading ? "Loading more items…" : "Scroll for more"}
-                        </span>
-                      </div>
-                    )}
-                    {cat.id === activeCategoryId && b && !b.hasMore && b.items.length > 0 && (
-                      <p className="py-6 text-center type-caption text-text-secondary">
-                        You've reached the end of this category.
-                      </p>
-                    )}
-                    {/* Preload next category hint */}
-                    {cat.id !== activeCategoryId && b && b.items.length === 0 && !b.loading && (
-                      <p className="py-4 text-center type-caption text-text-secondary">Swipe to load {cat.name}</p>
-                    )}
-                  </section>
-                );
-              })}
+                    ))}
+                  </div>
+                  {/* Pagination sentinel — observing this loads the next page */}
+                  {bucket.hasMore ? (
+                    <div ref={sentinelRef} className="py-6 text-center">
+                      <span className="type-caption text-text-secondary">
+                        {bucket.loading ? "Loading more items…" : "Scroll for more"}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="py-6 text-center type-caption text-text-secondary">
+                      You've reached the end of this category.
+                    </p>
+                  )}
+                </>
+              ) : bucket && !bucket.loading ? (
+                <EmptyState
+                  title="Nothing here yet"
+                  description="This category has no available items right now."
+                  actionLabel="Try another category"
+                  onAction={() => {
+                    const next = categories.find((c) => (buckets[c.id]?.items.length ?? 0) > 0);
+                    if (next) handleCategorySelect(next.id);
+                  }}
+                />
+              ) : (
+                <MenuSkeleton rows={5} />
+              )}
             </div>
-            <p className="px-4 pb-2 text-center text-[10px] text-text-secondary">Swipe left/right to switch category • Tap pills above to jump</p>
+            <p className="px-4 py-1 text-center text-[10px] text-text-secondary">Swipe left/right to switch category • Tap pills above to jump</p>
           </>
         )}
       </div>

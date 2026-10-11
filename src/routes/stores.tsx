@@ -24,7 +24,12 @@ import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { cartRepository, useCartStore, selectHasItems } from "@/features/cart";
 import { cn } from "@/lib/utils";
 import { haversineKm } from "@/features/stores/utils/distance";
-import { isStoreInDeliveryArea, getDeliveryDistanceKm } from "@/features/stores/utils/serviceArea";
+import {
+  isStoreInDeliveryArea,
+  getDeliveryDistanceKm,
+  MAX_PICKUP_DISTANCE_KM,
+  PICKUP_TOO_FAR_MESSAGE,
+} from "@/features/stores/utils/serviceArea";
 
 /** Rounds a km distance to 1 decimal, or undefined when it is not usable. */
 function roundKm(km: number): number | undefined {
@@ -85,6 +90,7 @@ function StoreSelectionPage() {
   const [nearestSheet, setNearestSheet] = useState<Store | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<Store | null>(null);
   const [fulfillmentFor, setFulfillmentFor] = useState<Store | null>(null);
+  const [farStoreWarning, setFarStoreWarning] = useState<{ store: Store; distanceKm: number } | null>(null);
 
   const hasCartItems = useCartStore(selectHasItems);
   const cartStoreId = useCartStore((s) => s.storeId);
@@ -287,6 +293,23 @@ function StoreSelectionPage() {
   };
 
   const onSelect = (s: Store) => {
+    // Distance enforcement: block selecting an outlet beyond the pickup
+    // geofence (MAX_PICKUP_DISTANCE_KM) for takeaway or dine-in
+    if (userCoords) {
+      const distance = haversineKm(userCoords, { lat: s.lat, lng: s.lng });
+      const currentF = useStoreSelection.getState().fulfillment;
+      if (distance > MAX_PICKUP_DISTANCE_KM && (currentF === "takeaway" || currentF === "dinein")) {
+        toast.error("Branch is too far away", {
+          description: `${s.name} is ${Math.round(distance)} km away. ${PICKUP_TOO_FAR_MESSAGE}`,
+        });
+        return;
+      }
+      if (distance > 12 && (currentF === "takeaway" || currentF === "dinein")) {
+        setFarStoreWarning({ store: s, distanceKm: Math.round(distance) });
+        return;
+      }
+    }
+
     // Guard: switching stores wipes the cart because menu availability
     // and pricing may differ across stores.
     if (hasCartItems && cartStoreId && cartStoreId !== s.id) {
@@ -745,6 +768,30 @@ function StoreSelectionPage() {
         cancelLabel="Stay here"
         destructive
         onConfirm={() => void confirmSwitch()}
+      />
+
+      <ConfirmDialog
+        open={!!farStoreWarning}
+        onOpenChange={(o) => !o && setFarStoreWarning(null)}
+        title="Outlet is Far Away"
+        description={
+          farStoreWarning
+            ? `${farStoreWarning.store.name} is ${farStoreWarning.distanceKm} km away from your location. Are you sure you want to select this branch for takeaway or dine-in?`
+            : undefined
+        }
+        confirmLabel="Yes, I'm heading there"
+        cancelLabel="Choose Closer Branch"
+        onConfirm={() => {
+          if (farStoreWarning) {
+            const chosen = farStoreWarning.store;
+            setFarStoreWarning(null);
+            if (hasCartItems && cartStoreId && cartStoreId !== chosen.id) {
+              setPendingSwitch(chosen);
+            } else {
+              commitSelection(chosen);
+            }
+          }
+        }}
       />
 
       <FulfillmentSheet

@@ -9,6 +9,7 @@
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { SANDBOX_DELIVERY_QUOTE, type DeliveryQuote } from "@/features/checkout/services/deliveryQuoteService";
 
 export type CheckoutStatus =
   | "idle"
@@ -33,6 +34,13 @@ interface CheckoutState {
    * of subtotal at charge time). Persisted so the choice survives the
    * checkout → payment navigation. */
   loyaltyPointsToRedeem: number;
+  /**
+   * Live delivery-fee quote for the current order. NOT persisted: a quote is
+   * only valid for the basket it was taken against, so a stale one restored
+   * from localStorage would show a fee the backend will not honour. The
+   * sandbox quote applies until a fresh one arrives.
+   */
+  deliveryQuote: DeliveryQuote;
 
   setOrderNotes: (v: string) => void;
   setDeliveryInstructions: (v: string) => void;
@@ -41,6 +49,7 @@ interface CheckoutState {
   setTableNumber: (v: string) => void;
   setTipAmount: (v: number) => void;
   setLoyaltyPointsToRedeem: (v: number) => void;
+  setDeliveryQuote: (q: DeliveryQuote) => void;
   reset: () => void;
 }
 
@@ -52,6 +61,7 @@ const initial = {
   tableNumber: "",
   tipAmount: 0,
   loyaltyPointsToRedeem: 0,
+  deliveryQuote: SANDBOX_DELIVERY_QUOTE,
 };
 
 export const useCheckoutStore = create<CheckoutState>()(
@@ -68,6 +78,14 @@ export const useCheckoutStore = create<CheckoutState>()(
       setLoyaltyPointsToRedeem: (v) =>
         set({
           loyaltyPointsToRedeem: Number.isFinite(v) ? Math.min(100000, Math.max(0, Math.floor(v))) : 0,
+        }),
+      // Defensive: a corrupt/negative quote must never price a ₹0 delivery.
+      setDeliveryQuote: (q) =>
+        set({
+          deliveryQuote:
+            q && Number.isFinite(q.fee) && q.fee >= 0
+              ? { ...q, fee: Math.round(q.fee * 100) / 100 }
+              : SANDBOX_DELIVERY_QUOTE,
         }),
       reset: () => set({ ...initial }),
     }),

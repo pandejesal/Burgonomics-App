@@ -44,7 +44,7 @@ interface MenuState {
   reset: () => void;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 
 const VIEW_MODE_KEY = "burgonomics.menu.viewMode";
 

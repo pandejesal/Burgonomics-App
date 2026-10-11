@@ -25,6 +25,9 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { useHydrated } from "@/shared/hooks/useHydrated";
+import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
+import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
+import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { HapticService } from "@/core/services/haptics";
@@ -115,7 +118,17 @@ export function CheckoutPage() {
   const isOnline = useAppConfig((s) => s.isOnline);
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [authSheetOpen, setAuthSheetOpen] = React.useState(false);
-  const [redeemPoints, setRedeemPoints] = React.useState(false);
+  // Kitchen-hours gate: PAY must lock itself at 23:00 IST even if this screen
+  // has been sitting open since noon (the hook re-checks on tick + focus).
+  const kitchen = useKitchenHours();
+  // Seeded from the persisted checkout store so a tip or points redemption
+  // chosen on the cart screen is still priced here — the payment payload
+  // (`PaymentRepository.createPaymentOrder`) reads the same values, so the
+  // To Pay below must already include them.
+  const [redeemPoints, setRedeemPoints] = React.useState(
+    () => useCheckoutStore.getState().loyaltyPointsToRedeem > 0,
+  );
+  const persistedTip = useCheckoutStore((s) => s.tipAmount);
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
 
   const rawLoyaltyBalance = useLoyaltyStore((s) => s.balance);
@@ -198,7 +211,10 @@ export function CheckoutPage() {
   const isDineIn = fulfillment === "dinein";
 
   const rawGrandTotal = totals?.grandTotal ?? 0;
-  const finalPayable = Math.max(0, rawGrandTotal - pointsDiscount);
+  // The delivery tip is a real charge: the server reprices with the same
+  // `tipAmount` this screen reads, so it must already sit inside To Pay —
+  // otherwise checkout quotes less than the gateway collects.
+  const finalPayable = Math.max(0, rawGrandTotal + persistedTip - pointsDiscount);
 
   const handlePlaceOrder = async () => {
     setValidationError(null);
@@ -206,6 +222,13 @@ export function CheckoutPage() {
     // Belt-and-braces behind the disabled button: never fire Razorpay offline.
     if (!useAppConfig.getState().isOnline) {
       setValidationError("You are offline. Reconnect to place your order — your cart is saved.");
+      return;
+    }
+
+    // Same for the kitchen window: a screen left open past 23:00 must not
+    // send a payment for an order the kitchen can no longer accept.
+    if (!kitchen.isOpen) {
+      setValidationError(KITCHEN_CLOSED_MESSAGE);
       return;
     }
 
@@ -498,19 +521,38 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || totals === null}
-              aria-disabled={busy || !isOnline || totals === null}
-              title={!isOnline ? "Back online to place your order" : totals === null ? "Bill is still being computed" : undefined}
+              disabled={busy || !isOnline || totals === null || !kitchen.isOpen}
+              aria-disabled={busy || !isOnline || totals === null || !kitchen.isOpen}
+              title={
+                !kitchen.isOpen
+                  ? KITCHEN_CLOSED_MESSAGE
+                  : !isOnline
+                    ? "Back online to place your order"
+                    : totals === null
+                      ? "Bill is still being computed"
+                      : undefined
+              }
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
-              <span>{busy ? "Processing Order..." : !isOnline ? "OFFLINE — RECONNECT TO PAY" : `PAY ${formatINR(finalPayable)} SECURELY`}</span>
+              <span>
+                {busy
+                  ? "Processing Order..."
+                  : !kitchen.isOpen
+                    ? "KITCHEN CLOSED"
+                    : !isOnline
+                      ? "OFFLINE — RECONNECT TO PAY"
+                      : `PAY ${formatINR(finalPayable)} SECURELY`}
+              </span>
             </button>
           </div>
         </div>
       }
     >
       <div className="mx-auto max-w-[520px] space-y-4 px-4 py-3 pb-28">
+        {/* Kitchen closed: browsing stays open, ordering is gated below. */}
+        <KitchenClosedBanner />
+
         {/* Price Lock Banner */}
         {remainingLockSeconds !== null && (
           <div className="flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-500/25 px-3.5 py-2 text-amber-800 dark:text-amber-300 shadow-xs">
@@ -693,7 +735,7 @@ export function CheckoutPage() {
               <span className="font-mono font-bold text-text">{formatINR(totals?.subtotal ?? 0)}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
-              <span>Govt. GST (5%)</span>
+              <span>Govt. GST (5% included)</span>
               <span className="font-mono font-bold text-text">{formatINR(totals?.taxes ?? 0)}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
@@ -702,18 +744,29 @@ export function CheckoutPage() {
                 {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning">unavailable</span>}
               </span>
             </div>
-            <div className="flex justify-between text-text-secondary">
-              <span>Delivery Fee</span>
-              <span className="font-mono font-bold text-text">
-                {totals?.deliveryFee === 0 || !isDelivery ? (
-                  <span className="font-bold text-[#4ADE80] uppercase text-[10px]">FREE</span>
-                ) : totals ? (
-                  formatINR(totals.deliveryFee)
-                ) : (
-                  <span className="text-warning">unavailable</span>
-                )}
-              </span>
-            </div>
+            {/* Delivery Fee — same rule as BillBreakdown: only delivery shows it. */}
+            {isDelivery && (
+              <div className="flex justify-between text-text-secondary">
+                <span>Delivery Fee</span>
+                <span className="font-mono font-bold text-text">
+                  {totals?.deliveryFee === 0 ? (
+                    <span className="font-bold text-[#4ADE80] uppercase text-[10px]">FREE</span>
+                  ) : totals ? (
+                    formatINR(totals.deliveryFee)
+                  ) : (
+                    <span className="text-warning">unavailable</span>
+                  )}
+                </span>
+              </div>
+            )}
+
+            {/* Delivery Partner Tip — chosen on the cart, charged by the server. */}
+            {persistedTip > 0 && (
+              <div className="flex justify-between text-text-secondary">
+                <span>Delivery Partner Tip</span>
+                <span className="font-mono font-bold text-text">{formatINR(persistedTip)}</span>
+              </div>
+            )}
 
             {totals?.promoDiscount ? (
               <div className="flex justify-between text-[#4ADE80] font-semibold">
@@ -730,7 +783,7 @@ export function CheckoutPage() {
             )}
 
             <div className="border-t border-divider pt-2.5 flex justify-between text-sm sm:text-base font-black text-text">
-              <span>Grand Total</span>
+              <span>To Pay</span>
               <span className="font-mono text-[#FF6600] font-black text-lg">{formatINR(finalPayable)}</span>
             </div>
           </div>

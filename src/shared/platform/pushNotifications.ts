@@ -7,6 +7,7 @@
  */
 import { isNative, getPlatform } from "./platform";
 import { logger } from "@/core/logging/logger";
+import { appConfig } from "@/core/config/env";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
@@ -116,6 +117,9 @@ let webPushInitialized = false;
  * Safe to call on app startup.
  */
 export async function initPushNotifications(): Promise<void> {
+  // Documented kill-switch: VITE_PUSH_ENABLED=false (default) disables all
+  // push registration paths; no token is ever minted while disabled.
+  if (!appConfig.push.enabled) return;
   if (!isNative() || initialized) return;
   initialized = true;
 
@@ -231,6 +235,7 @@ export async function initPushNotifications(): Promise<void> {
  * permission was already granted (never auto-prompts). Returns the token or null.
  */
 export async function initWebPush(): Promise<string | null> {
+  if (!appConfig.push.enabled) return null;
   if (isNative() || webPushInitialized) return getCachedDeviceToken();
   webPushInitialized = true;
 
@@ -277,6 +282,7 @@ export async function initWebPush(): Promise<string | null> {
  * Contextually requests push notification permissions and registers with APNs/FCM.
  */
 export async function requestPushPermissions(): Promise<boolean> {
+  if (!appConfig.push.enabled) return false;
   if (!isNative()) {
     // Web: explicit user gesture path (e.g. settings toggle) — may prompt.
     // Singleton guard: initWebPush already registered an onMessage handler;

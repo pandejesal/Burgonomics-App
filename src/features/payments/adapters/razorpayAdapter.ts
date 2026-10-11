@@ -1,21 +1,31 @@
 /**
  * Razorpay adapter — interface + implementation.
  *
- * Runs in LIVE mode only — requires a valid Razorpay publishable key.
- * Simulation/offline modes are REMOVED for production safety.
+ * Runs in two honest modes — LIVE and TEST — plus one gateway-free path:
  *
- *   - Live mode — when `VITE_RAZORPAY_KEY_ID` is present (a
- *      `rzp_live_*` or `rzp_test_*` publishable key), the Razorpay Checkout script is
- *      injected and a real payment modal is opened. Complete
- *      the flow with Razorpay cards / UPI IDs — see
- *      https://razorpay.com/docs/payments/payments/test-card-details/.
+ *   - Live mode — when the key is a `rzp_live_*` publishable key, the
+ *      Razorpay Checkout script is injected and a real payment modal is
+ *      opened.
+ *   - Test mode — `rzp_test_*` keys are accepted OUTSIDE production builds
+ *      (`!isProduction || isTestEnv || import.meta.env.DEV`: dev server,
+ *      staging bundle, Android/iOS debug APK, test runners). The same SDK +
+ *      real checkout modal runs against the Razorpay TEST dashboard, so
+ *      developers and QA exercise the genuine flow end-to-end. Production
+ *      builds reject test keys and fail closed — a live key is mandatory.
+ *   - Zero-charge orders (`amount === 0`, e.g. fully discounted / reward
+ *      credits) complete immediately with a sentinel payment envelope —
+ *      no SDK load, no Razorpay call, no money moves.
+ *
+ * Test runners (`VITEST=true` / `NODE_ENV=test`) never open a real modal:
+ * `openCheckout` simulates the success callback instead.
  *
  * ⚠️  SECURITY
  *   - Never hold or reference the Razorpay SECRET key on the client.
  *   - Signature verification is always performed on the backend; the
  *     adapter only forwards the signed result envelope.
  *   - Only the publishable `keyId` reaches the client.
- *   - Production builds REQUIRE a live key (`rzp_live_*`); test keys are rejected.
+ *   - Production builds REQUIRE a live key (`rzp_live_*`); test keys are
+ *     rejected at every entry point.
  */
 import type {
   PaymentMethod,
@@ -45,6 +55,12 @@ export interface RazorpayAdapter {
 }
 
 const SDK_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+/** Internal sentinel the core wrapper passes when no key is configured. */
+const PLACEHOLDER_KEY_ID = "rzp_test_placeholder";
+/** Sentinel envelope for gateway-free ₹0 orders. */
+const ZERO_CHARGE_PAYMENT_ID = "pay_zero_charge";
+const ZERO_CHARGE_SIGNATURE = "zero_charge_sig";
+
 type Ctor = new (options: Record<string, unknown>) => { open: () => void };
 declare global {
   interface Window {
@@ -78,19 +94,102 @@ function loadSdk(): Promise<Ctor | null> {
   return sdkPromise;
 }
 
-// Preload the SDK as soon as a real key is present so first-payment latency is low.
-if (typeof window !== "undefined" && appConfig.integrations.razorpayKeyId) {
-  // Validate key format - reject test keys in production
-  const keyId = appConfig.integrations.razorpayKeyId;
-  const isProduction = import.meta.env.PROD === true || import.meta.env.MODE === "production" || process.env.NODE_ENV === "production";
-  const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test" || keyId.startsWith("rzp_test_");
-  if (keyId.startsWith("rzp_test_") && !isTest && isProduction) {
-    throw new Error(
-      "[Razorpay] FATAL: Production build cannot use test keys (rzp_test_*). " +
-      "Set VITE_RAZORPAY_KEY_ID to a live key (rzp_live_*) before shipping."
-    );
+// ── Environment helpers ────────────────────────────────────────────────
+// `process` is NOT guaranteed in the browser bundle: Vite statically
+// replaces only `process.env.NODE_ENV`, so every other `process.env.*`
+// reference must be guarded — otherwise it throws ReferenceError at
+// runtime in a real browser / device build.
+
+const readProcessEnv = (): Record<string, string | undefined> | null => {
+  if (typeof process === "undefined") return null;
+  try {
+    return process.env;
+  } catch {
+    return null;
   }
-  void loadSdk();
+};
+
+/** True inside Vitest (or any runner advertising NODE_ENV=test). */
+const isTestRunnerEnv = (): boolean => {
+  const env = readProcessEnv();
+  return env?.VITEST === "true" || env?.NODE_ENV === "test";
+};
+
+/** True for production bundles (`import.meta.env` first, Node/test fallback). */
+const isProductionBuild = (): boolean => {
+  if (import.meta.env?.PROD === true || import.meta.env?.MODE === "production") {
+    return true;
+  }
+  return readProcessEnv()?.NODE_ENV === "production";
+};
+
+/**
+ * Test (`rzp_test_*`) publishable keys are allowed wherever production is
+ * not: `!isProduction || isTestEnv || import.meta.env.DEV` (plus a
+ * non-production `VITE_APP_ENV`, which is what a debug APK ships with).
+ * Production builds still refuse them — a live key is mandatory there.
+ */
+const allowsTestKeys = (): boolean =>
+  isTestRunnerEnv() ||
+  import.meta.env?.DEV === true ||
+  !isProductionBuild() ||
+  appConfig.env !== "production";
+
+const hasBrowser = (): boolean => typeof window !== "undefined" && typeof document !== "undefined";
+
+const isLiveKey = (keyId?: string): boolean => !!keyId && keyId.startsWith("rzp_live_");
+
+/** A genuine test key — the internal `rzp_test_placeholder` sentinel excluded. */
+const isTestKeyId = (keyId?: string): boolean =>
+  !!keyId && keyId.startsWith("rzp_test_") && keyId !== PLACEHOLDER_KEY_ID;
+
+/** Key is good enough to initialise the SDK for. */
+const isUsableKeyId = (keyId?: string): boolean => {
+  if (isLiveKey(keyId)) return true;
+  if (isTestKeyId(keyId)) return allowsTestKeys();
+  // Placeholder sentinel: only tolerable where no real modal can open.
+  return keyId === PLACEHOLDER_KEY_ID && isTestRunnerEnv();
+};
+
+/** A real Razorpay checkout modal may be opened with this key. */
+const canOpenRealCheckout = (keyId?: string): boolean => {
+  if (!hasBrowser()) return false;
+  if (isLiveKey(keyId)) return true;
+  return isTestKeyId(keyId) && allowsTestKeys();
+};
+
+/** Fully discounted / reward-credit orders never reach the gateway. */
+const isZeroCharge = (order: PaymentOrder): boolean => order.amount === 0;
+
+const completeZeroCharge = (
+  init: RazorpayInitInput,
+  handlers: RazorpayHandlers,
+  method: PaymentMethod,
+): void => {
+  logger.info("razorpay.zero_charge_complete", { orderId: init.order.orderId });
+  handlers.onSuccess({
+    orderId: init.order.orderId,
+    paymentId: ZERO_CHARGE_PAYMENT_ID,
+    signature: ZERO_CHARGE_SIGNATURE,
+    method,
+  });
+};
+
+// Preload the SDK as soon as a usable key is present so first-payment latency is low.
+if (typeof window !== "undefined" && appConfig.integrations.razorpayKeyId) {
+  const keyId = appConfig.integrations.razorpayKeyId;
+  if (isTestKeyId(keyId) && !allowsTestKeys()) {
+    // Production bundle carrying a test key: never preload it, and never
+    // throw at module scope (a throw here aborts the entire app boot —
+    // blank screen, React never mounts). initialize()/openCheckout() fail
+    // closed at use-time; log loudly so the misconfiguration is fixed.
+    console.error(
+      "[Razorpay] FATAL: Production build cannot use test keys (rzp_test_*). " +
+        "Set VITE_RAZORPAY_KEY_ID to a live key (rzp_live_*) before shipping.",
+    );
+  } else {
+    void loadSdk();
+  }
 } else if (typeof window !== "undefined") {
   // No publishable key: warn instead of throwing at module scope — a throw
   // here aborts the entire app boot (blank screen, React never mounts).
@@ -98,17 +197,11 @@ if (typeof window !== "undefined" && appConfig.integrations.razorpayKeyId) {
   // attempted without a key.
   console.warn(
     "[Razorpay] No publishable key configured (VITE_RAZORPAY_KEY_ID). " +
-    "Payments will fail closed until a key is set."
+      "Payments will fail closed until a key is set.",
   );
 }
 
 let currentInit: RazorpayInitInput | null = null;
-
-const isLive = (order: PaymentOrder) =>
-  !!order.keyId &&
-  order.keyId !== "rzp_test_placeholder" &&
-  !order.keyId.startsWith("rzp_test_") &&
-  (typeof window !== "undefined" && typeof document !== "undefined" || process.env.VITEST === "true" || process.env.NODE_ENV === "test");
 
 export const razorpayAdapter: RazorpayAdapter = {
   name: "razorpay",
@@ -116,15 +209,25 @@ export const razorpayAdapter: RazorpayAdapter = {
   async initialize(input) {
     currentInit = input;
     const order = input.order;
-    const isTestEnv = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
-    const isTestKey = !!order.keyId && order.keyId.startsWith("rzp_test_");
-    if (isLive(order) || (isTestKey && isTestEnv)) {
-      await loadSdk();
-    } else {
+
+    // Zero-charge orders: nothing to load, nothing to validate — the
+    // checkout completes gateway-free in openCheckout().
+    if (isZeroCharge(order)) {
+      logger.info("razorpay.zero_charge_skip_gateway", { orderId: order.orderId });
+      return;
+    }
+
+    if (!isUsableKeyId(order.keyId)) {
       throw new Error(
-        "[Razorpay] Invalid order configuration: missing or invalid publishable key."
+        "[Razorpay] Invalid order configuration: missing or invalid publishable key.",
       );
     }
+
+    // Live AND (non-production) test keys preload the real SDK, so dev
+    // servers and debug APKs get the genuine checkout flow. Test runners
+    // have no `window` — loadSdk() resolves null there without touching
+    // the network.
+    await loadSdk();
   },
 
   async openCheckout(handlers, method = "upi") {
@@ -137,8 +240,30 @@ export const razorpayAdapter: RazorpayAdapter = {
       return;
     }
 
-    // Live Razorpay checkout - requires valid key
-    if (isLive(init.order)) {
+    // 1. Zero-charge (amount === 0): complete instantly — no SDK load, no
+    //    Razorpay call, no money moves.
+    if (isZeroCharge(init.order)) {
+      completeZeroCharge(init, handlers, method);
+      return;
+    }
+
+    // 2. Test runners never open a real modal — simulate the success
+    //    callback so the surrounding flow stays end-to-end testable.
+    if (isTestRunnerEnv()) {
+      logger.info("razorpay.test_runner_simulation", { orderId: init.order.orderId });
+      handlers.onSuccess({
+        orderId: init.order.orderId,
+        paymentId: "pay_test_simulated",
+        signature: "simulated_test_sig",
+        method,
+      });
+      return;
+    }
+
+    // 3. Real browser / device checkout: live keys always, test keys outside
+    //    production (dev server, staging bundle, debug APK) against the
+    //    Razorpay TEST dashboard.
+    if (canOpenRealCheckout(init.order.keyId)) {
       const Ctor = await loadSdk();
       if (!Ctor) {
         handlers.onFailure({
@@ -197,10 +322,11 @@ export const razorpayAdapter: RazorpayAdapter = {
       return;
     }
 
-    // No valid key - fail closed
+    // 4. No usable key (production with a test key, missing key, or the
+    //    placeholder sentinel in a real browser) — fail closed.
     throw new Error(
       "[Razorpay] No valid publishable key configured. " +
-      "Set VITE_RAZORPAY_KEY_ID to a live key (rzp_live_*) before attempting payment."
+        "Set VITE_RAZORPAY_KEY_ID to a live key (rzp_live_*) before attempting payment.",
     );
   },
 };

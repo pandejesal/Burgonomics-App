@@ -44,10 +44,10 @@ export function calculateCart(input: CartCalculationInput): CartCalculationResul
     const dist = input.deliveryDistanceKm || 3;
     // ₹30 base up to 3km, + ₹10 per km beyond
     deliveryFee = dist <= 3 ? 30 : 30 + Math.ceil(dist - 3) * 10;
-    packagingFee = 15;
+    packagingFee = 20;
   } else if (input.fulfillmentMode === 'takeaway') {
     deliveryFee = 0;
-    packagingFee = 15;
+    packagingFee = 20;
   } else if (input.fulfillmentMode === 'dinein') {
     deliveryFee = 0;
     packagingFee = 0;
@@ -103,14 +103,14 @@ describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () =
     expect(result.gstAmount).toBe(37.35);
     // Delivery (4.5km -> 30 + ceil(1.5)*10 = 50)
     expect(result.deliveryFee).toBe(50);
-    // Packaging: 15
-    expect(result.packagingFee).toBe(15);
+    // Packaging: 20
+    expect(result.packagingFee).toBe(20);
     // Discount (10% of 747 = 74.7)
     expect(result.discountAmount).toBe(74.7);
     // Coins: 20
     expect(result.coinsDeduction).toBe(20);
-    // Total: 747 + 37.35 + 50 + 15 - 74.7 - 20 = 754.65 -> rounded 755
-    expect(result.finalTotal).toBe(755);
+    // Total: 747 + 37.35 + 50 + 20 - 74.7 - 20 = 759.65 -> rounded 760
+    expect(result.finalTotal).toBe(760);
   });
 
   it('correctly calculates Takeaway fulfillment mode pricing with zero delivery fee', () => {
@@ -121,10 +121,10 @@ describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () =
 
     expect(result.subtotal).toBe(349);
     expect(result.deliveryFee).toBe(0);
-    expect(result.packagingFee).toBe(15);
+    expect(result.packagingFee).toBe(20);
     expect(result.gstAmount).toBe(17.45);
-    // Total: 349 + 17.45 + 15 = 381.45 -> rounded 381
-    expect(result.finalTotal).toBe(381);
+    // Total: 349 + 17.45 + 20 = 386.45 -> rounded 386
+    expect(result.finalTotal).toBe(386);
   });
 
   it('correctly calculates Dine-In fulfillment mode with zero delivery and zero packaging fees', () => {

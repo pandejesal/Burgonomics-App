@@ -77,12 +77,12 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
   };
 
   return (
-    <div className="p-5 rounded-3xl bg-[#0D0D0D] border border-neutral-800 space-y-4 shadow-md hover:border-neutral-700 transition-colors">
+    <div className="p-5 rounded-3xl bg-surface border border-divider space-y-4 shadow-md hover:border-primary/40 transition-colors">
       {/* Header: Order #, Store Name, Status Badge */}
-      <div className="flex items-start justify-between gap-3 border-b border-neutral-800 pb-3">
+      <div className="flex items-start justify-between gap-3 border-b border-divider pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-mono font-black text-sm text-white">#{shortCode}</span>
+            <span className="font-mono font-black text-sm text-text">#{shortCode}</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
                 isCancelled
@@ -96,33 +96,33 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
             </span>
           </div>
 
-          <p className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-            <Store className="w-3.5 h-3.5 text-neutral-500" />
+          <p className="text-xs text-text-secondary flex items-center gap-1 mt-1">
+            <Store className="w-3.5 h-3.5 text-text-secondary" />
             <span>{order.store?.name || "Burgonomics Outlet"}</span>
             <span>•</span>
-            <Clock className="w-3 h-3 text-neutral-500" />
+            <Clock className="w-3 h-3 text-text-secondary" />
             <span>{dateFormatted}</span>
           </p>
         </div>
 
         <div className="text-right">
-          <span className="font-mono font-black text-base text-white">
+          <span className="font-mono font-black text-base text-text">
             {formatINR(order.totals?.grandTotal || 0)}
           </span>
-          <span className="text-[10px] text-neutral-400 block uppercase">
+          <span className="text-[10px] text-text-secondary block uppercase">
             {order.fulfillment} • {(order.payment?.method || "PAID").toUpperCase()}
           </span>
         </div>
       </div>
 
       {/* Item Summary Checklist */}
-      <div className="space-y-1.5 text-xs text-neutral-300">
+      <div className="space-y-1.5 text-xs text-text-secondary">
         {order.items?.map((item, idx) => (
           <div key={idx} className="flex justify-between">
             <span className="truncate max-w-[280px]">
               {item.quantity}x {item.name}
             </span>
-            <span className="font-bold text-white font-mono">
+            <span className="font-bold text-text font-mono">
               {formatINR((item.unitPrice || 0) * (item.quantity || 1))}
             </span>
           </div>
@@ -131,9 +131,9 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
 
       {/* Post-Order 5-Star Rating Box (Completed Orders) */}
       {isTerminal && !isCancelled && !ratingSubmitted && (
-        <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2.5">
+        <div className="p-3.5 rounded-2xl bg-bg-secondary border border-divider space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">
+            <span className="text-xs font-bold text-text flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               <span>How was your meal?</span>
             </span>
@@ -166,7 +166,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
                     className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
                       selectedTags.includes(tag)
                         ? "bg-[#0E4825] border-emerald-500 text-emerald-300"
-                        : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                        : "bg-bg-secondary border-divider text-text-secondary hover:text-text"
                     }`}
                   >
                     {tag}
@@ -194,7 +194,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
       )}
 
       {/* Action Buttons: 1-Tap Reorder, Track, Invoice */}
-      <div className="flex items-center gap-2 pt-1 border-t border-neutral-800/80">
+      <div className="flex items-center gap-2 pt-1 border-t border-divider/80">
         {!isTerminal ? (
           <button
             type="button"
@@ -222,17 +222,17 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
       {/* Out of Stock Reorder Warning Modal */}
       {outOfStockModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#0F0F0F] border border-neutral-800 rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center gap-2 text-amber-400 font-black text-sm">
+          <div className="bg-surface border border-divider rounded-3xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-amber-500 dark:text-amber-400 font-black text-sm">
               <AlertCircle className="w-5 h-5" />
               <span>Some Items Unavailable</span>
             </div>
 
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-text-secondary">
               The following item(s) are currently out of stock at this store:
             </p>
 
-            <ul className="space-y-1 text-xs text-white list-disc list-inside bg-neutral-950 p-3 rounded-2xl border border-neutral-800">
+            <ul className="space-y-1 text-xs text-text list-disc list-inside bg-bg-secondary p-3 rounded-2xl border border-divider">
               {outOfStockModal.unavailableItems.map((item, i) => (
                 <li key={i} className="font-bold">
                   {item}
@@ -240,15 +240,15 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
               ))}
             </ul>
 
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-text-secondary">
               Would you like to reorder the remaining available items?
             </p>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-divider">
               <button
                 type="button"
                 onClick={dismissOutOfStockModal}
-                className="px-3 py-2 rounded-xl bg-neutral-900 text-neutral-300 font-bold text-xs hover:text-white"
+                className="px-3 py-2 rounded-xl bg-bg-secondary border border-divider text-text font-bold text-xs hover:bg-surface cursor-pointer"
               >
                 Cancel
               </button>

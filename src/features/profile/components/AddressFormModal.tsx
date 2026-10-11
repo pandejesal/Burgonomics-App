@@ -11,7 +11,7 @@ import { useLocationPermission } from "@/features/stores/hooks/useLocationPermis
 // Leaflet imports
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 // Orange (Accent) marker pin for the map
 const customMarkerHtml = `
@@ -46,6 +46,15 @@ function MapController({ center }: { center: { lat: number; lng: number } }) {
   React.useEffect(() => {
     map.flyTo(center, map.getZoom());
   }, [center, map]);
+  return null;
+}
+
+function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
   return null;
 }
 
@@ -194,6 +203,13 @@ export function AddressFormModal({
     }
   }, [reverseGeocode]);
 
+  const handleMapClick = React.useCallback((lat: number, lng: number) => {
+    autoLocatedRef.current = true;
+    setMapCenter({ lat, lng });
+    setPinPlaced(true);
+    void reverseGeocode(lat, lng);
+  }, [reverseGeocode]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!line1.trim()) {
@@ -202,6 +218,10 @@ export function AddressFormModal({
     }
     if (!pincode.trim() || pincode.length !== 6) {
       toast.error("Please enter a valid 6-digit pincode");
+      return;
+    }
+    if (!pinPlaced) {
+      toast.error("Please tap the map or use 'Locate Me' to pin your delivery location");
       return;
     }
 
@@ -274,7 +294,7 @@ export function AddressFormModal({
           {/* Map pin — drag the orange pin to set the exact delivery location */}
           <div className="space-y-1.5">
             <p className="text-xs font-bold text-text-secondary uppercase tracking-wider">
-              Pin your location
+              Tap map or drag pin to set location
             </p>
             <div
               className="overflow-hidden rounded-xl border-2 border-primary/10 relative"
@@ -299,6 +319,7 @@ export function AddressFormModal({
                     icon={customIcon}
                   />
                   <MapController center={mapCenter} />
+                  <MapClickHandler onMapClick={handleMapClick} />
                 </MapContainer>
               </div>
 

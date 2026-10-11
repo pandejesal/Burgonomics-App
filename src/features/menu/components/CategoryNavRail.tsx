@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
+import { centerScrollLeft } from "../utils/categoryScroll";
 import type { MenuCategoryModel } from "../models";
 
 interface CategoryNavRailProps {
@@ -8,6 +9,31 @@ interface CategoryNavRailProps {
   activeCategoryId?: string | null;
   onSelectCategory: (categoryId: string) => void;
   className?: string;
+}
+
+/**
+ * Find the chip for a category by its `data-category-id`.
+ *
+ * A `querySelector` + `CSS.escape` build works, but ids come from Petpooja and
+ * not every WebView we ship to is guaranteed to expose `CSS.escape` — a missing
+ * one would throw and blank the whole rail. Scanning the (≤ ~20) children
+ * cannot throw on an id, and costs less than escaping + parsing a selector.
+ */
+function findChip(container: HTMLElement, categoryId: string): HTMLButtonElement | null {
+  for (const child of container.children) {
+    if (child instanceof HTMLButtonElement && child.dataset.categoryId === categoryId) {
+      return child;
+    }
+  }
+  return null;
+}
+
+/** Geometry the rail was aligned to the last time it centred `id`. */
+interface AlignedGeometry {
+  id: string;
+  offsetLeft: number;
+  offsetWidth: number;
+  clientWidth: number;
 }
 
 /**
@@ -22,18 +48,85 @@ export function CategoryNavRail({
   className,
 }: CategoryNavRailProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const alignedRef = React.useRef<AlignedGeometry | null>(null);
 
-  // Auto-scroll active category into horizontal center view
-  React.useEffect(() => {
-    if (!activeCategoryId || !scrollRef.current) return;
+  /**
+   * Centre `categoryId`'s chip. Records the geometry it centred on so the
+   * drift check below can tell "the chips re-flowed" (a real reason to
+   * re-centre) from "the user dragged the rail" (scrollLeft only — leave it).
+   */
+  const centerOn = React.useCallback((categoryId: string, behavior: ScrollBehavior) => {
     const container = scrollRef.current;
-    const el = container.querySelector<HTMLButtonElement>(
-      `[data-category-id="${CSS.escape(activeCategoryId)}"]`
-    );
-    if (!el) return;
-    const targetLeft = el.offsetLeft - container.offsetWidth / 2 + el.offsetWidth / 2;
-    container.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
-  }, [activeCategoryId]);
+    if (!container) return;
+    const chip = findChip(container, categoryId);
+    if (!chip) return;
+
+    const geometry: AlignedGeometry = {
+      id: categoryId,
+      offsetLeft: chip.offsetLeft,
+      offsetWidth: chip.offsetWidth,
+      clientWidth: container.clientWidth,
+    };
+    alignedRef.current = geometry;
+
+    // First try native scrollIntoView, which reliably centres within the
+    // scroll container (and clamps against the rail's own bounds).
+    if (typeof chip.scrollIntoView === "function") {
+      try {
+        chip.scrollIntoView({ behavior, inline: "center", block: "nearest" });
+        return;
+      } catch {
+        // Fall back to the manual calculation below if scrollIntoView fails
+        // (older WebViews reject the options bag or `inline`).
+      }
+    }
+
+    const target = centerScrollLeft({
+      offsetLeft: geometry.offsetLeft,
+      offsetWidth: geometry.offsetWidth,
+      clientWidth: geometry.clientWidth,
+      scrollWidth: container.scrollWidth,
+    });
+    // Already centred (within sub-pixel rounding): skip — a redundant
+    // `scrollTo` would restart any in-flight animation for no visual change.
+    if (Math.abs(container.scrollLeft - target) < 0.5) return;
+    container.scrollTo({ left: target, behavior });
+  }, []);
+
+  // Selection changed → bring the active chip to the middle of the rail.
+  // The first alignment (mount / `?category=` deep link) jumps; later taps glide.
+  React.useEffect(() => {
+    if (!activeCategoryId) return;
+    centerOn(activeCategoryId, alignedRef.current ? "smooth" : "instant");
+  }, [activeCategoryId, centerOn]);
+
+  // Re-centre only when the viewport actually changes: resize/rotation changes
+  // the half-width the target is computed against. The commit-time
+  // `reconcile()` call is gone — the menu route rebuilds `categories` inline on
+  // every render, so it fired on each commit and `centerOn(..., "smooth")`
+  // snatched the rail back to the active chip mid-drag, which is exactly what
+  // broke horizontal thumb scrolling of the pills. Chip re-flow from live item
+  // counts is corrected the next time the selection changes instead.
+  React.useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || !activeCategoryId) return;
+
+    const reconcile = () => {
+      const chip = findChip(container, activeCategoryId);
+      if (!chip) return;
+      const aligned = alignedRef.current;
+      const drifted =
+        !aligned ||
+        aligned.id !== activeCategoryId ||
+        aligned.offsetLeft !== chip.offsetLeft ||
+        aligned.offsetWidth !== chip.offsetWidth ||
+        aligned.clientWidth !== container.clientWidth;
+      if (drifted) centerOn(activeCategoryId, "smooth");
+    };
+
+    window.addEventListener("resize", reconcile);
+    return () => window.removeEventListener("resize", reconcile);
+  }, [activeCategoryId, centerOn]);
 
   const handleSelect = (id: string) => {
     void HapticService.selection();
@@ -51,7 +144,8 @@ export function CategoryNavRail({
         ref={scrollRef}
         role="tablist"
         aria-label="Menu categories"
-        className="flex items-center gap-2 overflow-x-auto no-scrollbar select-none py-1"
+        className="relative flex items-center gap-2 overflow-x-auto no-scrollbar select-none py-1 touch-pan-x overscroll-x-contain"
+        style={{ WebkitOverflowScrolling: "touch" }}
       >
         {categories.map((cat) => {
           const isSelected = activeCategoryId === cat.id;

@@ -21,9 +21,12 @@ import { BottomSheet } from "@/shared/components/common/BottomSheet";
 import type { Store } from "@/features/stores/models/Store";
 import { closesSoon, formatDistance } from "@/features/stores/utils/distance";
 import {
+  MAX_PICKUP_DISTANCE_KM,
   OUT_OF_AREA_MESSAGE,
+  PICKUP_TOO_FAR_MESSAGE,
 } from "@/features/stores/utils/serviceArea";
 import { getPermanentMapUrl, openDirections } from "@/features/stores/utils/navigation";
+import { useStoreSelection, resolveDeliveryCoords } from "@/features/stores/state/storeStore";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
 
@@ -51,13 +54,25 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
       : "Closed"
   }. ${store.etaMinutes != null ? `Delivery in ${store.etaMinutes} minutes. ` : ""}${formatDistance(store.distanceKm)} away.`;
 
-  // Determine if store should be disabled for delivery (out of area AND delivery mode)
+  // Determine if store should be disabled for delivery or far away takeaway/dinein
   const isDeliveryDisabled = outOfArea && fulfillment === "delivery";
+  const isPickupTooFar =
+    store.distanceKm != null &&
+    store.distanceKm > MAX_PICKUP_DISTANCE_KM &&
+    (fulfillment === "takeaway" || fulfillment === "dinein");
+  const isSelectionDisabled = isDeliveryDisabled || isPickupTooFar;
 
   /** Blocked taps still answer with the reason instead of doing nothing. */
   const explainOutOfArea = () => {
     void HapticService.impact("medium");
     toast.error(OUT_OF_AREA_MESSAGE);
+  };
+
+  const explainTooFar = () => {
+    void HapticService.impact("medium");
+    toast.error(
+      `${store.name} is ${Math.round(store.distanceKm!)} km away. Takeaway and Dine-In are restricted to nearby branches (< ${MAX_PICKUP_DISTANCE_KM} km).`,
+    );
   };
 
   const handleOpenInMaps = (e?: React.MouseEvent) => {
@@ -66,9 +81,19 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
     window.open(url, "_blank");
   };
 
+  /**
+   * Route start for the Directions flow, resolved on click so it can never
+   * be stale: (a) selected delivery address coordinates, (b) device coords
+   * held by the store store, (c) the cached GPS fix. null → Google Maps
+   * falls back to the device's current location on its own.
+   */
+  const resolveDirectionsOrigin = (): { lat: number; lng: number } | null =>
+    resolveDeliveryCoords(useStoreSelection.getState().coords);
+
   const handleNavigate = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    openDirections(store.name, store.lat, store.lng);
+    const origin = resolveDirectionsOrigin();
+    openDirections(store.name, store.lat, store.lng, origin?.lat, origin?.lng);
   };
 
   const handleCall = (e?: React.MouseEvent) => {
@@ -138,15 +163,19 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                 explainOutOfArea();
                 return;
               }
+              if (isPickupTooFar) {
+                explainTooFar();
+                return;
+              }
               void HapticService.impact("light");
               onSelect?.(store);
             }}
             aria-label={label}
             aria-pressed={selected || undefined}
-            aria-disabled={isDeliveryDisabled}
+            aria-disabled={isSelectionDisabled}
             className={cn(
               "flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer focus:outline-none select-none active:opacity-80",
-              isDeliveryDisabled && "cursor-not-allowed opacity-60",
+              isSelectionDisabled && "cursor-not-allowed opacity-60",
             )}
           >
             {/* 36px Circular Store Initial / Icon */}
@@ -163,7 +192,7 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                   variant="titleMedium"
                   className={cn(
                     "truncate font-bold text-[14px] leading-tight tracking-tight",
-                    outOfArea ? "text-text-secondary" : "text-text-primary",
+                    outOfArea || isPickupTooFar ? "text-text-secondary" : "text-text-primary",
                   )}
                 >
                   {store.name}
@@ -174,6 +203,11 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                     {store.distanceKm !== undefined
                       ? ` · ${formatDistance(store.distanceKm)} away`
                       : ""}
+                  </AppBadge>
+                )}
+                {!outOfArea && isPickupTooFar && (
+                  <AppBadge tone="error" className="text-[10px] px-1.5 py-0 shrink-0 font-semibold">
+                    Too far (&gt;25 km)
                   </AppBadge>
                 )}
               </div>

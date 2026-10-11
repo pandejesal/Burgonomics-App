@@ -50,6 +50,9 @@ export const Route = createFileRoute("/support")({
   validateSearch: (search: Record<string, unknown>) => ({
     topic: typeof search.topic === "string" ? search.topic : undefined,
     paymentId: typeof search.paymentId === "string" ? search.paymentId : undefined,
+    // Order-context deep link (MT-08): the tracking page routes customers here
+    // with the order id so the ticket can be traced without retyping it.
+    orderId: typeof search.orderId === "string" ? search.orderId : undefined,
     message: typeof search.message === "string" ? search.message : undefined,
   }),
   component: Page,
@@ -157,7 +160,7 @@ function Page() {
             Direct Contact Channels
           </Text>
           {channels === null ? (
-            <div className="h-24 animate-pulse rounded-2xl bg-neutral-900" />
+            <div className="h-24 animate-pulse rounded-2xl bg-bg-secondary" />
           ) : channels.length === 0 ? (
             <EmptyState
               title="No channels"
@@ -175,16 +178,16 @@ function Page() {
         </section>
 
         {/* Share Feedback */}
-        <div className="p-4 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-2">
+        <div className="p-4 rounded-3xl bg-surface border border-divider space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-white text-xs">Share Store Feedback</h3>
-              <p className="text-[11px] text-neutral-400">Rate your food, service, or suggest a new burger flavor.</p>
+              <h3 className="font-bold text-text text-xs">Share Store Feedback</h3>
+              <p className="text-[11px] text-text-secondary">Rate your food, service, or suggest a new burger flavor.</p>
             </div>
             <button
               type="button"
               onClick={() => setOpenFeedback(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text font-bold text-xs cursor-pointer transition-colors"
             >
               Feedback
             </button>
@@ -199,19 +202,19 @@ function Page() {
             </Text>
           </div>
           {faqs && faqs.length > 0 && (
-            <label className="flex h-11 items-center gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 focus-within:border-[#FF6600]">
+            <label className="flex h-11 items-center gap-2 rounded-2xl border border-divider bg-surface px-4 focus-within:border-[#FF6600]">
               <input
                 type="search"
                 value={faqQuery}
                 onChange={(e) => setFaqQuery(e.target.value)}
                 placeholder="Search FAQs (e.g., refund, delivery time, coins)..."
                 aria-label="Search frequently asked questions"
-                className="flex-1 bg-transparent text-white outline-none text-xs placeholder:text-neutral-500"
+                className="flex-1 bg-transparent text-text outline-none text-xs placeholder:text-text-secondary"
               />
             </label>
           )}
           {filteredFaqs === null ? (
-            <div className="h-40 animate-pulse rounded-2xl bg-neutral-900" />
+            <div className="h-40 animate-pulse rounded-2xl bg-bg-secondary" />
           ) : filteredFaqs.length === 0 ? (
             <EmptyState
               title={faqQuery ? "No matching FAQs" : "No FAQs"}
@@ -222,7 +225,7 @@ function Page() {
               }
             />
           ) : (
-            <ul className="overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 divide-y divide-neutral-800">
+            <ul className="overflow-hidden rounded-3xl border border-divider bg-surface divide-y divide-divider">
               {filteredFaqs.map((f) => (
                 <li key={f.id}>
                   <FaqAccordion item={f} />
@@ -294,8 +297,8 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
       target={channel.kind === "whatsapp" ? "_blank" : undefined}
       rel={channel.kind === "whatsapp" ? "noreferrer noopener" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-3 transition-colors text-white",
-        disabled ? "opacity-70" : "hover:border-[#0E4825] hover:bg-neutral-850",
+        "flex items-center gap-3 rounded-2xl border border-divider bg-surface p-3 transition-colors text-text",
+        disabled ? "opacity-70" : "hover:border-[#0E4825] hover:bg-bg-secondary",
       )}
       aria-disabled={disabled || undefined}
     >
@@ -310,7 +313,7 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
           {!channel.available && <AppBadge tone="neutral">Soon</AppBadge>}
         </div>
         {channel.helper && (
-          <span className="text-[11px] text-neutral-400 block truncate">
+          <span className="text-[11px] text-text-secondary block truncate">
             {channel.helper}
           </span>
         )}
@@ -424,23 +427,23 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
         </div>
       </fieldset>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-neutral-400">Comment</span>
+        <span className="text-xs font-bold uppercase text-text-secondary">Comment</span>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value.slice(0, 500))}
           rows={3}
           placeholder="What did you love or dislike?"
-          className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-white placeholder:text-neutral-500 outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-neutral-400">Suggestion (optional)</span>
+        <span className="text-xs font-bold uppercase text-text-secondary">Suggestion (optional)</span>
         <textarea
           value={suggestion}
           onChange={(e) => setSuggestion(e.target.value.slice(0, 500))}
           rows={2}
           placeholder="Anything we should build next?"
-          className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-white placeholder:text-neutral-500 outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
         />
       </label>
       {error && (

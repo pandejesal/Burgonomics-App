@@ -27,11 +27,11 @@ describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", (
       const fulfillment = "delivery";
       const subtotal = 400;
       const deliveryFee = subtotal >= 349 ? 0 : 35;
-      const packagingFee = 15;
+      const packagingFee = 20;
 
       expect(fulfillment).toBe("delivery");
       expect(deliveryFee).toBe(0);
-      expect(packagingFee).toBe(15);
+      expect(packagingFee).toBe(20);
     });
 
     it("configures takeaway mode with zero delivery fee and pickup prep ETA", () => {

@@ -14,10 +14,10 @@ if (versionPropsFile.canRead()) {
 }
 
 android {
-    namespace = "com.glassdoorsstudio.burgonomics"
+    namespace = "com.burgonomics"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.glassdoorsstudio.burgonomics"
+        applicationId "com.burgonomics"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode vCode
@@ -31,12 +31,18 @@ android {
     }
     signingConfigs {
         release {
-            def keystorePath = System.getenv("RELEASE_STORE_FILE") ?: "../release.keystore"
+            // Precedence: CI env vars -> android/key.properties (gitignored) -> debug fallback.
+            def props = new Properties()
+            def propsFile = rootProject.file("key.properties")
+            if (propsFile.canRead()) {
+                props.load(new FileInputStream(propsFile))
+            }
+            def keystorePath = System.getenv("RELEASE_STORE_FILE") ?: props.getProperty("storeFile") ?: "../release.keystore"
             def keystoreFile = file(keystorePath)
-            def storePass = System.getenv("RELEASE_STORE_PASSWORD")
-            def keyPass = System.getenv("RELEASE_KEY_PASSWORD")
+            def storePass = System.getenv("RELEASE_STORE_PASSWORD") ?: props.getProperty("storePassword")
+            def keyPass = System.getenv("RELEASE_KEY_PASSWORD") ?: props.getProperty("keyPassword")
+            def keyAliasName = System.getenv("RELEASE_KEY_ALIAS") ?: props.getProperty("keyAlias") ?: "burgonomics"
             if (keystoreFile.exists() && storePass && keyPass) {
-                def keyAliasName = System.getenv("RELEASE_KEY_ALIAS") ?: "burgonomics"
                 storeFile keystoreFile
                 storePassword storePass
                 keyAlias keyAliasName

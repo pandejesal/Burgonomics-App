@@ -1,6 +1,16 @@
 import * as React from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { RefreshCw, Phone, MessageSquare, Receipt, ChevronDown, ChevronUp } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  RefreshCw,
+  Phone,
+  MessageSquare,
+  Receipt,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  FileText,
+} from "lucide-react";
+import { toast } from "sonner";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
@@ -8,6 +18,8 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { HapticService } from "@/core/services/haptics";
 import { formatINR } from "@/core/utils/format";
+import { isSafeTelNumber } from "@/shared/utils/urlSafety";
+import { ordersService } from "@/features/orders/services/ordersService";
 
 import {
   orderRepository,
@@ -175,9 +187,9 @@ function TrackOrderPage() {
               customerAddressText={addressText}
             />
           ) : (
-            <div className="rounded-3xl border border-neutral-800 bg-[#0D0D0D] p-5 text-center space-y-1 shadow-md">
-              <p className="text-xs font-black text-white">Live location unavailable</p>
-              <p className="text-[11px] text-neutral-400">
+            <div className="rounded-3xl border border-divider bg-surface p-5 text-center space-y-1 shadow-md">
+              <p className="text-xs font-black text-text">Live location unavailable</p>
+              <p className="text-[11px] text-text-secondary">
                 {trackingState.isTakeawayOrDineIn
                   ? "The map appears once outlet coordinates are confirmed."
                   : "The map appears once outlet and delivery coordinates are confirmed."}
@@ -192,50 +204,53 @@ function TrackOrderPage() {
             onOpenSupport={() => void navigate({ to: "/support" })}
           />
 
+          {/* 3b. 60-second cancellation grace — self-serve before the kitchen starts */}
+          <CancellationGraceCard order={order} onOrderCancelled={setOrder} />
+
           {/* 4. Expandable Itemized Invoice Accordion */}
-          <div className="rounded-3xl border border-neutral-800 bg-[#0D0D0D] shadow-md overflow-hidden">
+          <div className="rounded-3xl border border-divider bg-surface shadow-md overflow-hidden">
             <button
               type="button"
               onClick={() => {
                 void HapticService.selection();
                 setReceiptOpen(!receiptOpen);
               }}
-              className="flex w-full items-center justify-between p-4 text-left hover:bg-neutral-900/50 transition-colors cursor-pointer"
+              className="flex w-full items-center justify-between p-4 text-left hover:bg-bg-secondary transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <Receipt className="h-4.5 w-4.5 text-emerald-400" />
+                <Receipt className="h-4.5 w-4.5 text-emerald-500" />
                 <div>
-                  <h3 className="font-sans text-xs font-black text-white">
+                  <h3 className="font-sans text-xs font-black text-text">
                     View Itemized Tax Invoice
                   </h3>
-                  <p className="text-[11px] text-neutral-400">
+                  <p className="text-[11px] text-text-secondary">
                     {order.items?.length ?? 1} Items • {formatINR(order.totals?.grandTotal ?? 0)}
                   </p>
                 </div>
               </div>
               {receiptOpen ? (
-                <ChevronUp className="h-4 w-4 text-neutral-400" />
+                <ChevronUp className="h-4 w-4 text-text-secondary" />
               ) : (
-                <ChevronDown className="h-4 w-4 text-neutral-400" />
+                <ChevronDown className="h-4 w-4 text-text-secondary" />
               )}
             </button>
 
             {receiptOpen && (
-              <div className="border-t border-neutral-800/80 p-4 space-y-3 bg-neutral-950/60">
+              <div className="border-t border-divider p-4 space-y-3 bg-bg-secondary/40">
                 <div className="space-y-2">
                   {order.items?.map((item, i) => (
                     <div key={i} className="flex justify-between text-xs">
-                      <span className="font-medium text-neutral-300">
+                      <span className="font-medium text-text">
                         {item.quantity}x {item.name}
                       </span>
-                      <span className="font-bold text-white">
+                      <span className="font-bold text-text">
                         {formatINR((item.unitPrice || 0) * (item.quantity || 1))}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-neutral-800 pt-2 space-y-1 text-[11px] text-neutral-400">
+                <div className="border-t border-divider pt-2 space-y-1 text-[11px] text-text-secondary">
                   <div className="flex justify-between">
                     <span>GST & Taxes</span>
                     <span>{formatINR(order.totals?.taxes ?? 0)}</span>
@@ -250,9 +265,9 @@ function TrackOrderPage() {
                     <span>Delivery Fee</span>
                     <span>{order.totals?.deliveryFee === 0 ? "FREE" : formatINR(order.totals?.deliveryFee ?? 0)}</span>
                   </div>
-                  <div className="border-t border-neutral-800 pt-2 flex justify-between font-sans text-xs font-black text-white">
+                  <div className="border-t border-divider pt-2 flex justify-between font-sans text-xs font-black text-text">
                     <span>Total Paid ({order.payment?.method?.toUpperCase() ?? "PAID"})</span>
-                    <span className="text-emerald-400 font-mono text-sm">
+                    <span className="text-emerald-500 font-mono text-sm">
                       {formatINR(order.totals?.grandTotal ?? 0)}
                     </span>
                   </div>
@@ -263,6 +278,204 @@ function TrackOrderPage() {
         </div>
       </AppShell>
     </ProtectedRoute>
+  );
+}
+
+// -- 60-second cancellation grace -----------------------------------
+
+/** Statuses that may still be cancelled by the customer themselves. */
+const CANCELLABLE_STATUS_CODES = new Set(["PLACED", "ORDER_PLACED", "PENDING", "CONFIRMED"]);
+/** Statuses where only the store can still cancel (kitchen accepted / prepping). */
+const CALL_STORE_STATUS_CODES = new Set([
+  ...CANCELLABLE_STATUS_CODES,
+  "ACCEPTED",
+  "PREPARING",
+  "KITCHEN_PREPARING",
+]);
+
+/** Burgonomics WhatsApp support line (click-to-chat). */
+const WHATSAPP_SUPPORT_HREF = "https://wa.me/917878848480";
+
+interface CancellationGraceCardProps {
+  order: Order;
+  /** Route reloads its state with the cancelled order the service returns. */
+  onOrderCancelled?: (order: Order) => void;
+}
+
+/**
+ * Cancellation grace card rendered beneath the tracker.
+ *
+ * For the first 60 seconds after placement the customer can cancel the order
+ * themselves (instant full refund). The countdown is measured from the real
+ * placement timestamp — never a synthetic in-memory timer — and once it closes
+ * (or the kitchen accepts / starts prepping) the only honest affordance left
+ * is contacting the store.
+ */
+export function CancellationGraceCard({ order, onOrderCancelled }: CancellationGraceCardProps) {
+  // Live countdown: re-render every second while the card is mounted.
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const placedAtIso = order.placedAt || (order as Order & { createdAt?: string }).createdAt || "";
+  const placedAtMs = new Date(placedAtIso).getTime();
+  // A missing / unparsable placement timestamp must never grant an
+  // unverifiable grace window — it lands in the call-the-store branch.
+  const elapsed = Number.isFinite(placedAtMs)
+    ? Math.floor((Date.now() - placedAtMs) / 1000)
+    : Number.MAX_SAFE_INTEGER;
+  const remainingSec = Math.max(0, 60 - elapsed);
+
+  const statusCode = order.status.code.toUpperCase();
+  const inGrace = CANCELLABLE_STATUS_CODES.has(statusCode) && remainingSec > 0;
+  const showCallStore = !inGrace && CALL_STORE_STATUS_CODES.has(statusCode);
+
+  // Delivered / cancelled / out-for-delivery orders render no cancel UI.
+  if (!inGrace && !showCallStore) return null;
+
+  // Loop: staff-entered store phones must never become one-tap dial links.
+  const storePhone = order.store?.phone || undefined;
+  const safeStorePhone = storePhone && isSafeTelNumber(storePhone) ? storePhone : undefined;
+
+  // MT-08: dual support gateway. The WhatsApp click-to-chat link is prefilled
+  // with this order so the store knows what the customer is writing about —
+  // and an in-app support ticket sits right beside it for customers who would
+  // rather not leave the app (no phone number required at all).
+  // `orderNumber` is the store-issued number when the backend sends one; the
+  // short code is what this page already shows as "#…"; the raw id is the
+  // honest last resort — never an invented label.
+  const explicitOrderNumber = (order as Order & { orderNumber?: string }).orderNumber;
+  const orderIdLabel = explicitOrderNumber
+    ? `#${explicitOrderNumber}`
+    : order.shortCode
+      ? `#${order.shortCode}`
+      : order.id;
+  const whatsappUrl = `${WHATSAPP_SUPPORT_HREF}?text=${encodeURIComponent(
+    `Hello Burgonomics, I need help with order ${orderIdLabel}`,
+  )}`;
+
+  const handleCancel = async () => {
+    if (!window.confirm("Cancel order for an instant full refund?")) return;
+    const res = await ordersService.cancelOrder(order.id);
+    if (res.success && res.data) {
+      // Keep the orders store coherent with the CANCELLED doc the service
+      // just persisted, then reload the route state + toast the refund.
+      useOrdersStore.getState().upsert(res.data);
+      onOrderCancelled?.(res.data);
+      toast.success("Order cancelled. Refund initiated.");
+    } else {
+      // `res.success && res.data` leaves ApiSuccess<null> in the else branch,
+      // so the failure message must be read behind an explicit !success check.
+      const failureMessage = !res.success ? res.error.message : undefined;
+      toast.error(failureMessage || "We couldn't cancel this order. Please call the store.");
+    }
+  };
+
+  if (inGrace) {
+    return (
+      <div
+        data-testid="cancellation-grace-card"
+        className="rounded-3xl border border-divider bg-surface p-4 space-y-3 shadow-md"
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-2xl bg-amber-500/10 p-2 text-amber-500">
+            <Clock className="h-4 w-4 animate-pulse" />
+          </span>
+          <div>
+            <h3 className="font-sans text-xs font-black text-text">
+              Cancellation Grace Period: {remainingSec}s remaining
+            </h3>
+            <p className="text-[11px] text-text-secondary">
+              Cancel free of charge before the kitchen starts grilling.
+            </p>
+          </div>
+        </div>
+
+        {/* Countdown bar — width mirrors the real seconds left, never a fake ease. */}
+        <div
+          role="progressbar"
+          aria-label="Cancellation grace period"
+          aria-valuemin={0}
+          aria-valuemax={60}
+          aria-valuenow={remainingSec}
+          className="h-1.5 w-full overflow-hidden rounded-full bg-bg-secondary"
+        >
+          <div
+            className="h-full rounded-full bg-amber-500 transition-all duration-1000 ease-linear"
+            style={{ width: `${(remainingSec / 60) * 100}%` }}
+          />
+        </div>
+
+        <button
+          type="button"
+          data-testid="cancel-order-button"
+          onClick={() => void handleCancel()}
+          className="w-full rounded-xl border border-divider bg-bg-secondary py-2.5 text-xs font-black text-text transition-colors hover:bg-surface cursor-pointer"
+        >
+          Cancel Order
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="grace-expired-card"
+      className="rounded-3xl border border-divider bg-surface p-4 space-y-3 shadow-md"
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="rounded-2xl bg-bg-secondary p-2 text-text-secondary">
+          <Clock className="h-4 w-4" />
+        </span>
+        <div>
+          <h3 className="font-sans text-xs font-black text-text">Cancellation window closed</h3>
+          <p className="text-[11px] text-text-secondary">
+            The kitchen has your order — the store can still help with changes or a cancellation.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        {safeStorePhone ? (
+          <a
+            href={`tel:${safeStorePhone}`}
+            data-testid="call-store-link"
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-bg-secondary py-2.5 text-xs font-black text-text transition-colors hover:bg-surface"
+          >
+            <Phone className="h-3.5 w-3.5 text-emerald-500" />
+            <span>Need changes? Call Store</span>
+          </a>
+        ) : (
+          <span className="self-center text-[11px] italic text-text-secondary">
+            Store phone unavailable
+          </span>
+        )}
+
+        <a
+          href={whatsappUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          data-testid="whatsapp-support-link"
+          className="flex items-center justify-center gap-1.5 rounded-xl bg-[#0E4825] py-2.5 text-xs font-black text-emerald-300 transition-colors hover:bg-[#135d30]"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          <span>WhatsApp Support</span>
+        </a>
+
+        {/* MT-08: in-app alternative — same escalation, no chat app needed. */}
+        <Link
+          to="/support"
+          search={{ topic: "order", orderId: order.id }}
+          data-testid="raise-ticket-link"
+          className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary py-2 text-xs font-black text-text transition-colors hover:bg-surface"
+        >
+          <FileText className="h-3.5 w-3.5 text-amber-500" />
+          <span>Raise Support Ticket</span>
+        </Link>
+      </div>
+    </div>
   );
 }
 
