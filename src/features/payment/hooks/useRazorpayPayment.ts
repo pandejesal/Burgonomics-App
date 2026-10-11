@@ -76,7 +76,13 @@ export function useRazorpayPayment(options?: UseRazorpayPaymentOptions) {
         {
           onSuccess: async (result: PaymentResult) => {
             try {
-              const verify = await paymentRepository.verifyPayment(result);
+              // Contract §3: bind the verification to the internal order that
+              // was created before the gateway opened (paymentStore holds it).
+              const internalOrderId = usePaymentStore.getState().internalOrderId;
+              const verify = await paymentRepository.verifyPayment({
+                ...result,
+                internalOrderId: internalOrderId ?? undefined,
+              });
               if (!verify.success || !verify.data.verified) {
                 setStatus("failed");
                 const message = verify.success ? "Signature verification failed" : verify.error.message;
@@ -84,15 +90,22 @@ export function useRazorpayPayment(options?: UseRazorpayPaymentOptions) {
                   code: verify.success ? "VERIFICATION_FAILED" : verify.error.code,
                   message,
                   retryable: true,
+                  paymentId: result.paymentId,
                 });
                 toast.error("Payment verification failed", { description: message });
+                // Never leave the pre-created order as a phantom pending doc.
+                if (internalOrderId) {
+                  void orderRepository.markPaymentFailed(internalOrderId).catch(() => undefined);
+                }
                 options?.onFailure?.({ code: "VERIFICATION_FAILED", message });
                 return;
               }
 
               setVerification(verify.data);
+              // Same internal order id — the paid order replaces the pending
+              // doc instead of creating a second one for the same payment.
               const created = await orderRepository.createFromCurrentContext({
-                confirmedOrderId: verify.data.confirmedOrderId,
+                confirmedOrderId: internalOrderId ?? verify.data.confirmedOrderId,
                 paymentMethod: result.method,
                 transactionId: result.paymentId,
               });

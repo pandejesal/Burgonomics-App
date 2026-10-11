@@ -113,6 +113,21 @@ export function CheckoutPage() {
   // double-tap fires handlePlaceOrder twice (double order creation) before
   // the disabled button re-renders. Ref flips synchronously: no double fire.
   const placeOrderInFlight = React.useRef(false);
+  // Finding 5: the post-auth retry is deferred 300ms; hold the timer id so
+  // unmount can cancel it, and route the call through the latest
+  // `handlePlaceOrder` so the deferred execution sees fresh auth/guest state
+  // instead of the render-scope closure captured when the sheet succeeded.
+  const authRetryTimer = React.useRef<number | null>(null);
+  const handlePlaceOrderRef = React.useRef<() => Promise<void>>(async () => {});
+  React.useEffect(() => {
+    handlePlaceOrderRef.current = handlePlaceOrder;
+  });
+  React.useEffect(
+    () => () => {
+      if (authRetryTimer.current !== null) window.clearTimeout(authRetryTimer.current);
+    },
+    [],
+  );
   // Offline gate: the banner promises checkout is disabled offline — enforce
   // it. Tapping PAY offline used to fire Razorpay into a generic failure.
   const isOnline = useAppConfig((s) => s.isOnline);
@@ -806,8 +821,18 @@ export function CheckoutPage() {
         onClose={() => setAuthSheetOpen(false)}
         onSuccess={() => {
           setAuthSheetOpen(false);
-          setTimeout(() => {
-            void handlePlaceOrder();
+          // Finding 5: never defer a stale closure. The 300ms delay used to
+          // capture `handlePlaceOrder` (and its `isAuthenticated` render
+          // scope) from BEFORE the auth completed — if the user re-rendered
+          // or unmounted meanwhile, the deferred call re-opened this very
+          // sheet (stale `false`) or set state on a dead tree. Call through
+          // the ref-held latest callback and clear the timer on unmount.
+          if (authRetryTimer.current !== null) {
+            window.clearTimeout(authRetryTimer.current);
+          }
+          authRetryTimer.current = window.setTimeout(() => {
+            authRetryTimer.current = null;
+            void handlePlaceOrderRef.current();
           }, 300);
         }}
       />

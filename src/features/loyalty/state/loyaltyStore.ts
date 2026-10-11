@@ -1,8 +1,13 @@
 import { create } from "zustand";
 import { db } from "@/core/config/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { currentScopedUid, onAuthUidChange, scopedStorageKey } from "@/features/auth/utils/scopedPersistence";
 
-const STORAGE_KEY = "burgonomics.loyalty.v1";
+// Loop 36/120 privacy (finding 6): the cached balance is per signed-in user
+// (guests keep the legacy key). STRICT scoping — no legacy fallback read,
+// so one account's cached balance never surfaces in another's session.
+const BASE_STORAGE_KEY = "burgonomics.loyalty.v1";
+const storageKey = () => scopedStorageKey(BASE_STORAGE_KEY, currentScopedUid());
 
 interface LoyaltyState {
   /**
@@ -29,7 +34,7 @@ interface LoyaltyState {
 
 function readPersisted(): { balance?: unknown; lastSyncedAt?: unknown } | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -39,7 +44,7 @@ function readPersisted(): { balance?: unknown; lastSyncedAt?: unknown } | null {
 
 function persist(state: Pick<LoyaltyState, "balance" | "lastSyncedAt">) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storageKey(), JSON.stringify(state));
   } catch {
     // ignore quota errors
   }
@@ -132,3 +137,26 @@ if (typeof window !== "undefined") {
     // corrupted cache: boot at zero, refresh later
   }
 }
+
+// Loop 36/120 (finding 6): re-scope on identity change — never carry user
+// A's cached balance into user B's session. Guests (uid null) hold zero
+// (the server is the only minter; refreshFromServer(null) has the same
+// semantics). The incoming scope is read directly from storage.
+onAuthUidChange((uid) => {
+  if (!uid) {
+    useLoyaltyStore.setState({ balance: 0, lastSyncedAt: null });
+    return;
+  }
+  try {
+    const p = readPersisted();
+    useLoyaltyStore.setState({
+      balance: p ? cleanBalance(p.balance) : 0,
+      lastSyncedAt:
+        p && typeof p.lastSyncedAt === "number" && Number.isFinite(p.lastSyncedAt)
+          ? p.lastSyncedAt
+          : null,
+    });
+  } catch {
+    useLoyaltyStore.setState({ balance: 0, lastSyncedAt: null });
+  }
+});

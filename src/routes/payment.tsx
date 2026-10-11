@@ -37,6 +37,7 @@ import { logger } from "@/core/logging/logger";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
 import { useAppConfig } from "@/core/state/appConfigStore";
+import { appConfig } from "@/core/config/env";
 
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
 import { ReviewItemsList, useCheckoutStore } from "@/features/checkout";
@@ -145,9 +146,14 @@ function PaymentPage() {
     }
   }, [payStatus]);
   // Production Razorpay mode: live key required for real money movement.
-  // No demo/simulation paths in production (FR-005, FR-006).
-  const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID as string | undefined;
+  // No demo/simulation paths in production (FR-005, FR-006). Read from the
+  // central config — feature code must never touch import.meta.env directly.
+  const razorpayKeyId = appConfig.integrations.razorpayKeyId;
   const hasLiveRazorpayKey = !!razorpayKeyId && razorpayKeyId.startsWith("rzp_live_");
+  // The "Demo payments" hint is a DEV affordance only: a release bundle with
+  // no live key must fail closed silently, never advertise that payments are
+  // simulated (that reads as "money may or may not move").
+  const isDevBuild = appConfig.env === "development";
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -186,6 +192,10 @@ function PaymentPage() {
     payInFlight.current = true;
     // Belt-and-braces behind the disabled button: never fire Razorpay offline.
     if (!useAppConfig.getState().isOnline) {
+      // Release the re-entry guard: `setStatus("idle")` is a no-op when the
+      // status is ALREADY idle (the very common first offline tap), so the
+      // terminal-status effect below never runs and the button stays dead.
+      payInFlight.current = false;
       setPreflightIssue("You are offline. Reconnect to place your order.");
       setStatus("idle");
       return;
@@ -198,6 +208,7 @@ function PaymentPage() {
     // 1. Validate common checkout requirements
     const preflight = await paymentRepository.validateForPayment();
     if (!preflight.success || !preflight.data.valid) {
+      payInFlight.current = false;
       setStatus("idle");
       const message = preflight.success
         ? (preflight.data.issues[0]?.message ?? "Something's not right — please review your order.")
@@ -252,6 +263,8 @@ function PaymentPage() {
 
     // 3. ONLINE FLOW (Razorpay Checkout)
     try {
+      // Creates the internal payment-pending order FIRST (contract §3) and
+      // binds the gateway order to it — the id lives in the payment store.
       const orderRes = await paymentRepository.createPaymentOrder();
       if (!orderRes.success) {
         setStatus("failed");
@@ -261,7 +274,8 @@ function PaymentPage() {
           retryable: true,
         });
         toast.error("Couldn't start payment", { description: orderRes.error.message });
-        void navigate({ to: "/cart", replace: true });
+        // Stay on this screen: the FailurePanel below is the honest surface
+        // (retry / support). Bouncing to /cart hid the real error.
         return;
       }
       setOrder(orderRes.data);
@@ -289,6 +303,11 @@ function PaymentPage() {
             toast.error("Payment failed", { description: message });
           },
           onCancel: () => {
+            // Razorpay fires `modal.ondismiss` even after `payment.failed`,
+            // so a real failure must never be relabelled as "user cancelled":
+            // that would hide the failure reason and re-offer a retry that
+            // cannot succeed. Keep the harder failure state.
+            if (usePaymentStore.getState().status === "failed") return;
             setStatus("cancelled");
             setFailure({
               code: "USER_CANCELLED",
@@ -312,8 +331,14 @@ function PaymentPage() {
   };
 
   const handleSuccess = async (result: PaymentResult) => {
+    // Contract §3: verification binds the gateway payment to the internal
+    // order created before Razorpay opened (never to the gateway id alone).
+    const internalOrderId = usePaymentStore.getState().internalOrderId;
     try {
-      const verify = await paymentRepository.verifyPayment(result);
+      const verify = await paymentRepository.verifyPayment({
+        ...result,
+        internalOrderId: internalOrderId ?? undefined,
+      });
       if (!verify.success || !verify.data.verified) {
         setStatus("failed");
         const message = verify.success ? "Payment verification failed." : verify.error.message;
@@ -321,15 +346,24 @@ function PaymentPage() {
           code: verify.success ? "VERIFICATION_FAILED" : verify.error.code,
           message,
           retryable: true,
+          // Money may have moved: the support CTA needs the gateway payment id.
+          paymentId: result.paymentId,
         });
         toast.error("Payment verification failed", { description: message });
-        void navigate({ to: "/cart", replace: true });
+        // Contract §3: the pending order must never linger as a phantom.
+        if (internalOrderId) {
+          void orderRepository.markPaymentFailed(internalOrderId).catch(() => undefined);
+        }
+        // Stay on this screen so the FailurePanel (retry/support) renders —
+        // the old navigate(/cart) hid the failure behind an empty cart.
         return;
       }
       setVerification(verify.data);
 
+      // Re-uses the SAME internal order (same id) — the paid order replaces
+      // the payment-pending doc instead of creating a second one.
       const created = await orderRepository.createFromCurrentContext({
-        confirmedOrderId: verify.data.confirmedOrderId,
+        confirmedOrderId: internalOrderId ?? verify.data.confirmedOrderId,
         paymentMethod: result.method,
         transactionId: result.paymentId,
       });
@@ -637,7 +671,7 @@ function PaymentPage() {
           </div>
         )}
 
-        {method === "online" && !hasLiveRazorpayKey && (
+        {method === "online" && !hasLiveRazorpayKey && isDevBuild && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
             <Text variant="bodyMedium" className="font-bold">
               Demo payments: no live Razorpay key is configured, so online payment will simulate

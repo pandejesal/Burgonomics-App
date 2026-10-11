@@ -175,6 +175,27 @@ const progression = new Map<string, Partial<Record<OrderStatusCode, string>>>();
 /** Uids whose Firestore history was already merged into `orders` this session. */
 const historyFetchedFor = new Set<string>();
 
+/**
+ * The last order whose Firestore write FAILED, keyed by checkout fingerprint.
+ * A persistence failure is surfaced as `PERSIST_FAILED` (never `ok`), so the
+ * customer retries the SAME checkout — the retry must re-create the SAME
+ * `orders/{id}` document instead of minting a second one for one payment.
+ * Cleared on the first successful persist.
+ */
+let failedPersist: { fingerprint: string; id: string } | null = null;
+
+/** Stable identity of one checkout — used to reuse the order id on retry. */
+function checkoutFingerprint(input: CreateOrderInput): string {
+  return JSON.stringify([
+    input.store?.id ?? null,
+    input.fulfillment ?? null,
+    input.payment?.method ?? null,
+    input.totals?.grandTotal ?? null,
+    input.notes ?? null,
+    (input.items ?? []).map((l) => [l.productId, l.quantity, l.unitPrice]),
+  ]);
+}
+
 function nextStatusCode(
   fulfillment: Fulfillment,
   current: OrderStatusCode,
@@ -278,7 +299,14 @@ export const ordersService = {
         },
       };
     }
-    const id = input.confirmedOrderId ?? `ord_${Date.now()}_${generateSecureId(6)}`;
+    const fingerprint = checkoutFingerprint(input);
+    // Reuse the id of a checkout whose Firestore write already failed, so a
+    // retry re-creates the SAME document instead of a duplicate order.
+    const id =
+      input.confirmedOrderId ??
+      (failedPersist && failedPersist.fingerprint === fingerprint
+        ? failedPersist.id
+        : `ord_${Date.now()}_${generateSecureId(6)}`);
     const nowIso = new Date().toISOString();
     const status = resolveStatus("PLACED");
     const etaMs = input.fulfillment === "delivery" ? 35 * 60_000 : 20 * 60_000;
@@ -323,14 +351,23 @@ export const ordersService = {
     }
     order.petpoojaStatus = petpoojaStatus;
 
+    // Firestore write: a failure here is FATAL for this attempt — the order
+    // exists nowhere Partner/KDS/POS can see it, so returning ok() told the
+    // customer "order placed" (and cleared their cart) for an order that was
+    // never sent. It must surface as PERSIST_FAILED instead.
+    let persistError: string | null = null;
     try {
       const { auth, db } = await import("@/core/config/firebase");
       const { doc, setDoc } = await import("firebase/firestore");
       const user = auth.currentUser;
-      if (user) {
+      if (!user) {
+        persistError = "Your session ended before the order could be saved.";
+      } else {
         await setDoc(doc(db, "orders", id), {
           ...order,
           deliveryAddress: input.deliveryAddress ?? input.address,
+          // firestore.rules requires BOTH ownership fields to equal the
+          // caller's uid — customerId alone is no longer sufficient.
           userId: user.uid,
           petpoojaStatus,
           ...(petpoojaError ? { petpoojaError } : {}),
@@ -351,15 +388,29 @@ export const ordersService = {
         });
       }
     } catch (err) {
+      persistError = err instanceof Error ? err.message : String(err);
       const { logger } = await import("@/core/logging/logger");
       logger.warn("ordersService.firestore_sync_failed", {
         id,
-        message: err instanceof Error ? err.message : String(err),
+        message: persistError,
       });
     }
 
+    // The record stays in memory on failure: the retry must find the same
+    // order (same id) and the customer keeps their context.
     orders.set(id, order);
     progression.set(id, { PLACED: nowIso });
+
+    if (persistError) {
+      failedPersist = { fingerprint, id };
+      return fail(
+        "PERSIST_FAILED",
+        "We couldn't save your order, so the kitchen never received it. " +
+          "Please try again — no duplicate order will be created.",
+        true,
+      );
+    }
+    failedPersist = null;
     return ok(order);
   },
 
@@ -599,6 +650,50 @@ export const ordersService = {
       );
     }
     const updated: Order = { ...existing, whatsappOptIn: optIn };
+    orders.set(id, updated);
+    return ok(updated);
+  },
+
+  /**
+   * PAYMENTS_CONTRACT_SPEC §3 — an order created BEFORE Razorpay opened must
+   * never stay "payment pending" forever once verification failed: that is a
+   * phantom order the kitchen sees as unpaid-but-live. Best-effort server
+   * write (merge-only on `payment` + `updatedAt`); the in-memory record is
+   * always updated so the UI reflects the truth even offline.
+   */
+  async markPaymentFailed(id: string): Promise<ApiResult<Order>> {
+    let existing = orders.get(id);
+    if (!existing) {
+      const loaded = await this.getOrder(id);
+      if (!loaded.success) return loaded;
+      if (!loaded.data) return fail("NOT_FOUND", "Order not found.");
+      existing = loaded.data;
+    }
+    const updated: Order = {
+      ...existing,
+      payment: { ...existing.payment, status: "failed", paidAt: undefined },
+    };
+    try {
+      const { db } = await import("@/core/config/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      await setDoc(
+        doc(db, "orders", id),
+        { payment: updated.payment, updatedAt: new Date().toISOString() },
+        { merge: true },
+      );
+    } catch (err) {
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.mark_payment_failed_persist_failed", {
+        id,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      orders.set(id, updated);
+      return fail(
+        "WRITE_FAILED",
+        "We couldn't record the failed payment on the order. It may still show as unpaid.",
+        true,
+      );
+    }
     orders.set(id, updated);
     return ok(updated);
   },

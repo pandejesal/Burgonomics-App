@@ -31,6 +31,8 @@ import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authS
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
+import { orderRepository } from "@/features/orders/repositories/OrderRepository";
+import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { toStoreSnapshot } from "@/features/orders/models";
 
 export class PaymentRepository {
@@ -133,6 +135,13 @@ export class PaymentRepository {
 
   async createPaymentOrder(opts?: {
     loyaltyPointsToRedeem?: number;
+    /**
+     * Internal Firestore order id created BEFORE the gateway opens
+     * (PAYMENTS_CONTRACT_SPEC §3). Sent as `orderId` so the server can bind
+     * the Razorpay order to it and refuse to charge for an already-paid or
+     * foreign order.
+     */
+    internalOrderId?: string;
   }): Promise<ApiResult<PaymentOrder>> {
     const totalsRes = await cartRepository.calculateTotals();
     if (!totalsRes.success) return totalsRes;
@@ -193,6 +202,22 @@ export class PaymentRepository {
     const prep = await cartRepository.prepareCheckout();
     const checkoutToken = prep.success ? prep.data.checkoutToken : undefined;
 
+    // PAYMENTS_CONTRACT_SPEC §3: an internal `orders/{id}` doc MUST exist
+    // before the gateway opens, so the Razorpay order binds to a real, unpaid
+    // order the server can price and hand to the kitchen. Creating it here
+    // (rather than per screen) means no caller can open Razorpay without that
+    // binding. The id lives in the payment store so retries re-create the
+    // SAME doc instead of a second order for one checkout.
+    const pending = await orderRepository.createFromCurrentContext({
+      confirmedOrderId:
+        opts?.internalOrderId ?? usePaymentStore.getState().internalOrderId ?? undefined,
+      paymentMethod: "online",
+      paymentStatus: "pending",
+      paymentLabel: "Pay Online",
+    });
+    if (!pending.success) return pending;
+    usePaymentStore.getState().setInternalOrderId(pending.data.id);
+
     // Server reprices authoritatively from items + store pricing; the client
     // amount below is display-only. Loyalty/coupon/tip/branch are sent as
     // inputs (resolved above from opts with fallback to persisted checkout
@@ -204,12 +229,20 @@ export class PaymentRepository {
       loyaltyPointsToRedeem || 0,
       tipAmount || 0,
     ]);
-    return this.service.createOrder({
+    const orderRes = await this.service.createOrder({
       amount: totalsRes.data.grandTotal,
       currency: "INR",
       receipt: `rcpt_${Date.now()}`,
       storeId: sel.activeStore.id,
+      // PAYMENTS_CONTRACT_SPEC §1: `orderType` is canonical (server enum is
+      // delivery | takeaway | dinein — the app's Fulfillment maps 1:1).
+      // `fulfillment` stays as the legacy alias for pre-contract servers.
+      orderType: sel.fulfillment,
       fulfillment: sel.fulfillment,
+      // PAYMENTS_CONTRACT_SPEC §1/§3: the internal order id above, so the
+      // server can refuse to charge for an already-paid or foreign order.
+      orderId: pending.data.id,
+      branchId: sel.activeStore.partnerBranchId ?? undefined,
       items: cart.lines.map((l) => ({
         id: l.productId,
         productId: l.productId,
@@ -227,6 +260,12 @@ export class PaymentRepository {
       checkoutToken,
       checkoutSnapshot,
     });
+    if (!orderRes.success) {
+      // No gateway order was opened — the pending internal order must not
+      // linger as an unpaid phantom in the customer's history.
+      await orderRepository.markPaymentFailed(pending.data.id).catch(() => undefined);
+    }
+    return orderRes;
   }
 
   verifyPayment(result: PaymentResult): Promise<ApiResult<PaymentVerification>> {

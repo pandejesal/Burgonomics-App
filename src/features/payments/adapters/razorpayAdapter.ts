@@ -7,11 +7,12 @@
  *      Razorpay Checkout script is injected and a real payment modal is
  *      opened.
  *   - Test mode — `rzp_test_*` keys are accepted OUTSIDE production builds
- *      (`!isProduction || isTestEnv || import.meta.env.DEV`: dev server,
- *      staging bundle, Android/iOS debug APK, test runners). The same SDK +
- *      real checkout modal runs against the Razorpay TEST dashboard, so
- *      developers and QA exercise the genuine flow end-to-end. Production
- *      builds reject test keys and fail closed — a live key is mandatory.
+ *      (`isTestRunnerEnv() || import.meta.env.DEV || !isProductionBuild()`:
+ *      dev server, staging bundle, Android/iOS debug APK, test runners). The
+ *      same SDK + real checkout modal runs against the Razorpay TEST
+ *      dashboard, so developers and QA exercise the genuine flow
+ *      end-to-end. Production builds reject test keys and fail closed — a
+ *      live key is mandatory.
  *   - Zero-charge orders (`amount === 0`, e.g. fully discounted / reward
  *      credits) complete immediately with a sentinel payment envelope —
  *      no SDK load, no Razorpay call, no money moves.
@@ -124,16 +125,16 @@ const isProductionBuild = (): boolean => {
 };
 
 /**
- * Test (`rzp_test_*`) publishable keys are allowed wherever production is
- * not: `!isProduction || isTestEnv || import.meta.env.DEV` (plus a
- * non-production `VITE_APP_ENV`, which is what a debug APK ships with).
- * Production builds still refuse them — a live key is mandatory there.
+ * Test (`rzp_test_*`) publishable keys are allowed wherever the bundle is
+ * NOT a production build: `isTestRunnerEnv() || import.meta.env.DEV ||
+ * !isProductionBuild()`. The gate is the BUILD (import.meta.env.PROD), not
+ * the configured `VITE_APP_ENV`: a release bundle that forgot to set it
+ * used to sail through the old `appConfig.env !== "production"` escape
+ * hatch and open real checkout with a test key. Production builds still
+ * refuse test keys — a live key is mandatory there.
  */
 const allowsTestKeys = (): boolean =>
-  isTestRunnerEnv() ||
-  import.meta.env?.DEV === true ||
-  !isProductionBuild() ||
-  appConfig.env !== "production";
+  isTestRunnerEnv() || import.meta.env?.DEV === true || !isProductionBuild();
 
 const hasBrowser = (): boolean => typeof window !== "undefined" && typeof document !== "undefined";
 
@@ -273,9 +274,15 @@ export const razorpayAdapter: RazorpayAdapter = {
         return;
       }
       const isRealRzpOrder = /^order_[A-Za-z0-9]{14}$/.test(init.order.orderId);
+      // Razorpay dismisses the modal after `payment.failed` too, so onCancel
+      // must not fire (and downgrade) a real failure — the caller's failure
+      // copy/CTA is the honest surface.
+      let failureReported = false;
       const options: Record<string, unknown> = {
         key: init.order.keyId,
-        amount: Math.round(init.order.amount * 100),
+        // Canonical gateway amount is paise (contract §1) — only fall back
+        // to the rupees field (and its rounding) when the server sent none.
+        amount: init.order.amountPaise ?? Math.round(init.order.amount * 100),
         currency: init.order.currency,
         name: "Burgonomics",
         description: "Burgonomics — 100% Pure Veg Burgers",
@@ -284,7 +291,7 @@ export const razorpayAdapter: RazorpayAdapter = {
         theme: { color: init.theme?.color ?? "#0E4825" },
         modal: {
           ondismiss: () => {
-            handlers.onCancel();
+            if (!failureReported) handlers.onCancel();
           },
         },
         handler: (resp: {
@@ -316,6 +323,7 @@ export const razorpayAdapter: RazorpayAdapter = {
           )?.error ?? {};
         const code = err.code ?? "PAYMENT_FAILED";
         const description = err.description ?? err.reason ?? "Payment could not be completed.";
+        failureReported = true;
         handlers.onFailure({ code, description, source: err.source });
       });
       rzp.open();

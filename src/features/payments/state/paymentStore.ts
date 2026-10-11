@@ -21,12 +21,19 @@ interface PaymentState {
   order: PaymentOrder | null;
   verification: PaymentVerification | null;
   failure: PaymentFailure | null;
+  /**
+   * Internal Firestore order id created BEFORE the gateway opened
+   * (PAYMENTS_CONTRACT_SPEC §3). Held so a retry re-creates the SAME order
+   * doc and a failed verification can mark it `paymentStatus: "failed"`.
+   */
+  internalOrderId: string | null;
 
   setStatus: (s: PaymentStatus) => void;
   setMethod: (m: PaymentMethod) => void;
   setOrder: (o: PaymentOrder | null) => void;
   setVerification: (v: PaymentVerification | null) => void;
   setFailure: (f: PaymentFailure | null) => void;
+  setInternalOrderId: (id: string | null) => void;
   reset: () => void;
 }
 
@@ -36,6 +43,7 @@ const initial = {
   order: null,
   verification: null,
   failure: null,
+  internalOrderId: null,
 };
 
 export const usePaymentStore = create<PaymentState>()((set) => ({
@@ -45,5 +53,6 @@ export const usePaymentStore = create<PaymentState>()((set) => ({
   setOrder: (o) => set({ order: o }),
   setVerification: (v) => set({ verification: v }),
   setFailure: (f) => set({ failure: f }),
+  setInternalOrderId: (id) => set({ internalOrderId: id }),
   reset: () => set(initial),
 }));

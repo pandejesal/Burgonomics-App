@@ -159,12 +159,17 @@ export class OrderRepository {
         : undefined;
 
     const isCash = opts.paymentMethod === "cash";
+    // A payment-pending order (created BEFORE Razorpay opens, per
+    // PAYMENTS_CONTRACT_SPEC §3) is not paid — it must not carry a paidAt
+    // timestamp or a "Paid Online" label.
+    const displayStatus: PaymentDisplayStatus =
+      opts.paymentStatus ?? (isCash ? "CASH_PENDING" : "paid");
     const payment: OrderPaymentInfo = {
       method: isCash ? "cod" : opts.paymentMethod,
       label: opts.paymentLabel ?? paymentMethodLabel[opts.paymentMethod] ?? "Payment",
-      status: opts.paymentStatus ?? (isCash ? "CASH_PENDING" : "paid"),
+      status: displayStatus,
       transactionId: opts.transactionId,
-      paidAt: isCash ? undefined : new Date().toISOString(),
+      paidAt: displayStatus === "paid" ? new Date().toISOString() : undefined,
     };
 
     const input: CreateOrderInput = {
@@ -207,6 +212,17 @@ export class OrderRepository {
   async cancelOrder(id: string): Promise<ApiResult<Order | null>> {
     const res = await this.service.cancelOrder(id);
     if (res.success && res.data) useOrdersStore.getState().upsert(res.data);
+    return res;
+  }
+
+  /**
+   * PAYMENTS_CONTRACT_SPEC §3: an order created BEFORE the gateway opened is
+   * "payment pending" — a failed verification must mark it failed (never
+   * leave a phantom pending order, and never mark it paid client-side).
+   */
+  async markPaymentFailed(id: string): Promise<ApiResult<Order>> {
+    const res = await this.service.markPaymentFailed(id);
+    if (res.success) useOrdersStore.getState().upsert(res.data);
     return res;
   }
 

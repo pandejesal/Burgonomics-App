@@ -97,6 +97,17 @@ function OrderDetailsPage() {
     };
   }, [hydrated, orderId]);
 
+  // Hooks MUST stay above every early return: a hook below a conditional
+  // return flips the hook count between renders (skeleton → loaded →
+  // not-found) and crashes with React #310 on the first data load.
+  const { reorder: triggerReorder } = useReorderItems();
+
+  const reorder = async () => {
+    if (order) {
+      await triggerReorder(order);
+    }
+  };
+
   if (!hydrated || loading) return <DetailsSkeleton />;
 
   // A backend/network failure loading the order is NOT "not found" — it
@@ -131,14 +142,6 @@ function OrderDetailsPage() {
       </ProtectedRoute>
     );
   }
-
-  const { reorder: triggerReorder } = useReorderItems();
-
-  const reorder = async () => {
-    if (order) {
-      await triggerReorder(order);
-    }
-  };
 
   const share = async () => {
     const res = await orderRepository.buildShareMessage(order.id);
