@@ -202,7 +202,12 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
             className="flex-1 py-2.5 rounded-xl bg-[#0E4825] hover:bg-[#135d30] border border-emerald-500/40 text-emerald-300 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-[0.98] cursor-pointer"
           >
             <Navigation className="w-3.5 h-3.5" />
-            <span>Live Porter GPS</span>
+            {/* A courier only exists for delivery orders — never promise GPS
+                on dine-in/takeaway (O-09). The track screen gates its rider
+                pin the same way, on real backend GPS. */}
+            <span>
+              {order.fulfillment === "delivery" ? "Live Porter GPS" : "View Order Status"}
+            </span>
           </button>
         ) : (
           <button
