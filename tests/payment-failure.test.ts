@@ -18,9 +18,12 @@ describe("Payment FailurePanel branches (real decision logic)", () => {
     expect(c.showContactSupport).toBe(true);
     expect(c.body).toContain("Do not pay again");
     expect(c.body).not.toContain("no money has been charged");
+    // No refund promise: we can't promise an outcome we haven't verified.
+    expect(c.body).not.toMatch(/refund/i);
+    expect(c.body).toContain("we will look into it");
   });
 
-  it("ordinary failures offer a safe Retry", () => {
+  it("ordinary failures offer a safe Retry without a charge absolute", () => {
     const c = describePaymentFailure({
       status: "failed",
       message: "Verification failed.",
@@ -29,7 +32,9 @@ describe("Payment FailurePanel branches (real decision logic)", () => {
     expect(c.title).toBe("Payment failed");
     expect(c.showRetry).toBe(true);
     expect(c.showContactSupport).toBe(false);
-    expect(c.body).toContain("no money has been charged");
+    expect(c.body).toContain("You can try again");
+    // The old "no money has been charged" reassurance was unverifiable.
+    expect(c.body).not.toContain("no money has been charged");
   });
 
   it("cancellations keep the abandonment copy with Retry", () => {
@@ -40,5 +45,19 @@ describe("Payment FailurePanel branches (real decision logic)", () => {
     });
     expect(c.title).toBe("Payment cancelled");
     expect(c.showRetry).toBe(true);
+    expect(c.body).not.toContain("no money has been charged");
+  });
+
+  it("no branch promises a refund or asserts money did not move", () => {
+    const cases = [
+      { status: "failed", message: "x", retryable: false },
+      { status: "failed", message: "x", retryable: true },
+      { status: "cancelled", message: "x", retryable: true },
+    ];
+    for (const input of cases) {
+      const c = describePaymentFailure(input);
+      expect(c.body).not.toMatch(/refund/i);
+      expect(c.body).not.toContain("no money has been charged");
+    }
   });
 });
