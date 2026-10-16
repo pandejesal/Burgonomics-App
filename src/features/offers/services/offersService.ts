@@ -19,18 +19,18 @@ export interface ApplyOfferInput {
   subtotal: number;
 }
 
-async function fetchOffersFromFirebase(): Promise<Offer[]> {
+async function fetchOffersFromFirebase(): Promise<ApiResult<Offer[]>> {
   try {
     const snap = await getDocs(collection(db, "petpooja_offers"));
     const offers: Offer[] = [];
     snap.forEach((docSnap) => {
       offers.push(docSnap.data() as Offer);
     });
-    if (offers.length > 0) return offers;
+    return ok(offers);
   } catch (error) {
     console.error("Failed to fetch offers from Firebase:", error);
+    return fail("OFFERS_UNAVAILABLE", "Could not load offers. Please try again.", true);
   }
-  return [];
 }
 
 function computeDiscountPreview(offer: Offer, subtotal: number): number {
@@ -84,8 +84,9 @@ function checkOfferLiveness(offer: Offer): { ok: true } | { ok: false; code: str
 
 export const offersService = {
   async list(input: ListOffersInput = {}): Promise<ApiResult<OfferBundle>> {
-    const allOffers = await fetchOffersFromFirebase();
-    const offers = allOffers
+    const result = await fetchOffersFromFirebase();
+    if (!result.success) return result;
+    const offers = result.data
       .filter((o) => matchesContext(o, input))
       .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
 
@@ -113,8 +114,9 @@ export const offersService = {
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) return fail("INVALID_CODE", "Enter a coupon code.");
 
-    const allOffers = await fetchOffersFromFirebase();
-    const offer = allOffers.find((o) => (o.code ?? "").toUpperCase() === trimmed);
+    const result = await fetchOffersFromFirebase();
+    if (!result.success) return result;
+    const offer = result.data.find((o) => (o.code ?? "").toUpperCase() === trimmed);
 
     if (!offer) {
       return fail("COUPON_NOT_FOUND", `"${trimmed}" isn't a valid coupon.`, false);
@@ -140,7 +142,9 @@ export const offersService = {
 
   async apply(input: ApplyOfferInput): Promise<ApiResult<AppliedOffer>> {
     let offer: Offer | undefined;
-    const allOffers = await fetchOffersFromFirebase();
+    const result = await fetchOffersFromFirebase();
+    if (!result.success) return result;
+    const allOffers = result.data;
 
     if (input.offerId) {
       offer = allOffers.find((o) => o.id === input.offerId);

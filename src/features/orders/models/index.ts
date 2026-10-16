@@ -78,6 +78,8 @@ export interface OrderPaymentInfo {
 
 /** Snapshot of the store at the moment the order was placed. */
 export interface OrderStoreSnapshot {
+  etaMinutes?: number | null;
+  pickupEtaMinutes?: number | null;
   id: Id;
   name: string;
   address: string;
@@ -228,6 +230,8 @@ export interface CreateOrderInput {
 /** Mapping helper — build a snapshot from an existing Store model. */
 export function toStoreSnapshot(store: Store): OrderStoreSnapshot {
   return {
+    ...(store.etaMinutes != null ? { etaMinutes: store.etaMinutes } : {}),
+    ...(store.pickupEtaMinutes != null ? { pickupEtaMinutes: store.pickupEtaMinutes } : {}),
     id: store.id,
     name: store.name,
     address: store.address,

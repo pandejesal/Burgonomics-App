@@ -141,6 +141,7 @@ function OrderConfirmationPage() {
                   ...prev,
                   status: liveData.status ? { ...prev.status, ...liveData.status } : prev.status,
                   payment: liveData.payment ? { ...prev.payment, ...liveData.payment } : prev.payment,
+                  petpoojaStatus: liveData.petpoojaStatus,
                   whatsappOptIn:
                     typeof liveData.whatsappOptIn === "boolean"
                       ? liveData.whatsappOptIn
@@ -248,7 +249,7 @@ function OrderConfirmationPage() {
     <AppShell title="Order Confirmed" showTabs={false} showTopBar={false}>
       <div className="mx-auto flex min-h-[100dvh] max-w-[560px] flex-col px-4 sm:px-6 pb-12 pt-8 space-y-5">
         {/* 1. Celebratory Animation & Mascot */}
-        <OrderSuccessCelebration orderNumber={order.shortCode} />
+        <OrderSuccessCelebration orderNumber={order.shortCode} petpoojaStatus={order.petpoojaStatus} />
 
         {/* 2. Real-Time Makeline & Delivery Countdown */}
         <EstimatedDeliveryCountdown
