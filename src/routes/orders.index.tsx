@@ -8,6 +8,7 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { useAppConfig } from "@/core/state/appConfigStore";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import {
   orderRepository,
@@ -79,7 +80,9 @@ function OrderHistoryPage() {
           setHasMore(res.data.hasMore);
           setPage(1);
         } else {
-          setError(res.error.message);
+          // Failure branch is typed raw-capable (OrderRepository) — log + map.
+          console.error("[orders] list failed:", res.error);
+          setError(toUserMessage(res));
         }
         setLoading(false);
       });

@@ -10,6 +10,7 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import {
   orderRepository,
@@ -62,9 +63,15 @@ function OrderDetailsPage() {
       // A backend miss/denial (ok(null)) must not wipe a cached order —
       // same guard as the effect below and the track route.
       // A backend/network failure is NOT "not found" — surface a retry.
-      if (!o.success) setLoadError(o.error.message);
+      // Failure branch is typed raw-capable (OrderRepository) — log + map.
+      if (!o.success) {
+        console.error("[orders] detail load failed:", o.error);
+        setLoadError(toUserMessage(o));
+      }
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Could not load this order.");
+      // Raw exception text never reaches the retry panel (P1-8).
+      console.error("[orders] detail load exception:", err);
+      setLoadError("Could not load this order.");
     } finally {
       setLoading(false);
     }
@@ -84,10 +91,16 @@ function OrderDetailsPage() {
         if (cancelled) return;
         if (o.success && o.data) setOrder(o.data);
         if (t.success) setTracking(t.data);
-        if (!o.success) setLoadError(o.error.message);
+        if (!o.success) {
+          // Failure branch is typed raw-capable (OrderRepository) — log + map.
+          console.error("[orders] detail load failed:", o.error);
+          setLoadError(toUserMessage(o));
+        }
       } catch (err) {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : "Could not load this order.");
+        // Raw exception text never reaches the retry panel (P1-8).
+        console.error("[orders] detail load exception:", err);
+        setLoadError("Could not load this order.");
       } finally {
         if (!cancelled) setLoading(false);
       }

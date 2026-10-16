@@ -4,6 +4,7 @@ import { TextField } from "@/shared/components/common/TextField";
 import { Text } from "@/shared/components/common/Text";
 import { cn } from "@/lib/utils";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import type { Gender, UserProfile } from "@/features/profile/models";
 
@@ -51,7 +52,14 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
     });
     setBusy(false);
     if (!res.success) {
-      setError(res.error.message);
+      // P1-14: only `profileService`'s curated codes pass through verbatim
+      // (INVALID_PROFILE: "Enter a valid email address."; UNAUTHORIZED).
+      // SERVER_ERROR appends the raw Firestore message, so every other code
+      // is logged and mapped instead.
+      const curated =
+        res.error.code === "INVALID_PROFILE" || res.error.code === "UNAUTHORIZED";
+      if (!curated) console.error("[profile] update failed:", res.error);
+      setError(curated ? res.error.message : toUserMessage(res));
       return;
     }
     onSaved();

@@ -15,6 +15,7 @@ import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
 import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
 import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { PACKAGING_FEE_BY_FULFILLMENT, asPricingFulfillment } from "@/shared/pricing/pricingEngine";
 
 import {
@@ -231,16 +232,20 @@ function CartPage() {
     const validation = await cartRepository.validateCart();
     if (!validation.success || !validation.data.valid) {
       setCheckoutBusy(false);
+      // Curated cart-issue copy passes through; the failure branch is typed
+      // raw-capable (CartRepository), so it is logged + mapped.
+      if (!validation.success) console.error("[cart] validation failed:", validation.error);
       toast.error(
         validation.success
           ? (validation.data.issues[0]?.message ?? "Some items are no longer available.")
-          : validation.error.message,
+          : toUserMessage(validation.error),
       );
       return;
     }
     const prep = await cartRepository.prepareCheckout();
     setCheckoutBusy(false);
     if (!prep.success) {
+      // Curated repo copy (EMPTY_CART) — no raw text on this path.
       toast.error(prep.error.message);
       return;
     }
