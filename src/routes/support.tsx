@@ -334,11 +334,11 @@ function FaqAccordion({ item }: { item: FaqItem }) {
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-neutral-850/60 transition-colors"
       >
         <div className="min-w-0 flex-1">
-          <span className="text-xs font-bold text-white block truncate">
+          <span className="text-xs font-bold text-text block truncate">
             {item.question}
           </span>
           {item.category && (
-            <span className="text-[10px] text-neutral-400 uppercase font-semibold">
+            <span className="text-[10px] text-text-secondary uppercase font-semibold">
               {item.category}
             </span>
           )}
@@ -353,7 +353,7 @@ function FaqAccordion({ item }: { item: FaqItem }) {
       </button>
       {open && (
         <div className="px-4 pb-4">
-          <p className="text-xs text-neutral-300 leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed">
             {item.answer}
           </p>
         </div>

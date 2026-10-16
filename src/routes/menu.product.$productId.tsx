@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ShoppingBag, ArrowLeft, Clock, ShieldCheck, Plus, Minus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import { AppShell } from "@/shared/layouts/AppShell";
 import { SafeImage } from "@/shared/components/common/SafeImage";
@@ -246,7 +247,7 @@ function ProductPage() {
       });
     });
 
-    await cartRepository.addItem({
+    const res = await cartRepository.addItem({
       storeId: store.id,
       productId: p.id,
       name: p.name,
@@ -257,6 +258,12 @@ function ProductPage() {
       fallbackImageUrl: p.fallbackImageUrl,
       modifiers: modifiersList.length ? modifiersList : undefined,
     });
+    if (!res.success) {
+      toast.error("Couldn't add to cart", {
+        description: toUserMessage(res),
+      });
+      return;
+    }
 
     toast.success(`Added ${qty}x ${p.name} to cart!`, {
       action: {

@@ -119,6 +119,10 @@ function OrderHistoryPage() {
           setOrders(res.data.items);
           setHasMore(res.data.hasMore);
           setPage(1);
+          setError(null);
+        } else {
+          console.error("[orders] refresh failed:", res.error);
+          setError(toUserMessage(res));
         }
         setLoading(false);
       });

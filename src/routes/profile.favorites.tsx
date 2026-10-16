@@ -14,6 +14,7 @@ import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { menuRepository } from "@/features/menu/repositories/MenuRepository";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 import type { FavoriteKind, Favorite } from "@/features/favorites/models";
 import { toast } from "sonner";
 
@@ -87,7 +88,7 @@ function Body() {
       fallbackImageUrl = product.fallbackImageUrl ?? fallbackImageUrl;
     }
 
-    await cartRepository.addItem({
+    const res = await cartRepository.addItem({
       storeId: store.id,
       productId: fav.refId,
       name: fav.name,
@@ -97,6 +98,12 @@ function Body() {
       imageUrl,
       fallbackImageUrl,
     });
+    if (!res.success) {
+      toast.error("Couldn't add to cart", {
+        description: toUserMessage(res),
+      });
+      return;
+    }
     toast.success(`Added ${fav.name} to basket`);
   };
 

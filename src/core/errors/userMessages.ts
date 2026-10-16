@@ -50,6 +50,7 @@ const CODE_MESSAGES: Record<string, string> = {
   WRITE_FAILED: "We couldn't save your changes. Please try again.",
   SERVER_ERROR: "Something went wrong on our end. Please try again.",
   NOT_FOUND: "We couldn't find what you were looking for.",
+  STORE_MISMATCH: "Clear your cart before adding items from a different store.",
   // payments
   GATEWAY_ERROR: "The payment couldn't be started. Please try again.",
   VERIFY_GATEWAY_ERROR: "We couldn't verify your payment. Please try again.",
