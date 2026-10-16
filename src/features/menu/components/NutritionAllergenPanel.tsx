@@ -68,8 +68,7 @@ export function NutritionAllergenPanel({
 
       <p className="text-[11px] text-text-secondary leading-snug">
         <strong>Allergen Notice:</strong> Ingredient and allergen details for this item aren&apos;t
-        published yet — please tell our team about any allergies before ordering. Our kitchen is
-        100% vegetarian.
+        published yet — please tell our team about any allergies before ordering.
       </p>
     </div>
   );

@@ -12,6 +12,7 @@ import { formatINR } from "@/core/utils/format";
 import type { Product, ProductDetails, CustomizationGroup } from "../models";
 import { ModifierGroupSelector, type ModifierSelections } from "./ModifierGroupSelector";
 import { NutritionAllergenPanel } from "./NutritionAllergenPanel";
+import { VegIndicator } from "@/shared/components/common/VegIndicator";
 
 interface ProductCustomizerModalProps {
   product: ProductDetails | Product;
@@ -179,7 +180,7 @@ export function ProductCustomizerModal({
       name: product.name,
       unitPrice,
       quantity: qty,
-      veg: product.veg ?? true,
+      veg: product.veg,
       imageUrl: product.imageUrl,
       fallbackImageUrl: product.fallbackImageUrl,
       modifiers: modifiersList,
@@ -204,12 +205,9 @@ export function ProductCustomizerModal({
         {/* Modal Header */}
         <div className="p-4 sm:p-5 border-b border-divider flex items-center justify-between gap-3 bg-surface sticky top-0 z-10">
           <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="w-5 h-5 rounded-[3px] border-2 border-emerald-600 bg-emerald-950/20 flex items-center justify-center shrink-0"
-              aria-label="100% Pure Vegetarian"
-            >
-              <div className="w-2 h-2 rounded-full bg-emerald-600" />
-            </div>
+            {typeof product.veg === "boolean" && (
+              <VegIndicator veg={product.veg} className="w-5 h-5 shrink-0" />
+            )}
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-black text-text truncate">
                 Customize {product.name}

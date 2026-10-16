@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { formatINR } from "@/core/utils/format";
 import { HapticService } from "@/core/services/haptics";
 import { SafeImage } from "@/shared/components/common/SafeImage";
+import { VegIndicator } from "@/shared/components/common/VegIndicator";
 import { useCartStore } from "@/features/cart/state/cartStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
@@ -38,7 +39,7 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
       name: product.name,
       unitPrice: product.price,
       quantity: 1,
-      veg: product.veg ?? true,
+      veg: product.veg,
       imageUrl: product.imageUrl,
       fallbackImageUrl: product.fallbackImageUrl,
     });
@@ -101,13 +102,14 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
           className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
 
-        {/* 100% Pure Veg Green Badge */}
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 shadow-sm backdrop-blur-sm">
-          <span className="flex h-3 w-3 items-center justify-center rounded-[2px] border border-emerald-600 p-[1px]">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-          </span>
-          <span className="text-[9px] font-bold text-emerald-800 tracking-wider">VEG</span>
-        </div>
+        {typeof product.veg === "boolean" && (
+          <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-md bg-surface px-1.5 py-0.5 shadow-sm backdrop-blur-sm">
+            <VegIndicator veg={product.veg} />
+            <span className="text-[9px] font-bold text-text-primary tracking-wider">
+              {product.veg ? "VEG" : "NON-VEG"}
+            </span>
+          </div>
+        )}
 
         {hasBestsellerTag && (
           <div className="absolute top-2 right-2 z-10 rounded-full bg-accent px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white shadow-sm">
@@ -143,7 +145,7 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
             </h3>
           </Link>
           <p className="mt-0.5 line-clamp-1 text-xs text-text-secondary">
-            {product.description || "100% Pure Veg delicious smash burger"}
+            {product.description}
           </p>
         </div>
 
