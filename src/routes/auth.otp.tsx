@@ -11,6 +11,7 @@ import { useCountdown } from "@/features/auth/hooks/useCountdown";
 import { OTP_LENGTH, validateOtp, COUNTRY_CODE } from "@/features/auth/utils/validators";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { authService } from "@/features/auth/services/authService";
+import { toUserMessage, userMessageForText } from "@/core/errors/userMessages";
 import { APP } from "@/core/constants/app";
 
 /**
@@ -82,7 +83,9 @@ function OtpScreen() {
       void navigate({ to: redirectTarget, replace: true });
     } else {
       setCode("");
-      toast.error(res.error ?? "Verification failed. Please check the code.");
+      // P1-13: the store keeps the raw Firebase text — map it for the toast.
+      console.error("[auth] OTP verify failed:", res.error);
+      toast.error(toUserMessage(res));
     }
   };
 
@@ -97,7 +100,10 @@ function OtpScreen() {
       setCode("");
       toast.success("New verification code sent via SMS");
     } else {
-      toast.error(res.error ?? "Couldn't resend code. Please try again.");
+      // "Please wait 12s before requesting a new code." is store-authored copy
+      // and passes through; a raw Firebase failure does not (P1-13).
+      console.error("[auth] OTP resend failed:", res.error);
+      toast.error(toUserMessage(res));
     }
   };
 
@@ -155,7 +161,7 @@ function OtpScreen() {
             className="rounded-[var(--radius-medium)] border border-error/40 bg-error/10 px-4 py-3"
           >
             <Text variant="bodyMedium" tone="error">
-              {serverError}
+              {userMessageForText(serverError)}
             </Text>
           </div>
         )}

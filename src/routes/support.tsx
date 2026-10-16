@@ -36,6 +36,7 @@ import type {
   SupportChannel,
 } from "@/features/support/models";
 import { toast } from "sonner";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 export const Route = createFileRoute("/support")({
   head: () => ({
@@ -383,7 +384,9 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
     });
     setBusy(false);
     if (!res.success) {
-      setError(res.error.message);
+      // P1-13: `submitFeedback` fails with raw exception text in the message.
+      console.error("[support] feedback submit failed:", res.error);
+      setError(toUserMessage(res));
       return;
     }
     toast.success("Thanks for the feedback!");

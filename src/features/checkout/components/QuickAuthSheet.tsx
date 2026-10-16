@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { sanitizePhone, validateOtp, validatePhone } from "@/features/auth/utils/validators";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 
 interface QuickAuthSheetProps {
@@ -63,7 +64,9 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
       setStep("otp");
       toast.success("OTP sent to your number!");
     } else {
-      toast.error(res.error ?? "Failed to send OTP. Please try again.");
+      // P1-13: the store hands back the raw Firebase message — never toast it.
+      console.error("[auth] checkout OTP request failed:", res.error);
+      toast.error(toUserMessage(res));
     }
   };
 
@@ -96,7 +99,9 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
       onSuccess();
       onClose();
     } else {
-      toast.error(res.error ?? "Invalid OTP code. Please try again.");
+      // P1-13: raw `Firebase: Error (auth/invalid-verification-code).` etc.
+      console.error("[auth] checkout OTP verify failed:", res.error);
+      toast.error(toUserMessage(res));
     }
   };
 

@@ -7,6 +7,7 @@ import { useGuestOnly } from "@/features/auth/hooks/useAuthGuard";
 import { PhoneLoginForm } from "@/features/auth/components/PhoneLoginForm";
 import { sanitizePhone } from "@/features/auth/utils/validators";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
+import { toUserMessage, userMessageForText } from "@/core/errors/userMessages";
 import { APP } from "@/core/constants/app";
 
 /**
@@ -55,7 +56,9 @@ function LoginScreen() {
         search: { redirect: search.redirect },
       });
     } else {
-      toast.error(res.error ?? "Couldn't send OTP. Try again.");
+      // P1-13: `requestOtp` failures carry raw Firebase text in `error`.
+      console.error("[auth] OTP request failed:", res.error);
+      toast.error(toUserMessage(res));
     }
   };
 
@@ -64,7 +67,9 @@ function LoginScreen() {
       <PhoneLoginForm
         onSubmit={handlePhoneSubmit}
         isSubmitting={isBusy}
-        serverError={serverError}
+        // P1-13: the store holds raw Firebase text in `error` — map it before
+        // it reaches the banner (null stays null so no banner renders).
+        serverError={serverError ? userMessageForText(serverError) : null}
         onClearError={clearError}
       />
     </AppShell>

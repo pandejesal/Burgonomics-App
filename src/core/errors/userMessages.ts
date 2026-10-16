@@ -11,6 +11,7 @@
  *  - `ApiFailure` from core/network/http: `{ success: false, error: { code, message } }`
  *  - a bare `error` object `{ code, message }`
  *  - `AppError` from core/errors/AppError: `{ kind, message }`
+ *  - a store/counter result `{ ok: false, error: "<text>" }` → `userMessageForText`
  *  - `Error` / `string` / anything else → generic fallback (message is dropped)
  */
 import { messages as appErrorMessages } from "./AppError";
@@ -24,6 +25,22 @@ const CODE_MESSAGES: Record<string, string> = {
   UNAUTHORIZED: "Please sign in again to continue.",
   SESSION_EXPIRED: "Your session expired. Please sign in again.",
   AUTH_REFRESH_FAILED: "Your session expired. Please sign in again.",
+  // Firebase Auth. The SDK's own `auth/*` codes reach the auth store verbatim
+  // (P1-13) — namespaced so they cannot collide with our service codes.
+  "auth/invalid-verification-code": "That code isn't right. Please check it and try again.",
+  "auth/invalid-verification-id": "That code isn't right. Please check it and try again.",
+  "auth/missing-verification-code": "Please enter the 6-digit code we sent you.",
+  "auth/code-expired": "That code has expired. Please request a new one.",
+  "auth/expired-action-code": "That code has expired. Please request a new one.",
+  "auth/invalid-phone-number": "That mobile number doesn't look right. Please check it.",
+  "auth/too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
+  "auth/quota-exceeded": "Too many attempts. Please wait a few minutes and try again.",
+  "auth/network-request-failed": "We couldn't reach our servers. Check your connection and try again.",
+  "auth/captcha-check-failed": "We couldn't complete the security check. Please refresh and try again.",
+  "auth/invalid-app-credential": "We couldn't verify this request. Please refresh and try again.",
+  "auth/user-disabled": "This number can't sign in. Please contact support.",
+  "auth/operation-not-allowed": "Sign-in isn't available right now. Please try again later.",
+  "auth/internal-error": "Something went wrong on our end. Please try again.",
   // network / availability
   NETWORK: "We couldn't reach our servers. Please try again.",
   OFFLINE: "You're offline. Check your connection and try again.",
@@ -73,6 +90,54 @@ export function userMessageFor(code?: string): string {
   return CODE_MESSAGES[code] ?? GENERIC_ERROR_MESSAGE;
 }
 
+/** A Firebase Auth code embedded in raw SDK text: `Firebase: Error (auth/…).` */
+const FIREBASE_AUTH_CODE_RE = /\bauth\/[a-z0-9-]+/;
+
+/**
+ * Customer-facing copy this app authors itself and that legitimately travels
+ * as a bare string (authService curated fallbacks + authStore guards). This is
+ * an allow-list, not a blacklist: any string not listed here fails closed to
+ * the generic fallback, so unrecognized provider/exception text can never be
+ * echoed to customers (P1-13). Strings are kept verbatim with their source.
+ */
+const AUTHORED_AUTH_COPY = new Set<string>([
+  // authStore — store-authored guard copy
+  "Please request an OTP first.", // authStore.ts:218
+  "No active OTP request.", // authStore.ts:243
+  // authService — curated fallbacks when Firebase supplies no code
+  "Verification check failed to load. Please refresh the page and try again.", // authService.ts:95
+  "Failed to send SMS verification code. Please check the number and try again.", // authService.ts:131
+  "No active verification session found. Please request a new code.", // authService.ts:141
+  "Invalid verification code. Please check and try again.", // authService.ts:193
+]);
+
+/** authStore's store-owned cooldown copy: `Please wait <n>s before…`. */
+const AUTH_COOLDOWN_TEXT_RE = /^Please wait [1-9]\d*s before requesting a new code\.$/;
+
+/**
+ * Friendly copy for an error that only survives as a *string* (P1-13).
+ *
+ * The auth store flattens `ApiFailure`s to `error.message`, mixing two
+ * different things in one field: raw Firebase text (`Firebase: Error
+ * (auth/too-many-requests).`) and messages the store itself authored
+ * ("Please wait 12s before requesting a new code."). Known `auth/*` codes are
+ * recovered from the text and mapped; only copy this app actually authored
+ * (plus the numeric cooldown pattern) passes through; every other string is
+ * dropped to the generic fallback.
+ */
+export function userMessageForText(raw?: string | null): string {
+  if (typeof raw !== "string" || raw.trim().length === 0) return GENERIC_ERROR_MESSAGE;
+
+  const code = raw.match(FIREBASE_AUTH_CODE_RE)?.[0];
+  if (code) return userMessageFor(code);
+
+  // Fail closed: only authored copy may pass through.
+  if (AUTHORED_AUTH_COPY.has(raw) || AUTH_COOLDOWN_TEXT_RE.test(raw)) {
+    return raw;
+  }
+  return GENERIC_ERROR_MESSAGE;
+}
+
 /**
  * Map any thrown/returned error to copy that is safe to show customers.
  * Never returns raw exception text.
@@ -89,6 +154,12 @@ export function toUserMessage(error: unknown): string {
   if (isRecord(error)) {
     const code = asCode(error.code);
     if (code) return userMessageFor(code);
+
+    // Store/counter result shape: `{ ok: false, error: "<text>" }`. The code
+    // (if any) survives only inside the text, so recover it there (P1-13).
+    if (typeof error.error === "string") {
+      return userMessageForText(error.error);
+    }
 
     // AppError: { kind, message } — reuse the curated kind messages.
     const kind = asCode(error.kind);
