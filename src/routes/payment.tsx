@@ -34,6 +34,7 @@ import { Spinner } from "@/shared/components/feedback/Spinner";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { formatINR } from "@/core/utils/format";
 import { logger } from "@/core/logging/logger";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
 import { useAppConfig } from "@/core/state/appConfigStore";
@@ -55,7 +56,45 @@ import {
 } from "@/features/payments";
 import type { PaymentResult } from "@/features/payments/models";
 import { describePaymentFailure } from "@/features/payments/utils/paymentFailure";
+import {
+  describePaymentRecovery,
+  isRecoveryReason,
+  resolveVerifyOutcome,
+  type RecoveryReason,
+} from "@/features/payments/utils/paymentRecovery";
+import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
+import {
+  persistPaymentReconciliation,
+  clearPaymentReconciliation,
+  hydratePaymentReconciliation,
+} from "@/features/payments/state/paymentStore";
+
+/**
+ * P1-14: order/payment failures arrive in two flavours. `ordersService` and
+ * `PaymentRepository` return copy written for customers — MISSING_AUTH,
+ * AUTH_CHANGED, PERSIST_FAILED ("…the kitchen never received it…") and
+ * PAYMENT_RECONCILIATION_PENDING ("Do not pay again.") — while
+ * `CartRepository`'s pricing catch and `paymentsService`'s transport catch
+ * wrap raw exception text in `PRICING_CALCULATION_ERROR` / `GATEWAY_ERROR`.
+ * Only the curated codes below pass through verbatim; every other code is
+ * logged and mapped, so raw exception text can never reach the failure panel
+ * or a toast.
+ */
+const CURATED_ORDER_FAILURE_CODES = new Set([
+  "MISSING_AUTH",
+  "MISSING_CONTEXT",
+  "AUTH_CHANGED",
+  "PERSIST_FAILED",
+  "PAYMENT_RECONCILIATION_PENDING",
+  "INVALID_AMOUNT",
+]);
+
+function orderFailureMessage(error: { code: string; message: string }): string {
+  if (CURATED_ORDER_FAILURE_CODES.has(error.code)) return error.message;
+  console.error("[payment] order/payment failure:", error);
+  return toUserMessage(error);
+}
 
 export const Route = createFileRoute("/payment")({
   head: () => ({
@@ -84,6 +123,8 @@ function PaymentPage() {
   const method = usePaymentStore((s) => s.method);
   const order = usePaymentStore((s) => s.order);
   const failure = usePaymentStore((s) => s.failure);
+  const reconciliationPending = usePaymentStore((s) => s.reconciliationPending);
+  const reconciliationReason = usePaymentStore((s) => s.reconciliationReason);
   const setStatus = usePaymentStore((s) => s.setStatus);
   const setMethod = usePaymentStore((s) => s.setMethod);
   const setOrder = usePaymentStore((s) => s.setOrder);
@@ -122,8 +163,13 @@ function PaymentPage() {
   }, [hydrated, isBootstrapped, isAuthenticated, navigate]);
 
   // Reset residual state on entry so the UI doesn't show a stale success/fail.
+  // Reconciliation is the deliberate exception: it is reload/navigation-safe
+  // (A08 B9), so an unresolved record for THIS user is re-hydrated right after
+  // the reset and the screen opens on the recovery panel instead of a pay
+  // button that would start a second payment.
   React.useEffect(() => {
     resetPayment();
+    hydratePaymentReconciliation(useAuthStore.getState().user?.id ?? null);
     return () => {
       const s = usePaymentStore.getState();
       if (s.status === "preparing" || s.status === "waiting" || s.status === "retrying") {
@@ -210,9 +256,12 @@ function PaymentPage() {
     if (!preflight.success || !preflight.data.valid) {
       payInFlight.current = false;
       setStatus("idle");
+      // Curated preflight-issue copy passes through; the failure branch is
+      // typed raw-capable (PaymentRepository), so it is logged + mapped.
+      if (!preflight.success) console.error("[payment] preflight failed:", preflight.error);
       const message = preflight.success
         ? (preflight.data.issues[0]?.message ?? "Something's not right — please review your order.")
-        : preflight.error.message;
+        : toUserMessage(preflight.error);
       setPreflightIssue(message);
       return;
     }
@@ -234,16 +283,20 @@ function PaymentPage() {
 
         if (!created.success) {
           setStatus("failed");
+          const message = orderFailureMessage(created.error);
           setFailure({
             code: created.error.code,
-            message: created.error.message,
+            message,
             retryable: true,
           });
-          toast.error("Couldn't place order", { description: created.error.message });
+          toast.error("Couldn't place order", { description: message });
           return;
         }
 
-        setStatus("success");
+        const reconUid = useAuthStore.getState().user?.id ?? null;
+      clearPaymentReconciliation(reconUid);
+      usePaymentStore.getState().clearReconciliation();
+      setStatus("success");
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
@@ -254,7 +307,9 @@ function PaymentPage() {
         });
       } catch (err) {
         setStatus("failed");
-        const message = err instanceof Error ? err.message : "Couldn't place cash order.";
+        // Raw exception text never reaches the failure panel/toast (P1-8).
+        console.error("[payment] cash order exception:", err);
+        const message = "We couldn't place your order. Please try again.";
         setFailure({ code: "CASH_ORDER_ERROR", message, retryable: true });
         toast.error("Order failed", { description: message });
       }
@@ -268,12 +323,16 @@ function PaymentPage() {
       const orderRes = await paymentRepository.createPaymentOrder();
       if (!orderRes.success) {
         setStatus("failed");
+        const message = orderFailureMessage(orderRes.error);
         setFailure({
           code: orderRes.error.code,
-          message: orderRes.error.message,
-          retryable: true,
+          message,
+          // A reconciliation block is not a retryable failure: offering
+          // "Retry checkout" there would start a second payment for money
+          // the server already has (A08 B9).
+          retryable: orderRes.error.code !== "PAYMENT_RECONCILIATION_PENDING",
         });
-        toast.error("Couldn't start payment", { description: orderRes.error.message });
+        toast.error("Couldn't start payment", { description: message });
         // Stay on this screen: the FailurePanel below is the honest surface
         // (retry / support). Bouncing to /cart hid the real error.
         return;
@@ -324,7 +383,9 @@ function PaymentPage() {
       );
     } catch (err) {
       setStatus("failed");
-      const message = err instanceof Error ? err.message : "Unexpected payment error occurred.";
+      // Raw exception text never reaches the failure panel/toast (P1-8).
+      console.error("[payment] payment initiation exception:", err);
+      const message = "We couldn't start the payment. Please try again.";
       setFailure({ code: "PAYMENT_INIT_ERROR", message, retryable: true });
       toast.error("Payment Error", { description: message });
     }
@@ -334,54 +395,90 @@ function PaymentPage() {
     // Contract §3: verification binds the gateway payment to the internal
     // order created before Razorpay opened (never to the gateway id alone).
     const internalOrderId = usePaymentStore.getState().internalOrderId;
+    const reconUid = useAuthStore.getState().user?.id ?? null;
+    /**
+     * Every uncertain post-gateway outcome funnels through here: persist the
+     * uid-scoped reconciliation record (which blocks a new payment now and
+     * after a reload) and show the recovery panel — never markPaymentFailed,
+     * never clear the cart, never navigate to confirmation, never a re-pay.
+     */
+    const enterReconciliation = (reason: RecoveryReason, confirmedInternal?: string | null) => {
+      const store = usePaymentStore.getState();
+      const boundInternal = confirmedInternal ?? internalOrderId ?? store.internalOrderId ?? null;
+      const boundGateway = result.orderId ?? store.gatewayOrderId ?? null;
+      store.setReconciliation(true, reason, boundInternal, boundGateway);
+      persistPaymentReconciliation(reconUid, {
+        internalOrderId: boundInternal,
+        gatewayOrderId: boundGateway,
+        reason,
+      });
+      const copy = describePaymentRecovery(reason);
+      setStatus("waiting");
+      setFailure({
+        code: reason,
+        message: copy.body,
+        retryable: false,
+        paymentId: result.paymentId,
+      });
+      toast.info(copy.title, {
+        description: `${copy.body}${result.paymentId ? ` Payment ID ${result.paymentId}.` : ""}`,
+      });
+    };
+
     try {
       const verify = await paymentRepository.verifyPayment({
         ...result,
         internalOrderId: internalOrderId ?? undefined,
       });
-      if (!verify.success || !verify.data.verified) {
+      const outcome = resolveVerifyOutcome({
+        verify,
+        internalOrderId,
+        gatewayOrderId: result.orderId,
+        paymentId: result.paymentId,
+      });
+
+      if (outcome.kind === "uncaptured") {
+        // Only a server-proven non-capture may flip the order to failed —
+        // signature failures and unknown codes never reach here (A08 B1).
         setStatus("failed");
-        const message = verify.success ? "Payment verification failed." : verify.error.message;
         setFailure({
-          code: verify.success ? "VERIFICATION_FAILED" : verify.error.code,
-          message,
-          retryable: true,
-          // Money may have moved: the support CTA needs the gateway payment id.
+          code: outcome.code,
+          message: outcome.message,
+          retryable: outcome.retryable,
           paymentId: result.paymentId,
         });
-        toast.error("Payment verification failed", { description: message });
-        // Contract §3: the pending order must never linger as a phantom.
-        if (internalOrderId) {
-          void orderRepository.markPaymentFailed(internalOrderId).catch(() => undefined);
-        }
-        // Stay on this screen so the FailurePanel (retry/support) renders —
-        // the old navigate(/cart) hid the failure behind an empty cart.
+        toast.error("Payment verification failed", { description: outcome.message });
+        void orderRepository.markPaymentFailed(outcome.internalOrderId).catch(() => undefined);
         return;
       }
-      setVerification(verify.data);
+
+      if (outcome.kind === "reconciliation") {
+        // 503 / bad signature / exhausted 202 / awaiting_capture / terminal:
+        // honest recovery, no new payment.
+        enterReconciliation(outcome.reason);
+        return;
+      }
+
+      // Both non-verified kinds returned above, so only the verified success
+      // remains; the guard keeps the fallthrough fail-closed regardless.
+      if (outcome.kind !== "verified") return;
+      const verification = outcome.verification;
+      setVerification(verification);
 
       // Re-uses the SAME internal order (same id) — the paid order replaces
       // the payment-pending doc instead of creating a second one.
-      const created = await orderRepository.createFromCurrentContext({
-        confirmedOrderId: internalOrderId ?? verify.data.confirmedOrderId,
-        paymentMethod: result.method,
+      const created = await orderRepository.finalizePaidOrder({
+        confirmedOrderId: internalOrderId ?? verification.confirmedOrderId,
         transactionId: result.paymentId,
       });
       // Never celebrate before the order exists: money is taken at this point,
       // so a failed create must scream, not navigate to a confirmation page.
       if (!created.success) {
-        setStatus("failed");
-        setFailure({
-          code: created.error.code,
-          message: `Payment of ${result.paymentId} succeeded but the order could not be created: ${created.error.message}.`,
-          retryable: false,
-          paymentId: result.paymentId,
-        });
-        toast.error("Payment taken, order not created", {
-          description: "Your money is safe. Contact support with payment ID before retrying.",
-        });
+        enterReconciliation("PAYMENT_SYNC_PENDING", verification.confirmedOrderId || null);
         return;
       }
+      clearPaymentReconciliation(reconUid);
+      usePaymentStore.getState().clearReconciliation();
       setStatus("success");
       AudioService.playSuccess();
       void HapticService.notification("success");
@@ -393,10 +490,12 @@ function PaymentPage() {
         replace: true,
       });
     } catch (err) {
-      setStatus("failed");
-      const message = err instanceof Error ? err.message : "Failed to finish order after payment.";
-      setFailure({ code: "POST_PAYMENT_ERROR", message, retryable: true });
-      toast.error("Order creation failed", { description: message });
+      // Post-gateway unknown exception (verify/finalize threw after money may
+      // have moved): reconciliation, never a failed state that invites re-pay.
+      logger.warn("payment.post_gateway_exception", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      enterReconciliation("PAYMENT_SYNC_PENDING");
     }
   };
 
@@ -412,6 +511,18 @@ function PaymentPage() {
   };
 
   const busy = status === "preparing" || status === "waiting" || status === "retrying";
+  // Recovery state — a post-gateway outcome we could not confirm (A08 B9).
+  // Rendered instead of the Razorpay spinner and instead of FailurePanel.
+  const recoveryReason: RecoveryReason | null =
+    reconciliationPending && isRecoveryReason(reconciliationReason)
+      ? reconciliationReason
+      : status === "waiting" && failure && isRecoveryReason(failure.code)
+        ? failure.code
+        : null;
+  // No new payment may start from a money-possible state: reconciliation is
+  // pending (persisted per user) or the last failure was not retryable.
+  const payBlocked =
+    reconciliationPending || (failure != null && !failure.retryable && status !== "success");
   const eta =
     fulfillment === "delivery"
       ? activeStore?.etaMinutes
@@ -450,12 +561,20 @@ function PaymentPage() {
               size="lg"
               className="flex-1 max-w-[280px] h-12 rounded-xl text-base font-bold shadow-md shadow-primary/20 active:scale-[0.98] transition-transform"
               onClick={() => void startPayment()}
-              loading={busy}
-              disabled={grandTotal <= 0 || !isOnline}
-              title={!isOnline ? "Back online to place your order" : undefined}
-              iconLeft={method === "online" ? <Lock className="h-4 w-4" /> : undefined}
+              loading={busy && !payBlocked}
+              disabled={grandTotal <= 0 || !isOnline || payBlocked}
+              title={
+                payBlocked
+                  ? "We are confirming your payment — please do not pay again"
+                  : !isOnline
+                    ? "Back online to place your order"
+                  : undefined
+              }
+              iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
             >
-              {status === "failed" || status === "cancelled"
+              {payBlocked
+                ? "Payment under review"
+                : status === "failed" || status === "cancelled"
                 ? "Retry checkout"
                 : method === "online"
                   ? "Pay Online"
@@ -681,7 +800,7 @@ function PaymentPage() {
         )}
 
         <AnimatePresence>
-          {(status === "failed" || status === "cancelled") && (
+          {!recoveryReason && (status === "failed" || status === "cancelled") && (
             <motion.div
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -711,7 +830,29 @@ function PaymentPage() {
           )}
         </AnimatePresence>
 
-        {status === "waiting" && (
+        {/* Post-gateway recovery (A08 B9): payment id + do-not-pay-again +
+            support and existing-order actions, instead of the generic
+            Razorpay spinner. No Retry/Pay action can start a new payment. */}
+        {recoveryReason && status !== "success" && (
+          <PaymentRecoveryPanel
+            reason={recoveryReason}
+            paymentId={failure?.paymentId ?? null}
+            orderId={order?.orderId ?? null}
+            onContactSupport={() =>
+              void navigate({
+                to: "/support",
+                search: {
+                  topic: "payment",
+                  paymentId: failure?.paymentId ?? undefined,
+                  message: failure?.message ?? undefined,
+                },
+              })
+            }
+            onCheckOrders={() => void navigate({ to: "/orders" })}
+          />
+        )}
+
+        {status === "waiting" && !recoveryReason && (
           <div
             role="status"
             aria-live="polite"

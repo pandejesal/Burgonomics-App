@@ -32,6 +32,7 @@ import { formatINR } from "@/core/utils/format";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { HapticService } from "@/core/services/haptics";
 import { AudioService } from "@/core/services/audio";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { cn } from "@/lib/utils";
 
 import {
@@ -59,8 +60,47 @@ import {
   razorpayAdapter,
 } from "@/features/payments";
 import type { PaymentMethod, PaymentResult } from "@/features/payments/models";
+import {
+  describePaymentRecovery,
+  isRecoveryReason,
+  resolveVerifyOutcome,
+  type RecoveryReason,
+} from "@/features/payments/utils/paymentRecovery";
+import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
+import {
+  loadPaymentReconciliation,
+  persistPaymentReconciliation,
+  clearPaymentReconciliation,
+  hydratePaymentReconciliation,
+} from "@/features/payments/state/paymentStore";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
 import { QuickAuthSheet } from "@/features/checkout/components/QuickAuthSheet";
+
+/**
+ * P1-14: order/payment failures arrive in two flavours. `ordersService` and
+ * `PaymentRepository` return copy written for customers — MISSING_AUTH,
+ * AUTH_CHANGED, PERSIST_FAILED ("…the kitchen never received it…") and
+ * PAYMENT_RECONCILIATION_PENDING ("Do not pay again.") — while
+ * `CartRepository`'s pricing catch and `paymentsService`'s transport catch
+ * wrap raw exception text in `PRICING_CALCULATION_ERROR` / `GATEWAY_ERROR`.
+ * Only the curated codes below pass through verbatim; every other code is
+ * logged and mapped, so raw exception text can never reach the alert box or
+ * a toast.
+ */
+const CURATED_ORDER_FAILURE_CODES = new Set([
+  "MISSING_AUTH",
+  "MISSING_CONTEXT",
+  "AUTH_CHANGED",
+  "PERSIST_FAILED",
+  "PAYMENT_RECONCILIATION_PENDING",
+  "INVALID_AMOUNT",
+]);
+
+function orderFailureMessage(error: { code: string; message: string }): string {
+  if (CURATED_ORDER_FAILURE_CODES.has(error.code)) return error.message;
+  console.error("[checkout] order/payment failure:", error);
+  return toUserMessage(error);
+}
 
 export const Route = createFileRoute("/checkout")({
   head: () => ({
@@ -98,11 +138,30 @@ export function CheckoutPage() {
   const selectAddress = useAddressStore((s) => s.select);
 
   const paymentMethod = usePaymentStore((s) => s.method);
+  const reconciliationPending = usePaymentStore((s) => s.reconciliationPending);
+  // Hydrate unresolved reconciliation (reload-safe) for the current auth scope.
+  React.useEffect(() => {
+    const uid = useAuthStore.getState().user?.id ?? null;
+    hydratePaymentReconciliation(uid);
+  }, []);
   const setPaymentMethod = usePaymentStore((s) => s.setMethod);
   const setPaymentStatus = usePaymentStore((s) => s.setStatus);
   const setPaymentFailure = usePaymentStore((s) => s.setFailure);
   const setPaymentOrder = usePaymentStore((s) => s.setOrder);
   const setPaymentVerification = usePaymentStore((s) => s.setVerification);
+  const paymentFailure = usePaymentStore((s) => s.failure);
+  const payStatus = usePaymentStore((s) => s.status);
+  const reconciliationReason = usePaymentStore((s) => s.reconciliationReason);
+  const paymentGatewayOrderId = usePaymentStore((s) => s.gatewayOrderId);
+  // Post-gateway recovery state (A08 B9): rendered while the pay button is
+  // blocked, so the customer sees payment id + do-not-pay-again + support
+  // instead of a dead button and a toast.
+  const recoveryReason: RecoveryReason | null =
+    reconciliationPending && isRecoveryReason(reconciliationReason)
+      ? reconciliationReason
+      : payStatus === "waiting" && paymentFailure && isRecoveryReason(paymentFailure.code)
+        ? paymentFailure.code
+        : null;
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   // Fail-closed billing: when the totals computation fails (e.g. no store
@@ -231,8 +290,22 @@ export function CheckoutPage() {
   // otherwise checkout quotes less than the gateway collects.
   const finalPayable = Math.max(0, rawGrandTotal + persistedTip - pointsDiscount);
 
-  const handlePlaceOrder = async () => {
+  // Hoisted so the ref-sync effect also runs safely on the initial skeleton
+  // render, which returns before the checkout body is initialized.
+  async function handlePlaceOrder() {
     setValidationError(null);
+
+    const uid = useAuthStore.getState().user?.id ?? null;
+    const pendingRecon = usePaymentStore.getState().reconciliationPending || !!loadPaymentReconciliation(uid);
+    if (pendingRecon) {
+      setBusy(false);
+      placeOrderInFlight.current = false;
+      setPaymentStatus("waiting");
+      toast.info("Payment already received — order sync pending", {
+        description: "Do not pay again. We are reconciling your order.",
+      });
+      return;
+    }
 
     // Belt-and-braces behind the disabled button: never fire Razorpay offline.
     if (!useAppConfig.getState().isOnline) {
@@ -305,9 +378,12 @@ export function CheckoutPage() {
     if (!validation.success || !validation.data.valid) {
       setBusy(false);
       placeOrderInFlight.current = false;
+      // Curated cart-issue copy passes through; the failure branch is typed
+      // raw-capable (CartRepository), so it is logged + mapped, never shown.
+      if (!validation.success) console.error("[checkout] cart validation failed:", validation.error);
       const msg = validation.success
         ? (validation.data.issues[0]?.message ?? "Some items in your cart are no longer available.")
-        : validation.error.message;
+        : toUserMessage(validation.error);
       setValidationError(msg);
       toast.error(msg);
       return;
@@ -334,8 +410,9 @@ export function CheckoutPage() {
         setBusy(false);
       placeOrderInFlight.current = false;
         if (!created.success) {
-          setValidationError(created.error.message);
-          toast.error("Could not place order", { description: created.error.message });
+          const message = orderFailureMessage(created.error);
+          setValidationError(message);
+          toast.error("Could not place order", { description: message });
           return;
         }
 
@@ -358,7 +435,9 @@ export function CheckoutPage() {
       } catch (err) {
         setBusy(false);
       placeOrderInFlight.current = false;
-        const msg = err instanceof Error ? err.message : "Error placing cash order.";
+        // Raw exception text never reaches the red alert box (P1-8).
+        console.error("[checkout] cash order exception:", err);
+        const msg = "We couldn't place your order. Please try again.";
         setValidationError(msg);
         toast.error("Could not place order", { description: msg });
       }
@@ -379,8 +458,9 @@ export function CheckoutPage() {
         setBusy(false);
         placeOrderInFlight.current = false;
         if (!free.success) {
-          setValidationError(free.error.message);
-          toast.error("Could not place order", { description: free.error.message });
+          const message = orderFailureMessage(free.error);
+          setValidationError(message);
+          toast.error("Could not place order", { description: message });
           return;
         }
         AudioService.playSuccess();
@@ -394,7 +474,9 @@ export function CheckoutPage() {
       } catch (err) {
         setBusy(false);
         placeOrderInFlight.current = false;
-        const msg = err instanceof Error ? err.message : "Error placing free order.";
+        // Raw exception text never reaches the red alert box (P1-8).
+        console.error("[checkout] free order exception:", err);
+        const msg = "We couldn't place your order. Please try again.";
         setValidationError(msg);
         toast.error("Could not place order", { description: msg });
       }
@@ -402,6 +484,7 @@ export function CheckoutPage() {
     }
     try {
       setPaymentStatus("preparing");
+      setPaymentFailure(null);
       const orderRes = await paymentRepository.createPaymentOrder({
         loyaltyPointsToRedeem: redeemPoints ? pointsDiscount : 0,
       });
@@ -409,13 +492,16 @@ export function CheckoutPage() {
         setBusy(false);
       placeOrderInFlight.current = false;
         setPaymentStatus("failed");
+        const message = orderFailureMessage(orderRes.error);
         setPaymentFailure({
           code: orderRes.error.code,
-          message: orderRes.error.message,
-          retryable: true,
+          message,
+          // A reconciliation block is not retryable: retrying there would
+          // start a second payment for money the server already has.
+          retryable: orderRes.error.code !== "PAYMENT_RECONCILIATION_PENDING",
         });
-        setValidationError(orderRes.error.message);
-        toast.error("Couldn't initiate online payment", { description: orderRes.error.message });
+        setValidationError(message);
+        toast.error("Couldn't initiate online payment", { description: message });
         return;
       }
 
@@ -428,20 +514,103 @@ export function CheckoutPage() {
           onSuccess: async (result: PaymentResult) => {
             try {
               const verify = await paymentRepository.verifyPayment(result);
-              if (!verify.success || !verify.data.verified) {
+              if (verify.success && verify.data.verified) {
+                // proceed to order finalization below
+              } else if (!verify.success && verify.error.code === "TRANSFER_IN_PROGRESS") {
                 setBusy(false);
       placeOrderInFlight.current = false;
-                setPaymentStatus("failed");
-                toast.error("Payment verification failed", {
-                  description: verify.success ? "Signature mismatch" : verify.error.message,
+                const reconUid = useAuthStore.getState().user?.id ?? null;
+                usePaymentStore.getState().setReconciliation(true, "TRANSFER_IN_PROGRESS", usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null);
+                persistPaymentReconciliation(reconUid, { internalOrderId: usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, gatewayOrderId: usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null, reason: "TRANSFER_IN_PROGRESS" });
+                setPaymentStatus("waiting");
+                const transferCopy = describePaymentRecovery("TRANSFER_IN_PROGRESS");
+                setPaymentFailure({
+                  code: "TRANSFER_IN_PROGRESS",
+                  message: transferCopy.body,
+                  retryable: false,
+                  paymentId: result.paymentId,
+                });
+                toast.info(transferCopy.title, {
+                  description: `${transferCopy.body}${result.paymentId ? ` Payment ID ${result.paymentId}.` : ""}`,
+                });
+                return;
+              } else if (!verify.success && verify.error.code === "ORDER_TERMINAL") {
+                setBusy(false);
+      placeOrderInFlight.current = false;
+                const reconUid = useAuthStore.getState().user?.id ?? null;
+                usePaymentStore.getState().setReconciliation(true, "ORDER_TERMINAL", usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null);
+                persistPaymentReconciliation(reconUid, { internalOrderId: usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, gatewayOrderId: usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null, reason: "ORDER_TERMINAL" });
+                setPaymentStatus("waiting");
+                const terminalCopy = describePaymentRecovery("ORDER_TERMINAL");
+                setPaymentFailure({
+                  code: "ORDER_TERMINAL",
+                  message: terminalCopy.body,
+                  retryable: false,
+                  paymentId: result.paymentId,
+                });
+                toast.info(terminalCopy.title, {
+                  description: `${terminalCopy.body}${result.paymentId ? ` Payment ID ${result.paymentId}.` : ""}`,
+                });
+                // Captured money: do not markPaymentFailed, do not invite re-pay.
+                return;
+              } else {
+                setBusy(false);
+                placeOrderInFlight.current = false;
+                const outcome = resolveVerifyOutcome({
+                  verify,
+                  internalOrderId:
+                    usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null,
+                  gatewayOrderId:
+                    usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null,
+                  paymentId: result.paymentId,
+                });
+                if (outcome.kind === "uncaptured") {
+                  // Only a server-proven non-capture may flip the order to
+                  // failed — signature failures and unknown codes (503, bad
+                  // sig, unverified 200) never reach here (A08 B1).
+                  setPaymentStatus("failed");
+                  setPaymentFailure({
+                    code: outcome.code,
+                    message: outcome.message,
+                    retryable: outcome.retryable,
+                    paymentId: result.paymentId,
+                  });
+                  toast.error("Payment verification failed", { description: outcome.message });
+                  void orderRepository.markPaymentFailed(outcome.internalOrderId).catch(() => undefined);
+                  return;
+                }
+                // "verified" was handled by the branch above; anything else is
+                // a reconciliation outcome. Keep the fallthrough fail-closed.
+                if (outcome.kind !== "reconciliation") return;
+                // Unknown / possibly-captured outcome: persist reconciliation
+                // (which disables the pay button) and surface the recovery
+                // panel — never a failed state that invites a re-pay (A08 B9).
+                const reconUid = useAuthStore.getState().user?.id ?? null;
+                usePaymentStore
+                  .getState()
+                  .setReconciliation(true, outcome.reason, outcome.internalOrderId, outcome.gatewayOrderId);
+                persistPaymentReconciliation(reconUid, {
+                  internalOrderId: outcome.internalOrderId,
+                  gatewayOrderId: outcome.gatewayOrderId,
+                  reason: outcome.reason,
+                });
+                setPaymentStatus("waiting");
+                const copy = describePaymentRecovery(outcome.reason);
+                setPaymentFailure({
+                  code: outcome.reason,
+                  message: copy.body,
+                  retryable: false,
+                  paymentId: result.paymentId,
+                });
+                toast.info(copy.title, {
+                  description: `${copy.body}${result.paymentId ? ` Payment ID ${result.paymentId}.` : ""}`,
                 });
                 return;
               }
               setPaymentVerification(verify.data);
 
-              const created = await orderRepository.createFromCurrentContext({
+              const created = await orderRepository.finalizePaidOrder({
                 confirmedOrderId: verify.data.confirmedOrderId,
-                paymentMethod: result.method,
                 transactionId: result.paymentId,
               });
 
@@ -451,15 +620,18 @@ export function CheckoutPage() {
               // Never clear the cart or navigate to tracking here — surface the
               // failure with the gateway payment id for support recovery.
               if (!created.success) {
-                setPaymentStatus("failed");
+                const reconUid = useAuthStore.getState().user?.id ?? null;
+                usePaymentStore.getState().setReconciliation(true, "PAYMENT_SYNC_PENDING", verify.data.confirmedOrderId ?? null, result.orderId ?? null);
+                persistPaymentReconciliation(reconUid, { internalOrderId: verify.data.confirmedOrderId ?? null, gatewayOrderId: result.orderId ?? null, reason: "PAYMENT_SYNC_PENDING" });
+                setPaymentStatus("waiting");
                 setPaymentFailure({
-                  code: created.error.code,
-                  message: created.error.message,
+                  code: "PAYMENT_SYNC_PENDING",
+                  message: `Payment received (ID ${result.paymentId}); order sync pending. Do not pay again.`,
                   retryable: false,
                   paymentId: result.paymentId,
                 });
-                toast.error("Payment went through but the order was not created", {
-                  description: `Payment ID ${result.paymentId}. ${created.error.message} Contact support — do not pay again.`,
+                toast.info("Payment received — order sync pending", {
+                  description: `Payment ID ${result.paymentId}. Our servers have your order. Do not pay again.`,
                 });
                 return;
               }
@@ -474,6 +646,9 @@ export function CheckoutPage() {
               } catch {
                 // best-effort; the confirmation screen re-syncs
               }
+              const reconUid = useAuthStore.getState().user?.id ?? null;
+              clearPaymentReconciliation(reconUid);
+              usePaymentStore.getState().clearReconciliation();
               void cartRepository.clear();
               const orderId = created.success ? created.data.id : verify.data.confirmedOrderId;
               void navigate({
@@ -481,11 +656,35 @@ export function CheckoutPage() {
                 params: { orderId },
                 replace: true,
               });
-            } catch {
+            } catch (err) {
               setBusy(false);
-      placeOrderInFlight.current = false;
-              setPaymentStatus("failed");
-              toast.error("Verification error occurred.");
+              placeOrderInFlight.current = false;
+              // Post-gateway unknown exception (verify/finalize threw after
+              // money may have moved): persist reconciliation and surface the
+              // recovery panel — never a failed state that invites a re-pay,
+              // never a cart clear or confirmation navigation (A08 B9).
+              console.error("[checkout] post-payment exception:", err);
+              const reconUid = useAuthStore.getState().user?.id ?? null;
+              const store = usePaymentStore.getState();
+              const boundInternal = store.internalOrderId ?? result.internalOrderId ?? null;
+              const boundGateway = store.gatewayOrderId ?? result.orderId ?? null;
+              store.setReconciliation(true, "PAYMENT_SYNC_PENDING", boundInternal, boundGateway);
+              persistPaymentReconciliation(reconUid, {
+                internalOrderId: boundInternal,
+                gatewayOrderId: boundGateway,
+                reason: "PAYMENT_SYNC_PENDING",
+              });
+              setPaymentStatus("waiting");
+              const copy = describePaymentRecovery("PAYMENT_SYNC_PENDING");
+              setPaymentFailure({
+                code: "PAYMENT_SYNC_PENDING",
+                message: copy.body,
+                retryable: false,
+                paymentId: result.paymentId,
+              });
+              toast.info(copy.title, {
+                description: `${copy.body}${result.paymentId ? ` Payment ID ${result.paymentId}.` : ""}`,
+              });
             }
           },
           onFailure: (err) => {
@@ -516,7 +715,7 @@ export function CheckoutPage() {
         "Payment couldn't be completed. Please try again — if your amount was debited, contact support before retrying."
       );
     }
-  };
+  }
 
   return (
     <AppShell
@@ -536,28 +735,34 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || totals === null || !kitchen.isOpen}
-              aria-disabled={busy || !isOnline || totals === null || !kitchen.isOpen}
+              disabled={busy || !isOnline || totals === null || !kitchen.isOpen || reconciliationPending}
+              aria-disabled={busy || !isOnline || totals === null || !kitchen.isOpen || reconciliationPending}
               title={
-                !kitchen.isOpen
-                  ? KITCHEN_CLOSED_MESSAGE
-                  : !isOnline
-                    ? "Back online to place your order"
-                    : totals === null
-                      ? "Bill is still being computed"
-                      : undefined
+                reconciliationPending
+                  ? "We are confirming your payment — please do not pay again"
+                  : !kitchen.isOpen
+                    ? KITCHEN_CLOSED_MESSAGE
+                    : !isOnline
+                      ? "Back online to place your order"
+                      : totals === null
+                        ? "Bill is still being computed"
+                        : undefined
               }
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
               <span>
-                {busy
-                  ? "Processing Order..."
-                  : !kitchen.isOpen
-                    ? "KITCHEN CLOSED"
-                    : !isOnline
-                      ? "OFFLINE — RECONNECT TO PAY"
-                      : `PAY ${formatINR(finalPayable)} SECURELY`}
+                {reconciliationPending
+                  ? "PAYMENT UNDER REVIEW"
+                  : busy
+                    ? "Processing Order..."
+                    : !kitchen.isOpen
+                      ? "KITCHEN CLOSED"
+                      : !isOnline
+                        ? "OFFLINE — RECONNECT TO PAY"
+                      : totals === null
+                        ? "PAY — CHECKING BILL"
+                        : `PAY ${formatINR(finalPayable)} SECURELY`}
               </span>
             </button>
           </div>
@@ -587,6 +792,27 @@ export function CheckoutPage() {
           <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs">
             {validationError}
           </div>
+        )}
+
+        {/* Post-gateway recovery (A08 B9): exact payment id, do-not-pay-again,
+            support + existing-order actions while the pay button is blocked. */}
+        {recoveryReason && !busy && (
+          <PaymentRecoveryPanel
+            reason={recoveryReason}
+            paymentId={paymentFailure?.paymentId ?? null}
+            orderId={paymentGatewayOrderId}
+            onContactSupport={() =>
+              void navigate({
+                to: "/support",
+                search: {
+                  topic: "payment",
+                  paymentId: paymentFailure?.paymentId ?? undefined,
+                  message: paymentFailure?.message ?? undefined,
+                },
+              })
+            }
+            onCheckOrders={() => void navigate({ to: "/orders" })}
+          />
         )}
 
         {/* Bill unavailable: totals computation failed (e.g. no store pricing).

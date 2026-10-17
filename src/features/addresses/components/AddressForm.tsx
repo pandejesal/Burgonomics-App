@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { Home, Briefcase, MapPin, Navigation } from "lucide-react";
 import { AppButton } from "@/shared/components/common/AppButton";
@@ -61,7 +62,17 @@ const DEFAULT_CENTER = { lat: 23.0225, lng: 72.5714 }; // Default Ahmedabad, Guj
 function MapController({ center }: { center: { lat: number; lng: number } }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo(center, map.getZoom());
+    // prefers-reduced-motion: jump straight to the pin instead of animating
+    // the flight — large camera motion is the vestibular trigger to avoid.
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      map.setView(center, map.getZoom());
+    } else {
+      map.flyTo(center, map.getZoom());
+    }
   }, [center, map]);
   return null;
 }
@@ -115,6 +126,14 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   // invocation captures the current token and bails before any setState if a
   // newer invocation has since incremented it.
   const geocodeTokenRef = useRef(0);
+  // Field-level dirty guards, checked *at response time*: an async pin/GPS
+  // reverse-geocode may only fill fields the customer has not typed into.
+  // Editing a saved address starts every field dirty so loaded values are
+  // never clobbered by a late geocode reply.
+  const line1EditedRef = useRef(Boolean(initial));
+  const cityEditedRef = useRef(Boolean(initial));
+  const pincodeEditedRef = useRef(Boolean(initial));
+  const stateEditedRef = useRef(Boolean(initial));
 
   const reverseGeocode = useCallback(async (lat: number, lng: number) => {
     const token = ++geocodeTokenRef.current;
@@ -137,18 +156,20 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         } = data.address;
 
         const bestCity = fetchedCity || town || village;
-        if (bestCity) setCity(bestCity);
-        if (postcode) setPincode(postcode);
-        if (fetchedState) setState(fetchedState);
+        if (!cityEditedRef.current && bestCity) setCity(bestCity);
+        if (!pincodeEditedRef.current && postcode) setPincode(postcode);
+        if (!stateEditedRef.current && fetchedState) setState(fetchedState);
 
         let streetLine = "";
         if (house_number) streetLine += `${house_number} `;
         if (road) streetLine += road;
 
-        if (streetLine) {
-          setLine1(streetLine.trim());
-        } else if (data.display_name) {
-          setLine1(data.display_name.split(",")[0]);
+        if (!line1EditedRef.current) {
+          if (streetLine) {
+            setLine1(streetLine.trim());
+          } else if (data.display_name) {
+            setLine1(data.display_name.split(",")[0]);
+          }
         }
       }
     } catch (err) {
@@ -387,6 +408,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
 
         {label === "other" && (
           <TextField
+            id="address-nickname"
             label="Nickname"
             placeholder="e.g. Parents' place"
             value={customLabel}
@@ -397,14 +419,19 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
 
         <div className="space-y-4 pt-2">
           <TextField
+            id="address-line1"
             label="Flat / house / building"
             value={line1}
             onFocus={handleInputFocus}
-            onChange={(e) => setLine1(e.target.value)}
+            onChange={(e) => {
+              setLine1(e.target.value);
+              line1EditedRef.current = true;
+            }}
             autoComplete="address-line1"
             required
           />
           <TextField
+            id="address-line2"
             label="Area / street (optional)"
             value={line2}
             onFocus={handleInputFocus}
@@ -412,6 +439,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
             autoComplete="address-line2"
           />
           <TextField
+            id="address-landmark"
             label="Landmark (optional)"
             value={landmark}
             onFocus={handleInputFocus}
@@ -420,30 +448,42 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
           />
           <div className="grid grid-cols-2 gap-4">
             <TextField
+              id="address-city"
               label="City"
               value={city}
               onFocus={handleInputFocus}
-              onChange={(e) => setCity(e.target.value)}
+              onChange={(e) => {
+                setCity(e.target.value);
+                cityEditedRef.current = true;
+              }}
               autoComplete="address-level2"
               required
             />
             <TextField
+              id="address-state"
               label="State"
               value={state}
               onFocus={handleInputFocus}
-              onChange={(e) => setState(e.target.value)}
+              onChange={(e) => {
+                setState(e.target.value);
+                stateEditedRef.current = true;
+              }}
               autoComplete="address-level1"
               required
             />
           </div>
           <TextField
+            id="address-pincode"
             label="Pincode"
             type="tel"
             inputMode="numeric"
             maxLength={6}
             value={pincode}
             onFocus={handleInputFocus}
-            onChange={(e) => setPincode(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) => {
+              setPincode(e.target.value.replace(/\D/g, ""));
+              pincodeEditedRef.current = true;
+            }}
             autoComplete="postal-code"
             required
           />
@@ -474,7 +514,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       </form>
 
       {/* Sticky Save Bar pinned to bottom sitting above keyboard */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
+      {typeof document !== "undefined" && createPortal(<div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
         <div className="mx-auto flex max-w-[560px] items-center gap-3">
           <AppButton
             type="button"
@@ -495,7 +535,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
             {initial ? "SAVE CHANGES" : "SAVE ADDRESS"}
           </AppButton>
         </div>
-      </div>
+      </div>, document.body)}
     </div>
   );
 }
