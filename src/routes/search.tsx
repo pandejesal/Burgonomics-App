@@ -18,6 +18,7 @@ import { cartRepository, FloatingCartBar } from "@/features/cart";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import type { Product } from "@/features/menu/models";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { cn } from "@/lib/utils";
 
 interface SearchParamsSchema {
@@ -203,13 +204,13 @@ function SearchPage() {
     });
   }, [results, activeFilter]);
 
-  const handleAdd = (p: Product) => {
+  const handleAdd = async (p: Product) => {
     if (p.customizable) {
       setCustomizingProduct(p);
       return;
     }
     if (!store) return;
-    void cartRepository.addItem({
+    const res = await cartRepository.addItem({
       storeId: store.id,
       productId: p.id,
       name: p.name,
@@ -219,6 +220,12 @@ function SearchPage() {
       unitPrice: p.price,
       quantity: 1,
     });
+    if (!res.success) {
+      toast.error("Couldn't add to cart", {
+        description: toUserMessage(res),
+      });
+      return;
+    }
     void HapticService.impact("medium");
     toast.success(`✓ ${p.name} added to cart`);
   };

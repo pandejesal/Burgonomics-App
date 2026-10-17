@@ -379,7 +379,12 @@ export const ordersService = {
         : `ord_${Date.now()}_${generateSecureId(6)}`);
     const nowIso = new Date().toISOString();
     const status = resolveStatus("PLACED");
-    const etaMs = input.fulfillment === "delivery" ? 35 * 60_000 : 20 * 60_000;
+    const etaMinutes = input.fulfillment === "delivery"
+      ? input.store.etaMinutes
+      : input.store.pickupEtaMinutes;
+    const estimatedAt = typeof etaMinutes === "number" && Number.isFinite(etaMinutes) && etaMinutes > 0
+      ? new Date(Date.now() + etaMinutes * 60_000).toISOString()
+      : undefined;
     const order: Order = {
       id,
       shortCode: shortCode(id),
@@ -400,7 +405,7 @@ export const ordersService = {
       payment: input.payment,
       petpoojaStatus: "Pending",
       placedAt: nowIso,
-      estimatedAt: new Date(Date.now() + etaMs).toISOString(),
+      ...(estimatedAt ? { estimatedAt } : {}),
     };
 
     // Petpooja KOT push (best-effort): failures must surface on the order

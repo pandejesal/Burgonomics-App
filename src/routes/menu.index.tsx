@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { LayoutGrid, List as ListIcon, Search } from "lucide-react";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import { AppShell } from "@/shared/layouts/AppShell";
 import { Text } from "@/shared/components/common/Text";
@@ -251,13 +252,13 @@ function MenuPage() {
   }, [activeCategoryId, loadMore, buckets]);
 
   const handleAdd = React.useCallback(
-    (p: Product) => {
+    async (p: Product) => {
       if (p.customizable) {
         setCustomizingProduct(p);
         return;
       }
       if (!store) return;
-      void cartRepository.addItem({
+      const res = await cartRepository.addItem({
         storeId: store.id,
         productId: p.id,
         name: p.name,
@@ -267,6 +268,12 @@ function MenuPage() {
         unitPrice: p.price,
         quantity: 1,
       });
+      if (!res.success) {
+        toast.error("Couldn't add to cart", {
+          description: toUserMessage(res),
+        });
+        return;
+      }
 
       void HapticService.impact("medium");
 
