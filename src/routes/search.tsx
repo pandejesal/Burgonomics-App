@@ -97,18 +97,28 @@ function SearchPage() {
     inputRef.current?.focus();
   }, []);
 
-  // Sync initial query from URL search params
+  // Sync from URL search params. The URL is the single source of truth for a
+  // deep link: apply every pending param FIRST, then submit once. The previous
+  // ordering submitted with the pre-kind state and the debounced effect
+  // submitted again 300ms later — two repository calls for one intent, two
+  // recent-query writes, and a chance for the stale response to land last.
+  // (`query`/`kind` are read but deliberately not depended on: this effect is
+  // the URL → state direction only, and adding them would let a keystroke's
+  // stale URL value revert what the user just typed.)
   useEffect(() => {
+    let changed = false;
     if (searchParams.q && searchParams.q !== query) {
       setQuery(searchParams.q);
-      void submit(store?.id);
+      changed = true;
     }
     if (searchParams.kind && searchParams.kind !== kind) {
       setKind(searchParams.kind);
+      changed = true;
     }
     if (searchParams.filter && searchParams.filter !== activeFilter) {
       setActiveFilter(searchParams.filter);
     }
+    if (changed) void submit(store?.id);
   }, [searchParams.q, searchParams.kind, searchParams.filter, store?.id]);
 
   // Debounced search (300ms) with search param sync
@@ -129,14 +139,15 @@ function SearchPage() {
     return () => clearTimeout(timer);
   }, [query, store?.id, activeFilter, fetchSuggestions, submit, navigate]);
 
-  const [submitting, setSubmitting] = useState(false);
+  // `submitting` used to shadow the store's own `loading` status — every path
+  // that actually waits already sets it, and the extra flag could only flash a
+  // skeleton over results that were already on screen (or stick forever if the
+  // repository rejected before `finally`). One status drives the skeleton.
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!query.trim()) return;
     void HapticService.impact("light");
-    setSubmitting(true);
     await submit(store?.id);
-    setSubmitting(false);
   };
 
   const runRecent = async (q: string) => {
@@ -418,7 +429,7 @@ function SearchPage() {
             </>
           )}
 
-          {(status === "loading" || submitting) && <MenuSkeleton rows={4} />}
+          {status === "loading" && <MenuSkeleton rows={4} />}
 
           {status === "error" && (
             <FailureState title="Search failed" message={error} onRetry={() => handleSubmit()} />

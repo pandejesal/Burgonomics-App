@@ -15,6 +15,7 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { cartRepository, FloatingCartBar } from "@/features/cart";
 import { useMenuStore } from "@/features/menu/state/menuStore";
 import { CategoryNavRail } from "@/features/menu/components/CategoryNavRail";
+import { attachCategorySwipe } from "@/features/menu/utils/categorySwipe";
 import type { MenuCategoryModel } from "@/features/menu/models";
 import { MenuProductCard } from "@/features/menu/components/MenuProductCard";
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
@@ -140,10 +141,10 @@ function MenuPage() {
   // from Home pills landing on a real category instead of being discarded.
   useEffect(() => {
     const resolved = resolveCategoryId(searchParams.category, categories);
-    if (resolved && activeCategoryId !== resolved) {
+    if (resolved && useMenuStore.getState().activeCategoryId !== resolved) {
       setActiveCategory(resolved);
     }
-  }, [searchParams.category, categories, activeCategoryId, setActiveCategory]);
+  }, [searchParams.category, categories, setActiveCategory]);
 
   // Sync viewMode from URL search params if provided
   useEffect(() => {
@@ -184,43 +185,42 @@ function MenuPage() {
    * MT-28: the old nested pager (a snap-x `scrollerRef` panel row with its own
    * `overflow-y-auto` sections and a 550ms `isProgrammaticScroll` lock) made
    * the two axes fight each other, dropping touch events and freezing both
-   * directions. Products now render in the natural page flow — vertical
-   * scrolling is native momentum scroll — and a single start/end comparison
-   * decides whether a gesture was a horizontal category swipe.
+   * directions. Products render in natural page flow, with native vertical
+   * momentum and a direction-locked horizontal gesture listener.
+   *
+   * The native listeners are bound once per DOM node, not per render:
+   * - The node is held in state through a stable callback ref, so the binding
+   *   attaches whenever the list mounts late (store hydration, cached menu
+   *   rendering after a failed refresh) and detaches when it unmounts. A plain
+   *   `ref` read inside an effect never re-ran for those mounts, leaving the
+   *   list without a gesture listener.
+   * - Live POS snapshots replace `categories` with a new array on every sync
+   *   (R23 dropped `status` but left `categories` in the deps), which re-bound
+   *   the listeners mid-gesture and threw away the in-flight touch start.
+   * - `activeCategoryId` is read from the store at gesture time, so a pill tap
+   *   is visible to the very next swipe instead of the category captured when
+   *   the listener happened to bind.
    */
-  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [swipeElement, setSwipeElement] = React.useState<HTMLDivElement | null>(null);
+  const bindProductList = React.useCallback((el: HTMLDivElement | null) => setSwipeElement(el), []);
 
-  const handleTouchStart = React.useCallback((e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    swipeStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
-  }, []);
+  const selectCategoryRef = React.useRef(handleCategorySelect);
+  React.useEffect(() => {
+    selectCategoryRef.current = handleCategorySelect;
+  }, [handleCategorySelect]);
 
-  const handleTouchEnd = React.useCallback(
-    (e: React.TouchEvent) => {
-      const start = swipeStartRef.current;
-      swipeStartRef.current = null;
-      const touch = e.changedTouches[0];
-      if (!start || !touch || categories.length < 2) return;
-
-      const dx = touch.clientX - start.x;
-      const dy = touch.clientY - start.y;
-      // Genuine horizontal swipe: past 60px AND clearly more horizontal than
-      // vertical (|dx| > 1.5 × |dy|) so ordinary vertical scrolling — however
-      // slanted — never changes category.
-      if (Math.abs(dx) <= 60 || Math.abs(dx) <= 1.5 * Math.abs(dy)) return;
-
-      const idx = categories.findIndex((c) => c.id === activeCategoryId);
-      if (idx < 0) return;
-      // Finger travelled left → next category; right → previous.
-      const target = dx < 0 ? categories[idx + 1] : categories[idx - 1];
-      if (target) handleCategorySelect(target.id);
-    },
-    [categories, activeCategoryId, handleCategorySelect],
-  );
-
-  const resetSwipe = React.useCallback(() => {
-    swipeStartRef.current = null;
-  }, []);
+  useEffect(() => {
+    if (!swipeElement) return;
+    return attachCategorySwipe(swipeElement, (direction) => {
+      const live = useMenuStore.getState();
+      const idx = live.categories.findIndex((c) => c.id === live.activeCategoryId);
+      if (idx < 0) return false;
+      const target = live.categories[idx + direction];
+      if (!target) return false;
+      selectCategoryRef.current(target.id);
+      return true;
+    });
+  }, [swipeElement]);
 
   // A category can become active without ever having a bucket (deep link,
   // live category subscription, store switch). The list sentinel below only
@@ -402,12 +402,10 @@ function MenuPage() {
 
             {/* Active category products — natural vertical page flow.
                 Vertical scrolling is native momentum scroll; a horizontal
-                swipe on this container switches category (handleTouchEnd). */}
+                 swipe on this container switches category. */}
             <div
               className="px-4 py-3 touch-pan-y"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-              onTouchCancel={resetSwipe}
+              ref={bindProductList}
             >
               <h2 className="sr-only">{activeCategory?.name ?? "Menu items"}</h2>
               {bucket?.error && !bucket.items.length ? (
