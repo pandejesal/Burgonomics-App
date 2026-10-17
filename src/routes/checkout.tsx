@@ -245,7 +245,12 @@ export function CheckoutPage() {
       setTotals(res.data);
       setTotalsFailed(false);
     } else {
+      // M3 fail-closed: a stale bill priced for the previous fulfillment /
+      // promo must not stay on screen behind a live PAY. Log the raw failure
+      // (never customer copy) and drop the stale totals.
+      console.error("[checkout] totals recompute failed:", res.error);
       setTotalsFailed(true);
+      setTotals(null);
     }
   }, []);
 
@@ -729,14 +734,14 @@ export function CheckoutPage() {
             <div>
               <p className="text-[10px] uppercase font-bold text-text-secondary">To Pay</p>
               <p className="font-mono text-xl font-black text-text">
-                {formatINR(finalPayable)}
+                {totals ? formatINR(finalPayable) : "—"}
               </p>
             </div>
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || totals === null || !kitchen.isOpen || reconciliationPending}
-              aria-disabled={busy || !isOnline || totals === null || !kitchen.isOpen || reconciliationPending}
+              disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
+              aria-disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
               title={
                 reconciliationPending
                   ? "We are confirming your payment — please do not pay again"
@@ -744,9 +749,11 @@ export function CheckoutPage() {
                     ? KITCHEN_CLOSED_MESSAGE
                     : !isOnline
                       ? "Back online to place your order"
-                      : totals === null
-                        ? "Bill is still being computed"
-                        : undefined
+                      : totalsFailed
+                        ? "Couldn't compute your bill — retry above"
+                        : totals === null
+                          ? "Bill is still being computed"
+                          : undefined
               }
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
@@ -760,9 +767,11 @@ export function CheckoutPage() {
                       ? "KITCHEN CLOSED"
                       : !isOnline
                         ? "OFFLINE — RECONNECT TO PAY"
-                      : totals === null
-                        ? "PAY — CHECKING BILL"
-                        : `PAY ${formatINR(finalPayable)} SECURELY`}
+                        : totalsFailed
+                          ? "PAY — BILL UNAVAILABLE"
+                          : totals === null
+                            ? "PAY — CHECKING BILL"
+                            : `PAY ${formatINR(finalPayable)} SECURELY`}
               </span>
             </button>
           </div>
@@ -817,7 +826,7 @@ export function CheckoutPage() {
 
         {/* Bill unavailable: totals computation failed (e.g. no store pricing).
             PAY stays disabled until recompute succeeds — never charge ₹0. */}
-        {totalsFailed && totals === null && (
+        {totalsFailed && (
           <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs flex items-center justify-between gap-3">
             <span>Couldn&apos;t compute your bill. Check your connection and retry.</span>
             <button
@@ -973,11 +982,11 @@ export function CheckoutPage() {
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between text-text-secondary">
               <span>Item Total</span>
-              <span className="font-mono font-bold text-text">{formatINR(totals?.subtotal ?? 0)}</span>
+              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.subtotal) : <span className="text-warning">unavailable</span>}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Govt. GST (5% included)</span>
-              <span className="font-mono font-bold text-text">{formatINR(totals?.taxes ?? 0)}</span>
+              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.taxes) : <span className="text-warning">unavailable</span>}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Restaurant Packaging</span>
@@ -1025,7 +1034,7 @@ export function CheckoutPage() {
 
             <div className="border-t border-divider pt-2.5 flex justify-between text-sm sm:text-base font-black text-text">
               <span>To Pay</span>
-              <span className="font-mono text-[#FF6600] font-black text-lg">{formatINR(finalPayable)}</span>
+              <span className="font-mono text-[#FF6600] font-black text-lg">{totals ? formatINR(finalPayable) : "—"}</span>
             </div>
           </div>
         </section>

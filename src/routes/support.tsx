@@ -75,7 +75,9 @@ function Page() {
   const search = Route.useSearch();
   const paymentPrefill = search.topic === "payment" && search.paymentId ? search : null;
   const [faqs, setFaqs] = React.useState<FaqItem[] | null>(null);
+  const [faqsError, setFaqsError] = React.useState(false);
   const [channels, setChannels] = React.useState<SupportChannel[] | null>(null);
+  const [channelsError, setChannelsError] = React.useState(false);
   const [categories, setCategories] = React.useState<IssueCategory[]>([]);
   const [faqQuery, setFaqQuery] = React.useState("");
   const [openTicket, setOpenTicket] = React.useState(!!paymentPrefill);
@@ -91,11 +93,26 @@ function Page() {
     return orderIds.map((id) => st.byId[id]).filter(Boolean) as Order[];
   }, [orderIds]);
 
-  React.useEffect(() => {
-    void supportRepository.listFaqs().then((r) => r.success && setFaqs(r.data));
-    void supportRepository.listChannels().then((r) => r.success && setChannels(r.data));
-    void supportRepository.listIssueCategories().then((r) => r.success && setCategories(r.data));
+  // M6: a failed load previously left `faqs`/`channels` at null, so the pulse
+  // skeleton below rendered forever. Track failure per surface instead, so the
+  // section can show an honest error with a retry.
+  const loadSupportContent = React.useCallback(() => {
+    setFaqsError(false);
+    setChannelsError(false);
+    void supportRepository.listFaqs().then((r) => {
+      if (r.success) setFaqs(r.data);
+      else setFaqsError(true);
+    });
+    void supportRepository.listChannels().then((r) => {
+      if (r.success) setChannels(r.data);
+      else setChannelsError(true);
+    });
   }, []);
+
+  React.useEffect(() => {
+    loadSupportContent();
+    void supportRepository.listIssueCategories().then((r) => r.success && setCategories(r.data));
+  }, [loadSupportContent]);
 
   const filteredFaqs = React.useMemo(() => {
     if (!faqs) return null;
@@ -160,7 +177,14 @@ function Page() {
           <Text variant="titleMedium" className="font-bold">
             Direct Contact Channels
           </Text>
-          {channels === null ? (
+          {channelsError ? (
+            <EmptyState
+              title="Couldn't load contact channels"
+              description="We couldn't load our contact channels. Please try again."
+              actionLabel="Try Again"
+              onAction={loadSupportContent}
+            />
+          ) : channels === null ? (
             <div className="h-24 animate-pulse rounded-2xl bg-bg-secondary" />
           ) : channels.length === 0 ? (
             <EmptyState
@@ -214,7 +238,14 @@ function Page() {
               />
             </label>
           )}
-          {filteredFaqs === null ? (
+          {faqsError ? (
+            <EmptyState
+              title="Couldn't load FAQs"
+              description="We couldn't load the help articles. Please try again."
+              actionLabel="Try Again"
+              onAction={loadSupportContent}
+            />
+          ) : filteredFaqs === null ? (
             <div className="h-40 animate-pulse rounded-2xl bg-bg-secondary" />
           ) : filteredFaqs.length === 0 ? (
             <EmptyState
@@ -331,7 +362,7 @@ function FaqAccordion({ item }: { item: FaqItem }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-neutral-850/60 transition-colors"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-secondary transition-colors"
       >
         <div className="min-w-0 flex-1">
           <span className="text-xs font-bold text-text block truncate">
@@ -397,9 +428,9 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3 text-white">
+    <form onSubmit={submit} className="space-y-3">
       <fieldset>
-        <legend className="text-xs font-bold uppercase text-neutral-400">Your rating</legend>
+        <legend className="text-xs font-bold uppercase text-text">Your rating</legend>
         <div
           role="radiogroup"
           aria-label="Rate your experience"
@@ -420,7 +451,7 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
                 <Star
                   className={cn(
                     "h-7 w-7 transition-colors",
-                    filled ? "fill-amber-400 text-amber-400" : "text-neutral-600",
+                    filled ? "fill-amber-400 text-amber-400" : "text-text-secondary",
                   )}
                   aria-hidden
                 />

@@ -34,13 +34,6 @@ const BUCKETS: Array<{ id: OrderHistoryBucket; label: string }> = [
   { id: "cancelled", label: "Cancelled" },
 ];
 
-const SORTS: Array<{ id: OrderSortKey; label: string }> = [
-  { id: "recent", label: "Newest" },
-  { id: "oldest", label: "Oldest" },
-  { id: "amount_high", label: "Amount ↑" },
-  { id: "amount_low", label: "Amount ↓" },
-];
-
 const PAGE_SIZE = 10;
 
 function OrderHistoryPage() {
@@ -49,7 +42,10 @@ function OrderHistoryPage() {
   const isOnline = useAppConfig((s) => s.isOnline);
 
   const [bucket, setBucket] = React.useState<OrderHistoryBucket>("ongoing");
-  const [sort, setSort] = React.useState<OrderSortKey>("recent");
+  // L1: no sort control is rendered, so the list order is fixed. Keep the key
+  // as a constant instead of a dead setter/SORTS list that implies a feature
+  // the UI never offers.
+  const sort: OrderSortKey = "recent";
   const [searchInput, setSearchInput] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [orders, setOrders] = React.useState<Order[]>([]);
@@ -139,7 +135,7 @@ function OrderHistoryPage() {
             type="button"
             aria-label="Refresh orders"
             onClick={handleRefresh}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-text-primary hover:bg-neutral-800 cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-text-primary hover:bg-neutral-800 cursor-pointer"
           >
             <RefreshCw className={`h-4.5 w-4.5 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -162,6 +158,7 @@ function OrderHistoryPage() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search by Order # or item name..."
+              aria-label="Search orders"
               className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-surface border border-divider text-text placeholder-text-secondary text-xs font-medium focus:outline-none focus:border-primary"
             />
           </div>
@@ -173,6 +170,7 @@ function OrderHistoryPage() {
                 key={b.id}
                 type="button"
                 onClick={() => setBucket(b.id)}
+                aria-pressed={bucket === b.id}
                 className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer text-center ${
                   bucket === b.id
                     ? "bg-[#0E4825] border border-emerald-500/40 text-emerald-300 shadow-xs"

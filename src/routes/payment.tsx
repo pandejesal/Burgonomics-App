@@ -139,6 +139,10 @@ function PaymentPage() {
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  // M4 fail-closed: when the totals computation fails there is no honest
+  // amount to charge, so PAY must say why and offer a retry instead of
+  // disabling silently behind a fabricated ₹0.
+  const [totalsFailed, setTotalsFailed] = React.useState(false);
   // Hoisted above the early returns below: a hook below a conditional return
   // flips the hook count between renders (guest/empty → authed+filled) and
   // crashes with minified React #310.
@@ -201,19 +205,31 @@ function PaymentPage() {
   // simulated (that reads as "money may or may not move").
   const isDevBuild = appConfig.env === "development";
 
+  const loadTotals = React.useCallback(async () => {
+    try {
+      const r = await cartRepository.calculateTotals();
+      if (r.success) {
+        setTotals(r.data);
+        setTotalsFailed(false);
+        return;
+      }
+      // Raw pricing diagnostics are not customer copy (P1-8): log, never show.
+      logger.warn("payment.totals_failed", { code: r.error.code });
+      setTotalsFailed(true);
+      setTotals(null);
+    } catch (e: unknown) {
+      logger.warn("payment.totals_failed", {
+        message: e instanceof Error ? e.message : String(e),
+      });
+      setTotalsFailed(true);
+      setTotals(null);
+    }
+  }, []);
+
   React.useEffect(() => {
     if (!hydrated) return;
-    void cartRepository
-      .calculateTotals()
-      .then((r) => {
-        if (r.success) setTotals(r.data);
-      })
-      .catch((e: unknown) =>
-        logger.warn("payment.totals_failed", {
-          message: e instanceof Error ? e.message : String(e),
-        })
-      );
-  }, [hydrated, lines, fulfillment]);
+    void loadTotals();
+  }, [hydrated, lines, fulfillment, loadTotals]);
 
   if (!hydrated || !isBootstrapped) return <PaymentSkeleton />;
   if (!isAuthenticated) return <PaymentSkeleton />;
@@ -357,7 +373,11 @@ function PaymentPage() {
           onSuccess: (result: PaymentResult) => void handleSuccess(result),
           onFailure: (err) => {
             setStatus("failed");
-            const message = err.description ?? "Payment could not be completed.";
+            // P1-8: a gateway description is provider text, not customer copy
+            // (BAD_REQUEST_ERROR / bank decline strings) — log it raw and give
+            // the customer the curated mapper output instead.
+            console.error("[payment] gateway onFailure:", err);
+            const message = toUserMessage(err);
             setFailure({ code: err.code, message, retryable: true });
             toast.error("Payment failed", { description: message });
           },
@@ -554,7 +574,7 @@ function PaymentPage() {
                 To Pay
               </span>
               <span className="type-title-large font-black text-text tabular-nums">
-                {formatINR(grandTotal)}
+                {totals ? formatINR(grandTotal) : "—"}
               </span>
             </div>
             <AppButton
@@ -568,7 +588,9 @@ function PaymentPage() {
                   ? "We are confirming your payment — please do not pay again"
                   : !isOnline
                     ? "Back online to place your order"
-                  : undefined
+                    : totalsFailed
+                      ? "Couldn't compute your bill — retry above"
+                      : undefined
               }
               iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
             >
@@ -781,6 +803,27 @@ function PaymentPage() {
             )}
           </div>
         </section>
+
+        {/* Totals failed (M4): say why PAY is unavailable and offer a retry —
+            never a silent dead button priced against an unknown bill. */}
+        {totalsFailed && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex items-center justify-between gap-3 rounded-xl border border-error/40 bg-error/5 p-4"
+          >
+            <Text variant="bodyMedium" tone="error">
+              Couldn&apos;t compute your bill. Check your connection and retry.
+            </Text>
+            <AppButton
+              size="sm"
+              onClick={() => void loadTotals()}
+              iconLeft={<RefreshCcw className="h-3.5 w-3.5" aria-hidden />}
+            >
+              Retry
+            </AppButton>
+          </div>
+        )}
 
         {preflightIssue && (
           <div role="alert" className="rounded-xl border border-warning/40 bg-warning/10 p-4">
