@@ -44,10 +44,24 @@ export function mapStoreDoc(data: any, id: string): Store | null {
     phone: data.phone || "",
     imageUrl: data.imageUrl || null,
     hours,
-    isOpen: data.isOpen !== false && data.status !== "CLOSED",
+    // Unknown open-state stays unknown: only an explicit boolean, or the
+    // doc's own CLOSED status, may be reported. A doc that says nothing is
+    // never rendered as "Open now".
+    isOpen:
+      typeof data.isOpen === "boolean"
+        ? data.isOpen
+        : data.status === "CLOSED"
+          ? false
+          : undefined,
     isBusy: Boolean(data.isBusy),
     isRecentlyOpened: Boolean(data.isRecentlyOpened),
-    supports: data.supports || { delivery: true, takeaway: true, dineIn: true },
+    // Deny by default: a fulfillment mode is offered only when the doc grants
+    // it. A doc without `supports` (or with a partial one) grants nothing.
+    supports: {
+      delivery: data.supports?.delivery === true,
+      takeaway: data.supports?.takeaway === true,
+      dineIn: data.supports?.dineIn === true,
+    },
     etaMinutes: data.etaMinutes || data.minPrepMinutes || null,
     pickupEtaMinutes: data.pickupEtaMinutes || null,
     deliveryFee: data.pricing?.deliveryFeeFlat ?? data.deliveryFee,

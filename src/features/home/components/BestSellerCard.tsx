@@ -20,8 +20,16 @@ interface BestSellerCardProps {
 
 export function BestSellerCard({ product, className, onCardClick }: BestSellerCardProps) {
   const store = useStoreSelection((s) => s.activeStore);
-  const line = useCartStore((s) => s.lines.find((l) => l.productId === product.id));
-  const qty = line?.quantity ?? 0;
+  const lines = useCartStore((s) => s.lines);
+  // The same product can sit in the cart as several lines (one per modifier
+  // combination), so the stepper shows the sum across them — the first match
+  // alone under-reports. The stepper still mutates a single line.
+  const matchingLines = React.useMemo(
+    () => lines.filter((l) => l.productId === product.id),
+    [lines, product.id],
+  );
+  const line = matchingLines[0];
+  const qty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
   const [busy, setBusy] = React.useState(false);
   // 86ed products can still be rendered here from a cached/real-time fetch —
   // the card must refuse to add them, exactly like MenuProductCard does.

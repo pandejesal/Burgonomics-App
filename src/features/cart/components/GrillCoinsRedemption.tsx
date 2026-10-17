@@ -41,10 +41,15 @@ export function GrillCoinsRedemption({
   if (availableCoins <= 0) return null;
 
   return (
-    <div
-      onClick={maxRedeemable > 0 ? handleToggle : undefined}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isApplied}
+      aria-disabled={maxRedeemable <= 0}
+      aria-label="Redeem Loyalty Points"
+      onClick={handleToggle}
       className={cn(
-        "p-4 rounded-2xl border transition-all select-none cursor-pointer flex items-center justify-between gap-4 shadow-xs",
+        "w-full text-left p-4 rounded-2xl border transition-all select-none cursor-pointer flex items-center justify-between gap-4 shadow-xs",
         isApplied
           ? "border-[#0E4825] bg-[#0E4825]/10"
           : "border-divider bg-surface hover:border-primary/40",
@@ -78,12 +83,11 @@ export function GrillCoinsRedemption({
         </div>
       </div>
 
-      {/* Right Switch / Checkmark */}
+      {/* Right Switch / Checkmark — decorative only: the outer control is the
+          switch and owns the checked state, so this must not be announced. */}
       <div className="shrink-0">
         <div
-          role="switch"
-          aria-checked={isApplied}
-          aria-label="Redeem Loyalty Points"
+          aria-hidden
           className={cn(
             "w-11 h-6 rounded-full transition-colors p-0.5 flex items-center",
             isApplied ? "bg-[#0E4825]" : "bg-divider"
@@ -97,7 +101,7 @@ export function GrillCoinsRedemption({
           />
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

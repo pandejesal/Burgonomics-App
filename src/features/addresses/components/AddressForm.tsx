@@ -101,7 +101,9 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   const [line2, setLine2] = useState(initial?.line2 ?? "");
   const [landmark, setLandmark] = useState(initial?.landmark ?? "");
   const [city, setCity] = useState(initial?.city ?? "");
-  const [state, setState] = useState(initial?.state ?? "Gujarat");
+  // No fabricated state: an unset state stays empty and must be chosen
+  // explicitly (validated on submit) rather than pre-filled with a guess.
+  const [state, setState] = useState(initial?.state ?? "");
   const [pincode, setPincode] = useState(initial?.pincode ?? "");
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
   const [error, setError] = useState<string | null>(null);
@@ -262,19 +264,36 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       return;
     }
 
+    // State is genuinely required — it must be chosen, never assumed.
+    if (!state.trim()) {
+      setError("Please enter your state.");
+      toast.error("Please enter your state.");
+      setBusy(false);
+      return;
+    }
+
     const rawPhone = profile?.phone ? sanitizePhone(profile.phone) : "";
     const contactPhone = rawPhone && rawPhone.length === 10 ? rawPhone : "";
+    // A courier cannot deliver without a number, so an empty contactPhone is
+    // a blocked save with a spoken reason — never a silently stored "".
+    if (contactPhone.length !== 10) {
+      setError("Please add a contact number so we can reach you about this delivery.");
+      toast.error("Please add a contact number so we can reach you about this delivery.");
+      setBusy(false);
+      return;
+    }
 
     const payload = {
       label,
       customLabel: label === "other" ? customLabel.trim() || undefined : undefined,
-      contactName: profile?.fullName || "Guest Customer",
+      // Only a name the customer actually has — never a stand-in persona.
+      contactName: profile?.fullName?.trim() || undefined,
       contactPhone,
       line1: line1.trim(),
       line2: line2.trim() || undefined,
       landmark: landmark.trim() || undefined,
       city: city.trim(),
-      state: state.trim() || "Gujarat",
+      state: state.trim(),
       pincode: pincode.replace(/\D/g, "").slice(0, 6),
       lat: pinPlaced ? mapCenter.lat : undefined,
       lng: pinPlaced ? mapCenter.lng : undefined,

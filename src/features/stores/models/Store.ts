@@ -39,7 +39,14 @@ export interface Store {
    * readers must null-guard and fall back to "hours unavailable".
    */
   hours: StoreHours | null;
-  isOpen: boolean;
+  /**
+   * Open-state as the store doc states it. `undefined` when the doc carries
+   * neither an `isOpen` boolean nor `status: "CLOSED"` — unknown is modelled
+   * explicitly so no reader can present it as "open" (or "closed") without
+   * saying so. Readers must tri-state, e.g. `isOpen === true ? … : isOpen ===
+   * false ? … : "Hours unavailable"`.
+   */
+  isOpen: boolean | undefined;
   isBusy: boolean;
   isRecentlyOpened: boolean;
   supports: StoreSupport;

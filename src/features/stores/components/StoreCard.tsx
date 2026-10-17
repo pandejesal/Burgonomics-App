@@ -47,11 +47,13 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
   const closingSoon = store.isOpen && store.hours != null && closesSoon(store.hours.close);
 
   const label = `${store.name}${store.area ? `, ${store.area}` : ""}. ${
-    store.isOpen
+    store.isOpen === true
       ? store.hours
         ? `Open now, closes at ${store.hours.close}`
         : "Open now"
-      : "Closed"
+      : store.isOpen === false
+        ? "Closed"
+        : "Hours unavailable"
   }. ${store.etaMinutes != null ? `Delivery in ${store.etaMinutes} minutes. ` : ""}${formatDistance(store.distanceKm)} away.`;
 
   // Determine if store should be disabled for delivery or far away takeaway/dinein
@@ -215,10 +217,16 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
               {/* Line 2: Badges · Distance · Delivery in N min */}
               <div className="mt-0.5 flex items-center gap-1.5 min-w-0 text-text-secondary text-xs truncate">
                 <AppBadge
-                  tone={store.isOpen ? "success" : "neutral"}
+                  tone={store.isOpen === true ? "success" : "neutral"}
                   className="text-[10px] px-1.5 py-0 shrink-0 font-semibold"
                 >
-                  {store.isOpen ? (closingSoon ? "Closes Soon" : "Open") : "Closed"}
+                  {store.isOpen === true
+                    ? closingSoon
+                      ? "Closes Soon"
+                      : "Open"
+                    : store.isOpen === false
+                      ? "Closed"
+                      : "Hours unavailable"}
                 </AppBadge>
                 {selected && (
                   <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/15 border border-accent/30 px-1.5 py-0 text-[10px] font-bold text-accent shrink-0">
@@ -313,7 +321,13 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                 {store.hours ? `${store.hours.open} – ${store.hours.close}` : "Opening hours unavailable"}
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">
-                {store.isOpen ? (closingSoon ? "Closing soon" : "Open now") : "Currently closed"}
+                {store.isOpen === true
+                  ? closingSoon
+                    ? "Closing soon"
+                    : "Open now"
+                  : store.isOpen === false
+                    ? "Currently closed"
+                    : "Hours unavailable"}
               </p>
             </div>
 

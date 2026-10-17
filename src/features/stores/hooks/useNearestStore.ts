@@ -10,7 +10,8 @@ import { useAddressStore, selectSelectedAddress } from '@/features/addresses/sta
 export interface NearestStoreResult {
   store: Store;
   distanceKm: number;
-  isOpen: boolean;
+  /** `undefined` when neither hours nor the doc's `isOpen` say anything. */
+  isOpen: boolean | undefined;
   closingStatusText: string;
 }
 
@@ -117,12 +118,19 @@ export function useNearestStore() {
       }
 
       // P1-3: hours is null when the store doc carries no schedule — never
-      // invent one. Fall back to the doc's own `isOpen` field instead.
+      // invent one. Fall back to the doc's own `isOpen` field instead, which
+      // is `undefined` when the doc never said — unknown must not be spoken
+      // of as open OR as closed.
       const { isOpen, statusText } = store.hours
         ? isStoreOpenAtTime(store.hours)
         : {
             isOpen: store.isOpen,
-            statusText: store.isOpen ? "Open Now" : "Closed",
+            statusText:
+              store.isOpen === true
+                ? "Open Now"
+                : store.isOpen === false
+                  ? "Closed"
+                  : "Hours unavailable",
           };
 
       return {

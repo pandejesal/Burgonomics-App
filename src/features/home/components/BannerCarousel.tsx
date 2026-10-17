@@ -98,7 +98,22 @@ export function BannerCarousel({ banners, className }: Props) {
   const scrollerRef = React.useRef<HTMLDivElement>(null);
   const [active, setActive] = React.useState(0);
   const [isInteracting, setIsInteracting] = React.useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
   const dragRef = React.useRef<{ startX: number; startY: number; scrollLeft: number } | null>(null);
+
+  // Honour the OS motion preference: no rotation and no animated scrolling for
+  // users who asked for reduced motion (WCAG 2.2.2 pause/stop/hide).
+  React.useEffect(() => {
+    const query =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-reduced-motion: reduce)")
+        : null;
+    if (!query) return;
+    const sync = () => setPrefersReducedMotion(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
 
   // Track active slide from scroll position (native scroll events).
   React.useEffect(() => {
@@ -112,22 +127,25 @@ export function BannerCarousel({ banners, className }: Props) {
     return () => el.removeEventListener("scroll", onScroll);
   }, [banners.length]);
 
-  // Auto-advance when not interacting.
+  const scrollBehavior: ScrollBehavior = prefersReducedMotion ? "auto" : "smooth";
+
+  // Auto-advance only while the customer is not interacting (hover, drag or
+  // keyboard focus) and only when motion is allowed.
   React.useEffect(() => {
-    if (isInteracting || banners.length <= 1) return;
+    if (isInteracting || prefersReducedMotion || banners.length <= 1) return;
     const t = window.setInterval(() => {
       const el = scrollerRef.current;
       if (!el) return;
       const next = (active + 1) % banners.length;
-      el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" });
+      el.scrollTo({ left: next * el.clientWidth, behavior: scrollBehavior });
     }, AUTOPLAY_MS);
     return () => window.clearInterval(t);
-  }, [active, banners.length, isInteracting]);
+  }, [active, banners.length, isInteracting, prefersReducedMotion, scrollBehavior]);
 
   const goTo = (idx: number) => {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTo({ left: idx * el.clientWidth, behavior: "smooth" });
+    el.scrollTo({ left: idx * el.clientWidth, behavior: scrollBehavior });
   };
 
   // Pointer drag for swipe (mouse + touch). Replaces useDirectionalScroll.
@@ -191,6 +209,8 @@ export function BannerCarousel({ banners, className }: Props) {
       className={cn("relative w-full select-none", className)}
       onPointerEnter={() => setIsInteracting(true)}
       onPointerLeave={() => setIsInteracting(false)}
+      onFocus={() => setIsInteracting(true)}
+      onBlur={() => setIsInteracting(false)}
     >
       <div
         ref={scrollerRef}
@@ -202,13 +222,21 @@ export function BannerCarousel({ banners, className }: Props) {
         onPointerCancel={onPointerCancel}
       >
         {banners.map((b, i) => (
-          <div
+          <a
             key={b.id}
-            className="w-full shrink-0 px-4 snap-center cursor-pointer"
-            onClick={() => {
+            href={b.ctaHref}
+            // A native link is draggable; without this the desktop pointer-drag
+            // swipe would start a link drag instead of scrubbing the carousel.
+            draggable={false}
+            onDragStart={(e) => e.preventDefault()}
+            onClick={(e) => {
+              // Client-side routing, but the href keeps the slide focusable,
+              // Enter-activatable and openable in a new tab.
+              e.preventDefault();
               void HapticService.selection();
               void navigate({ to: b.ctaHref });
             }}
+            className="block w-full shrink-0 px-4 snap-center cursor-pointer"
           >
             <div
               role="group"
@@ -271,7 +299,7 @@ export function BannerCarousel({ banners, className }: Props) {
                 </div>
               )}
             </div>
-          </div>
+          </a>
         ))}
       </div>
 

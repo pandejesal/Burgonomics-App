@@ -96,7 +96,7 @@ export function FulfillmentSheet({
           <div className="flex flex-wrap items-center gap-2">
             <AppBadge tone="neutral">
               <Clock className="mr-1 inline h-3 w-3" aria-hidden />
-              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Ready in 20–25 min"}
+              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Prep time on confirmation"}
             </AppBadge>
             {isPickupTooFar(s, "takeaway") && <AppBadge tone="error">Too far (&gt;25 km)</AppBadge>}
             {s?.address && (
@@ -119,12 +119,14 @@ export function FulfillmentSheet({
             <Text variant="caption" tone="secondary" className="line-clamp-1">
               {s?.name ?? ""}
             </Text>
-            <AppBadge tone={s?.isOpen ? "success" : "error"}>
-              {s?.isOpen ? "Open now" : "Closed"}
+            <AppBadge
+              tone={s?.isOpen === true ? "success" : s?.isOpen === false ? "error" : "neutral"}
+            >
+              {s?.isOpen === true ? "Open now" : s?.isOpen === false ? "Closed" : "Hours unavailable"}
             </AppBadge>
             <AppBadge tone="neutral">
               <Clock className="mr-1 inline h-3 w-3" aria-hidden />
-              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Ready in 20–25 min"}
+              {s?.pickupEtaMinutes != null ? `Ready in ${s.pickupEtaMinutes} min` : "Prep time on confirmation"}
             </AppBadge>
             {isPickupTooFar(s, "dinein") && <AppBadge tone="error">Too far (&gt;25 km)</AppBadge>}
           </div>
