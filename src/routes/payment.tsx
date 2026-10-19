@@ -35,6 +35,8 @@ import { useHydrated } from "@/shared/hooks/useHydrated";
 import { formatINR } from "@/core/utils/format";
 import { logger } from "@/core/logging/logger";
 import { toUserMessage } from "@/core/errors/userMessages";
+import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
+import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAcceptance";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
 import { useAppConfig } from "@/core/state/appConfigStore";
@@ -88,6 +90,12 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "PERSIST_FAILED",
   "PAYMENT_RECONCILIATION_PENDING",
   "INVALID_AMOUNT",
+  // Money-time refusals from the pricing engine (409). Their messages are
+  // static, customer-readable sentences, so pass them verbatim instead of
+  // collapsing into a generic failure. They only reach here when the create
+  // order transport preserves the server's structured code.
+  "ITEM_UNAVAILABLE",
+  "ITEM_PRICE_UNVERIFIED",
 ]);
 
 function orderFailureMessage(error: { code: string; message: string }): string {
@@ -139,6 +147,20 @@ function PaymentPage() {
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  // Authoritative-quote acceptance, same rule as checkout.tsx: the gateway
+  // opens on the SERVER's validated amount, so a differing displayed total
+  // must be accepted by the customer first. No rate is invented and no fee is
+  // sent — we only surface the server's quote before money moves.
+  const [repricePrompt, setRepricePrompt] = React.useState<{
+    displayed: number;
+    authoritative: number;
+  } | null>(null);
+  // The exact server total already accepted, so the structural display/charge
+  // divergence does not prompt again on re-entry.
+  const acceptedServerAmount = React.useRef<number | null>(null);
+  // Latest launch closure for the acceptance dialog: re-enter the SAME flow
+  // after acceptance instead of re-running a different code path.
+  const startPaymentRef = React.useRef<() => Promise<void>>(async () => {});
   // M4 fail-closed: when the totals computation fails there is no honest
   // amount to charge, so PAY must say why and offer a retry instead of
   // disabling silently behind a fabricated ₹0.
@@ -353,6 +375,24 @@ function PaymentPage() {
         // (retry / support). Bouncing to /cart hid the real error.
         return;
       }
+      // Same authoritative-quote gate as checkout.tsx: never open the gateway
+      // on a number the customer was not shown. If the server's validated
+      // total differs, ask for explicit acceptance first.
+      const displayedTotal = totals?.grandTotal;
+      const authoritativeTotal =
+        typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
+      if (
+        needsRepriceAcceptance(displayedTotal, authoritativeTotal, acceptedServerAmount.current)
+      ) {
+        setStatus("idle");
+        setRepricePrompt({
+          // The gate only returns true when both are finite numbers.
+          displayed: displayedTotal as number,
+          authoritative: authoritativeTotal as number,
+        });
+        return;
+      }
+
       setOrder(orderRes.data);
       setStatus("waiting");
 
@@ -410,6 +450,10 @@ function PaymentPage() {
       toast.error("Payment Error", { description: message });
     }
   };
+
+  React.useEffect(() => {
+    startPaymentRef.current = startPayment;
+  });
 
   const handleSuccess = async (result: PaymentResult) => {
     // Contract §3: verification binds the gateway payment to the internal
@@ -925,6 +969,28 @@ function PaymentPage() {
         onChangePaymentMethod={() => {
           setAbandonmentOpen(false);
           void navigate({ to: "/checkout" });
+        }}
+      />
+      <ConfirmDialog
+        open={repricePrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) setRepricePrompt(null);
+        }}
+        title="Your total has been updated"
+        description={
+          repricePrompt
+            ? `The final total is ${formatINR(repricePrompt.authoritative)} (you were shown ${formatINR(repricePrompt.displayed)}). Continue with the updated amount?`
+            : undefined
+        }
+        confirmLabel="Continue"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (!repricePrompt) return;
+          // Accept this exact server total, then re-enter the same flow; the
+          // remembered acceptance prevents an identical prompt on the retry.
+          acceptedServerAmount.current = repricePrompt.authoritative;
+          setRepricePrompt(null);
+          void startPaymentRef.current();
         }}
       />
     </AppShell>
