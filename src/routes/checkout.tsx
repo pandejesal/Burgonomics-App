@@ -29,6 +29,8 @@ import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
 import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
 import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
+import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
+import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAcceptance";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { HapticService } from "@/core/services/haptics";
 import { AudioService } from "@/core/services/audio";
@@ -94,7 +96,19 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "PERSIST_FAILED",
   "PAYMENT_RECONCILIATION_PENDING",
   "INVALID_AMOUNT",
+  // Money-time refusals from the pricing engine. Their messages are static,
+  // customer-readable sentences (the only interpolation is the item name), so
+  // passing them verbatim tells the customer WHICH item to remove instead of
+  // collapsing to a generic "something went wrong".
+  "ITEM_UNAVAILABLE",
+  "ITEM_PRICE_UNVERIFIED",
 ]);
+
+/**
+ * True when the gateway must NOT open yet: the server's validated total differs
+ * from what the customer was shown and they have not accepted that exact figure.
+ * Implementation lives in a DOM-free module so it is unit-testable.
+ */
 
 function orderFailureMessage(error: { code: string; message: string }): string {
   if (CURATED_ORDER_FAILURE_CODES.has(error.code)) return error.message;
@@ -164,6 +178,16 @@ export function CheckoutPage() {
         : null;
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  // The cart total is a CLIENT estimate; the gateway is opened with the
+  // SERVER's validated amount. When they differ the customer must see the
+  // authoritative figure and accept it before any money screen opens.
+  const [repricePrompt, setRepricePrompt] = React.useState<{
+    displayed: number;
+    authoritative: number;
+  } | null>(null);
+  // The server total already accepted, so re-entry does not loop on the same
+  // difference (the divergence is structural, not a one-off).
+  const acceptedServerAmount = React.useRef<number | null>(null);
   // Fail-closed billing: when the totals computation fails (e.g. no store
   // pricing available), PAY must stay disabled instead of charging ₹0.
   const [totalsFailed, setTotalsFailed] = React.useState(false);
@@ -507,6 +531,30 @@ export function CheckoutPage() {
         });
         setValidationError(message);
         toast.error("Couldn't initiate online payment", { description: message });
+        return;
+      }
+
+      // Server total wins, but never silently: the sheet would otherwise open
+      // on a different number than the one the customer just reviewed. No rate
+      // is invented here and no fee is sent - we only surface the authoritative
+      // total and require acceptance when it changed.
+      const displayedTotal = totals?.grandTotal;
+      const authoritativeTotal =
+        typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
+      if (
+        needsRepriceAcceptance(
+          displayedTotal,
+          authoritativeTotal,
+          acceptedServerAmount.current
+        )
+      ) {
+        setBusy(false);
+        placeOrderInFlight.current = false;
+        setRepricePrompt({
+          // The gate only returns true when both are finite numbers.
+          displayed: displayedTotal as number,
+          authoritative: authoritativeTotal as number,
+        });
         return;
       }
 
@@ -1069,6 +1117,26 @@ export function CheckoutPage() {
             authRetryTimer.current = null;
             void handlePlaceOrderRef.current();
           }, 300);
+        }}
+      />
+      <ConfirmDialog
+        open={repricePrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) setRepricePrompt(null);
+        }}
+        title="Your total has been updated"
+        description={
+          repricePrompt
+            ? `The final total is ${formatINR(repricePrompt.authoritative)} (you were shown ${formatINR(repricePrompt.displayed)}). Continue with the updated amount?`
+            : undefined
+        }
+        confirmLabel="Continue"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (!repricePrompt) return;
+          acceptedServerAmount.current = repricePrompt.authoritative;
+          setRepricePrompt(null);
+          void handlePlaceOrderRef.current();
         }}
       />
     </AppShell>
