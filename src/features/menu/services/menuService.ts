@@ -77,7 +77,7 @@ function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
   });
 }
 
-function mapProductDoc(data: any, docId: string): Product {
+export function mapProductDoc(data: any, docId: string): Product {
   const veg =
     data.isVeg !== undefined
       ? Boolean(data.isVeg)
@@ -131,16 +131,26 @@ function mapProductDoc(data: any, docId: string): Product {
     imageUrls: data.imageUrls || (imageUrl ? [imageUrl] : []),
     fallbackImageUrl: data.fallbackImageUrl,
     inStock:
+      // Consumer truth signal, so it fails CLOSED. A doc with no availability
+      // field must never render as sellable: nothing downstream re-checks
+      // (the payments pricing engine never reads inStock, and the cart's only
+      // gate is this boolean), so "we do not know" would become "order it".
+      // Strict `=== true` also closes the truthiness trap where a string
+      // "false" from a bad writer used to become available.
       data.inStock !== undefined
-        ? Boolean(data.inStock)
+        ? data.inStock === true
         : data.isAvailable !== undefined
-          ? Boolean(data.isAvailable)
-          : true,
+          ? data.isAvailable === true
+          : false,
     customizable: customizations.length > 0 || Boolean(data.customizable),
     prepTimeMinutes: data.prepTimeMinutes || 15,
     badges,
     tags: data.tags || [],
-    unavailableReason: data.unavailableReason,
+    unavailableReason:
+      data.unavailableReason ??
+      (data.inStock === undefined && data.isAvailable === undefined
+        ? "Availability unknown"
+        : undefined),
   };
 }
 
