@@ -63,6 +63,12 @@ vi.mock("@/features/cart", () => ({ cartRepository: { addItem: fixture.addItem }
 vi.mock("@/features/cart/repositories/CartRepository", () => ({ cartRepository: { addItem: fixture.addItem } }));
 vi.mock("@/features/menu/repositories/MenuRepository", () => ({ menuRepository: {
   getProduct: async () => ({ success: true, data: fixture.product }),
+  // The favourites quick-add gate resolves the store-scoped catalog page
+  // (in-stock + live price) instead of the unscoped single-product getter.
+  listProducts: async () => ({
+    success: true,
+    data: { items: [fixture.product], page: 1, pageSize: 1000, total: 1 },
+  }),
   listRelatedProducts: async () => ({ success: true, data: [] }),
 } }));
 vi.mock("@/features/orders", () => ({
