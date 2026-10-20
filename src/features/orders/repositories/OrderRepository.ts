@@ -197,6 +197,36 @@ export class OrderRepository {
     return res;
   }
 
+  /**
+   * R24 — paid-order finalization (read-only, server truth).
+   *
+   * After backend verify confirms the pending `orders/{id}` doc, callers
+   * must land HERE — not back in `createFromCurrentContext`, whose full
+   * `setDoc` on the same confirmed id is an UPDATE that `firestore.rules`
+   * denies for customers (and, where a rule allowed it, would overwrite
+   * server-owned payment/status/totals with client-minted values).
+   *
+   * Delegates to `ordersService.finalizePaidOrder`, which reads the doc
+   * fresh from the server and validates owner binding + server-paid state
+   * + the expected transaction id. This layer only hydrates the UI store
+   * from that SERVER-truth result: failures never touch the store and
+   * never mint a placeholder order (no false order, no new id).
+   */
+  async finalizePaidOrder(opts: {
+    confirmedOrderId?: string;
+    transactionId?: string;
+  }): Promise<ApiResult<Order>> {
+    const res = await this.service.finalizePaidOrder({
+      confirmedOrderId: opts.confirmedOrderId ?? "",
+      expectedTransactionId: opts.transactionId,
+    });
+    if (res.success && res.data) {
+      useOrdersStore.getState().upsert(res.data);
+      useOrdersStore.getState().setActiveOrderId(res.data.id);
+    }
+    return res;
+  }
+
   // -- Actions ---------------------------------------------------------
 
   /**

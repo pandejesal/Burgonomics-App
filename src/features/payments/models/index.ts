@@ -52,6 +52,14 @@ export interface PaymentVerification {
   verified: boolean;
   /** Final backend order id, ready to be shown on the confirmation screen. */
   confirmedOrderId: string;
+  /** Gateway order id that was verified (when the server echoes it). */
+  razorpayOrderId?: string;
+  /** Captured Razorpay payment id (handover/support reference). */
+  paymentId?: string;
+  /** Delivery handover OTP plaintext returned by the server (verify path only). */
+  deliveryOtp?: string;
+  /** Route split outcome when present. */
+  transfer?: unknown;
 }
 
 export interface PaymentFailure {
