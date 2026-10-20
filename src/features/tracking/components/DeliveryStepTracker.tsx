@@ -29,7 +29,10 @@ export function DeliveryStepTracker({
       <div className="rounded-3xl border border-red-500/30 bg-red-950/20 p-5 space-y-3">
         <div className="flex items-center gap-2.5 text-red-400 font-black text-sm">
           <AlertCircle className="w-5 h-5" />
-          <span>Order Cancelled</span>
+          {/* Title from the state itself so CANCELLED and FAILED (and any
+              future terminal state) render their own honest name instead of a
+              hard-coded "Order Cancelled". */}
+          <span>{stageName}</span>
         </div>
         <p className="text-xs text-neutral-400">{stageDescription}</p>
       </div>

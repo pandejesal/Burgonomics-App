@@ -78,6 +78,16 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
 
   const isTakeaway = order?.fulfillment === "takeaway" || order?.fulfillment === "dinein";
   const statusCode = (order?.status?.code || "ORDER_PLACED").toUpperCase();
+  const statusKind = order?.status?.kind;
+  // The counter reference is whatever the outlet actually identifies orders
+  // by — a backend order number or the short code already shown in the
+  // header. There is no PIN/OTP field anywhere in the order model; copy must
+  // never invent one.
+  const orderReference =
+    (order as (Order & { orderNumber?: string }) | null)?.orderNumber ?? order?.shortCode ?? null;
+  // Refund claims are only made when the SERVER wrote a refunded payment
+  // marker — the client initiates no refund anywhere.
+  const serverRefunded = order?.payment?.status === "refunded";
 
   const addressLat = (order?.address as any)?.lat ?? (order as any)?.deliveryAddress?.lat;
   const addressLng = (order?.address as any)?.lng ?? (order as any)?.deliveryAddress?.lng;
@@ -90,12 +100,34 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
   let stageName = "Order Placed & Confirmed";
   let stageDescription = "Kitchen has acknowledged your meal and is queueing ingredients.";
 
-  if (statusCode.includes("CANCEL")) {
+  if (statusKind === "cancelled" || statusCode.includes("CANCEL")) {
     return {
       currentStage: 1,
       stageName: "Order Cancelled",
-      stageDescription: "This order was cancelled. Refund reversal has been initiated.",
+      stageDescription: serverRefunded
+        ? "This order was cancelled. Your refund has been initiated."
+        : "This order was cancelled.",
       // A cancelled order has nothing left to estimate.
+      etaMinutes: null,
+      storeLocation,
+      dropLocation,
+      riderLocation: null,
+      partnerName: "Porter Express",
+      isTakeawayOrDineIn: isTakeaway,
+      isDelivered: false,
+      isCancelled: true,
+      isReconnecting: false,
+    };
+  }
+
+  if (statusKind === "failed" || statusCode.includes("FAIL")) {
+    // A FAILED order is terminal and non-progressing — it previously fell
+    // through to the stage-1 "Order Placed & Confirmed / queueing ingredients"
+    // state with a bouncing active step, promising preparation that ended.
+    return {
+      currentStage: 1,
+      stageName: "Order Failed",
+      stageDescription: "This order could not be completed. Contact support if you need help.",
       etaMinutes: null,
       storeLocation,
       dropLocation,
@@ -116,7 +148,9 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     stage = 3;
     stageName = isTakeaway ? "Packed & Ready for Counter Pickup" : "Out for Delivery with Porter";
     stageDescription = isTakeaway
-      ? "Your food is packed warm. Show your Order PIN at the counter."
+      ? orderReference
+        ? `Your food is packed warm. Show order reference #${orderReference} at the counter.`
+        : "Your food is packed warm. Show this screen's order reference at the counter."
       : "Porter 2-wheeler courier is en-route with your insulated food pack.";
   } else if (statusCode.includes("DELIVER") || statusCode.includes("COMPLETE") || statusCode.includes("PICKED_UP")) {
     stage = 4;
