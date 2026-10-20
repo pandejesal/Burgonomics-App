@@ -61,38 +61,31 @@ function Body() {
     }
     void HapticService.impact("light");
 
-    // Never invent a price. The stored price label is trusted only when it
-    // parses to a real amount; otherwise the product document is fetched for
-    // the current menu price. If neither is available the add is refused —
-    // the old `|| 199` fallback could have charged a customer a made-up ₹199.
-    const parsedLabel = fav.priceLabel
-      ? parseInt(fav.priceLabel.replace(/\D/g, ""), 10)
-      : Number.NaN;
-    let unitPrice = Number.isFinite(parsedLabel) && parsedLabel > 0 ? parsedLabel : Number.NaN;
-    let veg = fav.kind === "product";
-    let imageUrl = fav.imageUrl;
-    let fallbackImageUrl = fav.fallbackImageUrl;
-
-    if (!Number.isFinite(unitPrice)) {
-      const res = await menuRepository.getProduct(fav.refId, store.id);
-      const product = res.success ? res.data : null;
-      if (!product || !(product.price > 0)) {
-        toast.error(
-          `We couldn't verify the price for ${fav.name} — please add it from the menu.`,
-        );
-        return;
-      }
-      unitPrice = product.price;
-      veg = product.veg ?? true;
-      imageUrl = product.imageUrl ?? imageUrl;
-      fallbackImageUrl = product.fallbackImageUrl ?? fallbackImageUrl;
+    // Purchasing eligibility and price truth come ONLY from the store-scoped
+    // live catalog (the products list is restId-filtered to this store). The
+    // stored `priceLabel` is display metadata from the day the favourite was
+    // saved — it never decides eligibility or the charged price, and no
+    // single-product lookup is used here because that getter is not
+    // store-scoped (a cross-outlet favourite would otherwise resolve another
+    // branch's document and read as "verified").
+    const catalogRes = await menuRepository.listProducts(store.id, undefined, 1, 1000);
+    const product = catalogRes.success
+      ? catalogRes.data.items.find((p) => p.id === fav.refId)
+      : null;
+    if (!product || product.inStock !== true || !(product.price > 0)) {
+      toast.error(`${fav.name} is not available right now — please add it from the menu.`);
+      return;
     }
+
+    const veg = product.veg ?? fav.kind === "product";
+    const imageUrl = product.imageUrl ?? fav.imageUrl;
+    const fallbackImageUrl = product.fallbackImageUrl ?? fav.fallbackImageUrl;
 
     const res = await cartRepository.addItem({
       storeId: store.id,
       productId: fav.refId,
       name: fav.name,
-      unitPrice,
+      unitPrice: product.price,
       quantity: 1,
       veg,
       imageUrl,
@@ -205,6 +198,7 @@ function Body() {
                     {fav.kind === "product" && (
                       <button
                         type="button"
+                        data-testid={`quick-add-${fav.id}`}
                         onClick={() => void handleQuickAdd(fav)}
                         className="px-3.5 py-1.5 min-h-[38px] rounded-xl bg-[#FF6600] text-white text-xs font-bold hover:bg-[#e05a00] active:scale-95 transition-all shadow-xs cursor-pointer flex items-center gap-1"
                       >
