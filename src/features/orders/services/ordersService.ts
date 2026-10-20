@@ -163,6 +163,10 @@ function buildTimeline(
 /**
  * Ownership gate for single-order reads. Logged-out callers keep legacy
  * behavior (rules decide); signed-in callers never see another user's order.
+ * A doc with NO ownership fields, or a signed-in caller whose uid is unknown,
+ * fails CLOSED — matching the money-proving paths (missing owner =
+ * SERVER_DOC_SHAPE_INVALID). Firestore rules remain the real gate; this is
+ * the same contract applied to plain reads.
  * Exported for tests — deleting or weakening this check must break the suite.
  */
 export function isOrderVisibleTo(
@@ -171,7 +175,8 @@ export function isOrderVisibleTo(
 ): boolean {
   const ownerId = data.userId ?? data.customerId;
   if (ownerId && myUid && ownerId !== myUid) return false;
-  return true;
+  if (!ownerId) return false; // no provable owner -> visible to no one
+  return Boolean(myUid);
 }
 
 const orders = new Map<string, Order>();

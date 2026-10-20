@@ -25,6 +25,8 @@ import {
   type OrderTrackingSnapshot,
 } from "@/features/orders";
 import { ReviewItemsList } from "@/features/checkout";
+import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
+import { recoveryReasonForOrderMarker } from "@/features/payments/utils/paymentRecovery";
 import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
 import { toast } from "sonner";
 
@@ -211,6 +213,30 @@ function OrderDetailsPage() {
             </div>
           </section>
 
+          {/* Money we could not apply to this order (server-written marker, A08
+              B5). The payer's app was usually closed when the gateway charged
+              them, so the checkout-time recovery panel never got to render —
+              this is the only surface that still tells them not to pay again,
+              with the payment reference support needs. Read-only: the client
+              never writes this field. */}
+          {order.reconciliation?.state === "payment_review" && (
+            <PaymentRecoveryPanel
+              reason={recoveryReasonForOrderMarker(order.reconciliation.reason)}
+              paymentId={order.reconciliation.razorpayPaymentId ?? null}
+              orderId={order.id}
+              onContactSupport={() =>
+                void navigate({
+                  to: "/support",
+                  search: {
+                    topic: "payment",
+                    paymentId: order.reconciliation?.razorpayPaymentId ?? undefined,
+                  },
+                })
+              }
+              onCheckOrders={() => void navigate({ to: "/orders" })}
+            />
+          )}
+
           {/* Timeline */}
           {tracking && tracking.steps.length > 0 && (
             <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4">
@@ -266,7 +292,13 @@ function OrderDetailsPage() {
                   ? "Cash Pending"
                   : order.payment.status === "PAY_AT_STORE"
                     ? "Pay at Store"
-                    : order.payment.status}
+                    : order.payment.status === "pending"
+                      ? "Awaiting Payment"
+                      : order.payment.status === "failed"
+                        ? "Payment Failed"
+                        : order.payment.status === "refunded"
+                          ? "Refunded"
+                          : order.payment.status}
             </Text>
             {order.payment.transactionId && (
               <Text variant="caption" tone="secondary" className="mt-0.5 block">

@@ -170,6 +170,33 @@ function TrackOrderPage() {
         }
       >
         <div className="mx-auto max-w-[540px] space-y-4 px-4 py-3 pb-16 select-none">
+          {/* Live-update health: a failing poll used to render nowhere, so the
+              page silently showed stale stages. A paused state keeps the last
+              known truth visible without inventing a status update. */}
+          {(trackingHook.status === "error" || trackingHook.status === "offline") && (
+            <div
+              data-testid="tracking-pause-banner"
+              role="status"
+              className="flex items-center gap-3 rounded-2xl border border-divider bg-surface p-3"
+            >
+              <p className="flex-1 text-[11px] text-text-secondary">
+                {trackingHook.status === "offline"
+                  ? "You're offline — live updates are paused. Showing the last known status."
+                  : trackingHook.snapshot
+                    ? "Live updates are having trouble — showing the last known status."
+                    : (trackingHook.error ?? "Live status is unavailable right now.")}
+              </p>
+              {trackingHook.snapshot && (
+                <button
+                  type="button"
+                  onClick={() => void trackingHook.refresh()}
+                  className="rounded-full bg-accent px-3 py-1.5 text-xs font-black text-white cursor-pointer hover:bg-accent-hover"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
           {/* 1. 4-Stage Visual Progress Stepper */}
           <DeliveryStepTracker
             tracking={trackingState}
@@ -357,14 +384,22 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
   )}`;
 
   const handleCancel = async () => {
-    if (!window.confirm("Cancel order for an instant full refund?")) return;
+    // Honest copy: the client only flips the order status (no refund call
+    // exists anywhere client-side), so promising an "instant full refund" was
+    // a promise with no mechanism — refund handling is the store's policy,
+    // applied outside the app.
+    if (!window.confirm("Cancel this order?")) return;
     const res = await ordersService.cancelOrder(order.id);
     if (res.success && res.data) {
       // Keep the orders store coherent with the CANCELLED doc the service
-      // just persisted, then reload the route state + toast the refund.
+      // just persisted, then reload the route state.
       useOrdersStore.getState().upsert(res.data);
       onOrderCancelled?.(res.data);
-      toast.success("Order cancelled. Refund initiated.");
+      toast.success(
+        res.data.payment?.status === "refunded"
+          ? "Order cancelled. Your refund has been initiated."
+          : "Order cancelled.",
+      );
     } else {
       // `res.success && res.data` leaves ApiSuccess<null> in the else branch,
       // so the failure message must be read behind an explicit !success check.

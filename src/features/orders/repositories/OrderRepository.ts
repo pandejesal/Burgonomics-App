@@ -334,6 +334,18 @@ export class OrderRepository {
         if (res.data.status.terminal) return; // stop polling
       } else if (!res.success) {
         options.onError?.(res.error);
+      } else {
+        // success with NO data: the order is not (or no longer) visible to
+        // this account — deleted doc, wrong id, or another user's order. Map
+        // results used to fall through BOTH branches, which polled forever
+        // with the UI stuck at the loading state. Treat not-found as
+        // terminal: surface it once and stop the poll; the Firestore
+        // listener below remains for a doc that reappears.
+        options.onError?.({
+          code: "TRACKING_NOT_FOUND",
+          message: "Order not found.",
+        });
+        return; // stop polling
       }
       timer = setTimeout(fetchOnce, intervalMs);
     };

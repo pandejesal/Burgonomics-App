@@ -416,7 +416,7 @@ describe("7. 60-Second Cancellation Grace Flow", () => {
     await unmount();
   });
 
-  it("opens the confirm dialog and calls cancelOrder with a refund toast on confirm", async () => {
+  it("opens the confirm dialog, cancels via the service, and does NOT promise a refund the client cannot perform", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const onOrderCancelled = vi.fn();
     const { container, unmount } = await mount(
@@ -426,15 +426,47 @@ describe("7. 60-Second Cancellation Grace Flow", () => {
     container.querySelector<HTMLButtonElement>('[data-testid="cancel-order-button"]')!.click();
     await act(async () => {});
 
-    expect(confirmSpy).toHaveBeenCalledWith("Cancel order for an instant full refund?");
+    expect(confirmSpy).toHaveBeenCalledWith("Cancel this order?");
     expect(ordersService.cancelOrder).toHaveBeenCalledWith("ord_grace_1");
-    expect(toast.success).toHaveBeenCalledWith("Order cancelled. Refund initiated.");
+    // REFUND TRUTH: the client never initiates a refund (cancelOrder writes
+    // only the CANCELLED status), so the refund claim is shown ONLY when the
+    // order carries a server-written "refunded" payment marker.
+    expect(toast.success).toHaveBeenCalledWith("Order cancelled.");
     // Route reloads with the CANCELLED order the service returned.
     expect(onOrderCancelled).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "ord_grace_1",
         status: expect.objectContaining({ code: "CANCELLED" }),
       }),
+    );
+    await unmount();
+  });
+
+  it("claims the refund only when the order itself records a refunded payment", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    // The route reads the refund marker from the CANCELLED doc the SERVICE
+    // returns — server-written truth, not the locally mounted prop.
+    vi.mocked(ordersService.cancelOrder).mockImplementation(async (id: string) => ({
+      success: true,
+      data: {
+        ...buildOrder({ id }),
+        payment: { method: "online", label: "Paid Online", status: "refunded" },
+        status: { code: "CANCELLED", label: "Cancelled", kind: "cancelled", terminal: true },
+      },
+    }));
+    const { container, unmount } = await mount(
+      <CancellationGraceCard
+        order={buildOrder({
+          payment: { method: "online", label: "Paid Online", status: "refunded" },
+        })}
+      />,
+    );
+
+    container.querySelector<HTMLButtonElement>('[data-testid="cancel-order-button"]')!.click();
+    await act(async () => {});
+
+    expect(toast.success).toHaveBeenCalledWith(
+      "Order cancelled. Your refund has been initiated.",
     );
     await unmount();
   });
