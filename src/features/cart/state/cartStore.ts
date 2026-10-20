@@ -147,7 +147,19 @@ export const useCartStore = create<CartState>()(
 
         const updatedLines = s.lines.map((line) => {
           const prod = productMap.get(line.productId);
-          if (!prod) return line;
+          if (!prod) {
+            // Fail-closed: a cart line whose product cannot be verified against
+            // this store's live menu (deleted doc, cross-store stray, menu
+            // window) must not keep claiming availability — previously the
+            // unmatched line silently passed as available.
+            changed = true;
+            messages.push(`${line.name} is no longer available — please review your cart.`);
+            return {
+              ...line,
+              availability: "unavailable" as const,
+              unavailableReason: "Could not verify this item in the live menu.",
+            };
+          }
 
           let lineChanged = false;
           let newPrice = line.unitPrice;

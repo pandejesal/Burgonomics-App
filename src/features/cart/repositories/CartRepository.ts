@@ -314,11 +314,15 @@ export class CartRepository {
 
     try {
       const { menuRepository } = await import("@/features/menu/repositories/MenuRepository");
+      // The underlying services read the store's ENTIRE product list in one
+      // query; the pagination here only slices it. A 100-item slice used to
+      // leave every 86ed item beyond #100 unverified and treated as sellable —
+      // request the full store scope so the check below is real.
       const productsRes = await menuRepository.listProducts(
         s.storeId ?? undefined,
         undefined,
         1,
-        100,
+        1000,
       );
       if (productsRes.success) {
         const res = s.revalidateWithProducts(productsRes.data.items);
