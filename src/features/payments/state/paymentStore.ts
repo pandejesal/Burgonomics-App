@@ -158,7 +158,7 @@ export function hydratePaymentReconciliation(uid: string | null | undefined): Pa
 // ordersStore pattern (ordersStore.ts). The initial emit is ignored on
 // purpose - a lazily loaded chunk must not wipe a payment already in flight.
 let lastAuthUid: string | null | undefined;
-onAuthUidChange((uid) => {
+const unsubscribeAuthUid = onAuthUidChange((uid) => {
   if (lastAuthUid === undefined) {
     lastAuthUid = uid;
     return;
@@ -168,3 +168,8 @@ onAuthUidChange((uid) => {
   usePaymentStore.getState().reset();
   hydratePaymentReconciliation(uid);
 });
+
+// HMR: re-evaluating this module must not stack a second auth listener on the
+// store. This subscription is module-level by design, so there is no component
+// unmount to leak from - module disposal is the only teardown that applies.
+import.meta.hot?.dispose(() => unsubscribeAuthUid());
