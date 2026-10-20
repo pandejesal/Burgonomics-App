@@ -7,6 +7,7 @@
  * by their own stores and survive the auth round-trip.
  */
 import { create } from "zustand";
+import { onAuthUidChange } from "@/features/auth/utils/scopedPersistence";
 import type {
   PaymentFailure,
   PaymentMethod,
@@ -70,7 +71,15 @@ export const usePaymentStore = create<PaymentState>()((set) => ({
     internalOrderId: pending ? (internalId ?? state.internalOrderId) : state.internalOrderId,
     gatewayOrderId: pending ? (gatewayId ?? state.gatewayOrderId) : state.gatewayOrderId,
   })),
-  clearReconciliation: () => set({ reconciliationPending: false, reconciliationReason: null }),
+  // Nulls the ids as well: this is the single place that must not leave a
+  // previous account's internal/gateway reference behind (account isolation).
+  clearReconciliation: () =>
+    set({
+      reconciliationPending: false,
+      reconciliationReason: null,
+      internalOrderId: null,
+      gatewayOrderId: null,
+    }),
   reset: () => set(initial),
 }));
 
@@ -141,3 +150,21 @@ export function hydratePaymentReconciliation(uid: string | null | undefined): Pa
   }
   return rec;
 }
+
+// -- Account isolation -------------------------------------------------
+// The reconciliation RECORD is per-uid on disk, but this store is in memory:
+// without this, a login/logout/account switch in the same tab would keep the
+// previous account's pending flag and internal/gateway ids. Mirrors the
+// ordersStore pattern (ordersStore.ts). The initial emit is ignored on
+// purpose - a lazily loaded chunk must not wipe a payment already in flight.
+let lastAuthUid: string | null | undefined;
+onAuthUidChange((uid) => {
+  if (lastAuthUid === undefined) {
+    lastAuthUid = uid;
+    return;
+  }
+  if (uid === lastAuthUid) return;
+  lastAuthUid = uid;
+  usePaymentStore.getState().reset();
+  hydratePaymentReconciliation(uid);
+});

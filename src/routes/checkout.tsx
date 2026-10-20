@@ -153,11 +153,12 @@ export function CheckoutPage() {
 
   const paymentMethod = usePaymentStore((s) => s.method);
   const reconciliationPending = usePaymentStore((s) => s.reconciliationPending);
-  // Hydrate unresolved reconciliation (reload-safe) for the current auth scope.
+  // Hydrate unresolved reconciliation (reload-safe) for the CURRENT auth scope.
+  // `user?.id` is a dependency (not a mount-only read) so an in-tab account
+  // switch re-hydrates instead of leaving the previous account's state behind.
   React.useEffect(() => {
-    const uid = useAuthStore.getState().user?.id ?? null;
-    hydratePaymentReconciliation(uid);
-  }, []);
+    hydratePaymentReconciliation(user?.id ?? null);
+  }, [user?.id]);
   const setPaymentMethod = usePaymentStore((s) => s.setMethod);
   const setPaymentStatus = usePaymentStore((s) => s.setStatus);
   const setPaymentFailure = usePaymentStore((s) => s.setFailure);
