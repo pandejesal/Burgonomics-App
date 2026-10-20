@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Search, WifiOff, RefreshCw, ShoppingBag, ArrowRight, UtensilsCrossed } from "lucide-react";
+import { toast } from "sonner";
 
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -61,68 +62,158 @@ function OrderHistoryPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // CUST-F1: one monotonic token covers every list read. A response may only
+  // write state while it is still the newest request. Without this, a slow
+  // refresh (or pagination append) started under one tab could land AFTER a
+  // newer tab's response and paint the wrong rows / wrong pagination state —
+  // the per-effect `cancelled` flag cannot see across these entry points.
+  const requestGeneration = React.useRef(0);
+  const isMounted = React.useRef(true);
+  // Latest filter snapshot for cross-path validity checks (loadMore). Assigned
+  // in an effect (not during render) — loadMore fires from post-commit events.
+  const filterRef = React.useRef({ bucket, search });
+  React.useEffect(() => {
+    filterRef.current = { bucket, search };
+  }, [bucket, search]);
+  React.useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+  const isCurrentRequest = React.useCallback((gen: number) => {
+    return isMounted.current && gen === requestGeneration.current;
+  }, []);
+
+  const applyListResult = React.useCallback(
+    (
+      res: Awaited<ReturnType<typeof orderRepository.listOrders>>,
+      origin: "list" | "refresh",
+    ) => {
+      if (res.success) {
+        setOrders(res.data.items);
+        setHasMore(res.data.hasMore);
+        setPage(1);
+        setError(null);
+      } else {
+        // Failure branch is typed raw-capable (OrderRepository) — log + map,
+        // keeping the original per-path log tag for triage.
+        console.error(`[orders] ${origin} failed:`, res.error);
+        setError(toUserMessage(res));
+      }
+    },
+    [],
+  );
+
   // Load whenever any filter changes
   React.useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
+    const gen = ++requestGeneration.current;
     setLoading(true);
     setError(null);
     void orderRepository
       .listOrders({ bucket, sort, search, page: 1, pageSize: PAGE_SIZE })
       .then((res) => {
-        if (cancelled) return;
-        if (res.success) {
-          setOrders(res.data.items);
-          setHasMore(res.data.hasMore);
-          setPage(1);
-        } else {
-          // Failure branch is typed raw-capable (OrderRepository) — log + map.
-          console.error("[orders] list failed:", res.error);
-          setError(toUserMessage(res));
-        }
+        if (cancelled || !isCurrentRequest(gen)) return;
+        applyListResult(res, "list");
+      })
+      .catch((err) => {
+        // A thrown rejection must end the skeleton and offer a retry (P1-8:
+        // raw text is dropped to the generic copy), never spin forever.
+        if (cancelled || !isCurrentRequest(gen)) return;
+        console.error("[orders] list exception:", err);
+        setError(toUserMessage(err));
+      })
+      .finally(() => {
+        if (cancelled || !isCurrentRequest(gen)) return;
         setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [hydrated, bucket, sort, search]);
+  }, [hydrated, bucket, sort, search, applyListResult, isCurrentRequest]);
 
-  const loadMore = async () => {
+  const loadMore = React.useCallback(async () => {
     if (loadingMore || !hasMore) return;
+    // The response must still be the newest intent AND the filter must be
+    // unchanged from click to resolution. Generation closes the ABA window
+    // (load more -> switch tab -> switch back: the first visit's page 2 must
+    // never land on the second visit's fresh page 1) and refresh-during-
+    // loadMore; the filter snapshot refuses cross-bucket/search appends.
+    const requestedBucket = bucket;
+    const requestedSearch = search;
+    const requestedPage = page + 1;
+    const gen = requestGeneration.current;
+    const stillRelevant = () =>
+      isMounted.current &&
+      gen === requestGeneration.current &&
+      requestedBucket === filterRef.current.bucket &&
+      requestedSearch === filterRef.current.search;
     setLoadingMore(true);
-    const next = page + 1;
-    const res = await orderRepository.listOrders({
-      bucket,
-      sort,
-      search,
-      page: next,
-      pageSize: PAGE_SIZE,
-    });
-    if (res.success) {
-      setOrders((prev) => [...prev, ...res.data.items]);
-      setHasMore(res.data.hasMore);
-      setPage(next);
+    try {
+      const res = await orderRepository.listOrders({
+        bucket: requestedBucket,
+        sort,
+        search: requestedSearch,
+        page: requestedPage,
+        pageSize: PAGE_SIZE,
+      });
+      if (!stillRelevant()) return;
+      if (res.success) {
+        if (res.data.page !== requestedPage) {
+          // OrderRepository's empty-page local fallback echoes page 1 with the
+          // whole remaining list; appending it to a later page would duplicate
+          // rows. Fail-closed on pagination too: a re-armed button here would
+          // silently no-op on every further tap, so pagination ends instead
+          // (repository owner: features/orders — the echo itself may be worth
+          // strengthening there; this guard stays client-side).
+          console.error("[orders] load more page mismatch:", {
+            requestedPage,
+            served: res.data.page,
+          });
+          setHasMore(false);
+          return;
+        }
+        setOrders((prev) => [...prev, ...res.data.items]);
+        setHasMore(res.data.hasMore);
+        setPage(requestedPage);
+      } else {
+        console.error("[orders] load more failed:", res.error);
+        toast.error("Couldn't load older feasts", { description: toUserMessage(res) });
+      }
+    } catch (err) {
+      // Never a silent no-op: the customer tapped the control and must get
+      // feedback (raw text stays out of the toast — P1-8). But only for the
+      // context the customer is still looking at — an abandoned request that
+      // rejects after a tab switch must not toast against the new bucket.
+      if (!stillRelevant()) return;
+      console.error("[orders] load more exception:", err);
+      toast.error("Couldn't load older feasts", { description: toUserMessage(err) });
+    } finally {
+      if (isMounted.current) setLoadingMore(false);
     }
-    setLoadingMore(false);
-  };
+  }, [loadingMore, hasMore, bucket, search, page, sort]);
 
-  const handleRefresh = () => {
+  const handleRefresh = React.useCallback(() => {
+    const gen = ++requestGeneration.current;
     setLoading(true);
     void orderRepository
       .listOrders({ bucket, sort, search, page: 1, pageSize: PAGE_SIZE })
       .then((res) => {
-        if (res.success) {
-          setOrders(res.data.items);
-          setHasMore(res.data.hasMore);
-          setPage(1);
-          setError(null);
-        } else {
-          console.error("[orders] refresh failed:", res.error);
-          setError(toUserMessage(res));
-        }
+        if (!isCurrentRequest(gen)) return;
+        applyListResult(res, "refresh");
+      })
+      .catch((err) => {
+        if (!isCurrentRequest(gen)) return;
+        console.error("[orders] refresh exception:", err);
+        setError(toUserMessage(err));
+      })
+      .finally(() => {
+        if (!isCurrentRequest(gen)) return;
         setLoading(false);
       });
-  };
+  }, [bucket, sort, search, applyListResult, isCurrentRequest]);
 
   return (
     <ProtectedRoute>
@@ -156,7 +247,13 @@ function OrderHistoryPage() {
             <input
               type="text"
               value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
+              onChange={(e) => {
+                // Invalidate in-flight reads the moment the customer types —
+                // closing the window between setBucket/setSearch commit and
+                // the filtering effect registering its own generation.
+                requestGeneration.current += 1;
+                setSearchInput(e.target.value);
+              }}
               placeholder="Search by Order # or item name..."
               aria-label="Search orders"
               className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-surface border border-divider text-text placeholder-text-secondary text-xs font-medium focus:outline-none focus:border-primary"
@@ -169,7 +266,11 @@ function OrderHistoryPage() {
               <button
                 key={b.id}
                 type="button"
-                onClick={() => setBucket(b.id)}
+                onClick={() => {
+                  // Same pre-effect invalidation as the search setter above.
+                  requestGeneration.current += 1;
+                  setBucket(b.id);
+                }}
                 aria-pressed={bucket === b.id}
                 className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer text-center ${
                   bucket === b.id
