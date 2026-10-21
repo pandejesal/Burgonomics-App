@@ -267,19 +267,22 @@ describe("ordersService.createOrder — persistence honesty (P1-2, finding 16)",
     expect(payload.customerId).toBe("cust_contract_1");
   });
 
-  it("marks a payment-pending order failed without ever marking it paid", async () => {
+  it("observes pending server truth without fabricating a payment failure or writing it", async () => {
     const created = await ordersService.createOrder(orderInput());
     expect(created.success).toBe(true);
     if (!created.success) return;
 
+    const serverDoc = mockSetDoc.mock.calls.at(-1)?.[1];
+    mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => serverDoc });
+    mockSetDoc.mockClear();
     const failed = await ordersService.markPaymentFailed(created.data.id);
-    expect(failed.success).toBe(true);
-    if (!failed.success) return;
-    expect(failed.data.payment.status).toBe("failed");
-
-    // Server write is merge-only on the payment block.
-    const lastPayload = mockSetDoc.mock.calls.at(-1)?.[1] as Record<string, any>;
-    expect(lastPayload.payment.status).toBe("failed");
-    expect(mockSetDoc.mock.calls.at(-1)?.[2]).toEqual({ merge: true });
+    expect(failed.success).toBe(false);
+    if (failed.success) return;
+    expect(failed.error.code).toBe("PAYMENT_STILL_PENDING");
+    expect(mockGetDoc).toHaveBeenCalled();
+    expect(mockSetDoc).not.toHaveBeenCalled();
+    const observed = await ordersService.getOrder(created.data.id);
+    expect(observed.success).toBe(true);
+    if (observed.success) expect(observed.data.payment.status).toBe("pending");
   });
 });
