@@ -31,25 +31,30 @@ android {
     }
     signingConfigs {
         release {
-            // Precedence: CI env vars -> android/key.properties (gitignored) -> debug fallback.
+            // Precedence: CI env vars -> android/key.properties (gitignored).
+            // Fail closed: if storeFile/password/alias are absent, Gradle will error
+            // instead of silently falling back to debug signing.
             def props = new Properties()
             def propsFile = rootProject.file("key.properties")
             if (propsFile.canRead()) {
-                props.load(new FileInputStream(propsFile))
+                propsFile.withInputStream { input -> props.load(input) }
             }
             def keystorePath = System.getenv("RELEASE_STORE_FILE") ?: props.getProperty("storeFile") ?: "../release.keystore"
             def keystoreFile = file(keystorePath)
             def storePass = System.getenv("RELEASE_STORE_PASSWORD") ?: props.getProperty("storePassword")
             def keyPass = System.getenv("RELEASE_KEY_PASSWORD") ?: props.getProperty("keyPassword")
-            def keyAliasName = System.getenv("RELEASE_KEY_ALIAS") ?: props.getProperty("keyAlias") ?: "burgonomics"
-            if (keystoreFile.exists() && storePass && keyPass) {
+            def rawAlias = System.getenv("RELEASE_KEY_ALIAS") ?: props.getProperty("keyAlias")
+            def keyAliasName = (rawAlias?.trim() ?: "burgonomics")
+            // Remember what was looked for, so a fail-closed error names the real
+            // path/alias instead of "null" (the config stays unset when absent).
+            // project.ext (not rootProject.ext) keeps --isolated-projects working.
+            project.ext.releaseKeystoreCandidate = keystoreFile
+            project.ext.releaseKeyAliasCandidate = keyAliasName
+            if (keystoreFile.canRead() && storePass && keyPass) {
                 storeFile keystoreFile
                 storePassword storePass
                 keyAlias keyAliasName
                 keyPassword keyPass
-            } else {
-                // Fallback to debug signature for local release verification
-                initWith(signingConfigs.debug)
             }
         }
     }
@@ -63,6 +68,109 @@ android {
     }
 }
 
+// Fail closed: a release artifact must never be produced from an incomplete
+// signing config, or from the public Android debug key.
+// Values are resolved at configuration time and captured as plain strings so the
+// action stays serializable and still runs when the Gradle configuration cache
+// replays a previous run. Only release artifact tasks are checked, so debug
+// development needs no keys.
+def releaseSigningConfig = android.signingConfigs.release
+def releaseStorePath = releaseSigningConfig.storeFile?.absolutePath
+def releaseStorePass = releaseSigningConfig.storePassword
+def releaseKeyPass = releaseSigningConfig.keyPassword
+def releaseKeyAlias = releaseSigningConfig.keyAlias
+def releaseStoreCandidate = project.ext.releaseKeystoreCandidate?.toString()
+def releaseAliasCandidate = project.ext.releaseKeyAliasCandidate?.toString()
+// Android Studio's "Generate Signed Bundle / APK" bypasses signingConfigs and
+// injects these project properties instead. Validate that path too, rather than
+// skipping the guard (a skipped guard would let a debug key through).
+def injectedStorePath = project.findProperty('android.injected.signing.store.file')?.toString()
+def injectedAlias = project.findProperty('android.injected.signing.key.alias')?.toString()
+def injectedStorePass = project.findProperty('android.injected.signing.store.password')?.toString()
+def injectedKeyPass = project.findProperty('android.injected.signing.key.password')?.toString()
+def releasePinProps = new Properties()
+def releasePinFile = rootProject.file("key.properties")
+if (releasePinFile.canRead()) {
+    releasePinFile.withInputStream { input -> releasePinProps.load(input) }
+}
+def releaseCertPin = (System.getenv("RELEASE_CERT_SHA256") ?: releasePinProps.getProperty("certSha256"))?.trim()
+def releaseCertPinNorm = releaseCertPin ? releaseCertPin.replaceAll(/[^0-9a-fA-F]/, '').toLowerCase() : null
+
+tasks.matching { task ->
+    task.name.matches('(assemble|bundle|package|sign|validateSigning).*Release.*')
+}.configureEach { releaseTask ->
+    releaseTask.doFirst {
+        boolean injected = injectedStorePath != null
+        def storePath = injected ? injectedStorePath : releaseStorePath
+        def storePass = injected ? injectedStorePass : releaseStorePass
+        def keyPass = injected ? injectedKeyPass : releaseKeyPass
+        def keyAlias = injected ? injectedAlias : releaseKeyAlias
+        if (!storePath || !storePass || !keyPass || !keyAlias) {
+            throw new GradleException(
+                "Release signing requires a readable keystore, store password, key password and key alias. " +
+                "Looked for keystore: ${storePath ?: releaseStoreCandidate} " +
+                "(alias: ${keyAlias ?: releaseAliasCandidate})."
+            )
+        }
+        def store = new File(storePath)
+        if (!store.canRead()) {
+            throw new GradleException("Release keystore is not readable: ${store} (alias: ${keyAlias}).")
+        }
+        // Identity check on the key MATERIAL, not the file name or alias string:
+        // a debug keystore copied to android/release.keystore must still be refused.
+        def keyStore
+        try {
+            keyStore = java.security.KeyStore.getInstance(store, (char[]) null)
+        } catch (Exception e) {
+            throw new GradleException("Could not detect the keystore type of ${store}: ${e.message}. Expected JKS or PKCS12.", e)
+        }
+        try {
+            store.withInputStream { input -> keyStore.load(input, storePass.toCharArray()) }
+        } catch (Exception e) {
+            throw new GradleException(
+                "Could not open release keystore ${store}: ${e.message}. " +
+                "Check the store password / keystore type (RELEASE_STORE_PASSWORD).",
+                e
+            )
+        }
+        def certificate
+        try {
+            certificate = keyStore.getCertificate(keyAlias)
+        } catch (Exception e) {
+            throw new GradleException("Could not read certificate for alias '${keyAlias}' in ${store}: ${e.message}", e)
+        }
+        if (certificate == null) {
+            throw new GradleException("Release key alias '${keyAlias}' is not present in ${store}.")
+        }
+        def subject = certificate.getSubjectX500Principal()?.name ?: ''
+        if (subject.contains('CN=Android Debug') || keyAlias.equalsIgnoreCase('androiddebugkey')) {
+            throw new GradleException(
+                "Release artifacts must not be signed with the public Android debug key " +
+                "(${store}, alias ${keyAlias})."
+            )
+        }
+        // Optional pin: RELEASE_CERT_SHA256 (env) or certSha256 (key.properties),
+        // read at configuration time so the configuration cache invalidates when it
+        // changes. Colons/spaces and letter case are normalised (keytool prints
+        // "SHA256: AA:BB:.."). Skipped when unset, so existing CI is unaffected.
+        if (releaseCertPin) {
+            if (releaseCertPinNorm.length() != 64) {
+                throw new GradleException("certSha256 / RELEASE_CERT_SHA256 must be 64 hex chars of the upload certificate, got ${releaseCertPinNorm.length()} from '${releaseCertPin}'.")
+            }
+            def actual = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(certificate.encoded)
+                .collect { String.format('%02x', it & 0xff) }
+                .join('')
+            if (!actual.equalsIgnoreCase(releaseCertPinNorm)) {
+                throw new GradleException(
+                    "Release certificate fingerprint ${actual} does not match the pinned upload key " +
+                    "(${releaseCertPinNorm}). Expected 64 hex chars of the UPLOAD key certificate, not the " +
+                    "Play app-signing certificate."
+                )
+            }
+        }
+    }
+}
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
