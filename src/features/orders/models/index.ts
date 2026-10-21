@@ -149,6 +149,33 @@ export interface Order {
 
   payment: OrderPaymentInfo;
 
+  /**
+   * Server-written, customer-VISIBLE marker for money we could not apply to
+   * this order (A08 B5). Read-only to the client: the server sets it when a
+   * captured payment is parked (amount mismatch/unknown, currency mismatch, or
+   * a capture against a cancelled/refunded order), because every park
+   * collection is brand-only and the payer would otherwise have no self-serve
+   * view of their money. The app must never write this field.
+   */
+  reconciliation?: {
+    state: "payment_review";
+    /**
+     * Ops-facing machine code. Live writers emit exactly one of:
+     * confirm_currency_mismatch, confirm_amount_mismatch, confirm_amount_unknown,
+     * capture_on_cancelled_order, capture_on_refunded_order. Optional here only
+     * because this is an unvalidated read of a server doc; never render it.
+     */
+    reason?: string;
+    razorpayPaymentId?: string | null;
+    /**
+     * Firestore serverTimestamp(), not an ISO string: the value is a Timestamp
+     * object in memory and a `{seconds,nanoseconds}`-shaped map once the
+     * persisted orders cache round-trips through JSON. Nothing in the app reads
+     * it, so it stays `unknown` rather than inviting a string assumption.
+     */
+    updatedAt?: unknown;
+  } | null;
+
   placedAt: Iso8601;
   /** Estimated ready / delivery time in ISO. */
   estimatedAt?: Iso8601;

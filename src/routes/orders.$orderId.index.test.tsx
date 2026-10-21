@@ -159,4 +159,98 @@ describe("OrderDetailsPage — hook order (P1-1)", () => {
     expect(container.textContent).not.toContain("Order not found");
     await unmount();
   });
+
+  // A08 B5 — the server-written reconciliation marker is the ONLY customer-facing
+  // channel for money the backend parked (every park collection is brand-only).
+  // The checkout-time recovery panel only ever rendered when the app was open at
+  // charge time, so a webhook-confirmed payer had no surface at all. These pin
+  // both directions: it must appear when the marker is present, and stay silent
+  // when it is not — and it must never leak the ops `reason` code as copy.
+  describe("reconciliation marker (A08 B5)", () => {
+    const withMarker = (reason: string) =>
+      buildOrder({
+        reconciliation: {
+          state: "payment_review",
+          reason,
+          razorpayPaymentId: "pay_marker_1",
+          // The server writes FieldValue.serverTimestamp() (a Timestamp object),
+          // never an ISO string — model the value the writer can actually emit.
+          updatedAt: { seconds: 0, nanoseconds: 0 },
+        },
+      });
+
+    it("renders the recovery panel with the payment reference for a parked amount", async () => {
+      vi.mocked(orderRepository.getOrder).mockResolvedValue({
+        success: true,
+        data: withMarker("confirm_amount_mismatch"),
+      } as any);
+      const { container, unmount } = await mount();
+      // Page-rendered control: the assertions below must not pass on a page that
+      // never left the skeleton / "not found" state.
+      expect(container.textContent).toContain("BG-HOOK1");
+      expect(container.querySelector("[data-recovery-reason]")).not.toBeNull();
+      // The three things the payer needs: do-not-pay-again, the reference, and
+      // a way out. The gateway payment id (not a signature) is the reference.
+      expect(container.textContent).toContain("Do not pay again");
+      expect(container.textContent).toContain("pay_marker_1");
+      expect(container.textContent).toContain("Contact support");
+      // Ops vocabulary must never be rendered as customer copy.
+      expect(container.textContent).not.toContain("confirm_amount_mismatch");
+      await unmount();
+    });
+
+    it("maps a capture on a cancelled order to the terminal copy, not sync-pending", async () => {
+      vi.mocked(orderRepository.getOrder).mockResolvedValue({
+        success: true,
+        data: withMarker("capture_on_cancelled_order"),
+      } as any);
+      const { container, unmount } = await mount();
+      expect(container.textContent).toContain("BG-HOOK1");
+      expect(
+        container.querySelector('[data-recovery-reason="ORDER_TERMINAL"]')
+      ).not.toBeNull();
+      // Copy control: the attribute alone would still pass if the panel rendered
+      // the sync-pending body behind the terminal reason.
+      expect(container.textContent).toContain("can no longer be confirmed");
+      expect(container.textContent).not.toContain("capture_on_cancelled_order");
+      await unmount();
+    });
+
+    it("renders no recovery panel for an ordinary order", async () => {
+      const { container, unmount } = await mount();
+      // Same page-rendered control: a skeleton would also have no panel.
+      expect(container.textContent).toContain("BG-HOOK1");
+      expect(container.querySelector("[data-recovery-reason]")).toBeNull();
+      expect(container.textContent).not.toContain("Do not pay again");
+      await unmount();
+    });
+
+    it("ignores a null marker and degrades an unknown reason to sync-pending copy", async () => {
+      // An explicit null is what the confirming writers set when they retire a
+      // marker; it must read as "ordinary order", not as a panel.
+      vi.mocked(orderRepository.getOrder).mockResolvedValue({
+        success: true,
+        data: buildOrder({ reconciliation: null }),
+      } as any);
+      const nullCase = await mount();
+      expect(nullCase.container.textContent).toContain("BG-HOOK1");
+      expect(nullCase.container.querySelector("[data-recovery-reason]")).toBeNull();
+      await nullCase.unmount();
+
+      // Forward-compatible ops code: the gate is `state`, so a reason this
+      // build has never seen must still show the honest do-not-pay-again copy
+      // (and never the raw code).
+      vi.mocked(orderRepository.getOrder).mockResolvedValue({
+        success: true,
+        data: withMarker("confirm_something_new"),
+      } as any);
+      const unknownCase = await mount();
+      expect(unknownCase.container.textContent).toContain("BG-HOOK1");
+      expect(
+        unknownCase.container.querySelector('[data-recovery-reason="PAYMENT_SYNC_PENDING"]')
+      ).not.toBeNull();
+      expect(unknownCase.container.textContent).not.toContain("confirm_something_new");
+      await unknownCase.unmount();
+    });
+  });
 });
