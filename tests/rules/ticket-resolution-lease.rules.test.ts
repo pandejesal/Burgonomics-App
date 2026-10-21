@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import {
   initializeTestEnvironment,
   RulesTestEnvironment,
@@ -17,24 +17,32 @@ import {
 } from "firebase/firestore";
 
 /**
- * Lane 07 — ticket resolution lease must be server-owned.
+ * Lane 07 — ticket server-audit state (lease + terminal lock) stays server-owned.
  *
- * functions/src/modules/tickets/tickets.service.ts owns a resolution lease on
- * support_tickets/{id} (and the legacy tickets/{id} mirror):
- *   resolutionClaim = { actorUid: string|null, claimedAt: <ms epoch> }
- * written inside the claim transaction (claimTicketResolution), fenced on
- * commit (commitResolvedTicket compares claim.claimedAt) and deleted on
- * success/release. RESOLUTION_CLAIM_TTL_MS = 2.5 min.
+ * Backend truth at committed HEAD (0cca973, functions/src/modules/tickets/
+ * tickets.service.ts): outcomes are owned by POST /tickets/* via the Admin SDK.
+ * The resolution NOTE is a plain STRING written together with status
+ * (tickets.service.ts 258-267); the MONEY path writes the resolution MAP
+ * {action, amount, couponCode, refundResult, resolvedBy, resolvedByName,
+ * notes, resolvedAt} (tickets.service.ts 586-610). The committed backend does
+ * NOT contain a client-claimable resolution lease yet — no claimTicket­
+ * Resolution()/resolutionClaim code exists — so denying resolutionClaim
+ * writes is DEFENCE-IN-DEPTH for that pending backend feature, not a claim
+ * that a live lease is protected today. What IS live today and was
+ * client-writable through the unmasked brand arm:
+ *   (a) fake a resolved/closed book (status enum denial — test 12),
+ *   (b) fabricate or overwrite the money-audit MAP (tests 3/13/23). The
+ *       server's already-resolved guard checks status, not the map itself;
+ *       the map and terminal-status protections are separate invariants.
+ *   (c) silently REWRITE the outcome / REOPEN a resolved ticket / REASSIGN
+ *       it — the REAL gap this file's terminal-lock tests (16-21) pin:
+ *       NOTE-resolved tickets keep `resolution` a string, so a compliant
+ *       string write used to sail through the old mask completely.
  *
- * A client that can write resolutionClaim can (a) plant a fresh claim and lock
- * every staff member out of resolving that ticket for the TTL, or (b) clear a
- * live claim, aborting the in-flight resolver's fenced commit. The brand-owner
- * update arm (`allow update: if isBrandOwner() || ...`) carried NO field mask,
- * so the whole lease contract was client-writable.
- *
- * Same mask on both arms: a direct client update may advance workflow only
- * (status/resolution/assignedTo/timeline/lastActivityAt/updatedAt). Money
- * actions, identity/tenant fields and the server lease stay server-only.
+ * Same mask on both arms and both collections: a direct client update may
+ * advance workflow only (status/resolution/assignedTo/timeline/
+ * lastActivityAt/updatedAt), and on a terminal document only the shipped
+ * useTicket.ts note fallback (timeline + updatedAt) stays writable.
  */
 
 const PROJECT_ID = "burgonomics-test-rules";
@@ -51,7 +59,7 @@ const WORKFLOW_MASK_KEYS = [
   "updatedAt",
 ];
 
-describe("Firestore Security Rules — ticket resolution lease is server-owned", () => {
+describe("Firestore Security Rules — ticket audit state (lease + terminal lock) stays server-owned", () => {
   let testEnv: RulesTestEnvironment | null = null;
   let emulatorAvailable = false;
 
@@ -135,7 +143,8 @@ describe("Firestore Security Rules — ticket resolution lease is server-owned",
     if (!emulatorAvailable) return context.skip();
     const brandDb = testEnv!.authenticatedContext("brand_owner_1").firestore();
 
-    // Shape the server writes in claimTicketResolution().
+    // Shape of the writes a pending backend lease feature would add
+    // (defence-in-depth — see header).
     await assertFails(
       updateDoc(doc(brandDb, "support_tickets", TICKET_ID), {
         resolutionClaim: { actorUid: "brand_owner_1", claimedAt: Date.now() },
@@ -165,10 +174,11 @@ describe("Firestore Security Rules — ticket resolution lease is server-owned",
     if (!emulatorAvailable) return context.skip();
     const brandDb = testEnv!.authenticatedContext("brand_owner_1").firestore();
 
-    // The server writes `resolution` as a map (tickets.service.ts:769-778:
-    // action/amount/refundResult/resolvedBy/resolvedByName/notes/resolvedAt).
-    // A byte-for-byte fake that the money never paid would render as a real
-    // refund in the partner UI and then block the genuine resolve with
+    // The server writes `resolution` as a map (committed backend truth,
+    // tickets.service.ts 586-610: action/amount/couponCode/refundResult/
+    // resolvedBy/resolvedByName/notes/resolvedAt). A byte-for-byte fake that
+    // the money never paid would render as a real refund in the partner UI
+    // (couponCode included) and then block the genuine resolve with
     // TICKET_ALREADY_RESOLVED. Client writes stay string-only.
     // NOTE: payload carries ONLY the map + updatedAt, so this assertFails
     // fails for exactly the resolution-shape guard and nothing else.
@@ -177,6 +187,7 @@ describe("Firestore Security Rules — ticket resolution lease is server-owned",
         resolution: {
           action: "full_refund",
           amount: 349,
+          couponCode: "WELCOME10",
           refundResult: { refundId: "rfnd_fake", success: true },
           resolvedBy: "brand_owner_1",
           resolvedByName: "Brand Owner",
@@ -403,12 +414,13 @@ describe("Firestore Security Rules — ticket resolution lease is server-owned",
       }),
     );
     // Isolated resolution-map deny (no terminal status in this payload — the
-    // status enum has its own test 12).
+    // status enum has its own test 12). couponCode is part of the real map.
     await assertFails(
       updateDoc(doc(brandDb, "tickets", LEGACY_ID), {
         resolution: {
           action: "full_refund",
           amount: 349,
+          couponCode: "WELCOME10",
           refundResult: { refundId: "rfnd_fake", success: true },
         },
         updatedAt: Timestamp.now(),
@@ -482,5 +494,233 @@ describe("Firestore Security Rules — ticket resolution lease is server-owned",
     await assertFails(
       updateDoc(doc(brandDb, "support_tickets", TICKET_ID), { assignedTo: {} }),
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Terminal-lock tests (16-21) — TRUE RED against committed HEAD rules bytes:
+  // NOTE-resolved tickets keep `resolution` a string (tickets.service.ts
+  // 263-269), so the old mask accepted every one of these outcome forgeries.
+  // Seed helper: a server-resolved NOTE ticket (status + string resolution).
+  // ---------------------------------------------------------------------------
+
+  const seedResolvedNote = async (collection: string, id: string, status: string) => {
+    await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), collection, id), {
+        ticketNumber: "TKT-LOCK-1",
+        subject: "Refund not received",
+        category: "payment_refund",
+        branchId: "branch_01",
+        customerId: "cust_100",
+        status, // "resolved" or "closed" as seeded by the server routes
+        resolution: "Refunded by staff.",
+        timeline: [{ action: "resolved_note", message: "Refunded by staff." }],
+        updatedAt: Timestamp.now(),
+      });
+    });
+  };
+
+  const readStored = async (collection: string, id: string) => {
+    let stored: Record<string, any> | null = null;
+    await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), collection, id));
+      stored = snap.data() ?? null;
+    });
+    if (!stored) throw new Error(`${collection}/${id} vanished during the denied-write check`);
+    return stored as Record<string, any>;
+  };
+
+  it("16. [TERM-RESOLUTION-REWRITE-DENY] brand authority cannot rewrite a resolved outcome", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+    const brandDb = testEnv!.authenticatedContext("brand_owner_1").firestore();
+    await seedResolvedNote("support_tickets", TICKET_ID, "resolved");
+
+    // String-to-string write: the OLD mask saw a compliant string conjunct and
+    // allowed this silent audit forgery.
+    await assertFails(
+      updateDoc(doc(brandDb, "support_tickets", TICKET_ID), {
+        resolution: "outcome rewritten — full refund granted, no coupon used",
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    const stored = await readStored("support_tickets", TICKET_ID);
+    if (stored.resolution !== "Refunded by staff.") {
+      throw new Error(`stored resolution mutated: ${JSON.stringify(stored.resolution)}`);
+    }
+  });
+
+  it("17. [TERM-RESOLUTION-REWRITE-DENY-STAFF-LEGACY] branch staff, legacy mirror", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+    const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
+    await seedResolvedNote("tickets", LEGACY_ID, "resolved");
+
+    await assertFails(
+      updateDoc(doc(branchDb, "tickets", LEGACY_ID), {
+        resolution: "different branch narrative of the same outcome",
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    const stored = await readStored("tickets", LEGACY_ID);
+    if (stored.resolution !== "Refunded by staff.") {
+      throw new Error(`stored resolution mutated: ${JSON.stringify(stored.resolution)}`);
+    }
+  });
+
+  it("18. [TERM-REOPEN-DENY] branch staff cannot reopen a resolved ticket", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+    const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
+    await seedResolvedNote("support_tickets", TICKET_ID, "resolved");
+
+    // A compliant non-terminal status string used to sail through the old
+    // status conjunct and resurrect a closed case (reopen race with the
+    // genuine route's TICKET_NOT_PENDING fence).
+    await assertFails(
+      updateDoc(doc(branchDb, "support_tickets", TICKET_ID), {
+        status: "open",
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    const stored = await readStored("support_tickets", TICKET_ID);
+    if (stored.status !== "resolved") {
+      throw new Error(`status mutated by denied reopen: ${JSON.stringify(stored.status)}`);
+    }
+  });
+
+  it("19. [TERM-REOPEN-DENY-BRAND-LEGACY] brand authority, legacy mirror", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+    const brandDb = testEnv!.authenticatedContext("brand_owner_1").firestore();
+    await seedResolvedNote("tickets", LEGACY_ID, "resolved");
+
+    await assertFails(
+      updateDoc(doc(brandDb, "tickets", LEGACY_ID), {
+        status: "open",
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    const stored = await readStored("tickets", LEGACY_ID);
+    if (stored.status !== "resolved") {
+      throw new Error(`status mutated by denied reopen: ${JSON.stringify(stored.status)}`);
+    }
+  });
+
+  it("20. [TERM-ASSIGNEDTO-DENY] branch staff cannot re-assign a closed ticket", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+    const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
+    await seedResolvedNote("support_tickets", TICKET_ID, "closed");
+
+    // Well-formed tier map — only the terminal lock must deny this.
+    await assertFails(
+      updateDoc(doc(branchDb, "support_tickets", TICKET_ID), {
+        assignedTo: { tier: "branch" },
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    const stored = await readStored("support_tickets", TICKET_ID);
+    if ("assignedTo" in stored) {
+      throw new Error("assignedTo materialised on a closed ticket");
+    }
+  });
+
+  it("21. [TERM-ASSIGNEDTO-DENY-BRAND-LEGACY] brand authority, legacy mirror", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+    const brandDb = testEnv!.authenticatedContext("brand_owner_1").firestore();
+    await seedResolvedNote("tickets", LEGACY_ID, "closed");
+
+    await assertFails(
+      updateDoc(doc(brandDb, "tickets", LEGACY_ID), {
+        assignedTo: { tier: "developer_team" },
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    const stored = await readStored("tickets", LEGACY_ID);
+    if ("assignedTo" in stored) {
+      throw new Error("assignedTo materialised on a closed ticket");
+    }
+  });
+
+  it("22. [TERM-NOTE-FALLBACK-ALLOW] the shipped useTicket.ts reply still lands on a resolved ticket", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+    const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
+    await seedResolvedNote("support_tickets", TICKET_ID, "resolved");
+
+    // Exactly the payload useTicket.ts:190-193 sends (timeline + updatedAt) —
+    // the one client write that stays legitimate on terminal documents.
+    await assertSucceeds(
+      updateDoc(doc(branchDb, "support_tickets", TICKET_ID), {
+        timeline: arrayUnion({ action: "message_added", message: "reply to a closed case" }),
+        updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+
+  it.each(["resolved", "in_progress"])("23. [MONEY-MAP-OVERWRITE-DENY] a seeded ADMIN money map survives a string overwrite at status %s", async (status, context) => {
+    if (!emulatorAvailable) return context.skip();
+    const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
+
+    // The exact ADMIN money-audit map (tickets.service.ts 586-610), couponCode
+    // included. The nonterminal case also isolates the source-side map guard
+    // from the terminal lock: even an inconsistent legacy document must keep
+    // its audit map rather than permit a plain-text replacement.
+    const MONEY_MAP = {
+      action: "full_refund",
+      amount: 349,
+      couponCode: "WELCOME10",
+      refundResult: { refundId: "rfnd_x", success: true },
+      resolvedBy: "branch_owner_1",
+      resolvedByName: "Branch Owner",
+      notes: "cash refund issued",
+      resolvedAt: Timestamp.now(),
+    };
+    await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "support_tickets", TICKET_ID), {
+        ticketNumber: "TKT-LOCK-1",
+        subject: "Refund not received",
+        category: "payment_refund",
+        branchId: "branch_01",
+        customerId: "cust_100",
+        status,
+        resolution: MONEY_MAP,
+        timeline: [],
+        updatedAt: Timestamp.now(),
+      });
+    });
+
+    // String conjunct on BOTH sides denies it even before the terminal lock
+    // (the stored resolution is a map, so `resource.data.resolution is string`
+    // fails) — this defence shipped untested before; writing a plain string
+    // over the map would erase the audit trail while leaving status resolved.
+    await assertFails(
+      updateDoc(doc(branchDb, "support_tickets", TICKET_ID), {
+        resolution: "plain-text replacement of the money map",
+        updatedAt: Timestamp.now(),
+      }),
+    );
+
+    // Every stored audit field survives, including nested refund data and timestamps.
+    const stored = await readStored("support_tickets", TICKET_ID);
+    expect(stored.resolution).toEqual(MONEY_MAP);
+  });
+
+  it("24. [ADMIN-RESOLUTION-STILL-GOVERNABLE] Admin SDK ownership is untouched by the lock", async (context) => {
+    if (!emulatorAvailable) return context.skip();
+
+    // The money map stays server-governed: the Admin SDK (rules-disabled
+    // context) can still correct it — proving the lock bounds clients only.
+    await seedResolvedNote("support_tickets", TICKET_ID, "resolved");
+    await testEnv!.withSecurityRulesDisabled(async (ctx) =>
+      updateDoc(doc(ctx.firestore(), "support_tickets", TICKET_ID), {
+        resolution: "admin-corrected outcome text",
+        updatedAt: Timestamp.now(),
+      }),
+    );
+    const stored = await readStored("support_tickets", TICKET_ID);
+    if (stored.resolution !== "admin-corrected outcome text") {
+      throw new Error(`admin correction did not land: ${JSON.stringify(stored.resolution)}`);
+    }
   });
 });
