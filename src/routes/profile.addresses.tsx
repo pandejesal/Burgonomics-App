@@ -24,7 +24,11 @@ export const Route = createFileRoute("/profile/addresses")({
 });
 
 function Page() {
-  return <Body />;
+  return (
+    <ProtectedRoute>
+      <Body />
+    </ProtectedRoute>
+  );
 }
 
 function Body() {
@@ -33,13 +37,35 @@ function Body() {
   const [pendingDelete, setPendingDelete] = React.useState<Address | null>(null);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [editingAddress, setEditingAddress] = React.useState<Address | null>(null);
+  // Inline, persistent copy for a failed delete / set-default. A toast alone
+  // disappears before a screen-reader user can act on it, and this screen has
+  // no other place where the failure stays visible.
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
+    setActionError(null);
     const res = await addressRepository.remove(pendingDelete.id);
     setPendingDelete(null);
-    if (res.success) toast.success("Address removed");
-    else toast.error(res.error.message);
+    if (res.success) {
+      setActionError(null);
+      toast.success("Address removed");
+    } else {
+      setActionError(res.error.message);
+      toast.error(res.error.message);
+    }
+  };
+
+  const handleSetDefault = async (id: string) => {
+    setActionError(null);
+    const res = await addressRepository.setDefault(id);
+    if (res.success) {
+      setActionError(null);
+      toast.success("Default address updated");
+    } else {
+      setActionError(res.error.message);
+      toast.error(res.error.message);
+    }
   };
 
   const handleAddAddress = () => {
@@ -55,6 +81,14 @@ function Body() {
   return (
     <AppShell title="Saved Addresses" backTo="/profile" showTabs showTopBar>
       <div className="mx-auto max-w-[520px] space-y-3 px-4 py-4">
+        {actionError && (
+          <p
+            role="alert"
+            className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300"
+          >
+            {actionError}
+          </p>
+        )}
         {addresses.length === 0 ? (
           <EmptyState
             title="No saved addresses"
@@ -74,13 +108,7 @@ function Body() {
                         {!a.isDefault && (
                           <button
                             type="button"
-                            onClick={() => {
-                              void (async () => {
-                                const res = await addressRepository.setDefault(a.id);
-                                if (res.success) toast.success("Default address updated");
-                                else toast.error(res.error.message);
-                              })();
-                            }}
+                            onClick={() => void handleSetDefault(a.id)}
                             className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-bold text-[#0E4825] dark:text-[#4ADE80] hover:bg-[#0E4825]/10 cursor-pointer transition-colors"
                           >
                             <Star className="h-3.5 w-3.5" aria-hidden />
