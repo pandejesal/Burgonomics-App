@@ -314,6 +314,49 @@ it("fills untouched fields from an auto GPS fix but protects a typed city", asyn
   await cleanup();
 });
 
+it("keeps the form, the typed values and the route on a failed create", async () => {
+  vi.mocked(addressRepository.create).mockResolvedValue({
+    success: false,
+    error: {
+      code: "WRITE_FAILED",
+      message: "We couldn't save your address. Please try again.",
+      retryable: true,
+    },
+  } as never);
+  const onSaved = vi.fn();
+  const { cleanup } = await mount(
+    <AddressForm onCancel={vi.fn()} onSaved={onSaved} />,
+  );
+
+  // A confirmed pin is required before submit can reach the repository.
+  act(() => map.events?.click({ latlng: { lat: 19.076, lng: 72.877 } }));
+  await act(async () => {
+    typeInto(field("address-line1"), "Flat 9, Sea View Apartments");
+    typeInto(field("address-city"), "Mumbai");
+    typeInto(field("address-state"), "Maharashtra");
+    typeInto(field("address-pincode"), "400050");
+  });
+  await submitForm();
+
+  // Accessible, persistent error with the curated message.
+  expect(document.querySelector('[role=alert]')?.textContent).toContain(
+    "We couldn't save your address. Please try again.",
+  );
+  expect(toast.error).toHaveBeenCalledWith(
+    "We couldn't save your address. Please try again.",
+  );
+  // No success claim and no navigation (the route navigates only onSaved).
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(onSaved).not.toHaveBeenCalled();
+  // Nothing the customer typed is thrown away.
+  expect(field("address-line1").value).toBe("Flat 9, Sea View Apartments");
+  expect(field("address-city").value).toBe("Mumbai");
+  expect(field("address-state").value).toBe("Maharashtra");
+  expect(field("address-pincode").value).toBe("400050");
+
+  await cleanup();
+});
+
 it("jumps the map instantly under prefers-reduced-motion instead of flying", async () => {
   Object.defineProperty(window, "matchMedia", {
     value: vi.fn(() => ({

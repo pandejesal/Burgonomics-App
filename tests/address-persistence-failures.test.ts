@@ -103,6 +103,15 @@ function snapshot(ids: string[]) {
   };
 }
 
+/** Snapshot of full address documents (the seed read returns `doc.data()`). */
+function addressesSnapshot(rows: Address[]) {
+  return {
+    forEach: (cb: (d: { id: string; data: () => Record<string, unknown> }) => void) => {
+      for (const row of rows) cb({ id: row.id, data: () => ({ ...row }) });
+    },
+  };
+}
+
 function makeBatch() {
   return { update: vi.fn(), commit: vi.fn().mockResolvedValue(undefined) };
 }
@@ -604,5 +613,285 @@ describe("R02/R19 · account switch inside a mutation's remote await never leaks
     expect(res.success).toBe(true);
     expect(useAddressStore.getState().addresses[0].line1).toBe("Renamed for cust_r02");
     expect(scopeRaw("cust_r02")).toContain("Renamed for cust_r02");
+  });
+});
+
+// -- Address server-truth debt: seed on login (audit 02 F3) --------------
+//
+// The seed path is `addressRepository.hydrate()`: read the signed-in uid's
+// server collection through `addressService.list()`, then merge it into the
+// local store. A failed read is never an empty list, a stale snapshot never
+// overwrites a newer local write, a local delete is never resurrected, and a
+// snapshot that arrives after an account switch is never written anywhere.
+
+const SERVER_A: Address = {
+  id: "srv_a",
+  label: "home",
+  line1: "Server flat 1",
+  city: "Ahmedabad",
+  pincode: "380001",
+  isDefault: true,
+};
+const SERVER_B: Address = {
+  id: "srv_b",
+  label: "work",
+  line1: "Server office 2",
+  city: "Ahmedabad",
+  pincode: "380015",
+  isDefault: false,
+};
+const LOCAL_ONLY: Address = {
+  id: "srv_local_only",
+  label: "other",
+  line1: "Typed while signed out",
+  city: "Ahmedabad",
+  pincode: "380009",
+  isDefault: true,
+};
+
+describe("Address debt · server seed on fresh login (F3)", () => {
+  it("seeds the server collection into an empty local store for the signed-in uid", async () => {
+    mocks.authState.currentUser = { uid: "user_new" };
+    signInAs("user_new");
+    mocks.mockGetDocs.mockResolvedValue(addressesSnapshot([SERVER_B, SERVER_A]));
+
+    const res = await addressRepository.hydrate();
+
+    expect(res.success).toBe(true);
+    expect(mocks.mockCollection).toHaveBeenCalledWith({}, "users/user_new/addresses");
+    const list = useAddressStore.getState().addresses;
+    expect(list.map((a) => a.id).sort()).toEqual(["srv_a", "srv_b"]);
+    // Server truth: exactly the row the server marks default.
+    expect(list.filter((a) => a.isDefault).map((a) => a.id)).toEqual(["srv_a"]);
+    expect(useAddressStore.getState().selectedId).toBe("srv_a");
+    // The seed is persisted into A's own scope, ready for the next render.
+    expect(scopeRaw("user_new")).toContain("srv_a");
+    expect(scopeRaw("user_new")).toContain("srv_b");
+  });
+
+  it("never treats a failed read as an empty list, and leaves local rows untouched", async () => {
+    mocks.authState.currentUser = { uid: "user_new" };
+    signInAs("user_new");
+    const local: Address = { ...SERVER_A, line1: "Only on this device" };
+    useAddressStore.setState({ addresses: [local], selectedId: local.id });
+    const before = scopeRaw("user_new");
+    mocks.mockGetDocs.mockRejectedValue(new Error("offline"));
+
+    const res = await addressRepository.hydrate();
+
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.code).toBe("WRITE_FAILED");
+    expect(useAddressStore.getState().addresses).toEqual([local]);
+    expect(useAddressStore.getState().selectedId).toBe(local.id);
+    // No false "0 addresses" write-back: the persisted scope is unchanged.
+    expect(scopeRaw("user_new")).toBe(before);
+  });
+
+  it("does not read the server for a guest session", async () => {
+    signInAs(null);
+    const res = await addressRepository.hydrate();
+    expect(res.success).toBe(true);
+    expect(mocks.mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it("never writes A's server snapshot into B's store or burg.addresses::B after a switch", async () => {
+    mocks.authState.currentUser = { uid: "user_a" };
+    signInAs("user_a");
+    seedScope("user_b", [OWN_B]);
+    const slow = deferred<ReturnType<typeof snapshot>>();
+    mocks.mockGetDocs.mockReturnValue(slow.promise);
+
+    const pending = addressRepository.hydrate();
+    await vi.waitFor(() => expect(mocks.mockGetDocs).toHaveBeenCalledTimes(1));
+    signInAs("user_b");
+    expect(useAddressStore.getState().addresses.map((a) => a.id)).toEqual([OWN_B.id]);
+
+    slow.resolve(addressesSnapshot([SECRET_A]));
+    const res = await pending;
+
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.code).toBe("AUTH_CHANGED");
+    expect(useAddressStore.getState().addresses.map((a) => a.id)).toEqual([OWN_B.id]);
+    expect(scopeRaw("user_b")).toContain("addr_own_b");
+    expect(scopeRaw("user_b")).not.toContain("addr_secret_a");
+    expect(scopeRaw("user_b")).not.toContain("Aarav Secret");
+    // The snapshot was not cached into A's scope either — the guard rejects
+    // before any store write.
+    expect(scopeRaw("user_a") ?? "").not.toContain("addr_secret_a");
+  });
+
+  it("does not overwrite a newer local write that lands while the seed read is in flight", async () => {
+    mocks.authState.currentUser = { uid: "user_new" };
+    signInAs("user_new");
+    useAddressStore.setState({ addresses: [SERVER_A], selectedId: SERVER_A.id });
+    const slow = deferred<ReturnType<typeof snapshot>>();
+    mocks.mockGetDocs.mockReturnValue(slow.promise);
+
+    const pending = addressRepository.hydrate();
+    await vi.waitFor(() => expect(mocks.mockGetDocs).toHaveBeenCalledTimes(1));
+    mocks.mockUpdateDoc.mockResolvedValue(undefined);
+    const updated = await addressRepository.update("srv_a", { line1: "Newest local line" });
+    expect(updated.success).toBe(true);
+
+    slow.resolve(addressesSnapshot([{ ...SERVER_A, line1: "Stale server line" }]));
+    const res = await pending;
+
+    expect(res.success).toBe(true);
+    const row = useAddressStore.getState().addresses.find((a) => a.id === "srv_a");
+    expect(row?.line1).toBe("Newest local line");
+    expect(scopeRaw("user_new")).toContain("Newest local line");
+  });
+
+  it("does not resurrect an address deleted while the seed read is in flight", async () => {
+    mocks.authState.currentUser = { uid: "user_new" };
+    signInAs("user_new");
+    const keep: Address = { ...SERVER_B, isDefault: true };
+    const doomed: Address = { ...SERVER_A, id: "srv_doomed", isDefault: false };
+    useAddressStore.setState({ addresses: [keep, doomed], selectedId: keep.id });
+    const slow = deferred<ReturnType<typeof snapshot>>();
+    mocks.mockGetDocs.mockReturnValue(slow.promise);
+
+    const pending = addressRepository.hydrate();
+    await vi.waitFor(() => expect(mocks.mockGetDocs).toHaveBeenCalledTimes(1));
+    mocks.mockDeleteDoc.mockResolvedValue(undefined);
+    const deleted = await addressRepository.remove(doomed.id);
+    expect(deleted.success).toBe(true);
+
+    slow.resolve(addressesSnapshot([doomed, keep]));
+    const res = await pending;
+
+    expect(res.success).toBe(true);
+    expect(useAddressStore.getState().addresses.map((a) => a.id)).toEqual([keep.id]);
+    expect(scopeRaw("user_new")).not.toContain("srv_doomed");
+  });
+
+  it("keeps an unsynced local-only row while adding the server rows", async () => {
+    mocks.authState.currentUser = { uid: "user_new" };
+    signInAs("user_new");
+    useAddressStore.setState({ addresses: [LOCAL_ONLY], selectedId: LOCAL_ONLY.id });
+    mocks.mockGetDocs.mockResolvedValue(addressesSnapshot([SERVER_A]));
+
+    const res = await addressRepository.hydrate();
+
+    expect(res.success).toBe(true);
+    const list = useAddressStore.getState().addresses;
+    expect(list.map((a) => a.id).sort()).toEqual(["srv_a", "srv_local_only"]);
+    expect(list.find((a) => a.id === LOCAL_ONLY.id)?.line1).toBe(LOCAL_ONLY.line1);
+    // The server row remains the default; the unsynced row keeps its data but
+    // does not displace the server's recorded default.
+    expect(list.filter((a) => a.isDefault).map((a) => a.id)).toEqual(["srv_a"]);
+  });
+});
+
+// -- Address server-truth debt: delete-default promotion (debt 2) ---------
+//
+// Deleting the default must not leave a locally promoted default that the
+// server never recorded. The promotion is mirrored with setDefault, and the
+// row is only shown as default once that write confirms. If the mirror fails
+// (or the session changes mid-write), no row keeps the default flag.
+
+describe("Address debt · delete-default promotion is server-confirmed", () => {
+  function stableUser(uid = "user_new") {
+    mocks.authState.currentUser = { uid };
+    signInAs(uid);
+  }
+
+  it("mirrors the promoted default and only then presents it", async () => {
+    stableUser();
+    useAddressStore.setState({ addresses: [ADDRESS_A, ADDRESS_B], selectedId: "addr_a" });
+    mocks.mockDeleteDoc.mockResolvedValue(undefined);
+    mocks.mockGetDocs.mockResolvedValue(snapshot(["addr_b"]));
+
+    const res = await addressRepository.remove("addr_a");
+
+    expect(res.success).toBe(true);
+    expect(mocks.mockDeleteDoc).toHaveBeenCalledTimes(1);
+    // The promotion read + batch is the server mirror, not a local-only claim.
+    expect(mocks.mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(batch.commit).toHaveBeenCalledTimes(1);
+    const list = useAddressStore.getState().addresses;
+    expect(list.map((a) => a.id)).toEqual(["addr_b"]);
+    expect(list.filter((a) => a.isDefault).map((a) => a.id)).toEqual(["addr_b"]);
+  });
+
+  it("does not claim a default when the promotion mirror fails", async () => {
+    stableUser();
+    useAddressStore.setState({ addresses: [ADDRESS_A, ADDRESS_B], selectedId: "addr_a" });
+    mocks.mockDeleteDoc.mockResolvedValue(undefined);
+    mocks.mockGetDocs.mockResolvedValue(snapshot(["addr_b"]));
+    batch.commit.mockRejectedValue(new Error("unavailable"));
+
+    const res = await addressRepository.remove("addr_a");
+
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.code).toBe("DEFAULT_PROMOTION_FAILED");
+      expect(res.error.retryable).toBe(false);
+      // The delete DID commit; the message must say so and ask for a choice.
+      expect(res.error.message.toLowerCase()).toContain("deleted");
+      expect(res.error.message.toLowerCase()).toContain("default");
+    }
+    const list = useAddressStore.getState().addresses;
+    expect(list.map((a) => a.id)).toEqual(["addr_b"]);
+    // No false server-default claim locally or in the persisted scope.
+    expect(list.filter((a) => a.isDefault)).toHaveLength(0);
+    expect(scopeRaw("user_new")).not.toContain('"isDefault":true');
+  });
+
+  it("does not promote or mirror when the deleted row was not the default", async () => {
+    stableUser();
+    useAddressStore.setState({ addresses: [ADDRESS_A, ADDRESS_B], selectedId: "addr_a" });
+    mocks.mockDeleteDoc.mockResolvedValue(undefined);
+
+    const res = await addressRepository.remove("addr_b");
+
+    expect(res.success).toBe(true);
+    expect(mocks.mockGetDocs).not.toHaveBeenCalled();
+    expect(batch.commit).not.toHaveBeenCalled();
+    const list = useAddressStore.getState().addresses;
+    expect(list.filter((a) => a.isDefault).map((a) => a.id)).toEqual(["addr_a"]);
+  });
+
+  it("deleting the only address succeeds and leaves no default behind", async () => {
+    stableUser();
+    useAddressStore.setState({ addresses: [ADDRESS_A], selectedId: "addr_a" });
+    mocks.mockDeleteDoc.mockResolvedValue(undefined);
+
+    const res = await addressRepository.remove("addr_a");
+
+    expect(res.success).toBe(true);
+    expect(useAddressStore.getState().addresses).toEqual([]);
+    expect(useAddressStore.getState().selectedId).toBeNull();
+    expect(mocks.mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it("does not leak A's promotion into B when the session switches during the mirror", async () => {
+    mocks.authState.currentUser = { uid: "user_a" };
+    signInAs("user_a");
+    seedScope("user_b", [OWN_B]);
+    const otherA: Address = { ...SECRET_A, id: "addr_a2", isDefault: false };
+    useAddressStore.setState({
+      addresses: [SECRET_A, otherA],
+      selectedId: SECRET_A.id,
+    });
+    mocks.mockDeleteDoc.mockResolvedValue(undefined);
+    mocks.mockGetDocs.mockResolvedValue(snapshot(["addr_a2"]));
+    const slow = deferred<void>();
+    batch.commit.mockReturnValue(slow.promise);
+
+    const pending = addressRepository.remove(SECRET_A.id);
+    await vi.waitFor(() => expect(batch.commit).toHaveBeenCalledTimes(1));
+    signInAs("user_b");
+    slow.resolve();
+    const res = await pending;
+
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.code).toBe("AUTH_CHANGED");
+    const listB = useAddressStore.getState().addresses;
+    expect(listB.map((a) => a.id)).toEqual([OWN_B.id]);
+    expect(listB.filter((a) => a.isDefault).map((a) => a.id)).toEqual([OWN_B.id]);
+    expect(scopeRaw("user_b")).not.toContain("addr_a2");
+    // A's own scope must not keep an unconfirmed promoted default either.
+    expect(scopeRaw("user_a") ?? "").not.toContain('"isDefault":true');
   });
 });
