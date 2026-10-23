@@ -51,6 +51,38 @@ function fuzzyMatch(text: string, query: string): boolean {
   return words.every((qw) => t.includes(qw));
 }
 
+/**
+ * Search scope tabs. The `products` payload carries no `kind` field, so each
+ * tab is answered from data the docs really have:
+ * - `product` / `all` — plain text match (`all` additionally keeps combo
+ *   bundles in the result set);
+ * - `combo` — items in the POS combo category (`Combos` / `cat_combos`);
+ * - `offer` — items carrying a real discount signal;
+ * - `category` — items whose category matches the query.
+ */
+export type MenuSearchKind = "all" | "product" | "combo" | "category" | "offer";
+
+export interface MenuSearchOptions {
+  page?: number;
+  pageSize?: number;
+  kind?: MenuSearchKind;
+}
+
+function categoryHaystack(p: Product): string {
+  return `${p.categoryName ?? ""} ${p.categoryId ?? ""}`;
+}
+
+function isComboItem(p: Product): boolean {
+  return /combo/i.test(categoryHaystack(p));
+}
+
+function isOfferItem(p: Product): boolean {
+  if (typeof p.discountPercentage === "number" && p.discountPercentage > 0) return true;
+  if (typeof p.compareAtPrice === "number" && p.compareAtPrice > p.price) return true;
+  const signal = [...(p.tags ?? []), ...(p.badges ?? []).map((b) => b.label)].join(" ");
+  return /(offer|deal|bogo|discount)/i.test(signal);
+}
+
 function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((group) => {
@@ -75,6 +107,16 @@ function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
       options,
     };
   });
+}
+
+/**
+ * P1-12: prep time is a fact from the POS doc or nothing at all. A doc that
+ * omits the field (or carries a non-positive/garbage value) yields `undefined`
+ * so the card/meta renderer can hide the badge instead of an invented "15m".
+ */
+function toPrepMinutes(value: unknown): number | undefined {
+  const n = typeof value === "string" ? Number(value.trim()) : value;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 export function mapProductDoc(data: any, docId: string): Product {
@@ -143,7 +185,7 @@ export function mapProductDoc(data: any, docId: string): Product {
           ? data.isAvailable === true
           : false,
     customizable: customizations.length > 0 || Boolean(data.customizable),
-    prepTimeMinutes: data.prepTimeMinutes || 15,
+    prepTimeMinutes: toPrepMinutes(data.prepTimeMinutes),
     badges,
     tags: data.tags || [],
     unavailableReason:
@@ -345,19 +387,42 @@ export const menuService = {
   async search(
     storeId: string | undefined,
     searchQuery: string,
-    page = 1,
-    pageSize = 20,
+    opts: MenuSearchOptions = {},
   ): Promise<ApiResult<ProductPage>> {
+    const page = opts.page ?? 1;
+    const pageSize = opts.pageSize ?? 20;
+    const kind: MenuSearchKind = opts.kind ?? "all";
     try {
       const term = searchQuery.trim().toLowerCase();
       if (!term) return ok({ items: [], page, pageSize, total: 0 });
 
       const restId = await resolveRestId(storeId);
       const all = await fetchStoreProductsCached(restId);
-      const hits = all.filter((p) => {
-        const haystack = [p.name, p.description ?? "", ...(p.tags ?? [])].join(" ");
-        return fuzzyMatch(haystack, term);
-      });
+
+      // `kind` is a real scope over the one payload we have: every doc carries
+      // its category, so combos are the POS "Combos" category and offers are
+      // the items carrying an actual discount. `all` keeps the original
+      // name/description/tag matching untouched.
+      let scoped = all;
+      if (kind === "product") scoped = all.filter((p) => !isComboItem(p));
+      else if (kind === "combo") scoped = all.filter(isComboItem);
+      else if (kind === "offer") scoped = all.filter(isOfferItem);
+
+      const hits =
+        kind === "category"
+          ? all.filter((p) => fuzzyMatch(categoryHaystack(p), term))
+          : scoped.filter((p) => {
+              const haystack = [
+                p.name,
+                p.description ?? "",
+                // Scoped kinds also match their category name, so a "combo"
+                // query reaches bundles whose names never say combo.
+                ...(kind === "combo" || kind === "offer" ? [categoryHaystack(p)] : []),
+                ...(p.tags ?? []),
+              ].join(" ");
+              return fuzzyMatch(haystack, term);
+            });
+
       return ok({ items: paginate(hits, page, pageSize), page, pageSize, total: hits.length });
     } catch (e: any) {
       return fail("MENU_SEARCH_FAILED", "Search failed.");
@@ -368,7 +433,7 @@ export const menuService = {
     storeId: string | undefined,
     searchQuery: string,
   ): Promise<ApiResult<SearchSuggestion[]>> {
-    const page = await this.search(storeId, searchQuery, 1, 6);
+    const page = await this.search(storeId, searchQuery, { page: 1, pageSize: 6 });
     if (!page.success) return ok([]);
     return ok(
       page.data.items.map((p) => ({

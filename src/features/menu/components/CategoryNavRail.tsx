@@ -34,6 +34,7 @@ interface AlignedGeometry {
   offsetLeft: number;
   offsetWidth: number;
   clientWidth: number;
+  scrollWidth: number;
 }
 
 /**
@@ -66,20 +67,9 @@ export function CategoryNavRail({
       offsetLeft: chip.offsetLeft,
       offsetWidth: chip.offsetWidth,
       clientWidth: container.clientWidth,
+      scrollWidth: container.scrollWidth,
     };
     alignedRef.current = geometry;
-
-    // First try native scrollIntoView, which reliably centres within the
-    // scroll container (and clamps against the rail's own bounds).
-    if (typeof chip.scrollIntoView === "function") {
-      try {
-        chip.scrollIntoView({ behavior, inline: "center", block: "nearest" });
-        return;
-      } catch {
-        // Fall back to the manual calculation below if scrollIntoView fails
-        // (older WebViews reject the options bag or `inline`).
-      }
-    }
 
     const target = centerScrollLeft({
       offsetLeft: geometry.offsetLeft,
@@ -90,28 +80,38 @@ export function CategoryNavRail({
     // Already centred (within sub-pixel rounding): skip — a redundant
     // `scrollTo` would restart any in-flight animation for no visual change.
     if (Math.abs(container.scrollLeft - target) < 0.5) return;
-    container.scrollTo({ left: target, behavior });
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    container.scrollTo({ left: target, behavior: reduced ? "instant" : behavior });
   }, []);
 
   // Selection changed → bring the active chip to the middle of the rail.
   // The first alignment (mount / `?category=` deep link) jumps; later taps glide.
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!activeCategoryId) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    const chips = Array.from(container.children) as HTMLButtonElement[];
+    // Space at both ends lets even the first/last category reach the middle.
+    container.style.paddingLeft = `${Math.max(0, (container.clientWidth - (chips[0]?.offsetWidth ?? 0)) / 2)}px`;
+    container.style.paddingRight = `${Math.max(0, (container.clientWidth - (chips.at(-1)?.offsetWidth ?? 0)) / 2)}px`;
+    const chip = findChip(container, activeCategoryId);
+    const aligned = alignedRef.current;
+    if (chip && aligned?.id === activeCategoryId &&
+        aligned.offsetLeft === chip.offsetLeft && aligned.offsetWidth === chip.offsetWidth &&
+        aligned.clientWidth === container.clientWidth && aligned.scrollWidth === container.scrollWidth) return;
     centerOn(activeCategoryId, alignedRef.current ? "smooth" : "instant");
-  }, [activeCategoryId, centerOn]);
+  }, [activeCategoryId, categories, centerOn]);
 
-  // Re-centre only when the viewport actually changes: resize/rotation changes
-  // the half-width the target is computed against. The commit-time
-  // `reconcile()` call is gone — the menu route rebuilds `categories` inline on
-  // every render, so it fired on each commit and `centerOn(..., "smooth")`
-  // snatched the rail back to the active chip mid-drag, which is exactly what
-  // broke horizontal thumb scrolling of the pills. Chip re-flow from live item
-  // counts is corrected the next time the selection changes instead.
+  // Observe real layout changes, not scrollLeft: manual dragging must remain
+  // free while resize, fonts and live item counts can change centering geometry.
   React.useEffect(() => {
     const container = scrollRef.current;
     if (!container || !activeCategoryId) return;
 
     const reconcile = () => {
+      const chips = Array.from(container.children) as HTMLButtonElement[];
+      container.style.paddingLeft = `${Math.max(0, (container.clientWidth - (chips[0]?.offsetWidth ?? 0)) / 2)}px`;
+      container.style.paddingRight = `${Math.max(0, (container.clientWidth - (chips.at(-1)?.offsetWidth ?? 0)) / 2)}px`;
       const chip = findChip(container, activeCategoryId);
       if (!chip) return;
       const aligned = alignedRef.current;
@@ -120,16 +120,24 @@ export function CategoryNavRail({
         aligned.id !== activeCategoryId ||
         aligned.offsetLeft !== chip.offsetLeft ||
         aligned.offsetWidth !== chip.offsetWidth ||
-        aligned.clientWidth !== container.clientWidth;
+        aligned.clientWidth !== container.clientWidth ||
+        aligned.scrollWidth !== container.scrollWidth;
       if (drifted) centerOn(activeCategoryId, "smooth");
     };
 
     window.addEventListener("resize", reconcile);
-    return () => window.removeEventListener("resize", reconcile);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reconcile);
+    observer?.observe(container);
+    for (const chip of container.children) observer?.observe(chip);
+    return () => {
+      window.removeEventListener("resize", reconcile);
+      observer?.disconnect();
+    };
   }, [activeCategoryId, centerOn]);
 
   const handleSelect = (id: string) => {
     void HapticService.selection();
+    centerOn(id, "smooth");
     onSelectCategory(id);
   };
 

@@ -50,8 +50,12 @@ export function CategoryPills({
             key={cat.id}
             type="button"
             onClick={() => handleSelect(cat.id)}
+            aria-pressed={isSelected}
             className={cn(
-              "flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border",
+              // B04: the pill grows to a 44px hit target (SC 2.5.5) — the label
+              // keeps text-xs and px-3.5, and the extra height is the aim area,
+              // so the rendered pill is taller than before.
+              "flex items-center min-h-[44px] gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border",
               isSelected
                 ? "bg-primary text-white border-primary shadow-xs"
                 : "bg-surface text-text-secondary border-divider hover:text-text hover:border-primary/40"
