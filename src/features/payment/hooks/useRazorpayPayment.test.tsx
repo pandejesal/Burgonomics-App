@@ -260,6 +260,25 @@ async function runGatewayFailure(
   });
 }
 
+describe("useRazorpayPayment - curated order-creation refusals", () => {
+  it("renders the minimum-order shortfall verbatim instead of a generic gateway error", async () => {
+    const curated = "Add items worth ₹49 more to meet the ₹149 minimum order.";
+    mocks.createPaymentOrder.mockResolvedValue(fail("MIN_ORDER", curated, true));
+    await mountHook();
+    await act(async () => {
+      await hook!.initiatePayment("online");
+    });
+
+    const state = usePaymentStore.getState();
+    expect(state.status).toBe("failed");
+    expect(state.failure?.code).toBe("MIN_ORDER");
+    expect(state.failure?.message).toBe(curated);
+    expect(state.failure?.retryable).toBe(true);
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).toContain(curated);
+    expect(mocks.openCheckout).not.toHaveBeenCalled();
+  });
+});
+
 describe("useRazorpayPayment - gateway-reported failure truth (D1)", () => {
   it("never echoes raw provider text into the failure panel or toast", async () => {
     await mountHook();

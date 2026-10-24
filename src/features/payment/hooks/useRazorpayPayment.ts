@@ -42,6 +42,7 @@ const CURATED_PAYMENT_ORDER_CODES = new Set([
   // renders the honest refusal instead of a generic gateway error.
   "ITEM_UNAVAILABLE",
   "ITEM_PRICE_UNVERIFIED",
+  "MIN_ORDER",
 ]);
 
 function paymentOrderFailureMessage(error: { code: string; message: string }): string {

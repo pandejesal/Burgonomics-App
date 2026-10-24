@@ -105,6 +105,21 @@ describe("OrderRepository.createFromCurrentContext — shared delivery minimum",
     expect(upsert).not.toHaveBeenCalled();
   });
 
+  it("prices the minimum on the item subtotal, not the fees-inclusive grand total", async () => {
+    calculateTotals.mockResolvedValue(totals(120));
+
+    const res = await new OrderRepository().createFromCurrentContext({
+      paymentMethod: "cash",
+      paymentStatus: "CASH_PENDING",
+    });
+
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(res.error.code).toBe("MIN_ORDER");
+    expect(res.error.message).toContain("₹29");
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
   it("refuses a zero-payable free delivery order below the minimum", async () => {
     calculateTotals.mockResolvedValue(totals(100));
 

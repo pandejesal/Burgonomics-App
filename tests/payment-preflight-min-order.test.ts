@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fail } from "../src/core/network/http";
 
 const calculateTotals = vi.hoisted(() => vi.fn());
 const validateCart = vi.hoisted(() => vi.fn(async () => ({ success: true as const, data: { valid: true, issues: [] } })));
@@ -130,34 +131,22 @@ describe("PaymentRepository.validateForPayment — resolved minimum order", () =
   });
 });
 
-describe("PaymentRepository.createPaymentOrder — gateway boundary minimum order", () => {
-  it("refuses a sub-minimum delivery basket before creating the pending order or the gateway order", async () => {
+describe("PaymentRepository.createPaymentOrder — shared order-boundary refusal", () => {
+  it("propagates a minimum-order refusal from the shared boundary without opening the gateway", async () => {
     calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 100, grandTotal: 130 } });
+    createFromCurrentContext.mockResolvedValue(
+      fail("MIN_ORDER", "Add items worth ₹49 more to meet the ₹149 minimum order.", true),
+    );
 
     const res = await new PaymentRepository().createPaymentOrder();
 
     expect(res.success).toBe(false);
     if (res.success) return;
     expect(res.error.code).toBe("MIN_ORDER");
-    expect(res.error.message).toContain("₹49");
-    expect(res.error.message).toContain("₹149");
     expect(res.error.retryable).toBe(true);
-    expect(createFromCurrentContext).not.toHaveBeenCalled();
-    expect(prepareCheckout).not.toHaveBeenCalled();
+    expect(createFromCurrentContext).toHaveBeenCalledTimes(1);
     expect(createGatewayOrder).not.toHaveBeenCalled();
-  });
-
-  it("uses the store override at the gateway boundary", async () => {
-    storeState.activeStore.pricing = { minOrderAmount: 300 };
-    calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 250, grandTotal: 280 } });
-
-    const res = await new PaymentRepository().createPaymentOrder();
-
-    expect(res.success).toBe(false);
-    if (res.success) return;
-    expect(res.error.code).toBe("MIN_ORDER");
-    expect(res.error.message).toContain("₹50");
-    expect(createGatewayOrder).not.toHaveBeenCalled();
+    expect(setInternalOrderId).not.toHaveBeenCalled();
   });
 
   it("does not gate takeaway and reaches the gateway", async () => {
