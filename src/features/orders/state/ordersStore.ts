@@ -34,6 +34,31 @@ interface OrdersState {
   clearAll: () => void;
 }
 
+/**
+ * Compare two unknown updatedAt stamps (ISO string | number ms | Firestore
+ * Timestamp). Returns null whenever either side is missing/uncomparable —
+ * the caller then keeps the incoming write (legacy parity: no guard can
+ * block what we cannot rank).
+ */
+function updatedAtMs(value: unknown): number | null {
+  try {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      // Normalise seconds-vs-ms: anything < 1e12 is seconds.
+      return value < 1e12 ? value * 1000 : value;
+    }
+    if (typeof value === "string" && value.length >= 8) {
+      const ms = Date.parse(value);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    const ts = value as { toMillis?: unknown; seconds?: unknown } | undefined;
+    if (ts && typeof ts.toMillis === "function") return Number((ts.toMillis as () => number).call(ts));
+    if (ts && typeof ts.seconds === "number") return ts.seconds * 1000;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export const useOrdersStore = create<OrdersState>()(
   persist(
     (set) => ({
@@ -43,6 +68,28 @@ export const useOrdersStore = create<OrdersState>()(
 
       upsert: (order) =>
         set((s) => {
+          const existing = s.byId[order.id];
+          // STRESS SWEEP 2026-10-24 (I): a SLOWER one-shot HTTP read (or an
+          // older cached snapshot) resolving after the live onSnapshot
+          // listener used to blindly clobber a newer status
+          // (OUT_FOR_DELIVERY regressing to PREPARING in Order History).
+          // Two fail-closed guards:
+          //   1) a TERMINAL record never regresses to a non-terminal one;
+          //   2) when both stamps are comparable, an older snapshot loses.
+          // Absent/uncomparable stamps keep the incoming write (original
+          // behavior), so this guard can never strand a legal update.
+          if (existing) {
+            const existingTerminal = existing.status?.terminal === true;
+            const incomingTerminal = order.status?.terminal === true;
+            if (existingTerminal && !incomingTerminal) {
+              return s;
+            }
+            const existingMs = updatedAtMs(existing.updatedAt);
+            const incomingMs = updatedAtMs(order.updatedAt);
+            if (existingMs !== null && incomingMs !== null && existingMs > incomingMs) {
+              return s;
+            }
+          }
           const exists = order.id in s.byId;
           const nextIds = exists ? s.ids : [order.id, ...s.ids];
           return {

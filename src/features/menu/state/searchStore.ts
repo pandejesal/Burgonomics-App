@@ -129,12 +129,16 @@ export const useSearchStore = create<SearchState>()(
         const seq = ++suggestSeq;
         const scope = scopeOf(storeId);
         listScope = scope;
-        const seqAtStart = requestSeq;
         try {
           const res = await menuRepository.suggest(storeId, q);
+          // Freshness is SUGGESTION-scoped (stress sweep 2026-10-24): the
+          // production search screen fires fetchSuggestions and submit in the
+          // SAME debounce turn, and submit() bumps requestSeq synchronously —
+          // folding requestSeq into the freshness check dropped EVERY
+          // same-turn suggestion. suggestSeq + scope + query token checks
+          // already enforce latest-wins for this response class.
           const stillCurrent =
             seq === suggestSeq &&
-            seqAtStart === requestSeq &&
             scope === listScope &&
             q === get().query.trim();
           if (res.success && stillCurrent) {

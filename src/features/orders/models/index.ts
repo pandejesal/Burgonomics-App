@@ -181,6 +181,15 @@ export interface Order {
   estimatedAt?: Iso8601;
   /** Terminal timestamp (delivered / picked_up / completed / cancelled). */
   completedAt?: Iso8601;
+  /**
+   * Server-written document clock — every status/ownership lane in
+   * `firestore.rules` merge-writes `updatedAt` (Firestore serverTimestamp
+   * in memory, `{seconds,nanoseconds}` once the persisted cache round-trips
+   * through JSON). Passthrough from the raw order doc (unvalidated — same
+   * class as `reconciliation.updatedAt` above): read ONLY for cache
+   * freshness ranking in ordersStore; never render it.
+   */
+  updatedAt?: unknown;
 
   /** Petpooja POS sync status and details */
   petpoojaStatus?: "Pending" | "Processing" | "Synced" | "Failed" | "Bypassed";

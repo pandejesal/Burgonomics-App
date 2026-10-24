@@ -232,21 +232,35 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
     }
 
     const page = { ...res.data, items: res.data.items.map(enrichProduct) };
-    const merged = [...(bucket?.items ?? []), ...page.items];
-    const hasMore = merged.length < page.total && page.items.length > 0;
-    set((s) => ({
-      buckets: {
-        ...s.buckets,
-        [categoryId]: {
-          items: merged,
-          page: page.page,
-          pageSize: page.pageSize,
-          total: page.total,
-          hasMore,
-          loading: false,
+    // STRESS SWEEP 2026-10-24 (J): merge against the bucket as of NOW, not
+    // the one captured before the await — a live POS 86ing/in-stock patch
+    // landing mid-pagination used to be wiped by this stale pre-await
+    // snapshot (the 86ed item reappeared as in-stock on the menu grid).
+    set((s) => {
+      const currentBucket = s.buckets[categoryId];
+      // Dedup on ids so a live patch + fresh page overlap cannot double-add.
+      const seen = (() => {
+        const m = new Set<string>();
+        for (const it of currentBucket?.items ?? []) m.add(it.id);
+        return m;
+      })();
+      const freshItems = page.items.filter((p) => !seen.has(p.id));
+      const merged = [...(currentBucket?.items ?? []), ...freshItems];
+      const hasMore = merged.length < page.total && page.items.length > 0;
+      return {
+        buckets: {
+          ...s.buckets,
+          [categoryId]: {
+            items: merged,
+            page: page.page,
+            pageSize: page.pageSize,
+            total: page.total,
+            hasMore,
+            loading: false,
+          },
         },
-      },
-    }));
+      };
+    });
   },
 
   setActiveCategory(id) {

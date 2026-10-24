@@ -187,16 +187,29 @@ export const useCartStore = create<CartState>()(
             messages.push(`${line.name} is now out of stock.`);
             newAvailability = "unavailable";
             lineChanged = true;
+          } else if (prod.inStock && line.availability === "unavailable") {
+            // RECOVERY: a restocked item must unlock the line. The 86ing
+            // branch above never flipped availability back, so a customer's
+            // cart stayed permanently locked out after the kitchen restocked
+            // the item (checkout refused the line until manual re-add).
+            messages.push(`${line.name} is back in stock.`);
+            newAvailability = "available";
+            lineChanged = true;
           }
 
           if (lineChanged) {
             changed = true;
-            return {
+            const updated: CartLine = {
               ...line,
               unitPrice: newPrice,
               price: newPrice,
-              availability: newAvailability,
+              availability: newAvailability as CartLine["availability"],
             };
+            // A recovered line keeps its reason string otherwise.
+            if (newAvailability === "available" && updated.unavailableReason !== undefined) {
+              delete updated.unavailableReason;
+            }
+            return updated;
           }
           return line;
         });
