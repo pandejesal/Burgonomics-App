@@ -89,6 +89,16 @@ beforeEach(() => {
     configurable: true,
     writable: true,
   });
+  Object.defineProperty(Element.prototype, "setPointerCapture", {
+    value: vi.fn(),
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(Element.prototype, "releasePointerCapture", {
+    value: vi.fn(),
+    configurable: true,
+    writable: true,
+  });
 });
 
 afterEach(async () => {
@@ -100,6 +110,8 @@ afterEach(async () => {
   document.body.innerHTML = "";
   Reflect.deleteProperty(window, "matchMedia");
   Reflect.deleteProperty(Element.prototype, "scrollTo");
+  Reflect.deleteProperty(Element.prototype, "setPointerCapture");
+  Reflect.deleteProperty(Element.prototype, "releasePointerCapture");
   vi.clearAllMocks();
 });
 
@@ -157,5 +169,29 @@ describe("L3 — carousel keyboard access and motion preferences", () => {
     });
 
     expect(scrollTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not follow the slide link after a horizontal drag, but a plain tap still navigates", async () => {
+    await mount(<BannerCarousel banners={banners} />);
+
+    const scroller = host!.querySelector<HTMLElement>(".snap-x")!;
+    const link = slideControls()[0]!;
+    const pointer = (type: string, x: number, y: number) =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+
+    await act(async () => {
+      scroller.dispatchEvent(pointer("pointerdown", 200, 100));
+      scroller.dispatchEvent(pointer("pointermove", 100, 100));
+      scroller.dispatchEvent(pointer("pointerup", 100, 100));
+      link.dispatchEvent(pointer("click", 100, 100));
+    });
+
+    expect(router.navigate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      link.dispatchEvent(pointer("click", 100, 100));
+    });
+
+    expect(router.navigate).toHaveBeenCalledWith({ to: "/offers/big-bang" });
   });
 });

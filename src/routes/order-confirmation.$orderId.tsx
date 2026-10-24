@@ -39,6 +39,7 @@ import {
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { ReviewItemsList } from "@/features/checkout";
+import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { db } from "@/core/config/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 
@@ -97,6 +98,7 @@ function OrderConfirmationPage() {
   // Guarantee cart is cleared and payment state is reset on arrival
   React.useEffect(() => {
     void cartRepository.clear();
+    useCheckoutStore.getState().reset();
     resetPayment();
     void HapticService.notification("success");
   }, [resetPayment]);

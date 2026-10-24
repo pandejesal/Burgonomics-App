@@ -24,6 +24,7 @@ import {
   type Order,
   type OrderTrackingSnapshot,
 } from "@/features/orders";
+import { ReorderOutOfStockModal } from "@/features/orders/components/ReorderOutOfStockModal";
 import { ReviewItemsList } from "@/features/checkout";
 import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
 import { recoveryReasonForOrderMarker } from "@/features/payments/utils/paymentRecovery";
@@ -115,7 +116,12 @@ function OrderDetailsPage() {
   // Hooks MUST stay above every early return: a hook below a conditional
   // return flips the hook count between renders (skeleton → loaded →
   // not-found) and crashes with React #310 on the first data load.
-  const { reorder: triggerReorder } = useReorderItems();
+  const {
+    reorder: triggerReorder,
+    outOfStockModal,
+    confirmReorderRemaining,
+    dismissOutOfStockModal,
+  } = useReorderItems();
 
   const reorder = async () => {
     if (order) {
@@ -336,6 +342,12 @@ function OrderDetailsPage() {
           </div>
         </div>
       </AppShell>
+      <ReorderOutOfStockModal
+        isOpen={outOfStockModal.isOpen}
+        unavailableItems={outOfStockModal.unavailableItems}
+        onDismiss={dismissOutOfStockModal}
+        onConfirmRemaining={confirmReorderRemaining}
+      />
     </ProtectedRoute>
   );
 }

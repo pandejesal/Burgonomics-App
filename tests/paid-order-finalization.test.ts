@@ -166,7 +166,7 @@ let testSeq = 0;
 beforeEach(() => {
   vi.clearAllMocks();
   mockSetDoc.mockReset().mockResolvedValue(undefined);
-  mockGetDoc.mockReset();
+  mockGetDoc.mockReset().mockResolvedValue({ exists: () => false, data: () => ({}) });
   mockGetDocs.mockReset();
   // A fresh uid per test = a fresh cache scope: the module-level caches
   // (`orders`, `progression`, …) are per-account (R03) and never carry
@@ -459,6 +459,7 @@ describe("C. cache can never prove payment", () => {
     expect(seeded.data.payment.status).toBe("pending");
 
     // Server says: paid + confirmed (finishVerifiedPayment landed).
+    const readsBeforeFinalize = mockGetDoc.mock.calls.length;
     mockGetDoc.mockResolvedValueOnce(snapOf(paidServerDoc("ord_flip", currentUid())));
     const res = await ordersService.finalizePaidOrder({ confirmedOrderId: "ord_flip" });
     expect(res.success).toBe(true);
@@ -470,7 +471,7 @@ describe("C. cache can never prove payment", () => {
     expect(cached.success).toBe(true);
     if (!cached.success) return;
     expect(cached.data?.payment.status).toBe("paid");
-    expect(mockGetDoc).toHaveBeenCalledTimes(1);
+    expect(mockGetDoc.mock.calls.length).toBe(readsBeforeFinalize + 1);
   });
 });
 

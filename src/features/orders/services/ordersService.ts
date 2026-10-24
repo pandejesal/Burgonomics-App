@@ -438,7 +438,7 @@ export const ordersService = {
     let persistError: string | null = null;
     try {
       const { auth, db } = await import("@/core/config/firebase");
-      const { doc, setDoc } = await import("firebase/firestore");
+      const { doc, getDoc, setDoc } = await import("firebase/firestore");
       const user = auth.currentUser;
       if (!user) {
         persistError = "Your session ended before the order could be saved.";
@@ -450,13 +450,17 @@ export const ordersService = {
         // the retry creates no duplicate).
         persistError = "Your session changed before the order could be saved.";
       } else {
-        await setDoc(doc(db, "orders", id), {
-          ...order,
+        // petpoojaStatus is server/webhook-owned (firestore.rules denies it at
+        // create); the in-memory order keeps it for the confirmation screen.
+        const orderDoc = { ...order };
+        delete orderDoc.petpoojaStatus;
+        const orderRef = doc(db, "orders", id);
+        const payload = {
+          ...orderDoc,
           deliveryAddress: input.deliveryAddress ?? input.address,
           // firestore.rules requires BOTH ownership fields to equal the
           // caller's uid — customerId alone is no longer sufficient.
           userId: uid,
-          petpoojaStatus,
           ...(petpoojaError ? { petpoojaError } : {}),
           // Query-compatible mirrors for the Partner app (additive only —
           // customer readers ignore unknown fields):
@@ -472,7 +476,24 @@ export const ordersService = {
             typeof input.store.lat === "number" && typeof input.store.lng === "number"
               ? { lat: input.store.lat, lng: input.store.lng }
               : undefined,
-        });
+        };
+        if (input.confirmedOrderId) {
+          // Payment retry: the pending order was already created before the
+          // gateway opened (PAYMENTS_CONTRACT_SPEC §3), so this id exists.
+          // setDoc over it is an UPDATE the customer rules deny — verify the
+          // existing doc is ours and continue to payment without writing.
+          const existing = await getDoc(orderRef);
+          if (existing.exists()) {
+            const data = existing.data();
+            if (data.customerId !== uid || data.userId !== uid) {
+              return fail("NOT_OWNER", "This order belongs to a different account.", false);
+            }
+          } else {
+            await setDoc(orderRef, payload);
+          }
+        } else {
+          await setDoc(orderRef, payload);
+        }
       }
     } catch (err) {
       persistError = err instanceof Error ? err.message : String(err);

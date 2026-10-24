@@ -24,6 +24,7 @@ import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import type { Product } from "@/features/menu/models";
 import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
+import { ReorderOutOfStockModal } from "@/features/orders/components/ReorderOutOfStockModal";
 import { orderRepository } from "@/features/orders/repositories/OrderRepository";
 import type { QuickReorderItem } from "@/features/home/models";
 
@@ -70,7 +71,12 @@ function HomePage() {
     }
   }, [store, user?.id, load]);
 
-  const { reorder } = useReorderItems();
+  const {
+    reorder,
+    outOfStockModal,
+    confirmReorderRemaining,
+    dismissOutOfStockModal,
+  } = useReorderItems();
 
   const handleQuickReorder = useCallback(
     async (item: QuickReorderItem) => {
@@ -250,6 +256,12 @@ function HomePage() {
 
       {/* Floating Mini Cart Bar */}
       <FloatingCartBar />
+      <ReorderOutOfStockModal
+        isOpen={outOfStockModal.isOpen}
+        unavailableItems={outOfStockModal.unavailableItems}
+        onDismiss={dismissOutOfStockModal}
+        onConfirmRemaining={confirmReorderRemaining}
+      />
     </AppShell>
   );
 }

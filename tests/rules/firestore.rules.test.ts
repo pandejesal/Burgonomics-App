@@ -492,6 +492,62 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(setDoc(doc(custDb, "orders", "ord_evil_5b"), { ...base, paymentStatus: "completed" }));
   });
 
+  it("33a. [ORDERS-CREATE-NESTED-SETTLEMENT-DENY] Customer create cannot mint a nested payment.status settlement marker", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      totals: { grandTotal: 0 },
+    };
+    for (const [id, status] of [
+      ["ord_evil_nested_completed", "completed"],
+      ["ord_evil_nested_paid", "paid"],
+    ] as const) {
+      await assertFails(
+        setDoc(doc(custDb, "orders", id), {
+          ...base,
+          payment: { method: "online", label: "Pay Online", status },
+        })
+      );
+    }
+  });
+
+  it("33b. [ORDERS-CREATE-SERVER-OWNED-KEYS-DENY] Customer create cannot plant POS, reconciliation or dispatch ownership keys", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      payment: { method: "online", label: "Pay Online", status: "pending" },
+    };
+    for (const [id, extra] of [
+      ["ord_evil_pos", { petpoojaStatus: "Synced" }],
+      ["ord_evil_recon", { reconciliation: { state: "payment_review" } }],
+      ["ord_evil_dispatch", { deliveryPartner: { name: "Porter" } }],
+      ["ord_evil_porter", { porterOrderId: "porter_123" }],
+    ] as const) {
+      await assertFails(setDoc(doc(custDb, "orders", id), { ...base, ...extra }));
+    }
+  });
+
+  it("33c. [ORDERS-CREATE-PENDING-PAYMENT-ALLOW] Normal customer create with the pending payment shape, items, totals and branchId still succeeds", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_clean_pending"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [{ productId: "p1", name: "Burger", quantity: 1, unitPrice: 250 }],
+        totals: { subtotal: 250, grandTotal: 275 },
+        payment: { method: "online", label: "Pay Online", status: "pending" },
+      })
+    );
+  });
+
   it("34. [ORDERS-CREATE-WALKIN-ALLOW] Branch staff CAN birth a POS walk-in order (customerId 'cust_walkin' + staff userId + own branch, born completed)", async () => {
     const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
     await assertSucceeds(

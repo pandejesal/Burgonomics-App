@@ -39,11 +39,11 @@ describe("stress sweep P1 repairs (customer app)", () => {
     });
 
     it("RED: never overwrites a newer status with an older snapshot", () => {
-      // Live listener delivered the newer stamp first.
+      // A one-shot write carried the newer stamp first.
       useOrdersStore
         .getState()
         .upsert(orderFixture("ord_1", "OUT_FOR_DELIVERY", false, "2026-10-24T12:05:00.000Z"));
-      // A slower one-shot read (older stamp) lands afterwards.
+      // A slower one-shot getOrder upsert (older stamp) lands afterwards.
       useOrdersStore
         .getState()
         .upsert(orderFixture("ord_1", "PREPARING", false, "2026-10-24T12:00:00.000Z"));

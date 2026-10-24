@@ -100,6 +100,9 @@ export function BannerCarousel({ banners, className }: Props) {
   const [isInteracting, setIsInteracting] = React.useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
   const dragRef = React.useRef<{ startX: number; startY: number; scrollLeft: number } | null>(null);
+  // A completed gesture must not also activate the slide's link: pointerup is
+  // followed by click even after a horizontal swipe or a vertical scroll.
+  const gestureMovedRef = React.useRef(false);
 
   // Honour the OS motion preference: no rotation and no animated scrolling for
   // users who asked for reduced motion (WCAG 2.2.2 pause/stop/hide).
@@ -154,6 +157,7 @@ export function BannerCarousel({ banners, className }: Props) {
     if (!el) return;
     // Let the browser handle vertical scrolling naturally; only capture horizontal intent.
     dragRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft };
+    gestureMovedRef.current = false;
     setIsInteracting(true);
     // Set pointer capture so we get move/up even if finger leaves element
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -169,9 +173,11 @@ export function BannerCarousel({ banners, className }: Props) {
     const dy = e.clientY - drag.startY;
     // If mostly vertical, release capture and let page scroll
     if (Math.abs(dx) < Math.abs(dy) && Math.abs(dy) > 10) {
+      gestureMovedRef.current = true;
       onPointerUp(e);
       return;
     }
+    if (Math.abs(dx) > 10) gestureMovedRef.current = true;
     el.scrollLeft = drag.scrollLeft - dx;
   };
 
@@ -179,11 +185,9 @@ export function BannerCarousel({ banners, className }: Props) {
     const drag = dragRef.current;
     const el = scrollerRef.current;
     if (drag) {
-      // If minimal movement, treat as tap
       const dx = Math.abs(e.clientX - drag.startX);
-      if (dx < 10) {
-        // Tap handling is on individual slides via onClick below
-      }
+      const dy = Math.abs(e.clientY - drag.startY);
+      if (dx >= 10 || dy >= 10) gestureMovedRef.current = true;
     }
     dragRef.current = null;
     setIsInteracting(false);
@@ -231,7 +235,13 @@ export function BannerCarousel({ banners, className }: Props) {
             onDragStart={(e) => e.preventDefault()}
             onClick={(e) => {
               // Client-side routing, but the href keeps the slide focusable,
-              // Enter-activatable and openable in a new tab.
+              // Enter-activatable and openable in a new tab. A swipe/scroll
+              // gesture that ended on this slide must not navigate.
+              if (gestureMovedRef.current) {
+                gestureMovedRef.current = false;
+                e.preventDefault();
+                return;
+              }
               e.preventDefault();
               void HapticService.selection();
               void navigate({ to: b.ctaHref });

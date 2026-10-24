@@ -92,14 +92,28 @@ service cloud.firestore {
     // Orders CREATE (both lanes): keys a client must never plant at birth.
     // OTP proof fields are server-minted by POST /orders/verifyDeliveryOtp;
     // refund/pricing/dispatch fields resolve server-side (Admin SDK /
-    // functions); petpoojaOrderId is webhook-owned (menuSyncWebhook).
+    // functions); petpoojaOrderId/petpoojaStatus are webhook-owned
+    // (menuSyncWebhook); reconciliation is written by the payment server.
     function orderCreateForbiddenKeys() {
       return [
         'deliveryOtp', 'deliveryOtpHash', 'deliveryOtpAttempts', 'deliveryOtpLockedUntil',
         'refund', 'refundStatus', 'refundId', 'refundAmount',
-        'pricing', 'pricingSnapshot', 'petpoojaOrderId', 'dispatchStatus',
-        'routeTransferStatus'
+        'pricing', 'pricingSnapshot', 'petpoojaOrderId', 'petpoojaStatus',
+        'reconciliation', 'dispatchStatus', 'routeTransferStatus',
+        'deliveryPartner', 'delivery', 'porterOrderId'
       ];
+    }
+
+    // Orders CREATE (customer lane): a nested payment.status of completed/paid
+    // is a SERVER settlement marker (gateway verify / webhook). Customers may
+    // only birth the pending display shape; the server finishes payment.
+    function orderCreatePaymentUnsettled() {
+      return !('payment' in request.resource.data)
+        || (
+          request.resource.data.payment is map
+          && !(request.resource.data.payment.get('status', '') in
+            ['completed', 'paid', 'COMPLETED', 'PAID', 'Completed', 'Paid'])
+        );
     }
 
     // Orders CREATE (both lanes): the canonical initial status meta only.
@@ -249,6 +263,7 @@ service cloud.firestore {
           request.resource.data.userId == request.auth.uid &&
           orderCreateInitialStatus() &&
           !request.resource.data.keys().hasAny(orderCreateForbiddenKeys()) &&
+          orderCreatePaymentUnsettled() &&
           (
             !('paymentStatus' in request.resource.data) ||
             request.resource.data.paymentStatus in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE']

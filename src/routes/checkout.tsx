@@ -457,6 +457,7 @@ export function CheckoutPage() {
           // best-effort; the confirmation screen re-syncs
         }
         void cartRepository.clear();
+        useCheckoutStore.getState().reset();
         void navigate({
           to: "/orders/$orderId/track",
           params: { orderId: created.data.id },
@@ -496,6 +497,7 @@ export function CheckoutPage() {
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
+        useCheckoutStore.getState().reset();
         void navigate({
           to: "/orders/$orderId/track",
           params: { orderId: free.data.id },
@@ -539,7 +541,7 @@ export function CheckoutPage() {
       // on a different number than the one the customer just reviewed. No rate
       // is invented here and no fee is sent - we only surface the authoritative
       // total and require acceptance when it changed.
-      const displayedTotal = totals?.grandTotal;
+      const displayedTotal = totals ? finalPayable : undefined;
       const authoritativeTotal =
         typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
       if (
@@ -704,6 +706,7 @@ export function CheckoutPage() {
               clearPaymentReconciliation(reconUid);
               usePaymentStore.getState().clearReconciliation();
               void cartRepository.clear();
+              useCheckoutStore.getState().reset();
               const orderId = created.success ? created.data.id : verify.data.confirmedOrderId;
               void navigate({
                 to: "/orders/$orderId/track",

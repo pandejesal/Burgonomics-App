@@ -35,6 +35,7 @@ import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { orderRepository } from "@/features/orders/repositories/OrderRepository";
 import { usePaymentStore, loadPaymentReconciliation } from "@/features/payments/state/paymentStore";
 import { toStoreSnapshot } from "@/features/orders/models";
+import { checkMinimumOrder } from "@/shared/pricing/pricingEngine";
 
 export class PaymentRepository {
   readonly name = "PaymentRepository";
@@ -98,13 +99,17 @@ export class PaymentRepository {
     // Min-order gate: the pricing code exists but was never enforced
     // pre-gateway. Block here with the shortfall, not at the gateway.
     if (sel.activeStore && cart.lines.length > 0) {
-      const minOrder = sel.activeStore.pricing?.minOrderAmount ?? 0;
-      if (minOrder > 0) {
-        const totalsRes = await cartRepository.calculateTotals();
-        if (totalsRes.success && totalsRes.data.subtotal < minOrder) {
+      const totalsRes = await cartRepository.calculateTotals();
+      if (totalsRes.success) {
+        const check = checkMinimumOrder(
+          totalsRes.data.subtotal,
+          sel.fulfillment,
+          sel.activeStore.pricing?.minOrderAmount,
+        );
+        if (!check.met) {
           issues.push({
             code: "min_order",
-            message: `Add items worth ₹${minOrder - totalsRes.data.subtotal} more to meet the ₹${minOrder} minimum order.`,
+            message: `Add items worth ₹${check.shortfall} more to meet the ₹${check.minOrderAmount} minimum order.`,
           });
         }
       }

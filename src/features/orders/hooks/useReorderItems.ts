@@ -43,7 +43,7 @@ export function useReorderItems() {
   });
 
   const reorder = useCallback(
-    async (order: Order, options?: { clearExistingCart?: boolean }): Promise<ReorderResult> => {
+    async (order: Order): Promise<ReorderResult> => {
       setIsReordering(true);
       void HapticService.impact("medium");
 
@@ -54,18 +54,21 @@ export function useReorderItems() {
 
         const targetStoreId = order.store?.id || (order as any).storeId || "store_default";
         const cartState = useCartStore.getState();
-        if (
+        const replacesOtherStore =
           cartState.lines.length > 0 &&
-          cartState.storeId &&
-          cartState.storeId !== targetStoreId
-        ) {
-          // Reset cart to new store so 1-tap reorder can proceed cleanly
+          Boolean(cartState.storeId) &&
+          cartState.storeId !== targetStoreId;
+        if (replacesOtherStore) {
+          const confirmed =
+            typeof window !== "undefined" &&
+            window.confirm(
+              "Your cart has items from another store. Clear it and reorder from this store?",
+            );
+          if (!confirmed) {
+            return { success: false, addedCount: 0, outOfStockItems: [] };
+          }
           resetCart(targetStoreId);
         } else if (!cartState.storeId) {
-          resetCart(targetStoreId);
-        }
-
-        if (options?.clearExistingCart) {
           resetCart(targetStoreId);
         }
 

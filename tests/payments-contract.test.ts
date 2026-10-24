@@ -267,6 +267,40 @@ describe("ordersService.createOrder — persistence honesty (P1-2, finding 16)",
     expect(payload.customerId).toBe("cust_contract_1");
   });
 
+  it("retrying payment for an already-persisted pending order skips the denied full setDoc", async () => {
+    // Pending order was written before the gateway opened; the gateway create
+    // answered 503, so the retry carries that same id (PAYMENTS_CONTRACT §3).
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ customerId: "cust_contract_1", userId: "cust_contract_1" }),
+    });
+
+    const res = await ordersService.createOrder(
+      orderInput({ confirmedOrderId: "ord_pending_retry" })
+    );
+
+    expect(res.success).toBe(true);
+    if (!res.success) return;
+    expect(res.data.id).toBe("ord_pending_retry");
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+
+  it("refuses to continue payment when the existing order belongs to another account", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ customerId: "someone_else", userId: "someone_else" }),
+    });
+
+    const res = await ordersService.createOrder(
+      orderInput({ confirmedOrderId: "ord_foreign_retry" })
+    );
+
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(res.error.code).toBe("NOT_OWNER");
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+
   it("observes pending server truth without fabricating a payment failure or writing it", async () => {
     const created = await ordersService.createOrder(orderInput());
     expect(created.success).toBe(true);

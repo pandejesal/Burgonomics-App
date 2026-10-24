@@ -252,6 +252,8 @@ beforeEach(() => {
   fixture.openCheckout.mockReset();
   fixture.validateForPayment.mockReset();
   fixture.createPaymentOrder.mockReset();
+  fixture.checkoutState.tipAmount = 0;
+  fixture.checkoutState.loyaltyPointsToRedeem = 0;
   usePaymentStore.getState().reset();
   sessionStorage.clear();
   container = document.createElement("div");
@@ -334,6 +336,19 @@ describe("M4 — payment totals failure is visible, retryable, and not a fabrica
     expect(container.textContent).not.toContain("Couldn't compute your bill");
     expect(container.textContent).toContain("299");
     expect(buttonWithText("Pay Online")?.disabled).toBe(false);
+  });
+});
+
+describe("payment To Pay — tip and loyalty redemption", () => {
+  it("shows the tip/points-adjusted total that the reprice gate compares", async () => {
+    fixture.checkoutState.tipAmount = 20;
+    fixture.checkoutState.loyaltyPointsToRedeem = 50;
+    fixture.cart.calculateTotals.mockResolvedValueOnce(okTotals(555));
+
+    await mount(PaymentPage);
+
+    expect(container.textContent).toContain("525");
+    expect(container.textContent).not.toContain("555");
   });
 });
 

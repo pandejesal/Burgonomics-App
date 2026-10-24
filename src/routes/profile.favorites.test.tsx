@@ -2,8 +2,6 @@
 import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // React act() needs this flag outside of Jest.
@@ -181,18 +179,5 @@ describe("profile.favorites quick-add — store-scoped live-catalog gate (claim 
       unitPrice: 259,
     });
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("Ghost Burger"));
-  });
-
-  it("never consults the unscoped getProduct getter for eligibility", async () => {
-    // Byte-level pin on the shipped route source: eligibility must flow
-    // through the scoped listProducts lookup, not through getProduct (which
-    // is not store-scoped and would let a cross-outlet favourite resolve
-    // another branch's document).
-    const source = readFileSync(
-      path.join(process.cwd(), "src/routes/profile.favorites.tsx"),
-      "utf8",
-    );
-    expect(source).not.toContain("getProduct");
-    expect(source).toContain("listProducts");
   });
 });

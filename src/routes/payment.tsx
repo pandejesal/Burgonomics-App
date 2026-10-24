@@ -40,7 +40,7 @@ import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAccepta
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
 import { useAppConfig } from "@/core/state/appConfigStore";
-import { appConfig } from "@/core/config/env";
+import { appConfig, isDev, isReleaseBuild } from "@/core/config/env";
 
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
 import { ReviewItemsList, useCheckoutStore } from "@/features/checkout";
@@ -145,6 +145,8 @@ function PaymentPage() {
   const deliveryInstructions = useCheckoutStore((s) => s.deliveryInstructions);
   const pickupInstructions = useCheckoutStore((s) => s.pickupInstructions);
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
+  const tipAmount = useCheckoutStore((s) => s.tipAmount);
+  const loyaltyPointsToRedeem = useCheckoutStore((s) => s.loyaltyPointsToRedeem);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   // Authoritative-quote acceptance, same rule as checkout.tsx: the gateway
@@ -225,7 +227,7 @@ function PaymentPage() {
   // The "Demo payments" hint is a DEV affordance only: a release bundle with
   // no live key must fail closed silently, never advertise that payments are
   // simulated (that reads as "money may or may not move").
-  const isDevBuild = appConfig.env === "development";
+  const isDevBuild = isDev() && !isReleaseBuild();
 
   const loadTotals = React.useCallback(async () => {
     try {
@@ -338,6 +340,7 @@ function PaymentPage() {
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
+        useCheckoutStore.getState().reset();
         void navigate({
           to: "/order-confirmation/$orderId",
           params: { orderId: created.data.id },
@@ -378,7 +381,9 @@ function PaymentPage() {
       // Same authoritative-quote gate as checkout.tsx: never open the gateway
       // on a number the customer was not shown. If the server's validated
       // total differs, ask for explicit acceptance first.
-      const displayedTotal = totals?.grandTotal;
+      const displayedTotal = totals
+        ? Math.max(0, totals.grandTotal + tipAmount - loyaltyPointsToRedeem)
+        : undefined;
       const authoritativeTotal =
         typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
       if (
@@ -547,6 +552,7 @@ function PaymentPage() {
       AudioService.playSuccess();
       void HapticService.notification("success");
       void cartRepository.clear();
+      useCheckoutStore.getState().reset();
       const orderId = created.data.id;
       void navigate({
         to: "/order-confirmation/$orderId",
@@ -592,6 +598,10 @@ function PaymentPage() {
       ? activeStore?.etaMinutes
       : (activeStore?.pickupEtaMinutes ?? activeStore?.etaMinutes);
   const grandTotal = totals?.grandTotal ?? 0;
+  // The gateway/COD amount includes the persisted delivery tip and loyalty
+  // redemption (PaymentRepository sends both); To Pay must show that same
+  // figure the reprice gate compares, not the pre-tip subtotal.
+  const finalPayable = Math.max(0, grandTotal + tipAmount - loyaltyPointsToRedeem);
 
   const instructions =
     fulfillment === "delivery"
@@ -618,7 +628,7 @@ function PaymentPage() {
                 To Pay
               </span>
               <span className="type-title-large font-black text-text tabular-nums">
-                {totals ? formatINR(grandTotal) : "—"}
+                {totals ? formatINR(finalPayable) : "—"}
               </span>
             </div>
             <AppButton
@@ -626,7 +636,7 @@ function PaymentPage() {
               className="flex-1 max-w-[280px] h-12 rounded-xl text-base font-bold shadow-md shadow-primary/20 active:scale-[0.98] transition-transform"
               onClick={() => void startPayment()}
               loading={busy && !payBlocked}
-              disabled={grandTotal <= 0 || !isOnline || payBlocked}
+              disabled={finalPayable <= 0 || !isOnline || payBlocked}
               title={
                 payBlocked
                   ? "We are confirming your payment — please do not pay again"
@@ -833,13 +843,21 @@ function PaymentPage() {
                     <SummaryRow label="Store Packing Charges" value={totals.packingFee} />
                   )}
                   <SummaryRow label="Taxes & Surcharges" value={totals.taxes} />
+                  {tipAmount > 0 && <SummaryRow label="Delivery Tip" value={tipAmount} />}
+                  {loyaltyPointsToRedeem > 0 && (
+                    <SummaryRow
+                      label="Grill Coins Redeemed"
+                      value={-loyaltyPointsToRedeem}
+                      tone="success"
+                    />
+                  )}
 
                   <div className="mt-3 flex items-center justify-between border-t border-divider pt-3">
                     <Text variant="titleLarge" className="font-extrabold text-text">
-                      Grand Total
+                      To Pay
                     </Text>
                     <Text variant="titleLarge" className="font-extrabold text-primary tabular-nums">
-                      {formatINR(grandTotal)}
+                      {formatINR(finalPayable)}
                     </Text>
                   </div>
                 </dl>
