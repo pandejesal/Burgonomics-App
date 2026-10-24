@@ -17,8 +17,8 @@ import type { Product } from "../src/features/menu/models";
 
 const asAny = (v: any) => v as any;
 
-const orderFixture = (id: string, code: string, terminal: boolean, updatedAt?: string) =>
-  asAny({ id, status: { code, terminal }, ...(updatedAt ? { updatedAt } : {}) });
+const orderFixture = (id: string, code: string, terminal: boolean, updatedAt?: unknown) =>
+  asAny({ id, status: { code, terminal }, ...(updatedAt !== undefined ? { updatedAt } : {}) });
 
 const productFixture = (id: string, inStock: boolean, price = 250): Product =>
   ({
@@ -77,6 +77,121 @@ describe("stress sweep P1 repairs (customer app)", () => {
       useOrdersStore.getState().upsert(asAny({ id: "ord_3", status: { code: "PLACED", terminal: false } }));
       useOrdersStore.getState().upsert(asAny({ id: "ord_3", status: { code: "CONFIRMED", terminal: false } }));
       expect(useOrdersStore.getState().byId["ord_3"].status.code).toBe("CONFIRMED");
+    });
+
+    // Each supported updatedAt representation must rank by the epoch instant it
+    // denotes (oracle: ISO-8601 / epoch (seconds|milliseconds) definitions and
+    // Firestore Timestamp.toMillis()), in both arrival orders.
+    const OLDER_MS = Date.parse("2026-10-24T12:00:00.000Z");
+    const NEWER_MS = Date.parse("2026-10-24T12:05:00.000Z");
+
+    const persistedStamp = (ms: number) => ({
+      seconds: Math.floor(ms / 1000),
+      nanoseconds: (ms % 1000) * 1_000_000,
+    });
+
+    const stampShapes: Record<string, (ms: number) => unknown> = {
+      "ISO-8601 string": (ms) => new Date(ms).toISOString(),
+      "epoch-milliseconds number": (ms) => ms,
+      "epoch-seconds number": (ms) => ms / 1000,
+      "Firestore Timestamp (toMillis)": (ms) => ({ ...persistedStamp(ms), toMillis: () => ms }),
+      "persisted {seconds,nanoseconds}": persistedStamp,
+    };
+
+    for (const [shape, toStamp] of Object.entries(stampShapes)) {
+      it(`ranks ${shape}: newer first, older arrival loses`, () => {
+        useOrdersStore
+          .getState()
+          .upsert(orderFixture("ord_shape", "OUT_FOR_DELIVERY", false, toStamp(NEWER_MS)));
+        useOrdersStore
+          .getState()
+          .upsert(orderFixture("ord_shape", "PREPARING", false, toStamp(OLDER_MS)));
+        expect(useOrdersStore.getState().byId["ord_shape"].status.code).toBe("OUT_FOR_DELIVERY");
+      });
+
+      it(`ranks ${shape}: older first, newer arrival wins`, () => {
+        useOrdersStore
+          .getState()
+          .upsert(orderFixture("ord_shape", "PREPARING", false, toStamp(OLDER_MS)));
+        useOrdersStore
+          .getState()
+          .upsert(orderFixture("ord_shape", "OUT_FOR_DELIVERY", false, toStamp(NEWER_MS)));
+        expect(useOrdersStore.getState().byId["ord_shape"].status.code).toBe("OUT_FOR_DELIVERY");
+      });
+    }
+
+    it("cross-restore: an older persisted {seconds,nanoseconds} loses to newer epoch ms", () => {
+      useOrdersStore.getState().upsert(orderFixture("ord_x", "OUT_FOR_DELIVERY", false, NEWER_MS));
+      useOrdersStore
+        .getState()
+        .upsert(orderFixture("ord_x", "PREPARING", false, persistedStamp(OLDER_MS)));
+      expect(useOrdersStore.getState().byId["ord_x"].status.code).toBe("OUT_FOR_DELIVERY");
+    });
+
+    it("cross-restore: an older epoch ms loses to a newer persisted {seconds,nanoseconds}", () => {
+      useOrdersStore
+        .getState()
+        .upsert(orderFixture("ord_y", "OUT_FOR_DELIVERY", false, persistedStamp(NEWER_MS)));
+      useOrdersStore.getState().upsert(orderFixture("ord_y", "PREPARING", false, OLDER_MS));
+      expect(useOrdersStore.getState().byId["ord_y"].status.code).toBe("OUT_FOR_DELIVERY");
+    });
+
+    it("persisted {seconds,nanoseconds} is ranked within the same second by nanoseconds", () => {
+      const seconds = Math.floor(OLDER_MS / 1000);
+      useOrdersStore
+        .getState()
+        .upsert(
+          orderFixture("ord_ns", "OUT_FOR_DELIVERY", false, { seconds, nanoseconds: 900_000_000 }),
+        );
+      useOrdersStore
+        .getState()
+        .upsert(
+          orderFixture("ord_ns", "PREPARING", false, { seconds, nanoseconds: 100_000_000 }),
+        );
+      expect(useOrdersStore.getState().byId["ord_ns"].status.code).toBe("OUT_FOR_DELIVERY");
+    });
+
+    it("persisted {seconds,nanoseconds} in one second: the newer nanosecond stamp wins", () => {
+      const seconds = Math.floor(OLDER_MS / 1000);
+      useOrdersStore
+        .getState()
+        .upsert(
+          orderFixture("ord_ns2", "PREPARING", false, { seconds, nanoseconds: 100_000_000 }),
+        );
+      useOrdersStore
+        .getState()
+        .upsert(
+          orderFixture("ord_ns2", "OUT_FOR_DELIVERY", false, { seconds, nanoseconds: 900_000_000 }),
+        );
+      expect(useOrdersStore.getState().byId["ord_ns2"].status.code).toBe("OUT_FOR_DELIVERY");
+    });
+
+    // Conservative pin: an unrankable stamp disables the freshness guard, so the
+    // incoming write is kept (never stranded) — exactly the legacy behavior.
+    const unrankableStamps: Record<string, unknown> = {
+      "null stamp": null,
+      "object without a stamp field": {},
+      "non-date string": "not-a-date",
+      "NaN number": Number.NaN,
+      "infinite number": Number.POSITIVE_INFINITY,
+    };
+
+    for (const [label, stamp] of Object.entries(unrankableStamps)) {
+      it(`unrankable incoming stamp (${label}) keeps the incoming write`, () => {
+        useOrdersStore
+          .getState()
+          .upsert(orderFixture("ord_u", "OUT_FOR_DELIVERY", false, "2026-10-24T12:05:00.000Z"));
+        useOrdersStore.getState().upsert(orderFixture("ord_u", "PREPARING", false, stamp));
+        expect(useOrdersStore.getState().byId["ord_u"].status.code).toBe("PREPARING");
+      });
+    }
+
+    it("unrankable stored stamp keeps the incoming write", () => {
+      useOrdersStore.getState().upsert(orderFixture("ord_u2", "PREPARING", false, "not-a-date"));
+      useOrdersStore
+        .getState()
+        .upsert(orderFixture("ord_u2", "OUT_FOR_DELIVERY", false, "2026-10-24T12:00:00.000Z"));
+      expect(useOrdersStore.getState().byId["ord_u2"].status.code).toBe("OUT_FOR_DELIVERY");
     });
   });
 
