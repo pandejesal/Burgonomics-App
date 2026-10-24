@@ -92,12 +92,11 @@ describe("stress sweep P1 repairs (customer app)", () => {
     });
 
     it("RED: preserves live 86ing synced while loadMore was in flight", async () => {
-      // Bucket built by page 1; live POS sync then flipped this item out of
-      // stock (as subscribeToLiveMenu writes it directly into the bucket).
+      // Bucket built by page 1 with truffle_burger initially IN STOCK.
       useMenuStore.setState(asAny({
         buckets: {
           cat_burgers: {
-            items: [productFixture("truffle_burger", false)],
+            items: [productFixture("truffle_burger", true)],
             page: 1,
             pageSize: 100,
             total: 125,
@@ -107,20 +106,43 @@ describe("stress sweep P1 repairs (customer app)", () => {
         },
       }));
 
-      // Page 2 is SLOW: resolve only after the live sync above is present.
-      listProducts.mockImplementationOnce(
-        (async () => ({
-          success: true,
-          data: {
-            items: [productFixture("smash_burger", true), productFixture("truffle_burger", true)],
-            page: 2,
-            pageSize: 100,
-            total: 125,
-          },
-        }) as unknown as any)
-      );
+      // Page 2 is deferred: pause loadMore until after live sync is injected.
+      let resolveListProducts!: (value: any) => void;
+      const deferredPage2 = new Promise((resolve) => {
+        resolveListProducts = resolve;
+      });
+      listProducts.mockImplementationOnce(() => deferredPage2);
 
+      // Start loadMore pagination.
       const loadMorePromise = useMenuStore.getState().loadMore("cat_burgers");
+
+      // Verify repository was invoked and promise is currently in flight.
+      expect(listProducts).toHaveBeenCalledTimes(1);
+
+      // While loadMore is in flight, live POS sync flips truffle_burger out of stock.
+      useMenuStore.setState((s: any) => ({
+        buckets: {
+          ...s.buckets,
+          cat_burgers: {
+            ...s.buckets["cat_burgers"],
+            items: s.buckets["cat_burgers"].items.map((it: any) =>
+              it.id === "truffle_burger" ? { ...it, inStock: false } : it
+            ),
+          },
+        },
+      }));
+
+      // Resolve page 2 with stale inStock: true for truffle_burger and a new item.
+      resolveListProducts({
+        success: true,
+        data: {
+          items: [productFixture("truffle_burger", true), productFixture("smash_burger", true)],
+          page: 2,
+          pageSize: 100,
+          total: 125,
+        },
+      });
+
       await loadMorePromise;
 
       const bucket = useMenuStore.getState().buckets["cat_burgers"];
@@ -129,6 +151,10 @@ describe("stress sweep P1 repairs (customer app)", () => {
       const truffle = bucket.items.find((p: any) => p.id === "truffle_burger");
       // The live truth must survive the merge.
       expect(truffle?.inStock).toBe(false);
+      const smash = bucket.items.find((p: any) => p.id === "smash_burger");
+      expect(smash?.inStock).toBe(true);
+      expect(bucket.items.filter((p: any) => p.id === "truffle_burger")).toHaveLength(1);
+      expect(bucket.items.filter((p: any) => p.id === "smash_burger")).toHaveLength(1);
     });
   });
 });
