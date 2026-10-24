@@ -90,6 +90,7 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "PERSIST_FAILED",
   "PAYMENT_RECONCILIATION_PENDING",
   "INVALID_AMOUNT",
+  "MIN_ORDER",
   // Money-time refusals from the pricing engine (409). Their messages are
   // static, customer-readable sentences, so pass them verbatim instead of
   // collapsing into a generic failure. They only reach here when the create

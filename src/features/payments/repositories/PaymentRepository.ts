@@ -36,6 +36,11 @@ import { orderRepository } from "@/features/orders/repositories/OrderRepository"
 import { usePaymentStore, loadPaymentReconciliation } from "@/features/payments/state/paymentStore";
 import { toStoreSnapshot } from "@/features/orders/models";
 import { checkMinimumOrder } from "@/shared/pricing/pricingEngine";
+import type { MinOrderCheck } from "@/shared/pricing/pricingEngine";
+
+function minOrderMessage(check: MinOrderCheck): string {
+  return `Add items worth ₹${check.shortfall} more to meet the ₹${check.minOrderAmount} minimum order.`;
+}
 
 export class PaymentRepository {
   readonly name = "PaymentRepository";
@@ -109,7 +114,7 @@ export class PaymentRepository {
         if (!check.met) {
           issues.push({
             code: "min_order",
-            message: `Add items worth ₹${check.shortfall} more to meet the ₹${check.minOrderAmount} minimum order.`,
+            message: minOrderMessage(check),
           });
         }
       }
@@ -158,6 +163,14 @@ export class PaymentRepository {
     const sel = useStoreSelection.getState();
     if (!sel.activeStore || !sel.fulfillment) {
       return fail("MISSING_CONTEXT", "Store and fulfillment method are required.");
+    }
+    const minCheck = checkMinimumOrder(
+      totalsRes.data.subtotal,
+      sel.fulfillment,
+      sel.activeStore.pricing?.minOrderAmount,
+    );
+    if (!minCheck.met) {
+      return fail("MIN_ORDER", minOrderMessage(minCheck), true);
     }
 
     const cart = useCartStore.getState();

@@ -30,6 +30,7 @@ import {
   orderRepository,
   useOrdersStore,
   selectOrderById,
+  orderPayableAmount,
   OrderStatusBadge,
   OrderPriceSummary,
   OrderSuccessCelebration,
@@ -331,6 +332,10 @@ function OrderConfirmationPage() {
                   ? "Cash on Delivery (Pending)"
                   : order.payment.status === "PAY_AT_STORE"
                   ? "Pay at Counter"
+                  : order.payment.status === "pending"
+                  ? orderPayableAmount(order) === 0
+                    ? "No payment due"
+                    : "Awaiting Payment"
                   : order.payment.status}
               </span>
             </MetaRow>

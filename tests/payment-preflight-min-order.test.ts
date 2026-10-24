@@ -2,9 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calculateTotals = vi.hoisted(() => vi.fn());
 const validateCart = vi.hoisted(() => vi.fn(async () => ({ success: true as const, data: { valid: true, issues: [] } })));
+const prepareCheckout = vi.hoisted(() =>
+  vi.fn(async () => ({ success: true as const, data: { checkoutToken: "tok_min_order" } })),
+);
+const createFromCurrentContext = vi.hoisted(() => vi.fn());
+const createGatewayOrder = vi.hoisted(() => vi.fn());
+const setInternalOrderId = vi.hoisted(() => vi.fn());
 
 vi.mock("../src/features/cart/repositories/CartRepository", () => ({
-  cartRepository: { calculateTotals, validateCart },
+  cartRepository: { calculateTotals, validateCart, prepareCheckout },
 }));
 
 vi.mock("../src/features/cart/state/cartStore", () => ({
@@ -43,11 +49,23 @@ vi.mock("../src/features/checkout/state/checkoutStore", () => ({
 }));
 
 vi.mock("../src/features/orders/repositories/OrderRepository", () => ({
-  orderRepository: { createFromCurrentContext: vi.fn() },
+  orderRepository: { createFromCurrentContext },
+}));
+
+vi.mock("../src/features/payments/services/paymentsService", () => ({
+  paymentsService: { createOrder: createGatewayOrder },
 }));
 
 vi.mock("../src/features/payments/state/paymentStore", () => ({
-  usePaymentStore: { getState: () => ({ reconciliationPending: false, internalOrderId: null }) },
+  usePaymentStore: {
+    getState: () => ({
+      reconciliationPending: false,
+      internalOrderId: null,
+      gatewayOrderId: null,
+      setInternalOrderId,
+      setGatewayOrderId: vi.fn(),
+    }),
+  },
   loadPaymentReconciliation: () => null,
 }));
 
@@ -56,6 +74,10 @@ import { PaymentRepository } from "../src/features/payments/repositories/Payment
 beforeEach(() => {
   calculateTotals.mockReset();
   validateCart.mockClear();
+  prepareCheckout.mockClear();
+  createFromCurrentContext.mockReset();
+  createGatewayOrder.mockReset();
+  setInternalOrderId.mockClear();
   storeState.activeStore.pricing = {};
   storeState.fulfillment = "delivery";
 });
@@ -105,5 +127,55 @@ describe("PaymentRepository.validateForPayment — resolved minimum order", () =
     expect(res.success).toBe(true);
     if (!res.success) return;
     expect(res.data.valid).toBe(true);
+  });
+});
+
+describe("PaymentRepository.createPaymentOrder — gateway boundary minimum order", () => {
+  it("refuses a sub-minimum delivery basket before creating the pending order or the gateway order", async () => {
+    calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 100, grandTotal: 130 } });
+
+    const res = await new PaymentRepository().createPaymentOrder();
+
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(res.error.code).toBe("MIN_ORDER");
+    expect(res.error.message).toContain("₹49");
+    expect(res.error.message).toContain("₹149");
+    expect(res.error.retryable).toBe(true);
+    expect(createFromCurrentContext).not.toHaveBeenCalled();
+    expect(prepareCheckout).not.toHaveBeenCalled();
+    expect(createGatewayOrder).not.toHaveBeenCalled();
+  });
+
+  it("uses the store override at the gateway boundary", async () => {
+    storeState.activeStore.pricing = { minOrderAmount: 300 };
+    calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 250, grandTotal: 280 } });
+
+    const res = await new PaymentRepository().createPaymentOrder();
+
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(res.error.code).toBe("MIN_ORDER");
+    expect(res.error.message).toContain("₹50");
+    expect(createGatewayOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not gate takeaway and reaches the gateway", async () => {
+    storeState.fulfillment = "takeaway";
+    calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 10, grandTotal: 40 } });
+    createFromCurrentContext.mockResolvedValue({
+      success: true,
+      data: { id: "ord_min_order_takeaway" },
+    });
+    createGatewayOrder.mockResolvedValue({
+      success: true,
+      data: { orderId: "pay_min_order_takeaway", amount: 40, currency: "INR", receipt: "rcpt_1" },
+    });
+
+    const res = await new PaymentRepository().createPaymentOrder();
+
+    expect(res.success).toBe(true);
+    expect(createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(createGatewayOrder).toHaveBeenCalledTimes(1);
   });
 });

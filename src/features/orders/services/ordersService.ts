@@ -377,11 +377,10 @@ export const ordersService = {
     const fingerprint = checkoutFingerprint(input);
     // Reuse the id of a checkout whose Firestore write already failed, so a
     // retry re-creates the SAME document instead of a duplicate order.
-    const id =
-      input.confirmedOrderId ??
-      (failedPersist && failedPersist.fingerprint === fingerprint
-        ? failedPersist.id
-        : `ord_${Date.now()}_${generateSecureId(6)}`);
+    const retryOfFailedPersist =
+      failedPersist && failedPersist.fingerprint === fingerprint ? failedPersist : null;
+    const reusedOrderId = input.confirmedOrderId ?? retryOfFailedPersist?.id;
+    const id = reusedOrderId ?? `ord_${Date.now()}_${generateSecureId(6)}`;
     const nowIso = new Date().toISOString();
     const status = resolveStatus("PLACED");
     const etaMinutes = input.fulfillment === "delivery"
@@ -477,11 +476,11 @@ export const ordersService = {
               ? { lat: input.store.lat, lng: input.store.lng }
               : undefined,
         };
-        if (input.confirmedOrderId) {
-          // Payment retry: the pending order was already created before the
-          // gateway opened (PAYMENTS_CONTRACT_SPEC §3), so this id exists.
-          // setDoc over it is an UPDATE the customer rules deny — verify the
-          // existing doc is ours and continue to payment without writing.
+        if (reusedOrderId) {
+          // Payment retry or a lost-ack retry: the id may already exist (the
+          // pending order created before the gateway opened, or a write whose
+          // ack was lost). setDoc over it is an UPDATE the customer rules deny
+          // — verify the existing doc is ours and skip the write.
           const existing = await getDoc(orderRef);
           if (existing.exists()) {
             const data = existing.data();

@@ -548,6 +548,30 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
+  it("33d. [ORDERS-CREATE-ZERO-PAYABLE-PENDING-ALLOW] A ₹0 coupon order creates with the pending marker, while the same order with a client paid marker is still refused", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      items: [{ productId: "p1", name: "Burger", quantity: 1, unitPrice: 150 }],
+      totals: { subtotal: 150, promoDiscount: 150, grandTotal: 0 },
+    };
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_clean_free_pending"), {
+        ...base,
+        payment: { method: "online", label: "Free order — no payment due", status: "pending" },
+      })
+    );
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_free_paid"), {
+        ...base,
+        payment: { method: "online", label: "Paid Online (₹0)", status: "paid" },
+      })
+    );
+  });
+
   it("34. [ORDERS-CREATE-WALKIN-ALLOW] Branch staff CAN birth a POS walk-in order (customerId 'cust_walkin' + staff userId + own branch, born completed)", async () => {
     const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
     await assertSucceeds(

@@ -207,6 +207,25 @@ export interface Order {
   meta?: Record<string, unknown>;
 }
 
+/**
+ * Amount the customer still owes on this order, or null when the document
+ * does not carry a readable grand total. Mirrors the checkout payable rule:
+ * grand total plus tip minus redeemed loyalty points, floored at zero.
+ */
+export function orderPayableAmount(
+  order: Pick<Order, "totals" | "tipAmount" | "loyaltyPointsRedeemed">,
+): number | null {
+  const grandTotal = order.totals?.grandTotal;
+  if (typeof grandTotal !== "number" || !Number.isFinite(grandTotal)) return null;
+  const tip =
+    typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount) ? order.tipAmount : 0;
+  const points =
+    typeof order.loyaltyPointsRedeemed === "number" && Number.isFinite(order.loyaltyPointsRedeemed)
+      ? order.loyaltyPointsRedeemed
+      : 0;
+  return Math.max(0, grandTotal + tip - points);
+}
+
 export interface OrderTrackingSnapshot {
   orderId: Id;
   status: OrderStatusMeta;

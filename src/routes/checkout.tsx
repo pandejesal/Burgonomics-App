@@ -96,6 +96,7 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "PERSIST_FAILED",
   "PAYMENT_RECONCILIATION_PENDING",
   "INVALID_AMOUNT",
+  "MIN_ORDER",
   // Money-time refusals from the pricing engine. Their messages are static,
   // customer-readable sentences (the only interpolation is the item name), so
   // passing them verbatim tells the customer WHICH item to remove instead of
@@ -483,8 +484,8 @@ export function CheckoutPage() {
       try {
         const free = await orderRepository.createFromCurrentContext({
           paymentMethod: "online",
-          paymentStatus: "paid",
-          paymentLabel: "Paid Online (₹0)",
+          paymentStatus: "pending",
+          paymentLabel: "Free order — no payment due",
         });
         setBusy(false);
         placeOrderInFlight.current = false;

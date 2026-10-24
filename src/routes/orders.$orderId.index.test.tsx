@@ -53,6 +53,15 @@ vi.mock("@/features/orders/repositories/OrderRepository", () => ({
   },
 }));
 
+vi.mock("@/features/orders/hooks/useReorderItems", () => ({
+  useReorderItems: () => ({
+    reorder: vi.fn(async () => ({ success: false, addedCount: 0, outOfStockItems: [] })),
+    outOfStockModal: { isOpen: true, unavailableItems: ["Burger"] },
+    confirmReorderRemaining: vi.fn(),
+    dismissOutOfStockModal: vi.fn(),
+  }),
+}));
+
 import { orderRepository } from "@/features/orders/repositories/OrderRepository";
 import { Route } from "./orders.$orderId.index";
 import type { Order } from "@/features/orders";
@@ -132,6 +141,29 @@ describe("OrderDetailsPage — hook order (P1-1)", () => {
     const { container, unmount } = await mount();
     expect(container.textContent).toContain("Burgonomics CG Road");
     expect(container.textContent).toContain("Smashed Burger");
+    await unmount();
+  });
+
+  it("renders the out-of-stock reorder modal for this consumer", async () => {
+    const { container, unmount } = await mount();
+    expect(container.textContent).toContain("Some Items Unavailable");
+    expect(container.textContent).toContain("Burger");
+    await unmount();
+  });
+
+  it("labels a zero-payable pending order as no payment due, not awaiting payment", async () => {
+    vi.mocked(orderRepository.getOrder).mockResolvedValue({
+      success: true,
+      data: buildOrder({
+        payment: { method: "online", label: "Free order — no payment due", status: "pending" },
+        totals: { subtotal: 150, taxes: 0, deliveryFee: 0, grandTotal: 0 },
+        tipAmount: 0,
+        loyaltyPointsRedeemed: 0,
+      }),
+    } as any);
+    const { container, unmount } = await mount();
+    expect(container.textContent).toContain("No payment due");
+    expect(container.textContent).not.toContain("Awaiting Payment");
     await unmount();
   });
 

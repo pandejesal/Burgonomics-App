@@ -245,6 +245,7 @@ describe("ordersService.createOrder — persistence honesty (P1-2, finding 16)",
 
   it("reuses the SAME order id on retry after a failed persist (no duplicate)", async () => {
     mockSetDoc.mockRejectedValueOnce(new Error("offline"));
+    mockGetDoc.mockResolvedValue({ exists: () => false });
     const first = await ordersService.createOrder(orderInput());
     expect(first.success).toBe(false);
 
@@ -256,6 +257,27 @@ describe("ordersService.createOrder — persistence honesty (P1-2, finding 16)",
     expect(writtenIds[1]).toBe(writtenIds[0]);
     if (!second.success) return;
     expect(second.data.id).toBe(writtenIds[0]);
+  });
+
+  it("skips the denied full setDoc when a failed-persist retry finds the lost-ack commit already exists", async () => {
+    mockSetDoc.mockRejectedValueOnce(new Error("deadline-exceeded"));
+    const first = await ordersService.createOrder(orderInput());
+    expect(first.success).toBe(false);
+
+    // The rejected write did commit: the retry reuses the same id and must
+    // verify ownership instead of issuing an UPDATE the rules deny.
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ customerId: "cust_contract_1", userId: "cust_contract_1" }),
+    });
+    mockSetDoc.mockClear();
+    const retry = await ordersService.createOrder(orderInput());
+
+    expect(retry.success).toBe(true);
+    if (!retry.success) return;
+    expect(retry.data.id).toBe(mockDoc.mock.calls[0][2]);
+    expect(mockGetDoc).toHaveBeenCalledTimes(1);
+    expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
   it("writes BOTH userId and customerId == the caller uid (firestore.rules)", async () => {
