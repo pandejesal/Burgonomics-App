@@ -35,12 +35,10 @@ import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { orderRepository } from "@/features/orders/repositories/OrderRepository";
 import { usePaymentStore, loadPaymentReconciliation } from "@/features/payments/state/paymentStore";
 import { toStoreSnapshot } from "@/features/orders/models";
-import { checkMinimumOrder } from "@/shared/pricing/pricingEngine";
-import type { MinOrderCheck } from "@/shared/pricing/pricingEngine";
-
-function minOrderMessage(check: MinOrderCheck): string {
-  return `Add items worth ₹${check.shortfall} more to meet the ₹${check.minOrderAmount} minimum order.`;
-}
+import {
+  checkMinimumOrder,
+  minOrderShortfallMessage as minOrderMessage,
+} from "@/shared/pricing/pricingEngine";
 
 export class PaymentRepository {
   readonly name = "PaymentRepository";

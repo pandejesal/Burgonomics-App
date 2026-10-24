@@ -227,6 +227,11 @@ export function checkMinimumOrder(
   };
 }
 
+/** Actionable shortfall copy shared by every order-creation gate. */
+export function minOrderShortfallMessage(check: MinOrderCheck): string {
+  return `Add items worth ₹${check.shortfall} more to meet the ₹${check.minOrderAmount} minimum order.`;
+}
+
 /**
  * Computes unit price of a single line item.
  *

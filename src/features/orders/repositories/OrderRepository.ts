@@ -13,7 +13,7 @@
  * Screens never manage timers themselves — they call `subscribeTracking`
  * and receive a `stop()` on unmount.
  */
-import { ok, type ApiResult } from "@/core/network/http";
+import { ok, fail, type ApiResult } from "@/core/network/http";
 import { logger } from "@/core/logging/logger";
 import { ordersService } from "@/features/orders/services/ordersService";
 import { buildTrackUrl } from "@/features/orders/utils/trackUrl";
@@ -36,6 +36,10 @@ import type {
   PaymentDisplayStatus,
 } from "@/features/orders/models";
 import { toStoreSnapshot } from "@/features/orders/models";
+import {
+  checkMinimumOrder,
+  minOrderShortfallMessage,
+} from "@/shared/pricing/pricingEngine";
 
 // -- Tracking subscription contract ----------------------------------
 
@@ -132,6 +136,15 @@ export class OrderRepository {
           message: "Store and fulfillment method are required.",
         },
       };
+    }
+
+    const minCheck = checkMinimumOrder(
+      totalsRes.data.subtotal,
+      sel.fulfillment,
+      sel.activeStore.pricing?.minOrderAmount,
+    );
+    if (!minCheck.met) {
+      return fail("MIN_ORDER", minOrderShortfallMessage(minCheck), true);
     }
 
     const fulfillmentInstructions =
