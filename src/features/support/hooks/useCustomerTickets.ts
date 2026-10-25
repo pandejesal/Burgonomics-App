@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { supportService } from "@/features/support/services/supportService";
 import { useAuthStore } from "@/features/auth/state/authStore";
 
@@ -295,7 +296,9 @@ export function useCustomerTickets() {
           attachments: photoUrls,
         });
         if (!res.success) {
-          toast.error(res.error.message);
+          // P1-8: raw server messages go to the console, never the toast.
+          console.error("[support] ticket submit failed:", res.error);
+          toast.error(toUserMessage(res));
           return { success: false };
         }
 

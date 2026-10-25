@@ -118,6 +118,7 @@ export function PhoneLoginForm({
           variant="cta"
           loading={isSubmitting}
           disabled={!validation.valid || isSubmitting}
+          className="rounded-[var(--radius-medium)]"
         >
           Continue
         </AppButton>

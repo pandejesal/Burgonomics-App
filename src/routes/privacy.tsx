@@ -4,6 +4,7 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
 import { Text } from "@/shared/components/common/Text";
 import { Shield, Lock, Eye, Trash2, Mail, FileText } from "lucide-react";
+import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
 
 export const Route = createFileRoute("/privacy")({
   head: () => ({
@@ -43,8 +44,12 @@ function PrivacyPage() {
               <Eye className="h-4 w-4 text-primary" /> 0. Data Fiduciary & Consent
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Data Fiduciary:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad, Gujarat, India – 380015 (CIN: UXXXXXGJ2024PTCXXXXXX · GSTIN: 24XXXXXXXXXX1Z5).
-              We process your data only after your <strong>free, specific, informed and unambiguous consent</strong> (DPDP §6). You may withdraw consent anytime via <strong>Profile → Settings → Privacy toggles</strong> or by contacting our Grievance Officer. Withdrawing consent does not affect lawfulness of processing before withdrawal. Processors: <strong>Razorpay</strong> (payments), <strong>Porter</strong> (logistics), <strong>Firebase/Google</strong> (auth, DB), <strong>Petpooja</strong> (POS) — disclosed per Data Safety.
+              {/* P1-7: registration IDs are rendered from APP constants only when
+                  real values exist — masked X-filler is never shown (see app.ts). */}
+              <strong>Data Fiduciary:</strong> {APP.legalEntity} (trading as {APP.tradeName}), {APP.registeredAddress}
+              {!isUnsetRegistrationValue(APP.cin) && <> (CIN: {APP.cin}{!isUnsetRegistrationValue(APP.gstin) && <> · GSTIN: {APP.gstin}</>})</>}
+              {isUnsetRegistrationValue(APP.cin) && !isUnsetRegistrationValue(APP.gstin) && <> (GSTIN: {APP.gstin})</>}.
+              We process your data only after your <strong>free, specific, informed and unambiguous consent</strong> (DPDP §6). You may withdraw consent or raise a grievance by contacting our Grievance Officer at <strong>{APP.grievanceEmail}</strong>. Withdrawing consent does not affect lawfulness of processing before withdrawal. Processors: <strong>Razorpay</strong> (payments), <strong>Porter</strong> (logistics), <strong>Firebase/Google</strong> (auth, DB), <strong>Petpooja</strong> (POS) — disclosed per Data Safety.
             </Text>
           </section>
 
@@ -133,11 +138,11 @@ function PrivacyPage() {
               <Mail className="h-4 w-4 text-primary" /> 6. Grievance Redressal & Nodal Contact (IT Rules, 2021)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Grievance Officer:</strong> [Name], Manager — Legal, Burgonomics Foods Pvt Ltd
+              <strong>Grievance Officer:</strong> Grievance Officer, {APP.legalEntity} (trading as {APP.tradeName}) — {APP.grievanceEmail}
               <br />
               <strong>Email:</strong> privacy@burgonomics.com
               <br />
-              <strong>Address:</strong> Glassdoors Studio, [Building/Street], Ahmedabad, Gujarat – 380015, India. Phone: +91-7XXXXXXXXX
+              <strong>Address:</strong> {APP.registeredAddress}, India.
               <br />
               <strong>Nodal Contact Person:</strong> Same as Grievance Officer (nodal@burgonomics.com) for law-enforcement coordination.
               <br />

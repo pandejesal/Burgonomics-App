@@ -20,7 +20,13 @@ import { Text } from "@/shared/components/common/Text";
 import { BottomSheet } from "@/shared/components/common/BottomSheet";
 import type { Store } from "@/features/stores/models/Store";
 import { closesSoon, formatDistance } from "@/features/stores/utils/distance";
+import {
+  MAX_PICKUP_DISTANCE_KM,
+  OUT_OF_AREA_MESSAGE,
+  PICKUP_TOO_FAR_MESSAGE,
+} from "@/features/stores/utils/serviceArea";
 import { getPermanentMapUrl, openDirections } from "@/features/stores/utils/navigation";
+import { useStoreSelection, resolveDeliveryCoords } from "@/features/stores/state/storeStore";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
 
@@ -29,23 +35,47 @@ interface StoreCardProps {
   selected?: boolean;
   onSelect?: (store: Store) => void;
   className?: string;
+  /** Whether the store is outside the user's delivery area. Disables selection for delivery mode. */
+  outOfArea?: boolean;
+  /** Current fulfillment mode - used to conditionally disable out-of-area stores only for delivery */
+  fulfillment?: "delivery" | "takeaway" | "dinein" | null;
 }
 
-export function StoreCard({ store, selected, onSelect, className }: StoreCardProps) {
+export function StoreCard({ store, selected, onSelect, className, outOfArea, fulfillment }: StoreCardProps) {
   const [showDetail, setShowDetail] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
-  const closingSoon = store.isOpen && closesSoon(store.hours.close);
+  const closingSoon = store.isOpen && store.hours != null && closesSoon(store.hours.close);
 
-  // Dynamic travel time calculation based on distance (avg speed 25 km/h + traffic buffer)
-  const travelTimeMinutes = store.distanceKm
-    ? Math.max(4, Math.ceil(store.distanceKm * 2.4) + 3)
-    : undefined;
+  const label = `${store.name}${store.area ? `, ${store.area}` : ""}. ${
+    store.isOpen === true
+      ? store.hours
+        ? `Open now, closes at ${store.hours.close}`
+        : "Open now"
+      : store.isOpen === false
+        ? "Closed"
+        : "Hours unavailable"
+  }. ${store.etaMinutes != null ? `Delivery in ${store.etaMinutes} minutes. ` : ""}${formatDistance(store.distanceKm)} away.`;
 
-  const deliveryRadiusKm = 5.0;
+  // Determine if store should be disabled for delivery or far away takeaway/dinein
+  const isDeliveryDisabled = outOfArea && fulfillment === "delivery";
+  const isPickupTooFar =
+    store.distanceKm != null &&
+    store.distanceKm > MAX_PICKUP_DISTANCE_KM &&
+    (fulfillment === "takeaway" || fulfillment === "dinein");
+  const isSelectionDisabled = isDeliveryDisabled || isPickupTooFar;
 
-  const label = `${store.name}, ${store.area}. ${
-    store.isOpen ? `Open now, closes at ${store.hours.close}` : "Closed"
-  }. Delivery in ${store.etaMinutes} minutes. ${formatDistance(store.distanceKm)} away.`;
+  /** Blocked taps still answer with the reason instead of doing nothing. */
+  const explainOutOfArea = () => {
+    void HapticService.impact("medium");
+    toast.error(OUT_OF_AREA_MESSAGE);
+  };
+
+  const explainTooFar = () => {
+    void HapticService.impact("medium");
+    toast.error(
+      `${store.name} is ${Math.round(store.distanceKm!)} km away. Takeaway and Dine-In are restricted to nearby branches (< ${MAX_PICKUP_DISTANCE_KM} km).`,
+    );
+  };
 
   const handleOpenInMaps = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -53,9 +83,19 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
     window.open(url, "_blank");
   };
 
+  /**
+   * Route start for the Directions flow, resolved on click so it can never
+   * be stale: (a) selected delivery address coordinates, (b) device coords
+   * held by the store store, (c) the cached GPS fix. null → Google Maps
+   * falls back to the device's current location on its own.
+   */
+  const resolveDirectionsOrigin = (): { lat: number; lng: number } | null =>
+    resolveDeliveryCoords(useStoreSelection.getState().coords);
+
   const handleNavigate = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    openDirections(store.name, store.lat, store.lng);
+    const origin = resolveDirectionsOrigin();
+    openDirections(store.name, store.lat, store.lng, origin?.lat, origin?.lng);
   };
 
   const handleCall = (e?: React.MouseEvent) => {
@@ -111,6 +151,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
           selected
             ? "border-primary bg-surface shadow-sm ring-2 ring-primary/20"
             : "border-divider bg-surface hover:border-primary/40 hover:bg-bg-secondary/40 shadow-none",
+          outOfArea && "opacity-50",
           className,
         )}
       >
@@ -119,12 +160,25 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
           <button
             type="button"
             onClick={() => {
+              // Out of area for delivery: stay unselectable but say why.
+              if (isDeliveryDisabled) {
+                explainOutOfArea();
+                return;
+              }
+              if (isPickupTooFar) {
+                explainTooFar();
+                return;
+              }
               void HapticService.impact("light");
               onSelect?.(store);
             }}
             aria-label={label}
             aria-pressed={selected || undefined}
-            className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer focus:outline-none select-none active:opacity-80"
+            aria-disabled={isSelectionDisabled}
+            className={cn(
+              "flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer focus:outline-none select-none active:opacity-80",
+              isSelectionDisabled && "cursor-not-allowed opacity-60",
+            )}
           >
             {/* 36px Circular Store Initial / Icon */}
             <div className="h-9 w-9 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm shadow-xs">
@@ -138,19 +192,41 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 <Text
                   as="h3"
                   variant="titleMedium"
-                  className="truncate font-bold text-text-primary text-[14px] leading-tight tracking-tight"
+                  className={cn(
+                    "truncate font-bold text-[14px] leading-tight tracking-tight",
+                    outOfArea || isPickupTooFar ? "text-text-secondary" : "text-text-primary",
+                  )}
                 >
                   {store.name}
                 </Text>
+                {outOfArea && (
+                  <AppBadge tone="error" className="text-[10px] px-1.5 py-0 shrink-0 font-semibold">
+                    Outside delivery area
+                    {store.distanceKm !== undefined
+                      ? ` · ${formatDistance(store.distanceKm)} away`
+                      : ""}
+                  </AppBadge>
+                )}
+                {!outOfArea && isPickupTooFar && (
+                  <AppBadge tone="error" className="text-[10px] px-1.5 py-0 shrink-0 font-semibold">
+                    Too far (&gt;25 km)
+                  </AppBadge>
+                )}
               </div>
 
               {/* Line 2: Badges · Distance · Delivery in N min */}
               <div className="mt-0.5 flex items-center gap-1.5 min-w-0 text-text-secondary text-xs truncate">
                 <AppBadge
-                  tone={store.isOpen ? "success" : "neutral"}
+                  tone={store.isOpen === true ? "success" : "neutral"}
                   className="text-[10px] px-1.5 py-0 shrink-0 font-semibold"
                 >
-                  {store.isOpen ? (closingSoon ? "Closes Soon" : "Open") : "Closed"}
+                  {store.isOpen === true
+                    ? closingSoon
+                      ? "Closes Soon"
+                      : "Open"
+                    : store.isOpen === false
+                      ? "Closed"
+                      : "Hours unavailable"}
                 </AppBadge>
                 {selected && (
                   <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/15 border border-accent/30 px-1.5 py-0 text-[10px] font-bold text-accent shrink-0">
@@ -165,20 +241,17 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                     </span>
                   </>
                 )}
-                {store.supports.delivery && (
-                  <>
-                    <span>·</span>
-                    <span className="whitespace-nowrap text-text-secondary truncate">
-                      Delivery in {store.etaMinutes} min
-                    </span>
-                  </>
+                {store.supports.delivery && store.etaMinutes != null && (
+                  <span className="hidden whitespace-nowrap text-text-secondary min-[400px]:inline">
+                    · Delivery in {store.etaMinutes} min
+                  </span>
                 )}
               </div>
             </div>
           </button>
 
           {/* Right-side Actions: Info button & Chevron */}
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={(e) => {
@@ -188,19 +261,27 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
               }}
               title="Store info & actions"
               aria-label={`View info and actions for ${store.name}`}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-primary transition-colors cursor-pointer"
+              className="relative flex h-8 w-8 items-center justify-center rounded-full text-text-secondary hover:bg-bg-secondary hover:text-primary transition-colors cursor-pointer after:absolute after:-inset-2 after:content-['']"
             >
               <Info className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={() => {
+                if (isDeliveryDisabled) {
+                  explainOutOfArea();
+                  return;
+                }
                 void HapticService.impact("light");
                 onSelect?.(store);
               }}
               aria-hidden="true"
               tabIndex={-1}
-              className="flex h-8 w-5 items-center justify-center text-text-secondary/50 cursor-pointer"
+              aria-disabled={isDeliveryDisabled}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center text-text-secondary/50 cursor-pointer",
+                isDeliveryDisabled && "cursor-not-allowed opacity-40",
+              )}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -237,10 +318,16 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 <span>Operating Hours</span>
               </div>
               <p className="mt-1 text-sm font-semibold text-text-primary">
-                {store.hours.open} – {store.hours.close}
+                {store.hours ? `${store.hours.open} – ${store.hours.close}` : "Opening hours unavailable"}
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">
-                {store.isOpen ? (closingSoon ? "Closing soon" : "Open now") : "Currently closed"}
+                {store.isOpen === true
+                  ? closingSoon
+                    ? "Closing soon"
+                    : "Open now"
+                  : store.isOpen === false
+                    ? "Currently closed"
+                    : "Hours unavailable"}
               </p>
             </div>
 
@@ -250,11 +337,14 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 <span>Delivery Details</span>
               </div>
               <p className="mt-1 text-sm font-semibold text-text-primary">
-                ~{store.etaMinutes} mins
+                {store.etaMinutes != null ? `~${store.etaMinutes} mins` : "ETA unavailable"}
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">
-                Radius: {deliveryRadiusKm.toFixed(1)} km{" "}
-                {store.distanceKm ? `(${formatDistance(store.distanceKm)} away)` : ""}
+                {store.deliveryRadiusKm != null
+                  ? `Radius: ${store.deliveryRadiusKm.toFixed(1)} km${store.distanceKm ? ` (${formatDistance(store.distanceKm)} away)` : ""}`
+                  : store.distanceKm
+                    ? `${formatDistance(store.distanceKm)} away`
+                    : "Delivery zone not listed"}
               </p>
             </div>
           </div>
@@ -274,11 +364,6 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
             {store.supports.dineIn && (
               <AppBadge tone="neutral" className="px-2 py-0.5 text-xs font-semibold">
                 ✓ Dine-in Available
-              </AppBadge>
-            )}
-            {travelTimeMinutes !== undefined && (
-              <AppBadge tone="neutral" className="px-2 py-0.5 text-xs">
-                🚗 ~{travelTimeMinutes} min drive
               </AppBadge>
             )}
           </div>
@@ -325,7 +410,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                   className="flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] bg-bg-secondary p-3 text-xs font-medium text-text-secondary hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
                 >
                   {copied ? (
-                    <Check className="h-4 w-4 text-emerald-500" />
+                    <Check className="h-4 w-4 text-success" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -341,7 +426,7 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
                 className="flex items-center justify-center gap-2 rounded-[var(--radius-medium)] border border-divider p-2.5 text-xs font-medium text-text-secondary hover:border-primary/40 hover:text-primary transition-colors cursor-pointer"
               >
                 {copied ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  <Check className="h-3.5 w-3.5 text-success" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}
@@ -362,11 +447,20 @@ export function StoreCard({ store, selected, onSelect, className }: StoreCardPro
           <button
             type="button"
             onClick={() => {
+              if (isDeliveryDisabled) {
+                // Reason toast (not `disabled`) so the tap is never dead air.
+                explainOutOfArea();
+                return;
+              }
               setShowDetail(false);
               void HapticService.impact("light");
               onSelect?.(store);
             }}
-            className="w-full mt-2 py-3 px-4 rounded-[var(--radius-medium)] bg-primary text-white font-bold text-sm shadow-sm hover:bg-primary/90 transition-colors cursor-pointer"
+            aria-disabled={isDeliveryDisabled}
+            className={cn(
+              "w-full mt-2 py-3 px-4 rounded-[var(--radius-medium)] bg-primary text-white font-bold text-sm shadow-sm hover:bg-primary/90 transition-colors cursor-pointer",
+              isDeliveryDisabled && "cursor-not-allowed opacity-50 hover:bg-primary",
+            )}
           >
             Select This Kitchen
           </button>

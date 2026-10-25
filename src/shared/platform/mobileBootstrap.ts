@@ -9,6 +9,33 @@ import { isNative, getPlatform } from "./platform";
 import { initPushNotifications } from "./pushNotifications";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 
+/**
+ * Resolves and validates an incoming native app URL (custom scheme or universal link).
+ * Returns the safe in-app route string, or null if invalid or unsafe.
+ */
+export function resolveAppUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    const schemeOk = url.protocol === "burgonomics:";
+    const hostOk =
+      url.protocol === "https:" &&
+      ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
+        url.hostname.toLowerCase()
+      );
+    if (!schemeOk && !hostOk) return null;
+
+    const route =
+      url.protocol === "burgonomics:"
+        ? (url.host ? `/${url.host}${url.pathname}` : url.pathname)
+        : url.pathname;
+    const path = route + url.search + url.hash;
+    const safe = sanitizeRedirectUrl(path, "");
+    return safe || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function bootstrapNativePlatform(): Promise<void> {
   if (!isNative()) return;
 
@@ -58,16 +85,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
     // router (open redirect into arbitrary in-app or external targets).
     App.addListener("appUrlOpen", (event) => {
       try {
-        const url = new URL(event.url);
-        const schemeOk = url.protocol === "burgonomics:";
-        const hostOk =
-          url.protocol === "https:" &&
-          ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
-            url.hostname.toLowerCase()
-          );
-        if (!schemeOk && !hostOk) return;
-        const path = url.pathname + url.search + url.hash;
-        const safe = sanitizeRedirectUrl(path, "");
+        const safe = resolveAppUrl(event.url);
         if (safe) {
           window.history.pushState({}, "", safe);
           window.dispatchEvent(new PopStateEvent("popstate"));
@@ -110,17 +128,35 @@ export async function bootstrapNativePlatform(): Promise<void> {
         return;
       }
 
-      // 2. Navigate back in history if available and not at root route
+      // 2. Back must never kill the app from a sub-route.
+      //
+      // The old `isRoot` set included `/stores`, so pressing back on Store
+      // Selection called `App.minimizeApp()` even when the WebView still had
+      // history to pop — the app visibly "closed" from a sub-route. Only true
+      // entry screens (launch / splash / home) may minimize; every other path
+      // pops history, and a sub-route with nothing to pop (deep link / cold
+      // start) falls back to Home instead of terminating.
       const hash = window.location.hash.replace(/^#/, "");
       const path = hash || window.location.pathname;
-      const isRoot = !path || path === "/" || path === "/home" || path === "/stores";
+      // Drop query string / fragment so `/home?from=x` still counts as Home.
+      const pathOnly = path.split(/[?#]/)[0] || path;
+      const isEntry = !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
 
-      if (canGoBack && !isRoot) {
-        window.history.back();
-      } else {
-        // At root screen, minimize app instead of abrupt termination
+      if (isEntry) {
+        // At an entry screen, minimize instead of abrupt termination.
         void App.minimizeApp();
+        return;
       }
+
+      if (canGoBack) {
+        window.history.back();
+        return;
+      }
+
+      // Sub-route with no history entry — keep the app alive on Home.
+      // (Same pushState + popstate contract used by the deep-link handler above.)
+      window.history.pushState({}, "", "/home");
+      window.dispatchEvent(new PopStateEvent("popstate"));
     });
   } catch (err) {
     console.warn("[burgonomics] native bootstrap failed", err);

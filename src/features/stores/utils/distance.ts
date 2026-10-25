@@ -29,7 +29,7 @@ export function haversineKm(
 
 /** Returns a human-friendly distance string ("1.2 km" / "800 m"). */
 export function formatDistance(km?: number): string {
-  if (km === undefined || Number.isNaN(km)) return "—";
+  if (km === undefined || !Number.isFinite(km)) return "—";
   if (km < 1) return `${Math.round(km * 1000)} m`;
   return `${km.toFixed(1)} km`;
 }

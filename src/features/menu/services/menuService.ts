@@ -20,9 +20,23 @@ import type {
   ProductPage,
   SearchSuggestion,
 } from "@/features/menu/models";
+import { resolveItemImage } from "./menuImageMap";
+import { lookupMenuDescription } from "./menuDescriptions";
 
 export type MenuCategory = MenuCategoryModel & { itemCount: number };
 export type MenuItem = Product;
+
+/**
+ * Live menu payload.
+ *
+ * `complete` is true only when `items` is the store's ENTIRE in-scope catalog.
+ * Consumers may prune ids absent from a complete snapshot (a real POS
+ * deletion); an incomplete snapshot is merge-only. Keeping this flag explicit
+ * is what stops a partial page from deleting products the listener never saw.
+ */
+export interface LiveProductPage extends ProductPage {
+  complete: boolean;
+}
 
 /**
  * Canonical menu source: the `products` collection (written by server
@@ -48,6 +62,38 @@ function fuzzyMatch(text: string, query: string): boolean {
   if (words.length === 0) return false;
 
   return words.every((qw) => t.includes(qw));
+}
+
+/**
+ * Search scope tabs. The `products` payload carries no `kind` field, so each
+ * tab is answered from data the docs really have:
+ * - `product` / `all` — plain text match (`all` additionally keeps combo
+ *   bundles in the result set);
+ * - `combo` — items in the POS combo category (`Combos` / `cat_combos`);
+ * - `offer` — items carrying a real discount signal;
+ * - `category` — items whose category matches the query.
+ */
+export type MenuSearchKind = "all" | "product" | "combo" | "category" | "offer";
+
+export interface MenuSearchOptions {
+  page?: number;
+  pageSize?: number;
+  kind?: MenuSearchKind;
+}
+
+function categoryHaystack(p: Product): string {
+  return `${p.categoryName ?? ""} ${p.categoryId ?? ""}`;
+}
+
+function isComboItem(p: Product): boolean {
+  return /combo/i.test(categoryHaystack(p));
+}
+
+function isOfferItem(p: Product): boolean {
+  if (typeof p.discountPercentage === "number" && p.discountPercentage > 0) return true;
+  if (typeof p.compareAtPrice === "number" && p.compareAtPrice > p.price) return true;
+  const signal = [...(p.tags ?? []), ...(p.badges ?? []).map((b) => b.label)].join(" ");
+  return /(offer|deal|bogo|discount)/i.test(signal);
 }
 
 function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
@@ -76,7 +122,17 @@ function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
   });
 }
 
-function mapProductDoc(data: any, docId: string): Product {
+/**
+ * P1-12: prep time is a fact from the POS doc or nothing at all. A doc that
+ * omits the field (or carries a non-positive/garbage value) yields `undefined`
+ * so the card/meta renderer can hide the badge instead of an invented "15m".
+ */
+function toPrepMinutes(value: unknown): number | undefined {
+  const n = typeof value === "string" ? Number(value.trim()) : value;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+export function mapProductDoc(data: any, docId: string): Product {
   const veg =
     data.isVeg !== undefined
       ? Boolean(data.isVeg)
@@ -86,8 +142,10 @@ function mapProductDoc(data: any, docId: string): Product {
 
   const customizations = mapToCustomizationGroups(data.customizations || []);
 
-  const imageUrl =
+  const rawImageUrl =
     data.imageUrl || data.image || data.image_url || data.itemimage_url || undefined;
+  const productName = data.name || data.itemname || "Product";
+  const imageUrl = resolveItemImage(productName, rawImageUrl);
 
   const badges = Array.isArray(data.badges) ? [...data.badges] : [];
   if (
@@ -119,7 +177,8 @@ function mapProductDoc(data: any, docId: string): Product {
     categoryId: data.categoryId || "uncategorized",
     categoryName: data.categoryName || data.categoryname || undefined,
     name: data.name || data.itemname || "Product",
-    description: data.description || data.itemdescription || "",
+    description:
+      data.description || data.itemdescription || lookupMenuDescription(productName) || "",
     price: typeof data.price === "number" ? data.price : parseFloat(data.price) || 0,
     compareAtPrice: data.compareAtPrice,
     discountPercentage: data.discountPercentage,
@@ -128,16 +187,26 @@ function mapProductDoc(data: any, docId: string): Product {
     imageUrls: data.imageUrls || (imageUrl ? [imageUrl] : []),
     fallbackImageUrl: data.fallbackImageUrl,
     inStock:
+      // Availability flag semantics are shared with the server pricing gate:
+      // an EXPLICIT false is an 86; a missing field is a legacy/combo/import
+      // doc and is sellable. Treating "unknown" as false made every combo
+      // unbuyable, because the combo builder never writes inStock. Explicit
+      // string "false" still fails (strict boolean compare).
       data.inStock !== undefined
-        ? Boolean(data.inStock)
+        ? data.inStock === true
         : data.isAvailable !== undefined
-          ? Boolean(data.isAvailable)
+          ? data.isAvailable === true
           : true,
     customizable: customizations.length > 0 || Boolean(data.customizable),
-    prepTimeMinutes: data.prepTimeMinutes || 15,
+    prepTimeMinutes: toPrepMinutes(data.prepTimeMinutes),
     badges,
     tags: data.tags || [],
-    unavailableReason: data.unavailableReason,
+    unavailableReason:
+      // Only an explicit 86 carries a reason; a missing flag is sellable.
+      data.unavailableReason ??
+      (data.inStock === false || data.isAvailable === false
+        ? "Currently unavailable"
+        : undefined),
   };
 }
 
@@ -238,7 +307,7 @@ export const menuService = {
     storeId: string | undefined,
     categoryId: string | undefined,
     page = 1,
-    pageSize = 20,
+    pageSize = 100,
   ): Promise<ApiResult<ProductPage>> {
     try {
       const restId = await resolveRestId(storeId);
@@ -332,19 +401,42 @@ export const menuService = {
   async search(
     storeId: string | undefined,
     searchQuery: string,
-    page = 1,
-    pageSize = 20,
+    opts: MenuSearchOptions = {},
   ): Promise<ApiResult<ProductPage>> {
+    const page = opts.page ?? 1;
+    const pageSize = opts.pageSize ?? 20;
+    const kind: MenuSearchKind = opts.kind ?? "all";
     try {
       const term = searchQuery.trim().toLowerCase();
       if (!term) return ok({ items: [], page, pageSize, total: 0 });
 
       const restId = await resolveRestId(storeId);
       const all = await fetchStoreProductsCached(restId);
-      const hits = all.filter((p) => {
-        const haystack = [p.name, p.description ?? "", ...(p.tags ?? [])].join(" ");
-        return fuzzyMatch(haystack, term);
-      });
+
+      // `kind` is a real scope over the one payload we have: every doc carries
+      // its category, so combos are the POS "Combos" category and offers are
+      // the items carrying an actual discount. `all` keeps the original
+      // name/description/tag matching untouched.
+      let scoped = all;
+      if (kind === "product") scoped = all.filter((p) => !isComboItem(p));
+      else if (kind === "combo") scoped = all.filter(isComboItem);
+      else if (kind === "offer") scoped = all.filter(isOfferItem);
+
+      const hits =
+        kind === "category"
+          ? all.filter((p) => fuzzyMatch(categoryHaystack(p), term))
+          : scoped.filter((p) => {
+              const haystack = [
+                p.name,
+                p.description ?? "",
+                // Scoped kinds also match their category name, so a "combo"
+                // query reaches bundles whose names never say combo.
+                ...(kind === "combo" || kind === "offer" ? [categoryHaystack(p)] : []),
+                ...(p.tags ?? []),
+              ].join(" ");
+              return fuzzyMatch(haystack, term);
+            });
+
       return ok({ items: paginate(hits, page, pageSize), page, pageSize, total: hits.length });
     } catch (e: any) {
       return fail("MENU_SEARCH_FAILED", "Search failed.");
@@ -355,7 +447,7 @@ export const menuService = {
     storeId: string | undefined,
     searchQuery: string,
   ): Promise<ApiResult<SearchSuggestion[]>> {
-    const page = await this.search(storeId, searchQuery, 1, 6);
+    const page = await this.search(storeId, searchQuery, { page: 1, pageSize: 6 });
     if (!page.success) return ok([]);
     return ok(
       page.data.items.map((p) => ({
@@ -367,12 +459,48 @@ export const menuService = {
     );
   },
 
-  async listTrending(_storeId?: string): Promise<ApiResult<SearchSuggestion[]>> {
-    return ok(
-      ["Classic Veggie Burger", "Spicy Paneer Blast", "Salted Fries", "Chocolate Shake"].map(
-        (label, i) => ({ id: `tr_${i}`, label, kind: "product" as const }),
-      ),
-    );
+  /**
+   * "Trending" seeds the search screen's chips — so they must be real product
+   * names from the store's `products` collection (a fabricated chip that
+   * matches nothing is a dead tap). Ranked bestseller-first, in-stock only;
+   * empty when the menu can't be read, so the section simply hides.
+   */
+  async listTrending(storeId?: string): Promise<ApiResult<SearchSuggestion[]>> {
+    try {
+      const restId = await resolveRestId(storeId);
+      const products = await fetchStoreProductsCached(restId);
+      const candidates = products.filter((p) => p.inStock !== false);
+      if (candidates.length === 0) return ok([]);
+
+      const rank = (p: Product): number => {
+        const signals = [
+          ...(p.badges ?? []).map((b) => b.label),
+          ...(p.tags ?? []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (signals.includes("bestseller") || signals.includes("best seller")) return 0;
+        if (signals.includes("chef") || signals.includes("special")) return 1;
+        if (signals.includes("new")) return 2;
+        return 3;
+      };
+
+      const ranked = candidates
+        .map((product, index) => ({ product, index }))
+        .sort((a, b) => rank(a.product) - rank(b.product) || a.index - b.index)
+        .slice(0, 6);
+
+      return ok(
+        ranked.map(({ product }) => ({
+          id: `tr_${product.id}`,
+          label: product.name,
+          kind: "product" as const,
+          targetId: product.id,
+        })),
+      );
+    } catch {
+      return ok([]);
+    }
   },
 
   async listItems(categoryId?: string): Promise<ApiResult<MenuItem[]>> {
@@ -388,6 +516,11 @@ export const menuService = {
   /**
    * Real-time listener for the canonical `products` collection.
    * Categories derive from the items (single source of truth).
+   *
+   * No store scope means NO menu: it never falls back to an unscoped
+   * collection read, because `limit(100)` over every outlet would show another
+   * store's menu as if it were this one. The consumer gets the same honest
+   * empty result `fetchStoreProducts` returns and no listener is attached.
    */
   subscribeCategories(
     storeId: string | undefined,
@@ -399,9 +532,11 @@ export const menuService = {
       try {
         const restId = await resolveRestId(storeId);
         if (cancelled) return;
-        const q = restId
-          ? query(collection(db, "products"), where("restId", "==", restId))
-          : query(collection(db, "products"), limit(100));
+        if (!restId) {
+          callback(ok([]));
+          return;
+        }
+        const q = query(collection(db, "products"), where("restId", "==", restId));
         innerUnsub = onSnapshot(
           q,
           (snap) => {
@@ -428,13 +563,21 @@ export const menuService = {
 
   /**
    * Real-time listener for canonical products & 86ing (<5s sync).
+   *
+   * The listener holds the store's whole scoped query, so it emits the whole
+   * catalog — not page 1 of a page size. The old `pageSize = 40` slice made
+   * menuStore treat items 41..N as deleted and prune them for the session.
+   * Listener payloads are always `complete: true`; paged reads stay on
+   * `listProducts`, whose pagination is unchanged.
+   *
+   * No store scope means NO menu (see `subscribeCategories`): emit an empty
+   * complete snapshot and attach no listener, rather than reading the first
+   * 100 products of every outlet.
    */
   subscribeProducts(
     storeId: string | undefined,
     categoryId: string | undefined,
-    callback: (result: ApiResult<ProductPage>) => void,
-    page = 1,
-    pageSize = 40,
+    callback: (result: ApiResult<LiveProductPage>) => void,
   ): () => void {
     let innerUnsub: Unsubscribe | null = null;
     let cancelled = false;
@@ -442,9 +585,11 @@ export const menuService = {
       try {
         const restId = await resolveRestId(storeId);
         if (cancelled) return;
-        const q = restId
-          ? query(collection(db, "products"), where("restId", "==", restId))
-          : query(collection(db, "products"), limit(100));
+        if (!restId) {
+          callback(ok({ items: [], page: 1, pageSize: 0, total: 0, complete: true }));
+          return;
+        }
+        const q = query(collection(db, "products"), where("restId", "==", restId));
         innerUnsub = onSnapshot(
           q,
           (snap) => {
@@ -453,7 +598,15 @@ export const menuService = {
               all.push(mapProductDoc(d.data(), d.id));
             });
             if (categoryId) all = all.filter((p) => p.categoryId === categoryId);
-            callback(ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length }));
+            callback(
+              ok({
+                items: all,
+                page: 1,
+                pageSize: all.length,
+                total: all.length,
+                complete: true,
+              }),
+            );
           },
           (err) => {
             console.warn("menuService.subscribeProducts snapshot error:", err);

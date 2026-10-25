@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Download, FileText, CheckCircle2, Printer } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
+import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
 import type { Order } from "../models";
 
 interface InvoiceDownloadButtonProps {
@@ -57,6 +58,9 @@ export function InvoiceDownloadButton({
       .join("");
 
     const grandTotal = order.totals?.grandTotal || 0;
+    // Document class: this is an ORDER RECEIPT, never a GST tax invoice.
+    // "Paid" is a claim about money — only the payment state may make it.
+    const isPaid = order.payment?.status === "paid";
     // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
     // component backs OUT of the total (total - total/1.05), never 5% on top.
     // The old fallback charged an extra ~5% phantom tax whenever server
@@ -65,6 +69,19 @@ export function InvoiceDownloadButton({
       order.totals?.taxes ?? Math.round((grandTotal - grandTotal / 1.05) * 100) / 100;
     const packing = order.totals?.packingFee || 0;
     const delivery = order.totals?.deliveryFee || 0;
+
+    // Seller identity is single-sourced from APP — a hardcoded company name in
+    // a customer-facing receipt is a legal claim we cannot keep in sync. Masked
+    // registration numbers (X-placeholders) are treated as unset and omitted,
+    // never printed as filler (P1-7).
+    const sellerLines = [
+      esc(APP.legalEntity),
+      esc(APP.registeredAddress),
+      !isUnsetRegistrationValue(APP.gstin) ? `GSTIN: ${esc(APP.gstin)}` : null,
+      !isUnsetRegistrationValue(APP.fssaiLicense)
+        ? `FSSAI Lic. No.: ${esc(APP.fssaiLicense)}`
+        : null,
+    ].filter(Boolean);
 
     const invoiceContent = `
       <!DOCTYPE html>
@@ -93,21 +110,21 @@ export function InvoiceDownloadButton({
         </div>
 
         <div class="header">
-          <div class="brand">BURGONOMICS</div>
-          <div style="font-size: 11px; color: #555;">Burgonomics Foodworks Pvt. Ltd.</div>
-          <div style="font-size: 10px; color: #777;">GST/FSSAI registration particulars available on request. This is an order receipt, not a GST tax invoice.</div>
+          <div class="brand">${esc(APP.tradeName.toUpperCase())}</div>
+          <div style="font-size: 11px; color: #555;">${sellerLines.join("<br>")}</div>
+          <div style="font-size: 10px; color: #777;">This is an order receipt, not a GST tax invoice.</div>
         </div>
 
         <div class="meta-grid">
           <div>
-            <strong>Invoice & Order:</strong> #${esc(shortOrder)}<br>
+            <strong>Receipt &amp; Order:</strong> #${esc(shortOrder)}<br>
             <strong>Date & Time:</strong> ${esc(dateFormatted)}<br>
             <strong>Fulfillment:</strong> ${esc(order.fulfillment).toUpperCase()}<br>
-            <strong>Payment Mode:</strong> ${(order.payment?.method || "ONLINE").toUpperCase()}
+            <strong>Payment Mode:</strong> ${order.payment?.method ? esc(order.payment.method.toUpperCase()) : "—"}
           </div>
           <div>
             <strong>Store Outlet:</strong> ${esc(order.store?.name || "Burgonomics Outlet")}<br>
-            <strong>Address:</strong> ${esc(order.store?.address || "Ahmedabad, Gujarat")}<br>
+            <strong>Address:</strong> ${order.store?.address ? esc(order.store.address) : "—"}<br>
             <strong>Phone:</strong> ${order.store?.phone ? esc(order.store.phone) : "—"}
           </div>
         </div>
@@ -142,14 +159,14 @@ export function InvoiceDownloadButton({
               : ""
           }
           <div class="totals-row grand-total">
-            <span>Total Amount Paid:</span>
+            <span>${isPaid ? "Total Amount Paid" : "Order Total"}:</span>
             <span>${formatINR(grandTotal)}</span>
           </div>
         </div>
 
         <div class="footer">
-          Thank you for choosing Burgonomics! • For feedback & support: support@burgonomics.in<br>
-          This is a computer-generated tax invoice. No physical signature required.
+          Thank you for choosing Burgonomics! • For feedback &amp; support: ${esc(APP.supportEmail)}<br>
+          This is a computer-generated order receipt. No physical signature required.
         </div>
 
         <script>
@@ -176,10 +193,10 @@ export function InvoiceDownloadButton({
         type="button"
         onClick={handleDownloadInvoice}
         disabled={isGenerating}
-        title="Download GST Invoice"
-        className={`p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50 ${className}`}
+        title="Download order receipt"
+        className={`p-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text transition-colors cursor-pointer disabled:opacity-50 ${className}`}
       >
-        <Download className="w-4 h-4 text-emerald-400" />
+        <Download className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
       </button>
     );
   }
@@ -189,9 +206,9 @@ export function InvoiceDownloadButton({
       type="button"
       onClick={handleDownloadInvoice}
       disabled={isGenerating}
-      className={`px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 hover:text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${className}`}
+      className={`px-3.5 py-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${className}`}
     >
-      <FileText className="w-3.5 h-3.5 text-emerald-400" />
+      <FileText className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
       <span>{isGenerating ? "Preparing Invoice..." : "Download Invoice"}</span>
     </button>
   );

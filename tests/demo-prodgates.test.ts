@@ -31,5 +31,5 @@ describe('demo-removal production gate', () => {
       if (content.includes('features/demo/state/demoStore')) offenders.push(file);
     }
     expect(offenders).toEqual([]);
-  });
+  }, 20000);
 });

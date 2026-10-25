@@ -34,9 +34,13 @@ import { Spinner } from "@/shared/components/feedback/Spinner";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { formatINR } from "@/core/utils/format";
 import { logger } from "@/core/logging/logger";
+import { toUserMessage } from "@/core/errors/userMessages";
+import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
+import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAcceptance";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
 import { useAppConfig } from "@/core/state/appConfigStore";
+import { appConfig, isDev, isReleaseBuild } from "@/core/config/env";
 
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
 import { ReviewItemsList, useCheckoutStore } from "@/features/checkout";
@@ -54,7 +58,56 @@ import {
 } from "@/features/payments";
 import type { PaymentResult } from "@/features/payments/models";
 import { describePaymentFailure } from "@/features/payments/utils/paymentFailure";
+import {
+  describePaymentRecovery,
+  isRecoveryReason,
+  resolveVerifyOutcome,
+  type RecoveryReason,
+} from "@/features/payments/utils/paymentRecovery";
+import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
+import {
+  persistPaymentReconciliation,
+  clearPaymentReconciliation,
+  hydratePaymentReconciliation,
+} from "@/features/payments/state/paymentStore";
+
+/**
+ * P1-14: order/payment failures arrive in two flavours. `ordersService` and
+ * `PaymentRepository` return copy written for customers — MISSING_AUTH,
+ * AUTH_CHANGED, PERSIST_FAILED ("…the kitchen never received it…") and
+ * PAYMENT_RECONCILIATION_PENDING ("Do not pay again.") — while
+ * `CartRepository`'s pricing catch and `paymentsService`'s transport catch
+ * wrap raw exception text in `PRICING_CALCULATION_ERROR` / `GATEWAY_ERROR`.
+ * Only the curated codes below pass through verbatim; every other code is
+ * logged and mapped, so raw exception text can never reach the failure panel
+ * or a toast.
+ */
+const CURATED_ORDER_FAILURE_CODES = new Set([
+  "MISSING_AUTH",
+  "MISSING_CONTEXT",
+  "AUTH_CHANGED",
+  "PERSIST_FAILED",
+  "PAYMENT_RECONCILIATION_PENDING",
+  "INVALID_AMOUNT",
+  "MIN_ORDER",
+  // A retry whose checkout context changed: static, customer-readable copy
+  // ("Your order details changed…") — pass it through instead of collapsing
+  // into a generic failure, so the customer knows to re-check their details.
+  "CHECKOUT_CONTEXT_CHANGED",
+  // Money-time refusals from the pricing engine (409). Their messages are
+  // static, customer-readable sentences, so pass them verbatim instead of
+  // collapsing into a generic failure. They only reach here when the create
+  // order transport preserves the server's structured code.
+  "ITEM_UNAVAILABLE",
+  "ITEM_PRICE_UNVERIFIED",
+]);
+
+function orderFailureMessage(error: { code: string; message: string }): string {
+  if (CURATED_ORDER_FAILURE_CODES.has(error.code)) return error.message;
+  console.error("[payment] order/payment failure:", error);
+  return toUserMessage(error);
+}
 
 export const Route = createFileRoute("/payment")({
   head: () => ({
@@ -83,6 +136,8 @@ function PaymentPage() {
   const method = usePaymentStore((s) => s.method);
   const order = usePaymentStore((s) => s.order);
   const failure = usePaymentStore((s) => s.failure);
+  const reconciliationPending = usePaymentStore((s) => s.reconciliationPending);
+  const reconciliationReason = usePaymentStore((s) => s.reconciliationReason);
   const setStatus = usePaymentStore((s) => s.setStatus);
   const setMethod = usePaymentStore((s) => s.setMethod);
   const setOrder = usePaymentStore((s) => s.setOrder);
@@ -95,8 +150,32 @@ function PaymentPage() {
   const deliveryInstructions = useCheckoutStore((s) => s.deliveryInstructions);
   const pickupInstructions = useCheckoutStore((s) => s.pickupInstructions);
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
+  const tipAmount = useCheckoutStore((s) => s.tipAmount);
+  const loyaltyPointsToRedeem = useCheckoutStore((s) => s.loyaltyPointsToRedeem);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
+  // Authoritative-quote acceptance, same rule as checkout.tsx: the gateway
+  // opens on the SERVER's validated amount, so a differing displayed total
+  // must be accepted by the customer first. No rate is invented and no fee is
+  // sent — we only surface the server's quote before money moves.
+  const [repricePrompt, setRepricePrompt] = React.useState<{
+    displayed: number;
+    authoritative: number;
+  } | null>(null);
+  // The exact server total already accepted, so the structural display/charge
+  // divergence does not prompt again on re-entry.
+  const acceptedServerAmount = React.useRef<number | null>(null);
+  // Latest launch closure for the acceptance dialog: re-enter the SAME flow
+  // after acceptance instead of re-running a different code path.
+  const startPaymentRef = React.useRef<() => Promise<void>>(async () => {});
+  // M4 fail-closed: when the totals computation fails there is no honest
+  // amount to charge, so PAY must say why and offer a retry instead of
+  // disabling silently behind a fabricated ₹0.
+  const [totalsFailed, setTotalsFailed] = React.useState(false);
+  // Hoisted above the early returns below: a hook below a conditional return
+  // flips the hook count between renders (guest/empty → authed+filled) and
+  // crashes with minified React #310.
+  const isOnline = useAppConfig((s) => s.isOnline);
   const [preflightIssue, setPreflightIssue] = React.useState<string | null>(null);
   const [abandonmentOpen, setAbandonmentOpen] = React.useState(false);
   // Loop 11: synchronous re-entry guard — status flips async, so rapid
@@ -117,8 +196,13 @@ function PaymentPage() {
   }, [hydrated, isBootstrapped, isAuthenticated, navigate]);
 
   // Reset residual state on entry so the UI doesn't show a stale success/fail.
+  // Reconciliation is the deliberate exception: it is reload/navigation-safe
+  // (A08 B9), so an unresolved record for THIS user is re-hydrated right after
+  // the reset and the screen opens on the recovery panel instead of a pay
+  // button that would start a second payment.
   React.useEffect(() => {
     resetPayment();
+    hydratePaymentReconciliation(useAuthStore.getState().user?.id ?? null);
     return () => {
       const s = usePaymentStore.getState();
       if (s.status === "preparing" || s.status === "waiting" || s.status === "retrying") {
@@ -141,23 +225,50 @@ function PaymentPage() {
     }
   }, [payStatus]);
   // Production Razorpay mode: live key required for real money movement.
-  // No demo/simulation paths in production (FR-005, FR-006).
-  const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID as string | undefined;
+  // No demo/simulation paths in production (FR-005, FR-006). Read from the
+  // central config — feature code must never touch import.meta.env directly.
+  const razorpayKeyId = appConfig.integrations.razorpayKeyId;
   const hasLiveRazorpayKey = !!razorpayKeyId && razorpayKeyId.startsWith("rzp_live_");
+  // The "Demo payments" hint is a DEV affordance only: a release bundle with
+  // no live key must fail closed silently, never advertise that payments are
+  // simulated (that reads as "money may or may not move").
+  const isDevBuild = isDev() && !isReleaseBuild();
+
+  const loadTotals = React.useCallback(async () => {
+    try {
+      const r = await cartRepository.calculateTotals();
+      if (r.success) {
+        setTotals(r.data);
+        setTotalsFailed(false);
+        return;
+      }
+      // Raw pricing diagnostics are not customer copy (P1-8): log, never show.
+      logger.warn("payment.totals_failed", { code: r.error.code });
+      setTotalsFailed(true);
+      setTotals(null);
+    } catch (e: unknown) {
+      logger.warn("payment.totals_failed", {
+        message: e instanceof Error ? e.message : String(e),
+      });
+      setTotalsFailed(true);
+      setTotals(null);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!hydrated) return;
-    void cartRepository
-      .calculateTotals()
-      .then((r) => {
-        if (r.success) setTotals(r.data);
-      })
-      .catch((e: unknown) =>
-        logger.warn("payment.totals_failed", {
-          message: e instanceof Error ? e.message : String(e),
-        })
-      );
-  }, [hydrated, lines, fulfillment]);
+    void loadTotals();
+  }, [hydrated, lines, fulfillment, loadTotals]);
+
+  // Every hook must run on EVERY render. This ref sync used to sit after the
+  // hydration/empty-cart returns below, so the first hydrated render ran one
+  // hook more than the skeleton render and React threw #310 ("Rendered more
+  // hooks than during the previous render") on the money screen. It is
+  // hoisted here; `startPayment` is a hoisted function declaration so the
+  // callback can reference it before its textual definition.
+  React.useEffect(() => {
+    startPaymentRef.current = startPayment;
+  });
 
   if (!hydrated || !isBootstrapped) return <PaymentSkeleton />;
   if (!isAuthenticated) return <PaymentSkeleton />;
@@ -175,13 +286,19 @@ function PaymentPage() {
     );
   }
 
-  const startPayment = async () => {
+  // Hoisted function declaration (not a const arrow) so the hook above the
+  // early returns can bind it before this line is reached.
+  async function startPayment() {
     // Sync re-entry guard: a second tap before status flips must not start
     // a second payment. (Terminal statuses reset the ref, see effect below.)
     if (payInFlight.current) return;
     payInFlight.current = true;
     // Belt-and-braces behind the disabled button: never fire Razorpay offline.
     if (!useAppConfig.getState().isOnline) {
+      // Release the re-entry guard: `setStatus("idle")` is a no-op when the
+      // status is ALREADY idle (the very common first offline tap), so the
+      // terminal-status effect below never runs and the button stays dead.
+      payInFlight.current = false;
       setPreflightIssue("You are offline. Reconnect to place your order.");
       setStatus("idle");
       return;
@@ -194,16 +311,47 @@ function PaymentPage() {
     // 1. Validate common checkout requirements
     const preflight = await paymentRepository.validateForPayment();
     if (!preflight.success || !preflight.data.valid) {
+      payInFlight.current = false;
       setStatus("idle");
+      // Curated preflight-issue copy passes through; the failure branch is
+      // typed raw-capable (PaymentRepository), so it is logged + mapped.
+      if (!preflight.success) console.error("[payment] preflight failed:", preflight.error);
       const message = preflight.success
         ? (preflight.data.issues[0]?.message ?? "Something's not right — please review your order.")
-        : preflight.error.message;
+        : toUserMessage(preflight.error);
       setPreflightIssue(message);
       return;
     }
 
     // 2. CASH FLOW (COD / Pay at Counter) - skip Razorpay completely!
     if (method === "cash") {
+      // COD has no server-side repricing handshake, so the freshly recomputed
+      // client bill IS the amount being settled. Recompute it AFTER preflight
+      // (which may revalidate the price lock and reprice/86 lines) and demand
+      // the SAME explicit acceptance the online path uses when it differs from
+      // the figure on screen — otherwise the order is created for a total the
+      // customer never reviewed.
+      const freshRes = await cartRepository.calculateTotals();
+      if (freshRes.success) {
+        const shownTotal = totals
+          ? Math.max(0, totals.grandTotal + tipAmount - loyaltyPointsToRedeem)
+          : undefined;
+        const freshTotal = Math.max(
+          0,
+          freshRes.data.grandTotal + tipAmount - loyaltyPointsToRedeem,
+        );
+        if (needsRepriceAcceptance(shownTotal, freshTotal, acceptedServerAmount.current)) {
+          // Release the re-entry guard before returning to the dialog.
+          payInFlight.current = false;
+          setStatus("idle");
+          setRepricePrompt({ displayed: shownTotal as number, authoritative: freshTotal });
+          return;
+        }
+      }
+      // A totals recompute failure is surfaced by createFromCurrentContext,
+      // which recomputes and refuses the order — never a COD doc at an
+      // unknown price.
+
       setStatus("waiting");
 
       try {
@@ -219,19 +367,24 @@ function PaymentPage() {
 
         if (!created.success) {
           setStatus("failed");
+          const message = orderFailureMessage(created.error);
           setFailure({
             code: created.error.code,
-            message: created.error.message,
+            message,
             retryable: true,
           });
-          toast.error("Couldn't place order", { description: created.error.message });
+          toast.error("Couldn't place order", { description: message });
           return;
         }
 
-        setStatus("success");
+        const reconUid = useAuthStore.getState().user?.id ?? null;
+      clearPaymentReconciliation(reconUid);
+      usePaymentStore.getState().clearReconciliation();
+      setStatus("success");
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
+        useCheckoutStore.getState().reset();
         void navigate({
           to: "/order-confirmation/$orderId",
           params: { orderId: created.data.id },
@@ -239,7 +392,9 @@ function PaymentPage() {
         });
       } catch (err) {
         setStatus("failed");
-        const message = err instanceof Error ? err.message : "Couldn't place cash order.";
+        // Raw exception text never reaches the failure panel/toast (P1-8).
+        console.error("[payment] cash order exception:", err);
+        const message = "We couldn't place your order. Please try again.";
         setFailure({ code: "CASH_ORDER_ERROR", message, retryable: true });
         toast.error("Order failed", { description: message });
       }
@@ -248,18 +403,45 @@ function PaymentPage() {
 
     // 3. ONLINE FLOW (Razorpay Checkout)
     try {
+      // Creates the internal payment-pending order FIRST (contract §3) and
+      // binds the gateway order to it — the id lives in the payment store.
       const orderRes = await paymentRepository.createPaymentOrder();
       if (!orderRes.success) {
         setStatus("failed");
+        const message = orderFailureMessage(orderRes.error);
         setFailure({
           code: orderRes.error.code,
-          message: orderRes.error.message,
-          retryable: true,
+          message,
+          // A reconciliation block is not a retryable failure: offering
+          // "Retry checkout" there would start a second payment for money
+          // the server already has (A08 B9).
+          retryable: orderRes.error.code !== "PAYMENT_RECONCILIATION_PENDING",
         });
-        toast.error("Couldn't start payment", { description: orderRes.error.message });
-        void navigate({ to: "/cart", replace: true });
+        toast.error("Couldn't start payment", { description: message });
+        // Stay on this screen: the FailurePanel below is the honest surface
+        // (retry / support). Bouncing to /cart hid the real error.
         return;
       }
+      // Same authoritative-quote gate as checkout.tsx: never open the gateway
+      // on a number the customer was not shown. If the server's validated
+      // total differs, ask for explicit acceptance first.
+      const displayedTotal = totals
+        ? Math.max(0, totals.grandTotal + tipAmount - loyaltyPointsToRedeem)
+        : undefined;
+      const authoritativeTotal =
+        typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
+      if (
+        needsRepriceAcceptance(displayedTotal, authoritativeTotal, acceptedServerAmount.current)
+      ) {
+        setStatus("idle");
+        setRepricePrompt({
+          // The gate only returns true when both are finite numbers.
+          displayed: displayedTotal as number,
+          authoritative: authoritativeTotal as number,
+        });
+        return;
+      }
+
       setOrder(orderRes.data);
       setStatus("waiting");
 
@@ -280,11 +462,20 @@ function PaymentPage() {
           onSuccess: (result: PaymentResult) => void handleSuccess(result),
           onFailure: (err) => {
             setStatus("failed");
-            const message = err.description ?? "Payment could not be completed.";
+            // P1-8: a gateway description is provider text, not customer copy
+            // (BAD_REQUEST_ERROR / bank decline strings) — log it raw and give
+            // the customer the curated mapper output instead.
+            console.error("[payment] gateway onFailure:", err);
+            const message = toUserMessage(err);
             setFailure({ code: err.code, message, retryable: true });
             toast.error("Payment failed", { description: message });
           },
           onCancel: () => {
+            // Razorpay fires `modal.ondismiss` even after `payment.failed`,
+            // so a real failure must never be relabelled as "user cancelled":
+            // that would hide the failure reason and re-offer a retry that
+            // cannot succeed. Keep the harder failure state.
+            if (usePaymentStore.getState().status === "failed") return;
             setStatus("cancelled");
             setFailure({
               code: "USER_CANCELLED",
@@ -301,53 +492,107 @@ function PaymentPage() {
       );
     } catch (err) {
       setStatus("failed");
-      const message = err instanceof Error ? err.message : "Unexpected payment error occurred.";
+      // Raw exception text never reaches the failure panel/toast (P1-8).
+      console.error("[payment] payment initiation exception:", err);
+      const message = "We couldn't start the payment. Please try again.";
       setFailure({ code: "PAYMENT_INIT_ERROR", message, retryable: true });
       toast.error("Payment Error", { description: message });
     }
-  };
+  }
 
   const handleSuccess = async (result: PaymentResult) => {
+    // Contract §3: verification binds the gateway payment to the internal
+    // order created before Razorpay opened (never to the gateway id alone).
+    const internalOrderId = usePaymentStore.getState().internalOrderId;
+    const reconUid = useAuthStore.getState().user?.id ?? null;
+    /**
+     * Every uncertain post-gateway outcome funnels through here: persist the
+     * uid-scoped reconciliation record (which blocks a new payment now and
+     * after a reload) and show the recovery panel — never markPaymentFailed,
+     * never clear the cart, never navigate to confirmation, never a re-pay.
+     */
+    const enterReconciliation = (reason: RecoveryReason, confirmedInternal?: string | null) => {
+      const store = usePaymentStore.getState();
+      const boundInternal = confirmedInternal ?? internalOrderId ?? store.internalOrderId ?? null;
+      const boundGateway = result.orderId ?? store.gatewayOrderId ?? null;
+      store.setReconciliation(true, reason, boundInternal, boundGateway);
+      persistPaymentReconciliation(reconUid, {
+        internalOrderId: boundInternal,
+        gatewayOrderId: boundGateway,
+        reason,
+      });
+      const copy = describePaymentRecovery(reason);
+      setStatus("waiting");
+      setFailure({
+        code: reason,
+        message: copy.body,
+        retryable: false,
+        paymentId: result.paymentId,
+      });
+      toast.info(copy.title, {
+        description: `${copy.body}${result.paymentId ? ` Payment ID ${result.paymentId}.` : ""}`,
+      });
+    };
+
     try {
-      const verify = await paymentRepository.verifyPayment(result);
-      if (!verify.success || !verify.data.verified) {
+      const verify = await paymentRepository.verifyPayment({
+        ...result,
+        internalOrderId: internalOrderId ?? undefined,
+      });
+      const outcome = resolveVerifyOutcome({
+        verify,
+        internalOrderId,
+        gatewayOrderId: result.orderId,
+        paymentId: result.paymentId,
+      });
+
+      if (outcome.kind === "uncaptured") {
+        // Only a server-proven non-capture may flip the order to failed —
+        // signature failures and unknown codes never reach here (A08 B1).
         setStatus("failed");
-        const message = verify.success ? "Payment verification failed." : verify.error.message;
         setFailure({
-          code: verify.success ? "VERIFICATION_FAILED" : verify.error.code,
-          message,
-          retryable: true,
+          code: outcome.code,
+          message: outcome.message,
+          retryable: outcome.retryable,
+          paymentId: result.paymentId,
         });
-        toast.error("Payment verification failed", { description: message });
-        void navigate({ to: "/cart", replace: true });
+        toast.error("Payment verification failed", { description: outcome.message });
+        void orderRepository.markPaymentFailed(outcome.internalOrderId).catch(() => undefined);
         return;
       }
-      setVerification(verify.data);
 
-      const created = await orderRepository.createFromCurrentContext({
-        confirmedOrderId: verify.data.confirmedOrderId,
-        paymentMethod: result.method,
+      if (outcome.kind === "reconciliation") {
+        // 503 / bad signature / exhausted 202 / awaiting_capture / terminal:
+        // honest recovery, no new payment.
+        enterReconciliation(outcome.reason);
+        return;
+      }
+
+      // Both non-verified kinds returned above, so only the verified success
+      // remains; the guard keeps the fallthrough fail-closed regardless.
+      if (outcome.kind !== "verified") return;
+      const verification = outcome.verification;
+      setVerification(verification);
+
+      // Re-uses the SAME internal order (same id) — the paid order replaces
+      // the payment-pending doc instead of creating a second one.
+      const created = await orderRepository.finalizePaidOrder({
+        confirmedOrderId: internalOrderId ?? verification.confirmedOrderId,
         transactionId: result.paymentId,
       });
       // Never celebrate before the order exists: money is taken at this point,
       // so a failed create must scream, not navigate to a confirmation page.
       if (!created.success) {
-        setStatus("failed");
-        setFailure({
-          code: created.error.code,
-          message: `Payment of ${result.paymentId} succeeded but the order could not be created: ${created.error.message}.`,
-          retryable: false,
-          paymentId: result.paymentId,
-        });
-        toast.error("Payment taken, order not created", {
-          description: "Your money is safe. Contact support with payment ID before retrying.",
-        });
+        enterReconciliation("PAYMENT_SYNC_PENDING", verification.confirmedOrderId || null);
         return;
       }
+      clearPaymentReconciliation(reconUid);
+      usePaymentStore.getState().clearReconciliation();
       setStatus("success");
       AudioService.playSuccess();
       void HapticService.notification("success");
       void cartRepository.clear();
+      useCheckoutStore.getState().reset();
       const orderId = created.data.id;
       void navigate({
         to: "/order-confirmation/$orderId",
@@ -355,10 +600,12 @@ function PaymentPage() {
         replace: true,
       });
     } catch (err) {
-      setStatus("failed");
-      const message = err instanceof Error ? err.message : "Failed to finish order after payment.";
-      setFailure({ code: "POST_PAYMENT_ERROR", message, retryable: true });
-      toast.error("Order creation failed", { description: message });
+      // Post-gateway unknown exception (verify/finalize threw after money may
+      // have moved): reconciliation, never a failed state that invites re-pay.
+      logger.warn("payment.post_gateway_exception", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      enterReconciliation("PAYMENT_SYNC_PENDING");
     }
   };
 
@@ -374,12 +621,27 @@ function PaymentPage() {
   };
 
   const busy = status === "preparing" || status === "waiting" || status === "retrying";
-  const isOnline = useAppConfig((s) => s.isOnline);
+  // Recovery state — a post-gateway outcome we could not confirm (A08 B9).
+  // Rendered instead of the Razorpay spinner and instead of FailurePanel.
+  const recoveryReason: RecoveryReason | null =
+    reconciliationPending && isRecoveryReason(reconciliationReason)
+      ? reconciliationReason
+      : status === "waiting" && failure && isRecoveryReason(failure.code)
+        ? failure.code
+        : null;
+  // No new payment may start from a money-possible state: reconciliation is
+  // pending (persisted per user) or the last failure was not retryable.
+  const payBlocked =
+    reconciliationPending || (failure != null && !failure.retryable && status !== "success");
   const eta =
     fulfillment === "delivery"
       ? activeStore?.etaMinutes
       : (activeStore?.pickupEtaMinutes ?? activeStore?.etaMinutes);
   const grandTotal = totals?.grandTotal ?? 0;
+  // The gateway/COD amount includes the persisted delivery tip and loyalty
+  // redemption (PaymentRepository sends both); To Pay must show that same
+  // figure the reprice gate compares, not the pre-tip subtotal.
+  const finalPayable = Math.max(0, grandTotal + tipAmount - loyaltyPointsToRedeem);
 
   const instructions =
     fulfillment === "delivery"
@@ -406,19 +668,29 @@ function PaymentPage() {
                 To Pay
               </span>
               <span className="type-title-large font-black text-text tabular-nums">
-                {formatINR(grandTotal)}
+                {totals ? formatINR(finalPayable) : "—"}
               </span>
             </div>
             <AppButton
               size="lg"
               className="flex-1 max-w-[280px] h-12 rounded-xl text-base font-bold shadow-md shadow-primary/20 active:scale-[0.98] transition-transform"
               onClick={() => void startPayment()}
-              loading={busy}
-              disabled={grandTotal <= 0 || !isOnline}
-              title={!isOnline ? "Back online to place your order" : undefined}
-              iconLeft={method === "online" ? <Lock className="h-4 w-4" /> : undefined}
+              loading={busy && !payBlocked}
+              disabled={finalPayable <= 0 || !isOnline || payBlocked}
+              title={
+                payBlocked
+                  ? "We are confirming your payment — please do not pay again"
+                  : !isOnline
+                    ? "Back online to place your order"
+                    : totalsFailed
+                      ? "Couldn't compute your bill — retry above"
+                      : undefined
+              }
+              iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
             >
-              {status === "failed" || status === "cancelled"
+              {payBlocked
+                ? "Payment under review"
+                : status === "failed" || status === "cancelled"
                 ? "Retry checkout"
                 : method === "online"
                   ? "Pay Online"
@@ -611,13 +883,21 @@ function PaymentPage() {
                     <SummaryRow label="Store Packing Charges" value={totals.packingFee} />
                   )}
                   <SummaryRow label="Taxes & Surcharges" value={totals.taxes} />
+                  {tipAmount > 0 && <SummaryRow label="Delivery Tip" value={tipAmount} />}
+                  {loyaltyPointsToRedeem > 0 && (
+                    <SummaryRow
+                      label="Grill Coins Redeemed"
+                      value={-loyaltyPointsToRedeem}
+                      tone="success"
+                    />
+                  )}
 
                   <div className="mt-3 flex items-center justify-between border-t border-divider pt-3">
                     <Text variant="titleLarge" className="font-extrabold text-text">
-                      Grand Total
+                      To Pay
                     </Text>
                     <Text variant="titleLarge" className="font-extrabold text-primary tabular-nums">
-                      {formatINR(grandTotal)}
+                      {formatINR(finalPayable)}
                     </Text>
                   </div>
                 </dl>
@@ -625,6 +905,27 @@ function PaymentPage() {
             )}
           </div>
         </section>
+
+        {/* Totals failed (M4): say why PAY is unavailable and offer a retry —
+            never a silent dead button priced against an unknown bill. */}
+        {totalsFailed && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex items-center justify-between gap-3 rounded-xl border border-error/40 bg-error/5 p-4"
+          >
+            <Text variant="bodyMedium" tone="error">
+              Couldn&apos;t compute your bill. Check your connection and retry.
+            </Text>
+            <AppButton
+              size="sm"
+              onClick={() => void loadTotals()}
+              iconLeft={<RefreshCcw className="h-3.5 w-3.5" aria-hidden />}
+            >
+              Retry
+            </AppButton>
+          </div>
+        )}
 
         {preflightIssue && (
           <div role="alert" className="rounded-xl border border-warning/40 bg-warning/10 p-4">
@@ -634,7 +935,7 @@ function PaymentPage() {
           </div>
         )}
 
-        {method === "online" && !hasLiveRazorpayKey && (
+        {method === "online" && !hasLiveRazorpayKey && isDevBuild && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
             <Text variant="bodyMedium" className="font-bold">
               Demo payments: no live Razorpay key is configured, so online payment will simulate
@@ -644,7 +945,7 @@ function PaymentPage() {
         )}
 
         <AnimatePresence>
-          {(status === "failed" || status === "cancelled") && (
+          {!recoveryReason && (status === "failed" || status === "cancelled") && (
             <motion.div
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
@@ -674,7 +975,29 @@ function PaymentPage() {
           )}
         </AnimatePresence>
 
-        {status === "waiting" && (
+        {/* Post-gateway recovery (A08 B9): payment id + do-not-pay-again +
+            support and existing-order actions, instead of the generic
+            Razorpay spinner. No Retry/Pay action can start a new payment. */}
+        {recoveryReason && status !== "success" && (
+          <PaymentRecoveryPanel
+            reason={recoveryReason}
+            paymentId={failure?.paymentId ?? null}
+            orderId={order?.orderId ?? null}
+            onContactSupport={() =>
+              void navigate({
+                to: "/support",
+                search: {
+                  topic: "payment",
+                  paymentId: failure?.paymentId ?? undefined,
+                  message: failure?.message ?? undefined,
+                },
+              })
+            }
+            onCheckOrders={() => void navigate({ to: "/orders" })}
+          />
+        )}
+
+        {status === "waiting" && !recoveryReason && (
           <div
             role="status"
             aria-live="polite"
@@ -704,6 +1027,28 @@ function PaymentPage() {
         onChangePaymentMethod={() => {
           setAbandonmentOpen(false);
           void navigate({ to: "/checkout" });
+        }}
+      />
+      <ConfirmDialog
+        open={repricePrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) setRepricePrompt(null);
+        }}
+        title="Your total has been updated"
+        description={
+          repricePrompt
+            ? `The final total is ${formatINR(repricePrompt.authoritative)} (you were shown ${formatINR(repricePrompt.displayed)}). Continue with the updated amount?`
+            : undefined
+        }
+        confirmLabel="Continue"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (!repricePrompt) return;
+          // Accept this exact server total, then re-enter the same flow; the
+          // remembered acceptance prevents an identical prompt on the retry.
+          acceptedServerAmount.current = repricePrompt.authoritative;
+          setRepricePrompt(null);
+          void startPaymentRef.current();
         }}
       />
     </AppShell>

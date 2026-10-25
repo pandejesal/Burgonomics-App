@@ -5,10 +5,23 @@
  * TanStack Query owns freshness in the real backend. This store is
  * for cross-screen continuity (Home → Track button, Confirmation ↔
  * History) and offline reads of previously fetched orders.
+ *
+ * Loop 36/120 privacy (finding 6): orders carry addresses, phone numbers
+ * and item history, so persistence is scoped per signed-in user (guests
+ * keep the legacy key). On identity change the in-memory map resets and
+ * rehydrates from the new scope — a device shared between accounts must
+ * never show user A's orders to user B. STRICT scoping: no legacy-key
+ * fallback read (the legacy key may hold another account's orders).
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Order } from "@/features/orders/models";
+import {
+  scopedNamespacedStorage,
+  browserOrMemoryStorage,
+  onAuthUidChange,
+  readScopedPersisted,
+} from "@/features/auth/utils/scopedPersistence";
 
 interface OrdersState {
   byId: Record<string, Order>;
@@ -21,6 +34,37 @@ interface OrdersState {
   clearAll: () => void;
 }
 
+/**
+ * Compare two unknown updatedAt stamps (ISO string | epoch number, seconds or
+ * milliseconds | Firestore Timestamp, including the `{seconds,nanoseconds}`
+ * form the persisted cache round-trips through JSON). Returns null whenever
+ * either side is missing/uncomparable — the caller then keeps the incoming
+ * write (legacy parity: no guard can block what we cannot rank).
+ */
+function updatedAtMs(value: unknown): number | null {
+  try {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      // Normalise seconds-vs-ms: anything < 1e12 is seconds.
+      return value < 1e12 ? value * 1000 : value;
+    }
+    if (typeof value === "string" && value.length >= 8) {
+      const ms = Date.parse(value);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    const ts = value as
+      | { toMillis?: unknown; seconds?: unknown; nanoseconds?: unknown }
+      | undefined;
+    if (ts && typeof ts.toMillis === "function") return Number((ts.toMillis as () => number).call(ts));
+    if (ts && typeof ts.seconds === "number") {
+      const nanos = typeof ts.nanoseconds === "number" ? ts.nanoseconds : 0;
+      return ts.seconds * 1000 + Math.floor(nanos / 1_000_000);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export const useOrdersStore = create<OrdersState>()(
   persist(
     (set) => ({
@@ -30,6 +74,35 @@ export const useOrdersStore = create<OrdersState>()(
 
       upsert: (order) =>
         set((s) => {
+          const existing = s.byId[order.id];
+          // STRESS SWEEP 2026-10-24 (I): ordersStore upserts can land out of
+          // order — a slower one-shot `getOrder` read resolving AFTER a newer
+          // server-written upsert (finalizePaidOrder / cancelOrder /
+          // markPaymentFailed / setWhatsappOptIn) used to clobber the newer
+          // status. Two fail-closed guards:
+          //   1) a TERMINAL record never regresses to a non-terminal one;
+          //   2) when both stamps are comparable, an older snapshot loses.
+          // Absent/uncomparable stamps keep the incoming write (original
+          // behavior), so this guard can never strand a legal update.
+          // Scope (verified): this ranks ordersStore writes only. Order
+          // History renders `listOrders` output directly and detail/track
+          // keep their own `getOrder` result in local state, so their
+          // ordering is NOT covered here. Snapshots whose stamps come from
+          // different clocks (client-written creation stamp vs a server
+          // serverTimestamp status write) are also not rankable — that
+          // provenance gap is tracked separately.
+          if (existing) {
+            const existingTerminal = existing.status?.terminal === true;
+            const incomingTerminal = order.status?.terminal === true;
+            if (existingTerminal && !incomingTerminal) {
+              return s;
+            }
+            const existingMs = updatedAtMs(existing.updatedAt);
+            const incomingMs = updatedAtMs(order.updatedAt);
+            if (existingMs !== null && incomingMs !== null && existingMs > incomingMs) {
+              return s;
+            }
+          }
           const exists = order.id in s.byId;
           const nextIds = exists ? s.ids : [order.id, ...s.ids];
           return {
@@ -56,24 +129,7 @@ export const useOrdersStore = create<OrdersState>()(
     {
       name: "burg.orders",
       version: 1,
-      storage: createJSONStorage(() => {
-        if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
-        const memoryStorage = new Map<string, string>();
-        return {
-          getItem: (key: string) => memoryStorage.get(key) ?? null,
-          setItem: (key: string, value: string) => {
-            memoryStorage.set(key, value);
-          },
-          removeItem: (key: string) => {
-            memoryStorage.delete(key);
-          },
-          clear: () => {
-            memoryStorage.clear();
-          },
-          length: memoryStorage.size,
-          key: (index: number) => Array.from(memoryStorage.keys())[index] ?? null,
-        } as Storage;
-      }),
+      storage: createJSONStorage(() => scopedNamespacedStorage(browserOrMemoryStorage())),
       skipHydration: true,
       partialize: (s) => ({
         byId: s.byId,
@@ -83,6 +139,41 @@ export const useOrdersStore = create<OrdersState>()(
     },
   ),
 );
+
+// Loop 36/120: re-scope on identity change — never carry user A's orders
+// into user B's session. The incoming scope is read FIRST and set directly
+// (poisoning-safe read; see readScopedPersisted).
+interface ScopedOrders {
+  byId: Record<string, Order>;
+  ids: string[];
+  activeOrderId: string | null;
+}
+
+const ORDERS_EMPTY: ScopedOrders = { byId: {}, ids: [], activeOrderId: null };
+
+function readOrdersScope(uid: string | null): ScopedOrders {
+  return readScopedPersisted<ScopedOrders>(
+    "burg.orders",
+    uid,
+    (state) => {
+      const byId =
+        state.byId && typeof state.byId === "object" ? (state.byId as Record<string, Order>) : {};
+      const ids = Array.isArray(state.ids)
+        ? state.ids.filter((id): id is string => typeof id === "string" && id in byId)
+        : Object.keys(byId);
+      const activeOrderId =
+        typeof state.activeOrderId === "string" && state.activeOrderId in byId
+          ? state.activeOrderId
+          : null;
+      return { byId, ids, activeOrderId };
+    },
+    ORDERS_EMPTY,
+  );
+}
+
+onAuthUidChange((uid) => {
+  useOrdersStore.setState(readOrdersScope(uid));
+});
 
 // -- Selectors --------------------------------------------------------
 

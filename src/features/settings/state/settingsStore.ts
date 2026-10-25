@@ -16,7 +16,9 @@ const DEFAULTS: AppSettings = {
     orderUpdates: true,
     announcements: false,
   },
-  analyticsOptIn: true,
+  // Consent flags start OFF — no analytics/ads consent before an
+  // affirmative act, and the toggles are device-local only.
+  analyticsOptIn: false,
   personalizedAdsOptIn: false,
 };
 

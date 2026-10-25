@@ -28,6 +28,8 @@ import type {
 import { calculateTotals } from "@/features/cart/services/cartService";
 import { offerRepository } from "@/features/offers/repositories/OfferRepository";
 import { useAppConfig } from "@/core/state/appConfigStore";
+import { resolvePricingConfig } from "@/shared/pricing/pricingEngine";
+import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 
 /** Default used when the user hasn't chosen a fulfillment method yet. */
 const DEFAULT_FULFILLMENT: Fulfillment = "delivery";
@@ -142,28 +144,39 @@ export class CartRepository {
 
   // -- Calculations ----------------------------------------------------
 
+  /**
+   * The one pricing schedule every surface bills against: launch defaults,
+   * the live delivery quote, and the outlet's minimum-order override.
+   *
+   * Read here (not at each call site) so the cart preview, the checkout bill,
+   * and the amount sent to the gateway can never diverge — the old per-item
+   * packing charge plus a screen-local fee estimate produced three different
+   * totals for one basket.
+   *
+   * This also removed the old hard dependency on `activeStore.pricing`: an
+   * outlet doc without a `pricing` block used to fail closed and block every
+   * bill. The app-level schedule IS the published price list, so the bill no
+   * longer depends on optional per-doc data being present.
+   */
+  private pricingConfigFor(fulfillment: Fulfillment = this.getFulfillment()) {
+    const store = useStoreSelection.getState().activeStore;
+    const quote = useCheckoutStore.getState().deliveryQuote;
+    return resolvePricingConfig({
+      fulfillment,
+      deliveryQuoteFee: quote?.fee,
+      storeOverride: store?.pricing ?? null,
+    });
+  }
+
   async calculateTotals(): Promise<ApiResult<CartTotals>> {
     const s = useCartStore.getState();
-    const sel = useStoreSelection.getState();
-    const pricingConfig = sel.activeStore?.pricing;
-
-    if (!pricingConfig) {
-      return {
-        success: false,
-        error: {
-          code: "PRICING_CONFIG_UNAVAILABLE",
-          message:
-            "Store pricing configuration is currently unavailable. Please select your store or retry.",
-        },
-      };
-    }
 
     try {
       const totals = calculateTotals({
         lines: s.lines,
         fulfillment: this.getFulfillment(),
         promo: s.promo,
-        pricingConfig,
+        pricingConfig: this.pricingConfigFor(),
       });
       return ok(totals);
     } catch (err: unknown) {
@@ -189,26 +202,13 @@ export class CartRepository {
     codeOrInput: string | { code?: string; offerId?: string },
   ): Promise<ApiResult<AppliedPromo>> {
     const s = useCartStore.getState();
-    const sel = useStoreSelection.getState();
-    const pricingConfig = sel.activeStore?.pricing;
-
-    if (!pricingConfig) {
-      return {
-        success: false,
-        error: {
-          code: "PRICING_CONFIG_UNAVAILABLE",
-          message:
-            "Store pricing configuration is currently unavailable. Please select your store or retry.",
-        },
-      };
-    }
 
     try {
       const totals = calculateTotals({
         lines: s.lines,
         fulfillment: this.getFulfillment(),
         promo: null,
-        pricingConfig,
+        pricingConfig: this.pricingConfigFor(),
       });
       const payload = typeof codeOrInput === "string" ? { code: codeOrInput } : codeOrInput;
       const res = await offerRepository.apply({
@@ -253,10 +253,43 @@ export class CartRepository {
   // -- Validation / checkout hand-off ---------------------------------
 
   async validateCart(): Promise<ApiResult<CartValidation>> {
-    const s = useCartStore.getState();
-    if (s.isPriceLockExpired()) {
-      await this.validateAndRefreshPriceLock();
+    // Refresh an expired price lock BEFORE judging availability, then judge
+    // the state that refresh produced. `s` used to be captured here, before
+    // the await, so a line the refresh had just marked `unavailable` (newly
+    // 86'd, or missing from the live menu) still validated as available and
+    // the FIRST submit went through — exactly the submit the refresh exists
+    // to block.
+    let availabilityVerified = true;
+    if (useCartStore.getState().isPriceLockExpired()) {
+      const refresh = await this.validateAndRefreshPriceLock();
+      availabilityVerified = refresh.success && refresh.data.revalidated;
+      if (!availabilityVerified) {
+        const { logger } = await import("@/core/logging/logger");
+        logger.warn("cart.availability_unverified", {
+          messages: refresh.success ? refresh.data.messages : [refresh.error.message],
+        });
+      }
     }
+
+    // Re-read after the await: revalidation REPLACES `lines` (availability,
+    // prices) and renews the lock.
+    const s = useCartStore.getState();
+
+    // Fail closed: an unverified menu could be hiding an 86'd item, so never
+    // report a valid cart we could not check.
+    if (!availabilityVerified) {
+      return ok({
+        valid: false,
+        issues: [
+          {
+            code: "other",
+            message:
+              "We couldn't verify item availability just now. Check your connection and try again.",
+          },
+        ],
+      });
+    }
+
     const issues = s.lines
       .filter((line) => line.availability === "unavailable")
       .map((line) => ({
@@ -314,11 +347,15 @@ export class CartRepository {
 
     try {
       const { menuRepository } = await import("@/features/menu/repositories/MenuRepository");
+      // The underlying services read the store's ENTIRE product list in one
+      // query; the pagination here only slices it. A 100-item slice used to
+      // leave every 86ed item beyond #100 unverified and treated as sellable —
+      // request the full store scope so the check below is real.
       const productsRes = await menuRepository.listProducts(
         s.storeId ?? undefined,
         undefined,
         1,
-        100,
+        1000,
       );
       if (productsRes.success) {
         const res = s.revalidateWithProducts(productsRes.data.items);

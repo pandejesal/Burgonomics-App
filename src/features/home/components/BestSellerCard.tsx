@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { formatINR } from "@/core/utils/format";
 import { HapticService } from "@/core/services/haptics";
 import { SafeImage } from "@/shared/components/common/SafeImage";
+import { VegIndicator } from "@/shared/components/common/VegIndicator";
 import { useCartStore } from "@/features/cart/state/cartStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
@@ -19,14 +20,25 @@ interface BestSellerCardProps {
 
 export function BestSellerCard({ product, className, onCardClick }: BestSellerCardProps) {
   const store = useStoreSelection((s) => s.activeStore);
-  const line = useCartStore((s) => s.lines.find((l) => l.productId === product.id));
-  const qty = line?.quantity ?? 0;
+  const lines = useCartStore((s) => s.lines);
+  // The same product can sit in the cart as several lines (one per modifier
+  // combination), so the stepper shows the sum across them — the first match
+  // alone under-reports. The stepper still mutates a single line.
+  const matchingLines = React.useMemo(
+    () => lines.filter((l) => l.productId === product.id),
+    [lines, product.id],
+  );
+  const line = matchingLines[0];
+  const qty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
   const [busy, setBusy] = React.useState(false);
+  // 86ed products can still be rendered here from a cached/real-time fetch —
+  // the card must refuse to add them, exactly like MenuProductCard does.
+  const isOutOfStock = product.inStock === false;
 
   const handleQuickAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (busy || !store) return;
+    if (busy || isOutOfStock || !store) return;
     setBusy(true);
     void HapticService.impact("medium");
     await cartRepository.addItem({
@@ -35,7 +47,7 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
       name: product.name,
       unitPrice: product.price,
       quantity: 1,
-      veg: product.veg ?? true,
+      veg: product.veg,
       imageUrl: product.imageUrl,
       fallbackImageUrl: product.fallbackImageUrl,
     });
@@ -45,16 +57,18 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
   const handleIncrement = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (busy || !line) return;
+    if (busy || isOutOfStock || !line) return;
     setBusy(true);
     void HapticService.impact("light");
-    await cartRepository.updateQuantity(line.lineId, line.quantity + 1);
+    await cartRepository.updateQuantity(line.lineId, Math.min(99, line.quantity + 1));
     setBusy(false);
   };
 
   const handleDecrement = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // Removal stays available on an 86ed line — the customer must still be
+    // able to take it back out of the basket.
     if (busy || !line) return;
     setBusy(true);
     void HapticService.impact("light");
@@ -96,17 +110,26 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
           className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
 
-        {/* 100% Pure Veg Green Badge */}
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 shadow-sm backdrop-blur-sm">
-          <span className="flex h-3 w-3 items-center justify-center rounded-[2px] border border-emerald-600 p-[1px]">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-          </span>
-          <span className="text-[9px] font-bold text-emerald-800 tracking-wider">VEG</span>
-        </div>
+        {typeof product.veg === "boolean" && (
+          <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-md bg-surface px-1.5 py-0.5 shadow-sm backdrop-blur-sm">
+            <VegIndicator veg={product.veg} />
+            <span className="text-[9px] font-bold text-text-primary tracking-wider">
+              {product.veg ? "VEG" : "NON-VEG"}
+            </span>
+          </div>
+        )}
 
         {hasBestsellerTag && (
           <div className="absolute top-2 right-2 z-10 rounded-full bg-accent px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white shadow-sm">
             Bestseller
+          </div>
+        )}
+
+        {isOutOfStock && (
+          <div className="absolute inset-0 z-10 grid place-items-center bg-black/65 backdrop-blur-[1px]">
+            <span className="px-2 py-1 rounded-md bg-zinc-900 border border-zinc-700 text-zinc-300 text-[10px] font-black uppercase tracking-wider shadow-sm">
+              {product.unavailableReason ?? "Sold Out"}
+            </span>
           </div>
         )}
       </Link>
@@ -130,7 +153,7 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
             </h3>
           </Link>
           <p className="mt-0.5 line-clamp-1 text-xs text-text-secondary">
-            {product.description || "100% Pure Veg delicious smash burger"}
+            {product.description}
           </p>
         </div>
 
@@ -151,15 +174,15 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
                   key="add-btn"
                   type="button"
                   onClick={handleQuickAdd}
-                  disabled={busy}
+                  disabled={busy || isOutOfStock}
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
                   whileTap={{ scale: 0.92 }}
-                  className="inline-flex h-8 items-center justify-center gap-1 rounded-full border-2 border-primary bg-primary/5 px-3 text-xs font-bold text-primary hover:bg-primary hover:text-white transition-all duration-200 shadow-sm"
+                  className="inline-flex h-8 items-center justify-center gap-1 rounded-full border-2 border-primary bg-primary/5 px-3 text-xs font-bold text-primary hover:bg-primary hover:text-white transition-all duration-200 shadow-sm disabled:opacity-40 disabled:hover:bg-primary/5 disabled:hover:text-primary"
                 >
                   <Plus className="h-3.5 w-3.5 stroke-[3px]" />
-                  <span>ADD</span>
+                  <span>{isOutOfStock ? "Sold Out" : "ADD"}</span>
                 </motion.button>
               ) : (
                 <motion.div
@@ -167,22 +190,22 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
-                  className="flex h-8 items-center rounded-full bg-primary text-white shadow-sm overflow-hidden"
+                  className="flex h-8 shrink-0 items-center rounded-full bg-primary text-white shadow-sm overflow-hidden"
                 >
                   <button
                     type="button"
                     onClick={handleDecrement}
                     disabled={busy}
-                    className="flex h-full w-7 items-center justify-center hover:bg-black/20 transition-colors"
+                    className="flex h-full w-7 shrink-0 items-center justify-center hover:bg-black/20 transition-colors"
                   >
                     <Minus className="h-3.5 w-3.5 stroke-[2.5px]" />
                   </button>
-                  <span className="w-5 text-center text-xs font-black">{qty}</span>
+                  <span className="w-5 min-w-5 shrink-0 text-center text-xs font-black tabular-nums">{qty}</span>
                   <button
                     type="button"
                     onClick={handleIncrement}
-                    disabled={busy}
-                    className="flex h-full w-7 items-center justify-center hover:bg-black/20 transition-colors"
+                    disabled={busy || isOutOfStock || qty >= 99}
+                    className="flex h-full w-7 shrink-0 items-center justify-center hover:bg-black/20 transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5 stroke-[2.5px]" />
                   </button>

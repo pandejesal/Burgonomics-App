@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 import type { Address } from "@/features/addresses/models";
 import type { Store } from "@/features/stores/models/Store";
+import { DEFAULT_DELIVERY_RADIUS_KM } from "@/features/stores/utils/serviceArea";
 
 export function calculateHaversineKm(
   lat1: number,
@@ -42,7 +43,27 @@ export function AddressSelector({
   onSwitchToTakeaway,
   className,
 }: AddressSelectorProps) {
-  const maxRadiusKm = activeStore?.deliveryRadiusKm ?? 8.0;
+  const maxRadiusKm = activeStore?.deliveryRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM;
+  // Doc-stated radius — display sites may only show a number that the store
+  // actually declared; the fallback above is for logic comparisons alone.
+  const docRadiusKm = activeStore?.deliveryRadiusKm;
+
+  const selectAddress = (addr: Address) => {
+    void HapticService.selection();
+    onSelectAddress(addr);
+  };
+
+  // Keyboard equivalence for the radio cards (Enter / Space select). The card
+  // also contains a real link and a button, so only act when the card itself
+  // is the event target — otherwise Enter on "Pin on map" would also select.
+  const handleCardKeyDown =
+    (addr: Address) => (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        selectAddress(addr);
+      }
+    };
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -66,40 +87,51 @@ export function AddressSelector({
             No saved delivery addresses found.
           </p>
           <Link
-            to="/profile/addresses"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-xs hover:bg-primary-hover transition-colors"
+            to="/addresses/create"
+            search={{ returnTo: "/checkout" }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-xs hover:bg-primary-hover transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add Delivery Address</span>
           </Link>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2.5" role="radiogroup" aria-label="Delivery address">
           {addresses.map((addr) => {
             const isSelected = selectedAddress?.id === addr.id;
-            
-            // Calculate distance if coordinates exist, or estimate from store lat/lng
-            const userLat = addr.lat ?? (activeStore ? activeStore.lat + 0.015 : 0);
-            const userLng = addr.lng ?? (activeStore ? activeStore.lng + 0.015 : 0);
-            const branchLat = activeStore?.lat ?? userLat;
-            const branchLng = activeStore?.lng ?? userLng;
-            
-            const distanceKm = calculateHaversineKm(userLat, userLng, branchLat, branchLng);
-            const isDeliverable = distanceKm <= maxRadiusKm;
+
+            // Honest deliverability: never synthesize a user position from the
+            // store position. Without verified lat/lng on BOTH ends the
+            // distance is unknown — no figure, neither badge.
+            const storeLat = activeStore ? Number(activeStore.lat) : NaN;
+            const storeLng = activeStore ? Number(activeStore.lng) : NaN;
+            const hasVerifiedLocation =
+              Number.isFinite(addr.lat) &&
+              Number.isFinite(addr.lng) &&
+              Number.isFinite(storeLat) &&
+              Number.isFinite(storeLng);
+            const distanceKm = hasVerifiedLocation
+              ? calculateHaversineKm(addr.lat as number, addr.lng as number, storeLat, storeLng)
+              : null;
+            const isDeliverable: boolean | null =
+              distanceKm === null ? null : distanceKm <= maxRadiusKm;
 
             return (
               <div
                 key={addr.id}
-                onClick={() => {
-                  void HapticService.selection();
-                  onSelectAddress(addr);
-                }}
+                role="radio"
+                aria-checked={isSelected}
+                aria-label={`${addr.customLabel || addr.label} — ${addr.line1}, ${addr.city} ${addr.pincode}`}
+                tabIndex={0}
+                onClick={() => selectAddress(addr)}
+                onKeyDown={handleCardKeyDown(addr)}
                 className={cn(
                   "p-3.5 sm:p-4 rounded-2xl border transition-all select-none cursor-pointer flex flex-col gap-2",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
                   isSelected
-                    ? isDeliverable
-                      ? "border-[#0E4825] bg-[#0E4825]/5 shadow-xs"
-                      : "border-amber-500 bg-amber-500/5 shadow-xs"
+                    ? isDeliverable === false
+                      ? "border-amber-500 bg-amber-500/5 shadow-xs"
+                      : "border-[#0E4825] bg-[#0E4825]/5 shadow-xs"
                     : "border-divider bg-surface hover:border-primary/40"
                 )}
               >
@@ -160,28 +192,46 @@ export function AddressSelector({
 
                 {/* Geofence Distance & Radius Status */}
                 <div className="pt-1.5 border-t border-divider/60 flex items-center justify-between text-[11px]">
-                  <span className="text-text-secondary font-medium">
-                    📍 {distanceKm} km from {activeStore?.name ?? "outlet"}
-                  </span>
+                  {distanceKm !== null ? (
+                    <>
+                      <span className="text-text-secondary font-medium">
+                        📍 {distanceKm} km from {activeStore?.name ?? "outlet"}
+                      </span>
 
-                  {isDeliverable ? (
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Deliverable</span>
-                    </span>
+                      {isDeliverable ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Deliverable</span>
+                        </span>
+                      ) : (
+                        <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          <span>{docRadiusKm != null ? `Out of ${docRadiusKm} km range` : "Out of delivery range"}</span>
+                        </span>
+                      )}
+                    </>
                   ) : (
-                    <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      <span>Out of {maxRadiusKm} km range</span>
-                    </span>
+                    <>
+                      <span className="text-text-secondary font-medium">
+                        Location not verified — add a pin
+                      </span>
+                      <Link
+                        to="/addresses/create"
+                        search={{ editId: addr.id, returnTo: "/checkout" }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-primary font-bold hover:underline"
+                      >
+                        Pin on map
+                      </Link>
+                    </>
                   )}
                 </div>
 
                 {/* Out of range alert banner with switch to takeaway CTA */}
-                {isSelected && !isDeliverable && (
+                {isSelected && isDeliverable === false && distanceKm !== null && (
                   <div className="mt-1 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs space-y-1.5">
                     <p className="font-medium">
-                      This address is {distanceKm} km away (exceeds our {maxRadiusKm} km delivery limit).
+                      This address is {distanceKm} km away (exceeds our {docRadiusKm != null ? `${docRadiusKm} km ` : ""}delivery limit).
                     </p>
                     {onSwitchToTakeaway && (
                       <button
@@ -202,6 +252,17 @@ export function AddressSelector({
               </div>
             );
           })}
+
+          <div className="pt-1">
+            <Link
+              to="/addresses/create"
+              search={{ returnTo: "/checkout" }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Delivery Address</span>
+            </Link>
+          </div>
         </div>
       )}
     </div>

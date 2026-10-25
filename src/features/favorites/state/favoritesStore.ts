@@ -1,6 +1,15 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Favorite } from "@/features/favorites/models";
+import {
+  scopedNamespacedStorage,
+  browserOrMemoryStorage,
+  onAuthUidChange,
+  readScopedPersisted,
+} from "@/features/auth/utils/scopedPersistence";
+
+// Never hydrate the old global key: its owner cannot be established.
+const STORAGE_KEY = "burg.favorites.local";
 
 interface FavoritesState {
   items: Favorite[];
@@ -18,28 +27,24 @@ export const useFavoritesStore = create<FavoritesState>()(
       clear: () => set({ items: [] }),
     }),
     {
-      name: "burg.favorites",
+      name: STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() => {
-        if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
-        const memoryStorage = new Map<string, string>();
-        return {
-          getItem: (key: string) => memoryStorage.get(key) ?? null,
-          setItem: (key: string, value: string) => {
-            memoryStorage.set(key, value);
-          },
-          removeItem: (key: string) => {
-            memoryStorage.delete(key);
-          },
-          clear: () => {
-            memoryStorage.clear();
-          },
-          length: memoryStorage.size,
-          key: (index: number) => Array.from(memoryStorage.keys())[index] ?? null,
-        } as Storage;
-      }),
+      storage: createJSONStorage(() => scopedNamespacedStorage(browserOrMemoryStorage())),
       skipHydration: true,
       partialize: (s) => ({ items: s.items }),
     },
   ),
 );
+
+onAuthUidChange((uid) => {
+  // Read the incoming account before setState's synchronous persist write.
+  const items = uid
+    ? readScopedPersisted<Favorite[]>(
+        STORAGE_KEY,
+        uid,
+        (state) => Array.isArray(state.items) ? state.items as Favorite[] : [],
+        [],
+      )
+    : [];
+  useFavoritesStore.setState({ items });
+});

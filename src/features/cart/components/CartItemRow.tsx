@@ -79,7 +79,7 @@ export const CartItemRow = React.memo(function CartItemRow({
             />
           ) : (
             <div className="grid h-full w-full place-items-center text-text-secondary">
-              <VegIndicator veg={line.veg ?? true} />
+              {typeof line.veg === "boolean" && <VegIndicator veg={line.veg} />}
             </div>
           )}
         </div>

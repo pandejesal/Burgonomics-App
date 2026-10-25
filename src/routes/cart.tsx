@@ -11,7 +11,12 @@ import { FailureState } from "@/shared/components/feedback/FailureState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { useHydrated } from "@/shared/hooks/useHydrated";
+import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
+import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
+import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
+import { toUserMessage } from "@/core/errors/userMessages";
+import { PACKAGING_FEE_BY_FULFILLMENT, asPricingFulfillment } from "@/shared/pricing/pricingEngine";
 
 import {
   cartRepository,
@@ -99,8 +104,17 @@ function CartPage() {
     ),
   );
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
-  const [tipAmount, setTipAmount] = React.useState(0);
-  const [coinsRedeemed, setCoinsRedeemed] = React.useState(0);
+  // Seeded from the persisted checkout store (the same object the order and
+  // payment payloads read). Starting these at 0 on every mount made a
+  // cart → checkout → cart round trip drop a tip/points the gateway still
+  // charged, so the two screens quoted different To Pay for one basket.
+  const persistedTip = useCheckoutStore((s) => s.tipAmount);
+  const persistedPoints = useCheckoutStore((s) => s.loyaltyPointsToRedeem);
+  const [tipAmount, setTipAmount] = React.useState(persistedTip);
+  const [coinsRedeemed, setCoinsRedeemed] = React.useState(persistedPoints);
+  // Kitchen-hours gate — re-checked on a 30s tick and on tab focus, so a cart
+  // left open overnight locks itself at 23:00 IST.
+  const kitchen = useKitchenHours();
 
   // 10-Minute Price Lock Countdown Timer (honest: no lock => no banner)
   React.useEffect(() => {
@@ -209,20 +223,29 @@ function CartPage() {
   };
 
   const onCheckout = async () => {
+    // Ordering is gated outside 11:00–23:00 IST — the banner explains why.
+    if (!kitchen.isOpen) {
+      toast.error(KITCHEN_CLOSED_MESSAGE);
+      return;
+    }
     setCheckoutBusy(true);
     const validation = await cartRepository.validateCart();
     if (!validation.success || !validation.data.valid) {
       setCheckoutBusy(false);
+      // Curated cart-issue copy passes through; the failure branch is typed
+      // raw-capable (CartRepository), so it is logged + mapped.
+      if (!validation.success) console.error("[cart] validation failed:", validation.error);
       toast.error(
         validation.success
           ? (validation.data.issues[0]?.message ?? "Some items are no longer available.")
-          : validation.error.message,
+          : toUserMessage(validation.error),
       );
       return;
     }
     const prep = await cartRepository.prepareCheckout();
     setCheckoutBusy(false);
     if (!prep.success) {
+      // Curated repo copy (EMPTY_CART) — no raw text on this path.
       toast.error(prep.error.message);
       return;
     }
@@ -241,11 +264,27 @@ function CartPage() {
   const deliveryFee =
     totals?.deliveryFee ??
     (fulfillment === "delivery" ? (subtotal > 499 ? 0 : subtotal > 0 ? 40 : 0) : 0);
-  const packagingFee = totals?.packingFee ?? (fulfillment === "dinein" || lines.length === 0 ? 0 : 15);
+  const packagingFee =
+    totals?.packingFee ??
+    (fulfillment === "dinein" || lines.length === 0
+      ? 0
+      : PACKAGING_FEE_BY_FULFILLMENT[asPricingFulfillment(fulfillment)]);
   const gst = totals?.taxes ?? totals?.tax ?? Math.round(taxableFallback * 0.05 * 100) / 100;
+  // Redemption cap shared by GrillCoinsRedemption and the checkout screen
+  // (1 pt = ₹1, max 20% of subtotal). A persisted choice from a larger
+  // basket must not bill more than the cap the server enforces — otherwise
+  // this preview and checkout's To Pay disagree for the same basket.
+  const maxRedeemableCoins = Math.min(
+    Number.isFinite(loyaltyBalance) ? Math.max(0, Math.floor(loyaltyBalance)) : 0,
+    Math.floor(subtotal * 0.2),
+  );
+  const appliedCoins = Math.min(Math.max(0, coinsRedeemed), maxRedeemableCoins);
+  // MT-09 / BillBreakdown contract: menu prices are GST-INCLUSIVE, so `gst` is
+  // display-only. The sticky total used to add it on top, showing a Grand Total
+  // ₹X higher than the Bill Details "To Pay" right underneath it.
   const finalToPay = Math.max(
     0,
-    subtotal - discountAmount - coinsRedeemed + gst + packagingFee + deliveryFee + tipAmount
+    subtotal - discountAmount - appliedCoins + packagingFee + deliveryFee + tipAmount,
   );
   const freeDeliveryDelta = Math.max(0, 499 - subtotal);
 
@@ -278,10 +317,11 @@ function CartPage() {
             <button
               type="button"
               onClick={() => void onCheckout()}
-              disabled={checkoutBusy || lines.length === 0}
+              disabled={checkoutBusy || lines.length === 0 || !kitchen.isOpen}
+              title={!kitchen.isOpen ? KITCHEN_CLOSED_MESSAGE : undefined}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
-              <span>Proceed to Checkout</span>
+              <span>{!kitchen.isOpen ? "Kitchen Closed" : "Proceed to Checkout"}</span>
               <ArrowRight className="h-4 w-4 stroke-[2.5px]" />
             </button>
           </div>
@@ -289,6 +329,9 @@ function CartPage() {
       }
     >
       <div className="mx-auto max-w-[520px] space-y-4 px-4 py-3">
+        {/* Kitchen closed: menu browsing stays open, checkout is gated. */}
+        <KitchenClosedBanner />
+
         {/* Offline pending-sync notice — cart persists locally either way */}
         {syncPending && (
           <div role="status" className="rounded-2xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-xs font-semibold text-text-secondary">
@@ -424,7 +467,7 @@ function CartPage() {
         <GrillCoinsRedemption
           availableCoins={loyaltyBalance}
           subtotal={subtotal}
-          redeemedCoins={coinsRedeemed}
+          redeemedCoins={appliedCoins}
           onToggleRedemption={(redeem, coins) => {
             const v = redeem ? coins : 0;
             setCoinsRedeemed(v);
@@ -451,7 +494,7 @@ function CartPage() {
         <BillBreakdown
           subtotal={subtotal}
           discountAmount={discountAmount}
-          coinsRedeemed={coinsRedeemed}
+          coinsRedeemed={appliedCoins}
           deliveryFee={deliveryFee}
           packagingFee={packagingFee}
           gstAmount={gst}

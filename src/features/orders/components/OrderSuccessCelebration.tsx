@@ -3,14 +3,17 @@ import { CheckCircle2, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { BrandMascot } from "@/shared/components/common/BrandMascot";
 import { cn } from "@/lib/utils";
+import type { Order } from "../models";
 
 interface OrderSuccessCelebrationProps {
   orderNumber: string;
+  petpoojaStatus?: Order["petpoojaStatus"];
   className?: string;
 }
 
 export function OrderSuccessCelebration({
   orderNumber,
+  petpoojaStatus,
   className,
 }: OrderSuccessCelebrationProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -139,7 +142,9 @@ export function OrderSuccessCelebration({
           Your Delicious Burgers Are In The Works!
         </h1>
         <p className="text-xs sm:text-sm text-text-secondary">
-          Order ID: <span className="font-mono font-bold text-text">{orderNumber}</span> • We've transmitted your ticket directly to the kitchen POS.
+          Order ID: <span className="font-mono font-bold text-text">{orderNumber}</span> • {petpoojaStatus === "Synced"
+            ? "We've sent your ticket to the kitchen."
+            : "Kitchen confirmation is pending."}
         </p>
       </motion.div>
     </div>

@@ -1,17 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 
 import { AppShell } from "@/shared/layouts/AppShell";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 
 import { useStoreSelection } from "@/features/stores/state/storeStore";
-import { FulfillmentSheet } from "@/features/stores/components/FulfillmentSheet";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 
 import { useHomeStore } from "@/features/home";
 import { CategoryPills } from "@/features/menu/components/CategoryPills";
-import { LaPinozHeader } from "@/features/home/components/LaPinozHeader";
+import { BrandHeader } from "@/features/home/components/BrandHeader";
 import { BannerCarousel } from "@/features/home/components/BannerCarousel";
 import { CategoryGrid } from "@/features/home/components/CategoryGrid";
 import { HorizontalRail } from "@/features/home/components/HorizontalRail";
@@ -24,6 +23,10 @@ import { FloatingCartBar } from "@/features/cart/components/FloatingCartBar";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import type { Product } from "@/features/menu/models";
+import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
+import { ReorderOutOfStockModal } from "@/features/orders/components/ReorderOutOfStockModal";
+import { orderRepository } from "@/features/orders/repositories/OrderRepository";
+import type { QuickReorderItem } from "@/features/home/models";
 
 export const Route = createFileRoute("/home")({
   head: () => ({
@@ -49,10 +52,6 @@ function HomePage() {
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const user = useAuthStore((s) => s.user);
 
-  const fulfillment = useStoreSelection((s) => s.fulfillment);
-  const setFulfillment = useStoreSelection((s) => s.setFulfillment);
-  const [fulfillmentOpen, setFulfillmentOpen] = useState(false);
-
   const status = useHomeStore((s) => s.status);
   const bundle = useHomeStore((s) => s.bundle);
   const error = useHomeStore((s) => s.error);
@@ -72,6 +71,29 @@ function HomePage() {
     }
   }, [store, user?.id, load]);
 
+  const {
+    reorder,
+    outOfStockModal,
+    confirmReorderRemaining,
+    dismissOutOfStockModal,
+  } = useReorderItems();
+
+  const handleQuickReorder = useCallback(
+    async (item: QuickReorderItem) => {
+      try {
+        const res = await orderRepository.getOrder(item.orderId);
+        if (res.success && res.data) {
+          await reorder(res.data);
+        } else {
+          void navigate({ to: "/orders" });
+        }
+      } catch {
+        void navigate({ to: "/orders" });
+      }
+    },
+    [reorder, navigate],
+  );
+
   const handleCardClick = useCallback(
     (productId: string) => {
       void navigate({ to: "/menu/product/$productId", params: { productId } });
@@ -79,6 +101,9 @@ function HomePage() {
     [navigate],
   );
 
+  // Wait for the persisted store before deciding: with isHydrated starting
+  // false, the /stores bounce below only fires for a genuine no-store state.
+  if (!isHydrated) return null;
   if (!store) return null;
 
   const isLoading = status === "loading" || (status === "idle" && !bundle);
@@ -97,19 +122,30 @@ function HomePage() {
     >
       <div className="mx-auto max-w-[520px] pb-10">
         {/* Full-bleed Header — single fulfillment switch inside (Delivery / Takeaway / Dine-In) */}
-        <LaPinozHeader onSearchClick={() => void navigate({ to: "/search" })} />
+        <BrandHeader onSearchClick={() => void navigate({ to: "/search" })} />
 
-        {/* Category shortcut pills — POS category list */}
-        <div className="px-4 mt-3">
-          <CategoryPills
-            selectedCategory="all"
-            onSelectCategory={(catId) => {
-              if (catId === "all") void navigate({ to: "/menu" });
-              else void navigate({ to: "/menu", search: { category: catId } });
-            }}
-            className="mt-3"
-          />
-        </div>
+        {/* Category shortcut pills — real categories from POS (not hardcoded) */}
+        {bundle && (
+          <div className="px-4 mt-3">
+            <CategoryPills
+              categories={[
+                { id: "all", name: "All Items" },
+                ...bundle.categories.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  count: c.itemCount,
+                  isVeg: true,
+                })),
+              ]}
+              selectedCategory="all"
+              onSelectCategory={(catId) => {
+                if (catId === "all") void navigate({ to: "/menu" });
+                else void navigate({ to: "/menu", search: { category: catId } });
+              }}
+              className="mt-3"
+            />
+          </div>
+        )}
 
         {/* Offline strip */}
         {!online && (
@@ -138,7 +174,7 @@ function HomePage() {
           </div>
         ) : status === "empty" || !bundle ? (
           <div className="mt-4 px-4">
-            <PetpoojaSyncPlaceholder storeId={store.id} />
+            <PetpoojaSyncPlaceholder storeId={store.id} onRetry={handleRefresh} />
           </div>
         ) : (
           <div className="mt-4 space-y-6">
@@ -167,7 +203,7 @@ function HomePage() {
                   actionLabel="View all orders"
                   actionTo="/orders"
                 />
-                <QuickReorderRail items={bundle.quickReorder} />
+                <QuickReorderRail items={bundle.quickReorder} onReorder={handleQuickReorder} />
               </section>
             )}
 
@@ -197,7 +233,7 @@ function HomePage() {
               <section aria-labelledby="combos-heading">
                 <SectionHeader
                   title="Value Combos"
-                  subtitle="Pre-bundled savings straight from POS"
+                  subtitle="Pre-bundled savings"
                   actionLabel="See all combos"
                   actionTo="/menu"
                 />
@@ -220,19 +256,11 @@ function HomePage() {
 
       {/* Floating Mini Cart Bar */}
       <FloatingCartBar />
-
-      <FulfillmentSheet
-        open={fulfillmentOpen}
-        onOpenChange={(o) => {
-          if (!o && !fulfillment) return;
-          setFulfillmentOpen(o);
-        }}
-        store={store}
-        value={fulfillment}
-        onConfirm={(f) => {
-          setFulfillment(f);
-          setFulfillmentOpen(false);
-        }}
+      <ReorderOutOfStockModal
+        isOpen={outOfStockModal.isOpen}
+        unavailableItems={outOfStockModal.unavailableItems}
+        onDismiss={dismissOutOfStockModal}
+        onConfirmRemaining={confirmReorderRemaining}
       />
     </AppShell>
   );

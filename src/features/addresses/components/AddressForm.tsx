@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { Home, Briefcase, MapPin, Navigation } from "lucide-react";
 import { AppButton } from "@/shared/components/common/AppButton";
@@ -10,11 +11,13 @@ import type { Address, AddressLabel } from "@/features/addresses/models";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { useLocationPermission } from "@/features/stores/hooks/useLocationPermission";
 import { HapticService } from "@/core/services/haptics";
+import { toast } from "sonner";
+import { sanitizePhone } from "@/features/auth/utils/validators";
 
 // Leaflet imports
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 // Create a custom Orange (Accent 10%) marker pin for the map
 const customMarkerHtml = `
@@ -59,8 +62,27 @@ const DEFAULT_CENTER = { lat: 23.0225, lng: 72.5714 }; // Default Ahmedabad, Guj
 function MapController({ center }: { center: { lat: number; lng: number } }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo(center, map.getZoom());
+    // prefers-reduced-motion: jump straight to the pin instead of animating
+    // the flight — large camera motion is the vestibular trigger to avoid.
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      map.setView(center, map.getZoom());
+    } else {
+      map.flyTo(center, map.getZoom());
+    }
   }, [center, map]);
+  return null;
+}
+
+function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
   return null;
 }
 
@@ -79,7 +101,9 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   const [line2, setLine2] = useState(initial?.line2 ?? "");
   const [landmark, setLandmark] = useState(initial?.landmark ?? "");
   const [city, setCity] = useState(initial?.city ?? "");
-  const [state, setState] = useState(initial?.state ?? "Gujarat");
+  // No fabricated state: an unset state stays empty and must be chosen
+  // explicitly (validated on submit) rather than pre-filled with a guess.
+  const [state, setState] = useState(initial?.state ?? "");
   const [pincode, setPincode] = useState(initial?.pincode ?? "");
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
   const [error, setError] = useState<string | null>(null);
@@ -89,15 +113,38 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     lat: initial?.lat || DEFAULT_CENTER.lat,
     lng: initial?.lng || DEFAULT_CENTER.lng,
   });
+  // Only coordinates the customer actually confirmed (dragged pin or granted
+  // GPS) may be persisted — the default map center is never a real location.
+  const [pinPlaced, setPinPlaced] = useState(
+    () => Number.isFinite(initial?.lat) && Number.isFinite(initial?.lng),
+  );
 
   const markerRef = useRef<L.Marker>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  // GPS auto-center + auto-geocode runs once per mount; later watchPosition
+  // fixes must not yank the pin back or overwrite typed fields.
+  const autoLocatedRef = useRef(false);
+  // Monotonic token invalidates stale reverse-geocode responses: each new
+  // invocation captures the current token and bails before any setState if a
+  // newer invocation has since incremented it.
+  const geocodeTokenRef = useRef(0);
+  // Field-level dirty guards, checked *at response time*: an async pin/GPS
+  // reverse-geocode may only fill fields the customer has not typed into.
+  // Editing a saved address starts every field dirty so loaded values are
+  // never clobbered by a late geocode reply.
+  const line1EditedRef = useRef(Boolean(initial));
+  const cityEditedRef = useRef(Boolean(initial));
+  const pincodeEditedRef = useRef(Boolean(initial));
+  const stateEditedRef = useRef(Boolean(initial));
 
   const reverseGeocode = useCallback(async (lat: number, lng: number) => {
+    const token = ++geocodeTokenRef.current;
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
       );
       const data = await response.json();
+      if (token !== geocodeTokenRef.current) return;
 
       if (data && data.address) {
         const {
@@ -111,18 +158,20 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         } = data.address;
 
         const bestCity = fetchedCity || town || village;
-        if (bestCity) setCity(bestCity);
-        if (postcode) setPincode(postcode);
-        if (fetchedState) setState(fetchedState);
+        if (!cityEditedRef.current && bestCity) setCity(bestCity);
+        if (!pincodeEditedRef.current && postcode) setPincode(postcode);
+        if (!stateEditedRef.current && fetchedState) setState(fetchedState);
 
         let streetLine = "";
         if (house_number) streetLine += `${house_number} `;
         if (road) streetLine += road;
 
-        if (streetLine) {
-          setLine1(streetLine.trim());
-        } else if (data.display_name) {
-          setLine1(data.display_name.split(",")[0]);
+        if (!line1EditedRef.current) {
+          if (streetLine) {
+            setLine1(streetLine.trim());
+          } else if (data.display_name) {
+            setLine1(data.display_name.split(",")[0]);
+          }
         }
       }
     } catch (err) {
@@ -137,8 +186,10 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   }, [initial?.lat, requestLocation]);
 
   useEffect(() => {
-    if (!initial?.lat && locationStatus === "granted" && userCoords) {
+    if (!initial?.lat && locationStatus === "granted" && userCoords && !autoLocatedRef.current) {
+      autoLocatedRef.current = true;
       setMapCenter(userCoords);
+      setPinPlaced(true);
       reverseGeocode(userCoords.lat, userCoords.lng);
     }
   }, [locationStatus, userCoords, initial?.lat, reverseGeocode]);
@@ -146,10 +197,21 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   const onMarkerDragEnd = useCallback(() => {
     const marker = markerRef.current;
     if (marker != null) {
+      // A user-confirmed pin disables GPS auto-locate: a first fix that
+      // resolves after the drag must not yank the pin back.
+      autoLocatedRef.current = true;
       const position = marker.getLatLng();
       setMapCenter({ lat: position.lat, lng: position.lng });
+      setPinPlaced(true);
       reverseGeocode(position.lat, position.lng);
     }
+  }, [reverseGeocode]);
+
+  const handleMapClick = useCallback((lat: number, lng: number) => {
+    autoLocatedRef.current = true;
+    setMapCenter({ lat, lng });
+    setPinPlaced(true);
+    void reverseGeocode(lat, lng);
   }, [reverseGeocode]);
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -173,22 +235,68 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
 
     setBusy(true);
 
+    // Explicit JS validation — native constraint validation can fail
+    // silently inside Android WebView, so surface errors ourselves.
+    if (!line1.trim()) {
+      setError("Please enter your flat / house / building number.");
+      toast.error("Please enter your flat / house / building number.");
+      setBusy(false);
+      return;
+    }
+    if (!city.trim()) {
+      setError("Please enter your city.");
+      toast.error("Please enter your city.");
+      setBusy(false);
+      return;
+    }
+    const cleanPincode = pincode.replace(/\D/g, "");
+    if (cleanPincode.length !== 6) {
+      setError("Please enter a valid 6-digit pincode.");
+      toast.error("Please enter a valid 6-digit pincode.");
+      setBusy(false);
+      return;
+    }
+
+    if (!pinPlaced) {
+      setError("Please tap the map or use 'Locate Me' to confirm your delivery pin location.");
+      toast.error("Please tap the map or use 'Locate Me' to confirm your delivery pin location.");
+      setBusy(false);
+      return;
+    }
+
+    // State is genuinely required — it must be chosen, never assumed.
+    if (!state.trim()) {
+      setError("Please enter your state.");
+      toast.error("Please enter your state.");
+      setBusy(false);
+      return;
+    }
+
+    const rawPhone = profile?.phone ? sanitizePhone(profile.phone) : "";
+    const contactPhone = rawPhone && rawPhone.length === 10 ? rawPhone : "";
+    // A courier cannot deliver without a number, so an empty contactPhone is
+    // a blocked save with a spoken reason — never a silently stored "".
+    if (contactPhone.length !== 10) {
+      setError("Please add a contact number so we can reach you about this delivery.");
+      toast.error("Please add a contact number so we can reach you about this delivery.");
+      setBusy(false);
+      return;
+    }
+
     const payload = {
       label,
       customLabel: label === "other" ? customLabel.trim() || undefined : undefined,
-      contactName: profile?.fullName || "Guest Customer",
-      // Loop: was profile?.phone || "0000000000" — a fabricated number
-      // persisted into address records (rider/SMS downstream). Absent
-      // phone stays empty; update-path validation already skips empty.
-      contactPhone: profile?.phone || "",
+      // Only a name the customer actually has — never a stand-in persona.
+      contactName: profile?.fullName?.trim() || undefined,
+      contactPhone,
       line1: line1.trim(),
       line2: line2.trim() || undefined,
       landmark: landmark.trim() || undefined,
       city: city.trim(),
-      state: state.trim() || "Gujarat",
+      state: state.trim(),
       pincode: pincode.replace(/\D/g, "").slice(0, 6),
-      lat: mapCenter.lat,
-      lng: mapCenter.lng,
+      lat: pinPlaced ? mapCenter.lat : undefined,
+      lng: pinPlaced ? mapCenter.lng : undefined,
       isDefault,
     };
 
@@ -199,6 +307,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     setBusy(false);
     if (!res.success) {
       setError(res.error.message);
+      toast.error(res.error.message);
       return;
     }
     void HapticService.notification("success");
@@ -211,7 +320,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       <div className="text-center space-y-1">
         <h2 className="type-headline-large text-primary">WHERE'S THE FOOD GOING?</h2>
         <p className="type-body-medium text-text-secondary font-medium">
-          Drag the orange pin to set your exact location
+          Tap map or drag the orange pin to set your exact location
         </p>
       </div>
 
@@ -220,27 +329,37 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         className="overflow-hidden rounded-[var(--radius-large)] border-[3px] border-primary/10 shadow-brand relative"
         style={{ height: "260px", zIndex: 0 }}
       >
-        <MapContainer center={mapCenter} zoom={16} style={{ height: "100%", width: "100%" }}>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker
-            draggable={true}
-            eventHandlers={{ dragend: onMarkerDragEnd }}
-            position={mapCenter}
-            ref={markerRef}
-            icon={customIcon}
-          />
-          <MapController center={mapCenter} />
-        </MapContainer>
+        <div role="img" aria-label="Delivery location map" className="h-full w-full">
+          <MapContainer center={mapCenter} zoom={16} zoomControl={false} style={{ height: "100%", width: "100%" }}>
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <Marker
+              draggable={true}
+              eventHandlers={{ dragend: onMarkerDragEnd }}
+              position={mapCenter}
+              ref={markerRef}
+              icon={customIcon}
+            />
+            <MapController center={mapCenter} />
+            <MapClickHandler onMapClick={handleMapClick} />
+          </MapContainer>
+        </div>
 
         <div className="absolute top-3 right-3" style={{ zIndex: 1000 }}>
           <button
             type="button"
-            onClick={() => requestLocation()}
+            onClick={async () => {
+              const result = await requestLocation();
+              if (result?.coords) {
+                setMapCenter(result.coords);
+                setPinPlaced(true);
+                void reverseGeocode(result.coords.lat, result.coords.lng);
+              }
+            }}
             disabled={isLocating}
-            className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 shadow-lg shadow-accent/40 hover:bg-accent/90 text-white transition-all type-label-large border-2 border-white cursor-pointer"
+            className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 min-h-[44px] shadow-lg shadow-accent/40 hover:bg-accent/90 text-white transition-all type-label-large border-2 border-white cursor-pointer"
           >
             <Navigation className={cn("h-4 w-4", isLocating && "animate-spin")} />
             {isLocating ? "Locating..." : "Locate Me"}
@@ -257,9 +376,20 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         </div>
       </div>
 
+      {(locationStatus === "denied" ||
+        locationStatus === "blocked" ||
+        locationStatus === "unavailable") && (
+        <p role="status" className="type-caption text-text-secondary text-center">
+          Location unavailable — drag the pin manually, or enable location in your
+          browser settings and tap Locate Me.
+        </p>
+      )}
+
       {/* Form Fields */}
       <form
         id="address-entry-form"
+        ref={formRef}
+        noValidate
         onSubmit={submit}
         className="space-y-5 bg-surface rounded-[var(--radius-large)] p-1"
       >
@@ -297,6 +427,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
 
         {label === "other" && (
           <TextField
+            id="address-nickname"
             label="Nickname"
             placeholder="e.g. Parents' place"
             value={customLabel}
@@ -307,14 +438,19 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
 
         <div className="space-y-4 pt-2">
           <TextField
+            id="address-line1"
             label="Flat / house / building"
             value={line1}
             onFocus={handleInputFocus}
-            onChange={(e) => setLine1(e.target.value)}
+            onChange={(e) => {
+              setLine1(e.target.value);
+              line1EditedRef.current = true;
+            }}
             autoComplete="address-line1"
             required
           />
           <TextField
+            id="address-line2"
             label="Area / street (optional)"
             value={line2}
             onFocus={handleInputFocus}
@@ -322,6 +458,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
             autoComplete="address-line2"
           />
           <TextField
+            id="address-landmark"
             label="Landmark (optional)"
             value={landmark}
             onFocus={handleInputFocus}
@@ -330,30 +467,42 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
           />
           <div className="grid grid-cols-2 gap-4">
             <TextField
+              id="address-city"
               label="City"
               value={city}
               onFocus={handleInputFocus}
-              onChange={(e) => setCity(e.target.value)}
+              onChange={(e) => {
+                setCity(e.target.value);
+                cityEditedRef.current = true;
+              }}
               autoComplete="address-level2"
               required
             />
             <TextField
+              id="address-state"
               label="State"
               value={state}
               onFocus={handleInputFocus}
-              onChange={(e) => setState(e.target.value)}
+              onChange={(e) => {
+                setState(e.target.value);
+                stateEditedRef.current = true;
+              }}
               autoComplete="address-level1"
               required
             />
           </div>
           <TextField
+            id="address-pincode"
             label="Pincode"
             type="tel"
             inputMode="numeric"
             maxLength={6}
             value={pincode}
             onFocus={handleInputFocus}
-            onChange={(e) => setPincode(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) => {
+              setPincode(e.target.value.replace(/\D/g, ""));
+              pincodeEditedRef.current = true;
+            }}
             autoComplete="postal-code"
             required
           />
@@ -384,7 +533,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       </form>
 
       {/* Sticky Save Bar pinned to bottom sitting above keyboard */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
+      {typeof document !== "undefined" && createPortal(<div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
         <div className="mx-auto flex max-w-[560px] items-center gap-3">
           <AppButton
             type="button"
@@ -405,7 +554,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
             {initial ? "SAVE CHANGES" : "SAVE ADDRESS"}
           </AppButton>
         </div>
-      </div>
+      </div>, document.body)}
     </div>
   );
 }

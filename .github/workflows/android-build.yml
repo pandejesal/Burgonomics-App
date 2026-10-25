@@ -39,24 +39,16 @@ jobs:
           npm run build:mobile
           npx cap sync android
 
-      - name: 🔑 Provision CI Release Keystore
+      - name: Neutralize Windows-only org.gradle.java.home
+        run: sed -i '/^org.gradle.java.home=/d' android/gradle.properties
+
+      - name: 🔑 Decode Release Keystore (from secret)
         working-directory: android
         env:
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || 'ci_build_keystore_pass' }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'ci_build_keystore_pass' }}
-        run: |
-          if [ ! -f "release.keystore" ]; then
-            echo "Generating CI release signing keystore..."
-            keytool -genkeypair -v \
-              -keystore release.keystore \
-              -alias burgonomics \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass "$RELEASE_STORE_PASSWORD" \
-              -keypass "$RELEASE_KEY_PASSWORD" \
-              -dname "CN=Burgonomics, OU=Mobile, O=GlassdoorsStudio, L=Ahmedabad, ST=Gujarat, C=IN"
-          fi
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        # android/app/build.gradle resolves RELEASE_STORE_FILE via file()
+        # relative to android/app/, so "../release.keystore" == android/release.keystore.
+        run: echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > release.keystore
 
       - name: 🔨 Assemble Android Release APK & AAB Bundle
         working-directory: android

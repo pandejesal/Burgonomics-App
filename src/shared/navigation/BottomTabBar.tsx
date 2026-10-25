@@ -22,7 +22,7 @@ const TABS: Tab[] = [
 ];
 
 /**
- * Floating branded bottom nav — La Pino'z 4-tab bar with Forest Green active anchor,
+ * Floating branded bottom nav — 4-tab bar with Forest Green active anchor,
  * subtle top indicator, and vibrant orange cart badge.
  */
 export function BottomTabBar() {

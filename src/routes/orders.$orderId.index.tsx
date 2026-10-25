@@ -10,11 +10,13 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import {
   orderRepository,
   useOrdersStore,
   selectOrderById,
+  orderPayableAmount,
   OrderStatusBadge,
   OrderPriceSummary,
   OrderTimeline,
@@ -23,7 +25,11 @@ import {
   type Order,
   type OrderTrackingSnapshot,
 } from "@/features/orders";
+import { ReorderOutOfStockModal } from "@/features/orders/components/ReorderOutOfStockModal";
 import { ReviewItemsList } from "@/features/checkout";
+import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
+import { recoveryReasonForOrderMarker } from "@/features/payments/utils/paymentRecovery";
+import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/orders/$orderId/")({
@@ -56,12 +62,20 @@ function OrderDetailsPage() {
         orderRepository.getOrder(orderId),
         orderRepository.getTracking(orderId),
       ]);
-      if (o.success) setOrder(o.data);
+      if (o.success && o.data) setOrder(o.data);
       if (t.success) setTracking(t.data);
+      // A backend miss/denial (ok(null)) must not wipe a cached order —
+      // same guard as the effect below and the track route.
       // A backend/network failure is NOT "not found" — surface a retry.
-      if (!o.success) setLoadError(o.error.message);
+      // Failure branch is typed raw-capable (OrderRepository) — log + map.
+      if (!o.success) {
+        console.error("[orders] detail load failed:", o.error);
+        setLoadError(toUserMessage(o));
+      }
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Could not load this order.");
+      // Raw exception text never reaches the retry panel (P1-8).
+      console.error("[orders] detail load exception:", err);
+      setLoadError("Could not load this order.");
     } finally {
       setLoading(false);
     }
@@ -79,12 +93,18 @@ function OrderDetailsPage() {
           orderRepository.getTracking(orderId),
         ]);
         if (cancelled) return;
-        if (o.success) setOrder(o.data);
+        if (o.success && o.data) setOrder(o.data);
         if (t.success) setTracking(t.data);
-        if (!o.success) setLoadError(o.error.message);
+        if (!o.success) {
+          // Failure branch is typed raw-capable (OrderRepository) — log + map.
+          console.error("[orders] detail load failed:", o.error);
+          setLoadError(toUserMessage(o));
+        }
       } catch (err) {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : "Could not load this order.");
+        // Raw exception text never reaches the retry panel (P1-8).
+        console.error("[orders] detail load exception:", err);
+        setLoadError("Could not load this order.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -93,6 +113,22 @@ function OrderDetailsPage() {
       cancelled = true;
     };
   }, [hydrated, orderId]);
+
+  // Hooks MUST stay above every early return: a hook below a conditional
+  // return flips the hook count between renders (skeleton → loaded →
+  // not-found) and crashes with React #310 on the first data load.
+  const {
+    reorder: triggerReorder,
+    outOfStockModal,
+    confirmReorderRemaining,
+    dismissOutOfStockModal,
+  } = useReorderItems();
+
+  const reorder = async () => {
+    if (order) {
+      await triggerReorder(order);
+    }
+  };
 
   if (!hydrated || loading) return <DetailsSkeleton />;
 
@@ -128,14 +164,6 @@ function OrderDetailsPage() {
       </ProtectedRoute>
     );
   }
-
-  const reorder = async () => {
-    const res = await orderRepository.reorder(order.id);
-    if (res.success && res.data) {
-      // Placeholder — takes the user to the menu of the same store.
-      navigate({ to: "/menu" });
-    }
-  };
 
   const share = async () => {
     const res = await orderRepository.buildShareMessage(order.id);
@@ -192,6 +220,30 @@ function OrderDetailsPage() {
             </div>
           </section>
 
+          {/* Money we could not apply to this order (server-written marker, A08
+              B5). The payer's app was usually closed when the gateway charged
+              them, so the checkout-time recovery panel never got to render —
+              this is the only surface that still tells them not to pay again,
+              with the payment reference support needs. Read-only: the client
+              never writes this field. */}
+          {order.reconciliation?.state === "payment_review" && (
+            <PaymentRecoveryPanel
+              reason={recoveryReasonForOrderMarker(order.reconciliation.reason)}
+              paymentId={order.reconciliation.razorpayPaymentId ?? null}
+              orderId={order.id}
+              onContactSupport={() =>
+                void navigate({
+                  to: "/support",
+                  search: {
+                    topic: "payment",
+                    paymentId: order.reconciliation?.razorpayPaymentId ?? undefined,
+                  },
+                })
+              }
+              onCheckOrders={() => void navigate({ to: "/orders" })}
+            />
+          )}
+
           {/* Timeline */}
           {tracking && tracking.steps.length > 0 && (
             <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4">
@@ -247,7 +299,15 @@ function OrderDetailsPage() {
                   ? "Cash Pending"
                   : order.payment.status === "PAY_AT_STORE"
                     ? "Pay at Store"
-                    : order.payment.status}
+                    : order.payment.status === "pending"
+                      ? orderPayableAmount(order) === 0
+                        ? "No payment due"
+                        : "Awaiting Payment"
+                      : order.payment.status === "failed"
+                        ? "Payment Failed"
+                        : order.payment.status === "refunded"
+                          ? "Refunded"
+                          : order.payment.status}
             </Text>
             {order.payment.transactionId && (
               <Text variant="caption" tone="secondary" className="mt-0.5 block">
@@ -285,6 +345,12 @@ function OrderDetailsPage() {
           </div>
         </div>
       </AppShell>
+      <ReorderOutOfStockModal
+        isOpen={outOfStockModal.isOpen}
+        unavailableItems={outOfStockModal.unavailableItems}
+        onDismiss={dismissOutOfStockModal}
+        onConfirmRemaining={confirmReorderRemaining}
+      />
     </ProtectedRoute>
   );
 }

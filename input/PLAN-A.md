@@ -62,7 +62,7 @@ Repo tags: `core` = burgonomics-foundation-core · `partner` = burgonomics-partn
 ### MEDIUM (merged)
 
 - M1 No min-order/closed-store gate. `core: cart/models:83-86`, `pricingEngine.ts:10-24` never enforced (`cartService.ts:79-90`, validateCart, PaymentRepository:63-109). (core)
-- M2 Client-computed unitPrice trusted (combo +₹99/+₹149). `core: menu.product.$productId.tsx:125-143,226-254`, `pricingEngine.ts:79-106`. (core)
+- M2 Client-computed unitPrice trusted (combo +₹99/+₹149 — combo meal upgrade feature removed 2026-10-06, so the hardcoded surcharge no longer exists; the client-computed unitPrice trust issue itself remains). `core: menu.product.$productId.tsx`, `pricingEngine.ts:79-106`. (core)
 - M3 Quantity cap bypass. `core: menu.product.$productId.tsx:289-299`, `CartRepository.ts:109`, `cartStore.ts:60-67` → clamp 1..99. (core)
 - M4 Loyalty vanishes checkout→payment. `core: checkout.tsx:123-124,270-272` vs `payment.tsx:225,356`. (core)
 - M5 Checkout bill invents numbers + fee mismatch. `core: checkout.tsx:568,577,586` (?? 0/15/35) vs engine 40. (core)

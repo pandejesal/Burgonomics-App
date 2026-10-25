@@ -39,7 +39,7 @@ export function ProfileMenuList({ title, items }: Props) {
                   it.danger ? "bg-error/10 text-error" : "bg-primary/10 text-primary",
                 )}
               >
-                <Icon className="h-4.5 w-4.5 h-[18px] w-[18px]" aria-hidden />
+                <Icon className="h-[18px] w-[18px]" aria-hidden />
               </div>
               <div className="min-w-0 flex-1">
                 <Text
@@ -57,7 +57,7 @@ export function ProfileMenuList({ title, items }: Props) {
               </div>
               {it.trailing}
               {!it.trailing && it.to && (
-                <ChevronRight className="h-4 w-4 flex-none text-text-secondary" aria-hidden />
+                <ChevronRight className="h-[18px] w-[18px] flex-none text-text-secondary" aria-hidden />
               )}
             </div>
           );

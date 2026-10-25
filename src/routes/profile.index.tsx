@@ -63,9 +63,10 @@ function Page() {
     void navigate({ to: "/home", replace: true });
   };
 
-  // Render only what the repository-backed store actually holds. No
-  // fabricated membership tier / email / createdAt fallback — if the
-  // backend (or its local cache) has no profile, we render the honest
+  // Render only what the repository-backed store actually holds. The store
+  // is seeded from the auth session and refreshed from the backend and
+  // fabricates no email, membership tier or join date — those render only
+  // when a real value exists. With no profile loaded we show the honest
   // empty state below instead of inventing data.
   const activeProfile = profile;
 
@@ -116,7 +117,7 @@ function Page() {
       to: "/profile/notifications",
       Icon: Bell,
       trailing: unreadCount > 0 ? (
-        <span className="px-2 py-0.5 rounded-full bg-[#FF6600] text-white text-[10px] font-black">
+        <span className="px-2 py-0.5 rounded-full bg-accent text-white text-[10px] font-black">
           {unreadCount}
         </span>
       ) : undefined,

@@ -1,7 +1,9 @@
 import {
   menuService,
+  type LiveProductPage,
   type MenuCategory,
   type MenuItem,
+  type MenuSearchOptions,
 } from "@/features/menu/services/menuService";
 import type {
   CustomizationGroup,
@@ -47,8 +49,8 @@ export class MenuRepository {
   listFeatured(storeId?: string): Promise<ApiResult<Product[]>> {
     return this.service.listFeatured(storeId);
   }
-  search(storeId: string | undefined, query: string, page = 1, pageSize = 20) {
-    return this.service.search(storeId, query, page, pageSize);
+  search(storeId: string | undefined, query: string, opts?: MenuSearchOptions) {
+    return this.service.search(storeId, query, opts);
   }
   suggest(storeId: string | undefined, query: string): Promise<ApiResult<SearchSuggestion[]>> {
     return this.service.suggest(storeId, query);
@@ -76,11 +78,9 @@ export class MenuRepository {
   subscribeProducts(
     storeId: string | undefined,
     categoryId: string | undefined,
-    callback: (result: ApiResult<ProductPage>) => void,
-    page = 1,
-    pageSize = 40,
+    callback: (result: ApiResult<LiveProductPage>) => void,
   ): () => void {
-    return this.service.subscribeProducts(storeId, categoryId, callback, page, pageSize);
+    return this.service.subscribeProducts(storeId, categoryId, callback);
   }
 
   subscribeProduct(

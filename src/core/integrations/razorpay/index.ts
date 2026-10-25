@@ -47,6 +47,13 @@ export const razorpayAdapter: RazorpayAdapter = {
       currency: "INR",
       receipt: input.receipt,
       storeId: input.storeId || "str_ahmedabad_01",
+      // PAYMENTS_CONTRACT_SPEC §1: `orderType` is canonical; `fulfillment`
+      // stays as the legacy alias. This legacy wrapper has no internal
+      // order id to bind (the canonical path is PaymentRepository, which
+      // creates the payment-pending order first) — orderId is therefore
+      // absent here and the server's order-binding check applies to the
+      // repository path only.
+      orderType: toOrderType(input.fulfillment),
       fulfillment: input.fulfillment || "delivery",
     });
 
@@ -106,13 +113,24 @@ export const razorpayAdapter: RazorpayAdapter = {
   },
 
   async verifySignature(result) {
+    // PAYMENTS_CONTRACT_SPEC §2: `paymentsService.verify` translates this
+    // result into the canonical `{ orderId, razorpayOrderId,
+    // razorpayPaymentId, razorpaySignature }` request. This legacy wrapper
+    // has no internal order id, so `orderId` falls back to the gateway id.
     const res = await paymentsService.verify({
-      paymentId: result.paymentId,
       orderId: result.orderId,
+      paymentId: result.paymentId,
       signature: result.signature,
       method: "online",
     });
     return { valid: res.success };
   },
 };
+
+/** PAYMENTS_CONTRACT_SPEC §1 enum — the app's fulfilment names map 1:1. */
+function toOrderType(fulfillment?: string): "delivery" | "takeaway" | "dinein" {
+  if (fulfillment === "takeaway" || fulfillment === "pickup") return "takeaway";
+  if (fulfillment === "dinein" || fulfillment === "dine-in") return "dinein";
+  return "delivery";
+}
 

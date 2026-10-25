@@ -14,37 +14,49 @@ const requiredFirebaseKeys = [
 const missingFirebaseKeys = requiredFirebaseKeys.filter((key) => !import.meta.env[key]);
 
 /**
- * True when every Firebase env key is present. Exported so call sites can
- * degrade gracefully instead of crashing.
+ * True when every Firebase env key is present. Exported for boot diagnostics;
+ * this module throws below when it is false, so no call site can ever observe
+ * a Firebase instance built from incomplete configuration.
  */
 export const isFirebaseConfigured = missingFirebaseKeys.length === 0;
 
-if (!isFirebaseConfigured) {
-  if (import.meta.env.PROD === true) {
-    // Fail fast in production: booting with placeholder credentials would
-    // surface opaque use-time errors instead of the real misconfiguration.
-    // Naming the missing keys makes the failure actionable.
-    throw new Error(
-      `[Firebase] Missing required environment variables: ${missingFirebaseKeys.join(", ")}. ` +
-        `Set these in the production environment before initializing Firebase.`,
+/**
+ * Thrown at module load when any required VITE_FIREBASE_* key is absent.
+ * Typed so boot diagnostics (mobile-entry.tsx ConfigErrorScreen) can identify
+ * the misconfiguration precisely while `missingKeys` names exactly which
+ * variables must be set.
+ */
+export class FirebaseConfigMissingKeysError extends Error {
+  readonly missingKeys: readonly string[];
+
+  constructor(missingKeys: readonly string[]) {
+    super(
+      `[Firebase] Missing required environment variables: ${missingKeys.join(", ")}. ` +
+        `Set these before initializing Firebase (see .env.example for the full list).`,
     );
+    this.name = "FirebaseConfigMissingKeysError";
+    this.missingKeys = missingKeys;
   }
-  // Local development only: warn and initialize with placeholder values so the
-  // app still boots without real credentials. Firebase-backed calls fail at
-  // use-time instead of killing the dev server.
-  console.warn(
-    `[Firebase] Missing environment variables: ${missingFirebaseKeys.join(", ")}. ` +
-      `Firebase initialized with placeholder config; Firebase-backed features will fail at use-time.`,
-  );
+}
+
+if (!isFirebaseConfigured) {
+  // Fail fast in every environment — there is no safe placeholder credential.
+  // A production build must never boot against a fake project, and a dev boot
+  // with fake keys would only move the failure to an opaque use-time error
+  // (getAuth rejects a missing api key). mobile-entry.tsx catches this typed
+  // FirebaseConfigMissingKeysError and renders ConfigErrorScreen with the
+  // message instead of a blank page, and naming the missing keys makes the
+  // misconfiguration actionable.
+  throw new FirebaseConfigMissingKeysError(missingFirebaseKeys);
 }
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "missing-api-key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "missing-auth-domain",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "missing-project-id",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? "missing-storage-bucket",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "missing-sender-id",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "missing-app-id",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 

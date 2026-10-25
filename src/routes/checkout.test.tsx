@@ -1,5 +1,30 @@
 import { describe, it, expect } from "vitest";
 import { calculateHaversineKm } from "../features/checkout/components/AddressSelector";
+import { needsRepriceAcceptance } from "../features/checkout/utils/repriceAcceptance";
+
+describe("re-price acceptance gate (authoritative server total)", () => {
+  it("does not prompt when the server total equals the displayed total", () => {
+    expect(needsRepriceAcceptance(555, 555, null)).toBe(false);
+  });
+
+  it("prompts when the server total differs by a paisa or more", () => {
+    expect(needsRepriceAcceptance(555, 540, null)).toBe(true);
+    expect(needsRepriceAcceptance(555, 570, null)).toBe(true);
+  });
+
+  it("does not re-prompt once that exact server total was accepted", () => {
+    // The divergence is structural, so without this the customer would be
+    // asked again on every re-entry.
+    expect(needsRepriceAcceptance(555, 540, 540)).toBe(false);
+    // A DIFFERENT server total still needs a fresh acceptance.
+    expect(needsRepriceAcceptance(555, 541, 540)).toBe(true);
+  });
+
+  it("stays inert when either total is unknown (never blocks on a guess)", () => {
+    expect(needsRepriceAcceptance(undefined, 540, null)).toBe(false);
+    expect(needsRepriceAcceptance(555, undefined, null)).toBe(false);
+  });
+});
 
 describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", () => {
   describe("1. Haversine Distance Geofence Engine", () => {
@@ -27,11 +52,11 @@ describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", (
       const fulfillment = "delivery";
       const subtotal = 400;
       const deliveryFee = subtotal >= 349 ? 0 : 35;
-      const packagingFee = 15;
+      const packagingFee = 20;
 
       expect(fulfillment).toBe("delivery");
       expect(deliveryFee).toBe(0);
-      expect(packagingFee).toBe(15);
+      expect(packagingFee).toBe(20);
     });
 
     it("configures takeaway mode with zero delivery fee and pickup prep ETA", () => {

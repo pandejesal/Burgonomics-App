@@ -9,6 +9,7 @@ import type {
   RecommendationItem,
 } from "@/features/home/models";
 import { firestoreService } from "@/core/services/firebase/firestoreService";
+import { menuService } from "@/features/menu/services/menuService";
 
 /**
  * Home service — fetches real data from Firestore.
@@ -89,11 +90,16 @@ export const homeService = {
    * Aggregated home bundle — the shape the real backend is expected to
    * expose as `GET /v1/home?storeId=…`. Fan-outs to the individual
    * mock endpoints so partial failures still degrade gracefully.
+   * 
+   * Categories now come from menuService (product-derived) so they match
+   * the Menu page's category IDs exactly — fixes home pills navigation.
+   * We also fetch Firestore categories (for images) and merge them by name.
    */
   async getHome(storeId: string, userId?: string): Promise<ApiResult<any>> {
     const [
       banners,
-      categories,
+      menuCategories,
+      firestoreCategories,
       featuredOffers,
       bestSellers,
       popularCombos,
@@ -102,7 +108,8 @@ export const homeService = {
       quickReorder,
     ] = await Promise.all([
       this.getBanners(),
-      this.getCategories(),
+      menuService.listCategories(storeId),
+      this.getCategories(), // Firestore categories (for images)
       this.getFeaturedOffers(),
       this.getBestSellers(storeId),
       this.getPopularCombos(storeId),
@@ -111,9 +118,32 @@ export const homeService = {
       userId ? this.getQuickReorder(userId) : Promise.resolve({ success: true, data: [] }),
     ]);
 
+    // Merge: use menu-derived categories (correct IDs for navigation),
+    // but enrich with Firestore category images by matching on name/slug.
+    let mergedCategories: any[] = [];
+    if (menuCategories.success && menuCategories.data.length > 0) {
+      const fsCats = firestoreCategories.success ? firestoreCategories.data : [];
+      // Build a lookup: normalized name -> firestore category
+      const fsByName = new Map<string, any>();
+      for (const fc of fsCats) {
+        const key = fc.name?.toLowerCase().trim() || "";
+        if (key) fsByName.set(key, fc);
+      }
+      mergedCategories = menuCategories.data.map((mc: any) => {
+        const fsCat = fsByName.get(mc.name?.toLowerCase().trim() || "");
+        return {
+          ...mc,
+          // Prefer Firestore category image, fallback to menu-derived (from product)
+          imageUrl: fsCat?.imageUrl || mc.imageUrl,
+        };
+      });
+    } else if (firestoreCategories.success) {
+      mergedCategories = firestoreCategories.data;
+    }
+
     return ok({
       banners: banners.success ? banners.data : [],
-      categories: categories.success ? categories.data : [],
+      categories: mergedCategories,
       featuredOffers: featuredOffers.success ? featuredOffers.data : [],
       bestSellers: bestSellers.success ? bestSellers.data : [],
       popularCombos: popularCombos.success ? popularCombos.data : [],

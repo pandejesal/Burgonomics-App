@@ -6,6 +6,7 @@ import { HapticService } from "@/core/services/haptics";
 import { useCartStore } from "../state/cartStore";
 import { cartRepository } from "../repositories/CartRepository";
 import type { CartLine } from "../models";
+import { VegIndicator } from "@/shared/components/common/VegIndicator";
 
 interface CartItemListProps {
   className?: string;
@@ -41,12 +42,9 @@ export function CartItemList({ className }: CartItemListProps) {
           >
             {/* Left Column: Veg Icon, Name & Modifiers */}
             <div className="flex items-start gap-3 min-w-0 flex-1">
-              <div
-                className="w-4 h-4 rounded-[3px] border-2 border-emerald-600 bg-emerald-950/20 flex items-center justify-center shrink-0 mt-0.5"
-                aria-label="100% Pure Vegetarian"
-              >
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              </div>
+              {typeof line.veg === "boolean" && (
+                <VegIndicator veg={line.veg} className="rounded-[3px] shrink-0 mt-0.5" />
+              )}
 
               <div className="space-y-1 min-w-0">
                 <h4 className="text-xs sm:text-sm font-bold text-text truncate">

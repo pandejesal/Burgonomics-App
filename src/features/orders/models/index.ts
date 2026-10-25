@@ -78,6 +78,8 @@ export interface OrderPaymentInfo {
 
 /** Snapshot of the store at the moment the order was placed. */
 export interface OrderStoreSnapshot {
+  etaMinutes?: number | null;
+  pickupEtaMinutes?: number | null;
   id: Id;
   name: string;
   address: string;
@@ -105,6 +107,8 @@ export interface OrderAddressSnapshot {
   city: string;
   state: string;
   pincode: string;
+  lat?: number;
+  lng?: number;
 }
 
 /** Placeholder — the real integration owns partner assignment. */
@@ -125,6 +129,8 @@ export interface Order {
 
   store: OrderStoreSnapshot;
   address?: OrderAddressSnapshot;
+  /** Delivery address mirror (with coords) for downstream partner/dispatch readers. */
+  deliveryAddress?: OrderAddressSnapshot;
 
   /** Read-only snapshot of the cart at placement time. */
   items: CartLine[];
@@ -138,14 +144,52 @@ export interface Order {
   notes?: string;
   fulfillmentInstructions?: string;
   tableNumber?: string;
+  /** WhatsApp order-alert opt-in, persisted on the order doc (P0-3). */
+  whatsappOptIn?: boolean;
 
   payment: OrderPaymentInfo;
+
+  /**
+   * Server-written, customer-VISIBLE marker for money we could not apply to
+   * this order (A08 B5). Read-only to the client: the server sets it when a
+   * captured payment is parked (amount mismatch/unknown, currency mismatch, or
+   * a capture against a cancelled/refunded order), because every park
+   * collection is brand-only and the payer would otherwise have no self-serve
+   * view of their money. The app must never write this field.
+   */
+  reconciliation?: {
+    state: "payment_review";
+    /**
+     * Ops-facing machine code. Live writers emit exactly one of:
+     * confirm_currency_mismatch, confirm_amount_mismatch, confirm_amount_unknown,
+     * capture_on_cancelled_order, capture_on_refunded_order. Optional here only
+     * because this is an unvalidated read of a server doc; never render it.
+     */
+    reason?: string;
+    razorpayPaymentId?: string | null;
+    /**
+     * Firestore serverTimestamp(), not an ISO string: the value is a Timestamp
+     * object in memory and a `{seconds,nanoseconds}`-shaped map once the
+     * persisted orders cache round-trips through JSON. Nothing in the app reads
+     * it, so it stays `unknown` rather than inviting a string assumption.
+     */
+    updatedAt?: unknown;
+  } | null;
 
   placedAt: Iso8601;
   /** Estimated ready / delivery time in ISO. */
   estimatedAt?: Iso8601;
   /** Terminal timestamp (delivered / picked_up / completed / cancelled). */
   completedAt?: Iso8601;
+  /**
+   * Server-written document clock — every status/ownership lane in
+   * `firestore.rules` merge-writes `updatedAt` (Firestore serverTimestamp
+   * in memory, `{seconds,nanoseconds}` once the persisted cache round-trips
+   * through JSON). Passthrough from the raw order doc (unvalidated — same
+   * class as `reconciliation.updatedAt` above): read ONLY for cache
+   * freshness ranking in ordersStore; never render it.
+   */
+  updatedAt?: unknown;
 
   /** Petpooja POS sync status and details */
   petpoojaStatus?: "Pending" | "Processing" | "Synced" | "Failed" | "Bypassed";
@@ -161,6 +205,25 @@ export interface Order {
   deliveryPartner?: DeliveryPartnerInfo;
   /** Repository metadata pass-through (KOT number, POS refs, …). */
   meta?: Record<string, unknown>;
+}
+
+/**
+ * Amount the customer still owes on this order, or null when the document
+ * does not carry a readable grand total. Mirrors the checkout payable rule:
+ * grand total plus tip minus redeemed loyalty points, floored at zero.
+ */
+export function orderPayableAmount(
+  order: Pick<Order, "totals" | "tipAmount" | "loyaltyPointsRedeemed">,
+): number | null {
+  const grandTotal = order.totals?.grandTotal;
+  if (typeof grandTotal !== "number" || !Number.isFinite(grandTotal)) return null;
+  const tip =
+    typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount) ? order.tipAmount : 0;
+  const points =
+    typeof order.loyaltyPointsRedeemed === "number" && Number.isFinite(order.loyaltyPointsRedeemed)
+      ? order.loyaltyPointsRedeemed
+      : 0;
+  return Math.max(0, grandTotal + tip - points);
 }
 
 export interface OrderTrackingSnapshot {
@@ -207,9 +270,13 @@ export interface CreateOrderInput {
   /** Loyalty points redeemed (1 pt = ₹1, server re-caps at 20%). */
   loyaltyPointsRedeemed?: number;
   address?: OrderAddressSnapshot;
+  /** Delivery address pass-through for downstream (partner/dispatch) systems. */
+  deliveryAddress?: OrderAddressSnapshot;
   notes?: string;
   fulfillmentInstructions?: string;
   tableNumber?: string;
+  /** WhatsApp order-alert opt-in at placement time (defaults true). */
+  whatsappOptIn?: boolean;
   payment: OrderPaymentInfo;
   /** Backend confirmed order id (from payment verification). */
   confirmedOrderId?: string;
@@ -218,6 +285,8 @@ export interface CreateOrderInput {
 /** Mapping helper — build a snapshot from an existing Store model. */
 export function toStoreSnapshot(store: Store): OrderStoreSnapshot {
   return {
+    ...(store.etaMinutes != null ? { etaMinutes: store.etaMinutes } : {}),
+    ...(store.pickupEtaMinutes != null ? { pickupEtaMinutes: store.pickupEtaMinutes } : {}),
     id: store.id,
     name: store.name,
     address: store.address,

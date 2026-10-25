@@ -43,11 +43,11 @@ describe("Prompt 12: Product Customization Modal & Modifiers Suite", () => {
       expect(totalCartPrice).toBe(618);
     });
 
-    it("includes combo meal upsell price accurately", () => {
+    it("adds no combo surcharge — price stays base + modifiers only", () => {
       const selectedDeltas = [40]; // Gluten free bun (+40)
-      const comboMealAddon = 99; // Regular meal (+99)
-      const unitPrice = basePrice + selectedDeltas[0] + comboMealAddon;
-      expect(unitPrice).toBe(388);
+      // The combo meal upsell feature was removed (2026-10-06): no +99/+149 is added.
+      const unitPrice = basePrice + selectedDeltas[0];
+      expect(unitPrice).toBe(289);
     });
   });
 

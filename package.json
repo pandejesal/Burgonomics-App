@@ -97,6 +97,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
     "@capacitor/android": "^8.5.0",
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.0",
@@ -117,6 +118,7 @@
     "firebase-admin": "^14.2.0",
     "firebase-tools": "^15.28.1",
     "globals": "^17.12.0",
+    "jsdom": "^30.1.2",
     "nitro": "^3.0.260903-beta",
     "prettier": "^3.7.3",
     "tsx": "^4.23.12",

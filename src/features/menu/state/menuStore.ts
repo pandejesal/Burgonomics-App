@@ -44,7 +44,7 @@ interface MenuState {
   reset: () => void;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 
 const VIEW_MODE_KEY = "burgonomics.menu.viewMode";
 
@@ -96,6 +96,9 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
         invalidateMenuCache();
         set({ error: undefined, stale: false });
         const allProducts = res.data.items.map(enrichProduct);
+        // Only a snapshot that covers the whole catalog may delete products.
+        // A partial/legacy live page is merge-only, so unseen items survive.
+        const complete = res.data.complete === true;
         // Merge into existing buckets — the old code REPLACED every bucket
         // (pageSize 100, hasMore false), silently discarding the pagination
         // loadMore had built and resetting scroll position on every POS sync.
@@ -109,7 +112,7 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
               buckets[p.categoryId] = {
                 items: [p],
                 page: 1,
-                pageSize: 100,
+                pageSize: PAGE_SIZE,
                 total: 1,
                 hasMore: false,
                 loading: false,
@@ -124,15 +127,21 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
             buckets[p.categoryId] = {
               ...existing,
               items,
-              total: Math.max(existing.total, items.length),
+              total: complete ? items.length : Math.max(existing.total, items.length),
+              // A complete snapshot already holds everything there is to load.
+              hasMore: complete ? false : existing.hasMore,
             };
           }
+          if (!complete) return { buckets };
           // Drop items deleted from the menu (present locally, absent live).
           for (const [catId, bucket] of Object.entries(buckets)) {
             const kept = bucket.items.filter((i) => seen.has(i.id));
-            if (kept.length !== bucket.items.length) {
-              buckets[catId] = { ...bucket, items: kept, total: kept.length };
-            }
+            buckets[catId] = {
+              ...bucket,
+              items: kept,
+              total: kept.length,
+              hasMore: false,
+            };
           }
           return { buckets };
         });
@@ -232,21 +241,35 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
     }
 
     const page = { ...res.data, items: res.data.items.map(enrichProduct) };
-    const merged = [...(bucket?.items ?? []), ...page.items];
-    const hasMore = merged.length < page.total && page.items.length > 0;
-    set((s) => ({
-      buckets: {
-        ...s.buckets,
-        [categoryId]: {
-          items: merged,
-          page: page.page,
-          pageSize: page.pageSize,
-          total: page.total,
-          hasMore,
-          loading: false,
+    // STRESS SWEEP 2026-10-24 (J): merge against the bucket as of NOW, not
+    // the one captured before the await — a live POS 86ing/in-stock patch
+    // landing mid-pagination used to be wiped by this stale pre-await
+    // snapshot (the 86ed item reappeared as in-stock on the menu grid).
+    set((s) => {
+      const currentBucket = s.buckets[categoryId];
+      // Dedup on ids so a live patch + fresh page overlap cannot double-add.
+      const seen = (() => {
+        const m = new Set<string>();
+        for (const it of currentBucket?.items ?? []) m.add(it.id);
+        return m;
+      })();
+      const freshItems = page.items.filter((p) => !seen.has(p.id));
+      const merged = [...(currentBucket?.items ?? []), ...freshItems];
+      const hasMore = merged.length < page.total && page.items.length > 0;
+      return {
+        buckets: {
+          ...s.buckets,
+          [categoryId]: {
+            items: merged,
+            page: page.page,
+            pageSize: page.pageSize,
+            total: page.total,
+            hasMore,
+            loading: false,
+          },
         },
-      },
-    }));
+      };
+    });
   },
 
   setActiveCategory(id) {

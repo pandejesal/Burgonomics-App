@@ -4,6 +4,7 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
 import { Text } from "@/shared/components/common/Text";
 import { FileText, ShoppingCart, Clock, RotateCcw, HelpCircle } from "lucide-react";
+import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
 
 export const Route = createFileRoute("/terms")({
   head: () => ({
@@ -18,6 +19,13 @@ export const Route = createFileRoute("/terms")({
   component: TermsPage,
 });
 
+// P1-7: statutory IDs render only once real values replace the X-masked
+// placeholders — never print filler on customer-facing legal surfaces.
+const CIN = isUnsetRegistrationValue(APP.cin) ? null : APP.cin;
+const GSTIN = isUnsetRegistrationValue(APP.gstin) ? null : APP.gstin;
+const FSSAI = isUnsetRegistrationValue(APP.fssaiLicense) ? null : APP.fssaiLicense;
+const HAS_REG_IDS = !!(CIN || GSTIN || FSSAI);
+
 function TermsPage() {
   return (
     <AppShell title="Terms & Conditions" backTo="/profile" showTabs={true} showTopBar={true}>
@@ -31,7 +39,7 @@ function TermsPage() {
               Terms & Conditions
             </Text>
             <Text variant="caption" tone="secondary">
-              Last updated: August 29, 2026 · Burgonomics Foods Pvt Ltd, India
+              Last updated: August 29, 2026 · {APP.legalEntity} (trading as {APP.tradeName}), India
             </Text>
           </div>
         </div>
@@ -53,7 +61,7 @@ function TermsPage() {
               <Clock className="h-4 w-4 text-primary" /> 2. Pricing, Taxes & Delivery (India)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup: <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is <strong>FREE above ₹499</strong>, otherwise a flat Porter bike fee (≈ ₹40 base + ₹10/km) applies. No international shipping — India only.
+              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup: <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is <strong>FREE above ₹499</strong>, otherwise a flat delivery fee (as shown at checkout) applies. No international shipping — India only.
             </Text>
           </section>
 
@@ -62,9 +70,18 @@ function TermsPage() {
               <FileText className="h-4 w-4 text-primary" /> 2b. Seller Disclosure (Consumer Protection E-Commerce Rules, 2020)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Seller:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.<br />
-              <strong>CIN:</strong> UXXXXXGJ2024PTCXXXXXX · <strong>GSTIN:</strong> 24XXXXXXXXXX1Z5 · <strong>FSSAI Lic. No.:</strong> 1072XXXXXXXXXX (per store, displayed on menu &amp; checkout).<br />
-              <strong>Helpline:</strong> support@burgonomics.com · +91-7XXXXXXXXX (Mon–Sun 10am–11pm IST).<br />
+              <strong>Seller:</strong> {APP.legalEntity} (trading as {APP.tradeName}), {APP.registeredAddress}, India.<br />
+              {/* P1-7: registration IDs render only once real values replace the
+                  X-masked placeholders — never print filler. */}
+              {HAS_REG_IDS && (
+                <>
+                  {CIN && <><strong>CIN:</strong> {CIN} · </>}
+                  {GSTIN && <><strong>GSTIN:</strong> {GSTIN} · </>}
+                  {FSSAI && <><strong>FSSAI Lic. No.:</strong> {FSSAI} (per store, displayed on menu &amp; checkout).</>}
+                  <br />
+                </>
+              )}
+              <strong>Helpline:</strong> {APP.supportEmail} · via the in-app Help &amp; Support channel.<br />
               <strong>100% Pure Veg:</strong> All items are strictly vegetarian; FSSAI-licensed kitchens with zero cross-contamination.
             </Text>
           </section>
@@ -88,7 +105,7 @@ function TermsPage() {
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
               If you have any questions regarding your order or these terms, please contact our
-              support team at <strong>support@burgonomics.com</strong> or via the in-app Help &
+              support team at <strong>{APP.supportEmail}</strong> or via the in-app Help &amp;
               Support channel.
             </Text>
           </section>

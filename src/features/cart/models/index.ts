@@ -31,7 +31,12 @@ export interface CartLine {
   imageUrl?: string;
   fallbackImageUrl?: string;
   veg?: boolean;
-  /** Base unit price at the moment the item was added. */
+  /**
+   * All-in unit price at the moment the item was added: base menu price plus
+   * every selected modifier delta (`Σ priceDelta`). Consumers multiply this by
+   * `quantity` directly, and it is what Petpooja receives — never add modifier
+   * deltas on top of it again (see `computeItemUnitPrice`).
+   */
   unitPrice: Money;
   price?: Money;
   quantity: number;
@@ -60,11 +65,23 @@ export interface AppliedPromo {
 }
 
 export interface CartTotals {
+  /**
+   * Sum of all line totals, GST-INCLUSIVE. The 5% GST is already inside this
+   * number — it is never added on top (see `calculateOrderTotals`).
+   */
   subtotal: Money;
   itemDiscount: Money;
   promoDiscount: Money;
+  /** CGST + SGST embedded in `subtotal`. Informational — a breakdown, not an addition. */
   taxes: Money;
+  /** Central GST half of `taxes`. */
+  cgst: Money;
+  /** State GST half of `taxes`. */
+  sgst: Money;
+  /** Rate `cgst`/`sgst` were computed at (0.05 = 5%). */
+  gstRate: number;
   deliveryFee: Money;
+  /** Flat packaging charge for the whole order, by fulfillment mode. */
   packingFee: Money;
   grandTotal: Money;
   currency: "INR";

@@ -36,6 +36,7 @@ import type {
   SupportChannel,
 } from "@/features/support/models";
 import { toast } from "sonner";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 export const Route = createFileRoute("/support")({
   head: () => ({
@@ -50,6 +51,9 @@ export const Route = createFileRoute("/support")({
   validateSearch: (search: Record<string, unknown>) => ({
     topic: typeof search.topic === "string" ? search.topic : undefined,
     paymentId: typeof search.paymentId === "string" ? search.paymentId : undefined,
+    // Order-context deep link (MT-08): the tracking page routes customers here
+    // with the order id so the ticket can be traced without retyping it.
+    orderId: typeof search.orderId === "string" ? search.orderId : undefined,
     message: typeof search.message === "string" ? search.message : undefined,
   }),
   component: Page,
@@ -71,7 +75,9 @@ function Page() {
   const search = Route.useSearch();
   const paymentPrefill = search.topic === "payment" && search.paymentId ? search : null;
   const [faqs, setFaqs] = React.useState<FaqItem[] | null>(null);
+  const [faqsError, setFaqsError] = React.useState(false);
   const [channels, setChannels] = React.useState<SupportChannel[] | null>(null);
+  const [channelsError, setChannelsError] = React.useState(false);
   const [categories, setCategories] = React.useState<IssueCategory[]>([]);
   const [faqQuery, setFaqQuery] = React.useState("");
   const [openTicket, setOpenTicket] = React.useState(!!paymentPrefill);
@@ -87,11 +93,26 @@ function Page() {
     return orderIds.map((id) => st.byId[id]).filter(Boolean) as Order[];
   }, [orderIds]);
 
-  React.useEffect(() => {
-    void supportRepository.listFaqs().then((r) => r.success && setFaqs(r.data));
-    void supportRepository.listChannels().then((r) => r.success && setChannels(r.data));
-    void supportRepository.listIssueCategories().then((r) => r.success && setCategories(r.data));
+  // M6: a failed load previously left `faqs`/`channels` at null, so the pulse
+  // skeleton below rendered forever. Track failure per surface instead, so the
+  // section can show an honest error with a retry.
+  const loadSupportContent = React.useCallback(() => {
+    setFaqsError(false);
+    setChannelsError(false);
+    void supportRepository.listFaqs().then((r) => {
+      if (r.success) setFaqs(r.data);
+      else setFaqsError(true);
+    });
+    void supportRepository.listChannels().then((r) => {
+      if (r.success) setChannels(r.data);
+      else setChannelsError(true);
+    });
   }, []);
+
+  React.useEffect(() => {
+    loadSupportContent();
+    void supportRepository.listIssueCategories().then((r) => r.success && setCategories(r.data));
+  }, [loadSupportContent]);
 
   const filteredFaqs = React.useMemo(() => {
     if (!faqs) return null;
@@ -122,12 +143,11 @@ function Page() {
               <ShieldCheck className="w-5 h-5 text-emerald-300" />
               <span>Burgonomics Customer Care</span>
             </div>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 font-bold text-[10px] uppercase">
-              On-Device Drafts
-            </span>
           </div>
           <p className="text-xs text-emerald-100 leading-relaxed">
-            Need help with your meal or delivery? Tickets save on this device for now — for urgent help, contact the store directly. Team inbox coming soon.
+            Need help with your meal or delivery? Send a ticket below and our support team will
+            get back to you — track its status right on this page. For urgent help, contact the
+            store directly.
           </p>
           <button
             type="button"
@@ -157,8 +177,15 @@ function Page() {
           <Text variant="titleMedium" className="font-bold">
             Direct Contact Channels
           </Text>
-          {channels === null ? (
-            <div className="h-24 animate-pulse rounded-2xl bg-neutral-900" />
+          {channelsError ? (
+            <EmptyState
+              title="Couldn't load contact channels"
+              description="We couldn't load our contact channels. Please try again."
+              actionLabel="Try Again"
+              onAction={loadSupportContent}
+            />
+          ) : channels === null ? (
+            <div className="h-24 animate-pulse rounded-2xl bg-bg-secondary" />
           ) : channels.length === 0 ? (
             <EmptyState
               title="No channels"
@@ -176,16 +203,16 @@ function Page() {
         </section>
 
         {/* Share Feedback */}
-        <div className="p-4 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-2">
+        <div className="p-4 rounded-3xl bg-surface border border-divider space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-white text-xs">Share Store Feedback</h3>
-              <p className="text-[11px] text-neutral-400">Rate your food, service, or suggest a new burger flavor.</p>
+              <h3 className="font-bold text-text text-xs">Share Store Feedback</h3>
+              <p className="text-[11px] text-text-secondary">Rate your food, service, or suggest a new burger flavor.</p>
             </div>
             <button
               type="button"
               onClick={() => setOpenFeedback(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text font-bold text-xs cursor-pointer transition-colors"
             >
               Feedback
             </button>
@@ -200,19 +227,26 @@ function Page() {
             </Text>
           </div>
           {faqs && faqs.length > 0 && (
-            <label className="flex h-11 items-center gap-2 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 focus-within:border-[#FF6600]">
+            <label className="flex h-11 items-center gap-2 rounded-2xl border border-divider bg-surface px-4 focus-within:border-[#FF6600]">
               <input
                 type="search"
                 value={faqQuery}
                 onChange={(e) => setFaqQuery(e.target.value)}
                 placeholder="Search FAQs (e.g., refund, delivery time, coins)..."
                 aria-label="Search frequently asked questions"
-                className="flex-1 bg-transparent text-white outline-none text-xs placeholder:text-neutral-500"
+                className="flex-1 bg-transparent text-text outline-none text-xs placeholder:text-text-secondary"
               />
             </label>
           )}
-          {filteredFaqs === null ? (
-            <div className="h-40 animate-pulse rounded-2xl bg-neutral-900" />
+          {faqsError ? (
+            <EmptyState
+              title="Couldn't load FAQs"
+              description="We couldn't load the help articles. Please try again."
+              actionLabel="Try Again"
+              onAction={loadSupportContent}
+            />
+          ) : filteredFaqs === null ? (
+            <div className="h-40 animate-pulse rounded-2xl bg-bg-secondary" />
           ) : filteredFaqs.length === 0 ? (
             <EmptyState
               title={faqQuery ? "No matching FAQs" : "No FAQs"}
@@ -223,7 +257,7 @@ function Page() {
               }
             />
           ) : (
-            <ul className="overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 divide-y divide-neutral-800">
+            <ul className="overflow-hidden rounded-3xl border border-divider bg-surface divide-y divide-divider">
               {filteredFaqs.map((f) => (
                 <li key={f.id}>
                   <FaqAccordion item={f} />
@@ -239,7 +273,7 @@ function Page() {
         open={openTicket}
         onOpenChange={setOpenTicket}
         title="Report an Issue"
-        description="Tickets save on this device for now — for urgent help, contact the store directly."
+        description="Your ticket is sent to our support team — track it under Your Tickets below. For urgent help, contact the store directly."
       >
         <CreateTicketForm
           key={paymentPrefill ? `pay-${paymentPrefill.paymentId}` : "blank"}
@@ -295,8 +329,8 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
       target={channel.kind === "whatsapp" ? "_blank" : undefined}
       rel={channel.kind === "whatsapp" ? "noreferrer noopener" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-3 transition-colors text-white",
-        disabled ? "opacity-70" : "hover:border-[#0E4825] hover:bg-neutral-850",
+        "flex items-center gap-3 rounded-2xl border border-divider bg-surface p-3 transition-colors text-text",
+        disabled ? "opacity-70" : "hover:border-[#0E4825] hover:bg-bg-secondary",
       )}
       aria-disabled={disabled || undefined}
     >
@@ -311,7 +345,7 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
           {!channel.available && <AppBadge tone="neutral">Soon</AppBadge>}
         </div>
         {channel.helper && (
-          <span className="text-[11px] text-neutral-400 block truncate">
+          <span className="text-[11px] text-text-secondary block truncate">
             {channel.helper}
           </span>
         )}
@@ -328,14 +362,14 @@ function FaqAccordion({ item }: { item: FaqItem }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-neutral-850/60 transition-colors"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-secondary transition-colors"
       >
         <div className="min-w-0 flex-1">
-          <span className="text-xs font-bold text-white block truncate">
+          <span className="text-xs font-bold text-text block truncate">
             {item.question}
           </span>
           {item.category && (
-            <span className="text-[10px] text-neutral-400 uppercase font-semibold">
+            <span className="text-[10px] text-text-secondary uppercase font-semibold">
               {item.category}
             </span>
           )}
@@ -350,7 +384,7 @@ function FaqAccordion({ item }: { item: FaqItem }) {
       </button>
       {open && (
         <div className="px-4 pb-4">
-          <p className="text-xs text-neutral-300 leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed">
             {item.answer}
           </p>
         </div>
@@ -381,7 +415,9 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
     });
     setBusy(false);
     if (!res.success) {
-      setError(res.error.message);
+      // P1-13: `submitFeedback` fails with raw exception text in the message.
+      console.error("[support] feedback submit failed:", res.error);
+      setError(toUserMessage(res));
       return;
     }
     toast.success("Thanks for the feedback!");
@@ -392,9 +428,9 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3 text-white">
+    <form onSubmit={submit} className="space-y-3">
       <fieldset>
-        <legend className="text-xs font-bold uppercase text-neutral-400">Your rating</legend>
+        <legend className="text-xs font-bold uppercase text-text">Your rating</legend>
         <div
           role="radiogroup"
           aria-label="Rate your experience"
@@ -415,7 +451,7 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
                 <Star
                   className={cn(
                     "h-7 w-7 transition-colors",
-                    filled ? "fill-amber-400 text-amber-400" : "text-neutral-600",
+                    filled ? "fill-amber-400 text-amber-400" : "text-text-secondary",
                   )}
                   aria-hidden
                 />
@@ -425,23 +461,23 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
         </div>
       </fieldset>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-neutral-400">Comment</span>
+        <span className="text-xs font-bold uppercase text-text-secondary">Comment</span>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value.slice(0, 500))}
           rows={3}
           placeholder="What did you love or dislike?"
-          className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-white placeholder:text-neutral-500 outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-neutral-400">Suggestion (optional)</span>
+        <span className="text-xs font-bold uppercase text-text-secondary">Suggestion (optional)</span>
         <textarea
           value={suggestion}
           onChange={(e) => setSuggestion(e.target.value.slice(0, 500))}
           rows={2}
           placeholder="Anything we should build next?"
-          className="rounded-2xl border border-neutral-700 bg-neutral-900 px-4 py-3 text-xs text-white placeholder:text-neutral-500 outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
         />
       </label>
       {error && (

@@ -11,7 +11,6 @@ import { FailureState } from "@/shared/components/feedback/FailureState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import {
   StoreCard,
-  StoreMapViewer,
   NearestStoreSheet,
   FulfillmentSheet,
   useStoreSelection,
@@ -19,11 +18,23 @@ import {
   useLocationPermission,
   type Store,
 } from "@/features/stores";
+import { useAddressStore, selectSelectedAddress } from "@/features/addresses/state/addressStore";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { cartRepository, useCartStore, selectHasItems } from "@/features/cart";
 import { cn } from "@/lib/utils";
 import { haversineKm } from "@/features/stores/utils/distance";
+import {
+  isStoreInDeliveryArea,
+  getDeliveryDistanceKm,
+  MAX_PICKUP_DISTANCE_KM,
+  PICKUP_TOO_FAR_MESSAGE,
+} from "@/features/stores/utils/serviceArea";
+
+/** Rounds a km distance to 1 decimal, or undefined when it is not usable. */
+function roundKm(km: number): number | undefined {
+  return Number.isFinite(km) ? Number.parseFloat(km.toFixed(1)) : undefined;
+}
 
 /**
  * SCR-004 Store Selection.
@@ -68,6 +79,9 @@ function StoreSelectionPage() {
   } = useStoreSelection();
 
   const permission = useLocationPermission();
+  
+  // Get selected delivery address for coordinate precedence
+  const selectedAddress = useAddressStore(selectSelectedAddress);
 
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Store[] | null>(null);
@@ -76,11 +90,43 @@ function StoreSelectionPage() {
   const [nearestSheet, setNearestSheet] = useState<Store | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<Store | null>(null);
   const [fulfillmentFor, setFulfillmentFor] = useState<Store | null>(null);
+  const [farStoreWarning, setFarStoreWarning] = useState<{ store: Store; distanceKm: number } | null>(null);
 
   const hasCartItems = useCartStore(selectHasItems);
   const cartStoreId = useCartStore((s) => s.storeId);
 
   const [sortBy, setSortBy] = useState<"distance" | "alphabetical">("alphabetical");
+
+  // Compute user coordinates with precedence:
+  // (a) selected delivery address with lat/lng
+  // (b) device/cached GPS
+  // (c) null -> show all unblocked
+  const userCoords = useMemo(() => {
+    if (selectedAddress?.lat !== undefined && selectedAddress?.lng !== undefined) {
+      return { lat: selectedAddress.lat, lng: selectedAddress.lng };
+    }
+    return coords ?? permission.coords ?? null;
+  }, [selectedAddress, coords, permission.coords]);
+
+  /**
+   * Delivery-area annotation for one card.
+   *
+   * Out-of-area is only ever true for DELIVERY mode when we actually know
+   * where the user is (no position -> nothing is blocked). The distance is
+   * backfilled from the user's coordinates so the badge can always say
+   * "· X km away" even for a store row that never carried one.
+   */
+  const annotateForArea = (s: Store): { store: Store; outOfArea: boolean } => {
+    const uc = userCoords;
+    if (!uc) return { store: s, outOfArea: false };
+
+    const distanceKm = s.distanceKm ?? roundKm(getDeliveryDistanceKm(s, uc.lat, uc.lng));
+    const store =
+      s.distanceKm === undefined && distanceKm !== undefined ? { ...s, distanceKm } : s;
+    const outOfArea =
+      fulfillment === "delivery" && !isStoreInDeliveryArea(s, uc.lat, uc.lng);
+    return { store, outOfArea };
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -182,10 +228,13 @@ function StoreSelectionPage() {
         setNearestSheet(first);
       }
       if (res.error) {
-        // This occurs if it fell back to mock in dev mode
-        toast("Using simulated location", {
-          description: "GPS failed: " + res.error + ". Fell back to mock Bandra coordinates.",
-        });
+        // P1-8: dev-only diagnostics — production never exposes raw GPS
+        // errors or the mock Bandra fallback coordinates to customers.
+        if (import.meta.env.DEV) {
+          toast("Using simulated location", {
+            description: "GPS failed: " + res.error + ". Fell back to mock Bandra coordinates.",
+          });
+        }
       } else {
         toast.success("Location updated", {
           description: "Showing stores nearest to your GPS position.",
@@ -218,8 +267,18 @@ function StoreSelectionPage() {
     }
   };
 
-  const commitSelection = (s: Store) => {
+  /**
+   * Applies the selection and navigates home.
+   * Returns false when the delivery-area guard rejected it (that path has
+   * already toasted the reason) so callers never announce or clean up as if
+   * the switch had happened.
+   */
+  const commitSelection = (s: Store): boolean => {
     setActiveStore(s);
+    // setActiveStore rejects out-of-area stores while DELIVERY is active (it
+    // toasts the reason) — bail before we announce a selection that never
+    // happened or navigate away as if it had.
+    if (useStoreSelection.getState().activeStore?.id !== s.id) return false;
     if (query.trim()) addSearchTerm(query.trim());
     toast.success(`${s.name} selected`);
     let current = useStoreSelection.getState().fulfillment;
@@ -230,9 +289,27 @@ function StoreSelectionPage() {
       if (current) setFulfillment(current);
     }
     void navigate({ to: "/home" });
+    return true;
   };
 
   const onSelect = (s: Store) => {
+    // Distance enforcement: block selecting an outlet beyond the pickup
+    // geofence (MAX_PICKUP_DISTANCE_KM) for takeaway or dine-in
+    if (userCoords) {
+      const distance = haversineKm(userCoords, { lat: s.lat, lng: s.lng });
+      const currentF = useStoreSelection.getState().fulfillment;
+      if (distance > MAX_PICKUP_DISTANCE_KM && (currentF === "takeaway" || currentF === "dinein")) {
+        toast.error("Branch is too far away", {
+          description: `${s.name} is ${Math.round(distance)} km away. ${PICKUP_TOO_FAR_MESSAGE}`,
+        });
+        return;
+      }
+      if (distance > 12 && (currentF === "takeaway" || currentF === "dinein")) {
+        setFarStoreWarning({ store: s, distanceKm: Math.round(distance) });
+        return;
+      }
+    }
+
     // Guard: switching stores wipes the cart because menu availability
     // and pricing may differ across stores.
     if (hasCartItems && cartStoreId && cartStoreId !== s.id) {
@@ -242,13 +319,16 @@ function StoreSelectionPage() {
     commitSelection(s);
   };
 
-  const confirmSwitch = async () => {
+  const confirmSwitch = () => {
     if (!pendingSwitch) return;
-    await cartRepository.clear();
     const next = pendingSwitch;
     setPendingSwitch(null);
     setTimeout(() => {
-      commitSelection(next);
+      // Commit FIRST: if the delivery-area guard rejects the switch, the
+      // cart must survive — a rejection that already cost the items would
+      // be worse than no switch at all.
+      if (!commitSelection(next)) return;
+      void cartRepository.clear();
     }, 200);
   };
 
@@ -264,7 +344,8 @@ function StoreSelectionPage() {
 
   const listStores = useMemo(() => {
     const baseList = searchResults ?? stores;
-    const activeCoords = coords ?? permission.coords;
+    // Use userCoords which includes selected address coords as highest precedence
+    const activeCoords = userCoords;
 
     if (sortBy === "distance" && activeCoords) {
       return [...baseList]
@@ -275,13 +356,40 @@ function StoreSelectionPage() {
         .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
     }
 
+    // Even when not sorting by distance, compute distance for delivery area checking
+    if (activeCoords) {
+      return [...baseList].map((s) => ({
+        ...s,
+        distanceKm: s.distanceKm ?? haversineKm(activeCoords, { lat: s.lat, lng: s.lng }),
+      }));
+    }
+
     return [...baseList].sort((a, b) => a.name.localeCompare(b.name));
-  }, [searchResults, stores, sortBy, coords, permission.coords]);
+  }, [searchResults, stores, sortBy, userCoords]);
 
   const nearbyList = useMemo(
     () => (searchResults ? [] : nearby.slice(0, 3)),
     [nearby, searchResults],
   );
+
+  // De-dupe rows already shown above: Recently viewed (2) and Nearby render
+  // their own cards, so the All-stores list skips those ids when not
+  // searching — no outlet appears twice. The map keeps the full set.
+  const visibleStores = useMemo(() => {
+    if (searchResults) return listStores;
+    const shown = new Set([
+      ...recentStores.slice(0, 2).map((s) => s.id),
+      ...nearbyList.map((s) => s.id),
+    ]);
+    if (shown.size === 0) return listStores;
+    return listStores.filter((s) => !shown.has(s.id));
+  }, [listStores, searchResults, recentStores, nearbyList]);
+
+  // Visual truth for the sort tabs: highlight Nearest only when live coords
+  // exist to order by (listStores already falls back to alphabetical sort
+  // without them, so highlighting sortBy alone would lie).
+  const effectiveSortBy =
+    sortBy === "distance" && (coords ?? permission.coords) ? "distance" : "alphabetical";
 
   const showEmpty = !initialLoading && !error && listStores.length === 0;
 
@@ -290,6 +398,12 @@ function StoreSelectionPage() {
       title="Choose a store"
       showTabs={false}
       showTopBar={true}
+      // In-app back: Store Selection sits behind Home in the stack, so the
+      // TopBar must render a real back control. Without `backTo` the header
+      // rendered an empty placeholder and the only way out was the OS back
+      // gesture. Gated on an existing selection so a cold launch (no store
+      // yet) can't bounce back to Home's `replace`-to-/stores redirect loop.
+      backTo={activeStore ? "/home" : undefined}
       rightSlot={
         <button
           type="button"
@@ -311,6 +425,7 @@ function StoreSelectionPage() {
                 value={query}
                 onChange={(e) => setQuery(e.currentTarget.value)}
                 aria-label="Search stores"
+                className={query ? "pr-12" : undefined}
               />
               {query && (
                 <button
@@ -347,10 +462,10 @@ function StoreSelectionPage() {
               <div className="flex items-start gap-2 text-destructive">
                 <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <Text variant="bodyMedium" className="font-semibold text-red-800">
+                  <Text variant="bodyMedium" className="font-semibold text-error">
                     GPS Signal Offline
                   </Text>
-                  <Text variant="caption" className="text-red-700 block">
+                  <Text variant="caption" className="text-text-secondary block">
                     Please make sure location service is enabled on your device and try again.
                   </Text>
                 </div>
@@ -373,14 +488,14 @@ function StoreSelectionPage() {
             status === "permission_denied") && (
             <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-3">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-warning" />
                 <div className="space-y-1">
-                  <Text variant="bodyMedium" className="font-semibold text-amber-800">
+                  <Text variant="bodyMedium" className="font-semibold text-text-primary">
                     Location Access Needed
                   </Text>
-                  <Text variant="caption" className="text-amber-700 block">
-                    To display nearest kitchens, calculate exact distances, and estimate delivery
-                    travel times, Burgonomics needs access to your location coordinates.
+                  <Text variant="caption" className="text-text-secondary block">
+                    To show nearest kitchens first with distance and delivery time, allow
+                    location access. You can still search or pick a kitchen below without it.
                   </Text>
                 </div>
               </div>
@@ -395,10 +510,20 @@ function StoreSelectionPage() {
                 >
                   Retry Detection
                 </AppButton>
-                <Text variant="caption" tone="secondary" className="text-[11px] font-medium">
+                <Text
+                  variant="caption"
+                  tone="secondary"
+                  className="text-[11px] font-medium min-w-0 flex-1"
+                >
                   or pick a kitchen manually below:
                 </Text>
               </div>
+              {permission.status === "blocked" && (
+                <Text variant="caption" className="text-[11px] font-medium text-text-secondary">
+                  Location is blocked: turn it on in your browser or site settings, then tap
+                  Retry Detection.
+                </Text>
+              )}
             </div>
           )}
 
@@ -406,7 +531,7 @@ function StoreSelectionPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Text variant="caption" tone="secondary" className="flex items-center gap-1">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
                   Showing stores near you.
                 </Text>
               </div>
@@ -430,29 +555,44 @@ function StoreSelectionPage() {
           )}
         </div>
 
-        {/* Error */}
+        {/* Error: friendly copy, never raw backend strings. */}
         {error && !initialLoading && (
           <FailureState
-            kind="UNKNOWN"
+            kind={
+              /offline|network|fetch|failed to fetch|unavailable|timeout/i.test(error)
+                ? "OFFLINE"
+                : "UNKNOWN"
+            }
             title="We couldn't load stores"
-            message={error}
+            message={
+              /offline|network|fetch|failed to fetch|unavailable|timeout/i.test(error)
+                ? "You're offline. Check your connection and try again."
+                : "Something went wrong. Please try again."
+            }
             onRetry={() => void refresh()}
           />
         )}
 
-        {/* Loading skeleton */}
+        {/* Loading skeleton mirrors the loaded card layout to avoid shift. */}
         {initialLoading && (
-          <div className="space-y-2" aria-busy="true" aria-live="polite">
-            {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            className="space-y-2"
+            role="status"
+            aria-label="Loading stores"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="flex items-center gap-3 rounded-[var(--radius-medium)] border border-divider bg-surface p-3"
+                className="flex items-center gap-3 rounded-[var(--radius-medium)] border border-divider bg-surface px-3 py-2.5"
               >
-                <Skeleton className="h-12 w-12 rounded-full shrink-0" />
+                <Skeleton className="h-9 w-9 rounded-full shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-4 w-2/3" />
                   <Skeleton className="h-3 w-1/2" />
                 </div>
+                <Skeleton className="h-8 w-8 rounded-full shrink-0" />
               </div>
             ))}
           </div>
@@ -471,14 +611,19 @@ function StoreSelectionPage() {
               Recently viewed
             </Text>
             <div className="space-y-2">
-              {recentStores.slice(0, 2).map((s) => (
-                <StoreCard
-                  key={`recent-${s.id}`}
-                  store={s}
-                  selected={activeStore?.id === s.id}
-                  onSelect={onSelect}
-                />
-              ))}
+              {recentStores.slice(0, 2).map((s) => {
+                const { store, outOfArea } = annotateForArea(s);
+                return (
+                  <StoreCard
+                    key={`recent-${s.id}`}
+                    store={store}
+                    selected={activeStore?.id === s.id}
+                    onSelect={onSelect}
+                    outOfArea={outOfArea}
+                    fulfillment={fulfillment}
+                  />
+                );
+              })}
             </div>
           </section>
         )}
@@ -496,14 +641,19 @@ function StoreSelectionPage() {
               Nearby
             </Text>
             <div className="space-y-2">
-              {nearbyList.map((s) => (
-                <StoreCard
-                  key={`nearby-${s.id}`}
-                  store={s}
-                  selected={activeStore?.id === s.id}
-                  onSelect={onSelect}
-                />
-              ))}
+              {nearbyList.map((s) => {
+                const { store, outOfArea } = annotateForArea(s);
+                return (
+                  <StoreCard
+                    key={`nearby-${s.id}`}
+                    store={store}
+                    selected={activeStore?.id === s.id}
+                    onSelect={onSelect}
+                    outOfArea={outOfArea}
+                    fulfillment={fulfillment}
+                  />
+                );
+              })}
             </div>
           </section>
         )}
@@ -511,12 +661,6 @@ function StoreSelectionPage() {
         {/* All / Search results */}
         {!initialLoading && !error && (
           <section aria-labelledby="all-stores">
-            <StoreMapViewer
-              stores={listStores}
-              selectedStore={activeStore}
-              onSelectStore={onSelect}
-              className="mb-4"
-            />
             <div className="mb-3 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
               <Text as="h2" variant="titleMedium" tone="secondary" id="all-stores">
                 {searchResults
@@ -528,16 +672,22 @@ function StoreSelectionPage() {
                   Searching…
                 </Text>
               ) : (
-                <div className="flex items-center gap-1 bg-bg-secondary p-0.5 rounded-lg border border-divider text-xs">
+                <div
+                  className="flex items-center gap-1 bg-bg-secondary p-0.5 rounded-lg border border-divider text-xs"
+                  role="radiogroup"
+                  aria-label="Sort stores"
+                >
                   <button
                     type="button"
+                    role="radio"
+                    aria-checked={effectiveSortBy === "alphabetical"}
                     onClick={() => {
                       setSortBy("alphabetical");
                       toast.success("Sorted alphabetically");
                     }}
                     className={cn(
                       "px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all cursor-pointer",
-                      sortBy === "alphabetical"
+                      effectiveSortBy === "alphabetical"
                         ? "bg-surface text-text shadow-sm border border-divider/10"
                         : "text-text-secondary hover:text-text",
                     )}
@@ -546,10 +696,12 @@ function StoreSelectionPage() {
                   </button>
                   <button
                     type="button"
+                    role="radio"
+                    aria-checked={effectiveSortBy === "distance"}
                     onClick={() => void handleSortByDistance()}
                     className={cn(
                       "flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all cursor-pointer",
-                      sortBy === "distance"
+                      effectiveSortBy === "distance"
                         ? "bg-surface text-text shadow-sm border border-divider/10"
                         : "text-text-secondary hover:text-text",
                     )}
@@ -574,14 +726,19 @@ function StoreSelectionPage() {
               />
             ) : (
               <div className="space-y-2">
-                {listStores.map((s) => (
-                  <StoreCard
-                    key={s.id}
-                    store={s}
-                    selected={activeStore?.id === s.id}
-                    onSelect={onSelect}
-                  />
-                ))}
+                {visibleStores.map((s) => {
+                  const { store, outOfArea } = annotateForArea(s);
+                  return (
+                    <StoreCard
+                      key={s.id}
+                      store={store}
+                      selected={activeStore?.id === s.id}
+                      onSelect={onSelect}
+                      outOfArea={outOfArea}
+                      fulfillment={fulfillment}
+                    />
+                  );
+                })}
               </div>
             )}
           </section>
@@ -594,6 +751,8 @@ function StoreSelectionPage() {
         store={nearestSheet}
         onConfirm={onConfirmNearest}
         onChoose={() => setNearestSheet(null)}
+        fulfillment={fulfillment}
+        userCoords={userCoords}
       />
 
       <ConfirmDialog
@@ -609,6 +768,30 @@ function StoreSelectionPage() {
         cancelLabel="Stay here"
         destructive
         onConfirm={() => void confirmSwitch()}
+      />
+
+      <ConfirmDialog
+        open={!!farStoreWarning}
+        onOpenChange={(o) => !o && setFarStoreWarning(null)}
+        title="Outlet is Far Away"
+        description={
+          farStoreWarning
+            ? `${farStoreWarning.store.name} is ${farStoreWarning.distanceKm} km away from your location. Are you sure you want to select this branch for takeaway or dine-in?`
+            : undefined
+        }
+        confirmLabel="Yes, I'm heading there"
+        cancelLabel="Choose Closer Branch"
+        onConfirm={() => {
+          if (farStoreWarning) {
+            const chosen = farStoreWarning.store;
+            setFarStoreWarning(null);
+            if (hasCartItems && cartStoreId && cartStoreId !== chosen.id) {
+              setPendingSwitch(chosen);
+            } else {
+              commitSelection(chosen);
+            }
+          }
+        }}
       />
 
       <FulfillmentSheet
