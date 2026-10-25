@@ -8,7 +8,8 @@ import { logger } from "@/core/logging/logger";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { isDev } from "@/core/config/env";
-import { configureAuthUidSource } from "@/features/auth/utils/scopedPersistence";
+import { configureAuthUidSource, purgeScopedLocalCaches } from "@/features/auth/utils/scopedPersistence";
+import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 
 export type AuthStatus =
   | "idle" // initial, pre-bootstrap
@@ -55,7 +56,7 @@ interface AuthState {
   verifyOtp: (code: string) => Promise<{ ok: boolean; error?: string }>;
   resendOtp: () => Promise<{ ok: boolean; error?: string }>;
   changePhone: () => void;
-  logout: () => Promise<void>;
+  logout: (options?: { purgeLocalCaches?: boolean }) => Promise<void>;
   clearError: () => void;
 }
 
@@ -96,6 +97,64 @@ async function clearPersistedSession() {
     secureStorage.remove(SECURE_KEYS.USER),
   ]);
 }
+
+/**
+ * Bound on the pre-signout device-token unlink. The unlink endpoint is
+ * auth-gated, so it MUST be awaited BEFORE `authRepository.logout()` — the old
+ * fire-and-forget call lost its credential mid-flight and left the token bound
+ * to the old user. It must also never hold sign-out hostage: past this bound
+ * we log and continue signing out (a stale push binding is recoverable on the
+ * next login; a stuck logout is not).
+ */
+export const DEVICE_UNLINK_TIMEOUT_MS = 3000;
+
+async function unlinkDeviceTokenBounded(uid: string | null | undefined): Promise<void> {
+  if (!uid) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, DEVICE_UNLINK_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([
+      notificationsService.unlinkUserFromDeviceToken(uid).then(() => undefined),
+      timeout,
+    ]);
+    if (timedOut) {
+      logger.warn("auth.device_unlink_timeout", { timeoutMs: DEVICE_UNLINK_TIMEOUT_MS });
+    }
+  } catch (e: unknown) {
+    logger.warn("auth.device_unlink_failed", {
+      message: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** F11: balance follows the server on every session restore (never minted). */
+function refreshLoyaltyFromServer(uid: string | null | undefined): void {
+  void useLoyaltyStore
+    .getState()
+    .refreshFromServer(uid)
+    .catch((e: unknown) =>
+      logger.warn("auth.loyalty_refresh_failed", {
+        message: e instanceof Error ? e.message : String(e),
+      }),
+    );
+}
+
+type VerifyOtpResult = { ok: boolean; error?: string };
+
+/**
+ * Single-flight gate for OTP verification (F12). WebOTP autofill, a paste and
+ * a button tap can land in the same tick; without this each one fired its own
+ * confirm() call. Cleared on settle so a failed attempt can be retried.
+ */
+let verifyOtpInFlight: Promise<VerifyOtpResult> | null = null;
 
 import { notificationsService } from "@/features/notifications/services/notificationsService";
 
@@ -150,6 +209,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         useProfileStore.getState().hydrateFromAuth(user);
         profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
         void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
+        refreshLoyaltyFromServer(user.id);
         set({
           status: "authenticated",
           user,
@@ -169,6 +229,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // Same linking as fresh login — otherwise refreshed sessions silently
         // stop receiving order status pushes.
         void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
+        refreshLoyaltyFromServer(user.id);
         set({
           status: "authenticated",
           user,
@@ -213,29 +274,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   async verifyOtp(code) {
-    const { challenge } = get();
-    if (!challenge) {
-      return { ok: false, error: "Please request an OTP first." };
+    if (verifyOtpInFlight) return verifyOtpInFlight;
+    const run = (async (): Promise<VerifyOtpResult> => {
+      const { challenge } = get();
+      if (!challenge) {
+        return { ok: false, error: "Please request an OTP first." };
+      }
+      set({ status: "verifying", error: null });
+      const res = await authRepository.verifyOtp(challenge.otpToken, code);
+      if (!res.success) {
+        set({ status: "otp_sent", error: res.error.message });
+        return { ok: false, error: res.error.message };
+      }
+      await persistSession(res.data.user, res.data.accessToken, res.data.refreshToken);
+      useProfileStore.getState().hydrateFromAuth(res.data.user);
+      profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
+      void notificationsService.linkUserToDeviceToken(res.data.user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
+      refreshLoyaltyFromServer(res.data.user.id);
+      set({
+        status: "authenticated",
+        user: res.data.user,
+        accessToken: res.data.accessToken,
+        refreshToken: res.data.refreshToken,
+        challenge: null,
+        error: null,
+      });
+      return { ok: true };
+    })();
+    verifyOtpInFlight = run;
+    try {
+      return await run;
+    } finally {
+      // Reset on settle (success OR failure) so a retry is never blocked.
+      if (verifyOtpInFlight === run) verifyOtpInFlight = null;
     }
-    set({ status: "verifying", error: null });
-    const res = await authRepository.verifyOtp(challenge.otpToken, code);
-    if (!res.success) {
-      set({ status: "otp_sent", error: res.error.message });
-      return { ok: false, error: res.error.message };
-    }
-    await persistSession(res.data.user, res.data.accessToken, res.data.refreshToken);
-    useProfileStore.getState().hydrateFromAuth(res.data.user);
-    profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
-    void notificationsService.linkUserToDeviceToken(res.data.user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
-    set({
-      status: "authenticated",
-      user: res.data.user,
-      accessToken: res.data.accessToken,
-      refreshToken: res.data.refreshToken,
-      challenge: null,
-      error: null,
-    });
-    return { ok: true };
   },
 
   async resendOtp() {
@@ -259,9 +331,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
-  async logout() {
+  async logout(options?: { purgeLocalCaches?: boolean }) {
     const { refreshToken, user: currentUser } = get();
-    void notificationsService.unlinkUserFromDeviceToken(currentUser?.id).catch((e: unknown) => logger.warn("auth.device_unlink_failed", { message: e instanceof Error ? e.message : String(e) }));
+    const uid = currentUser?.id ?? null;
+
+    // F3 privacy: unlink the device token WHILE the session still exists and
+    // wait for it (bounded). Previously this was fire-and-forget, so sign-out
+    // revoked auth before the request was authorised and the token stayed
+    // bound to the previous user — the next person's order pushes routed there.
+    await unlinkDeviceTokenBounded(uid);
+
+    // F10 privacy: after account DELETION the uid no longer exists server
+    // side, so purge its device-local scoped caches. Normal logout keeps them
+    // (a returning customer expects their saved addresses/cart back).
+    if (options?.purgeLocalCaches && uid) {
+      const removed = purgeScopedLocalCaches(uid);
+      logger.info("auth.deleted_account_caches_purged", { removedCount: removed.length });
+    }
+
     await authRepository.logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();

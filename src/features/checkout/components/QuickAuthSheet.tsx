@@ -177,7 +177,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
               <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2.5 flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-xs">
                 <Sparkles className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                <span>Get 50 welcome points on your first order! (once per number)</span>
+                <span>No password needed — we&apos;ll text a 6-digit code to verify your number.</span>
               </div>
 
               <button

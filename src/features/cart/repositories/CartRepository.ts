@@ -253,10 +253,43 @@ export class CartRepository {
   // -- Validation / checkout hand-off ---------------------------------
 
   async validateCart(): Promise<ApiResult<CartValidation>> {
-    const s = useCartStore.getState();
-    if (s.isPriceLockExpired()) {
-      await this.validateAndRefreshPriceLock();
+    // Refresh an expired price lock BEFORE judging availability, then judge
+    // the state that refresh produced. `s` used to be captured here, before
+    // the await, so a line the refresh had just marked `unavailable` (newly
+    // 86'd, or missing from the live menu) still validated as available and
+    // the FIRST submit went through — exactly the submit the refresh exists
+    // to block.
+    let availabilityVerified = true;
+    if (useCartStore.getState().isPriceLockExpired()) {
+      const refresh = await this.validateAndRefreshPriceLock();
+      availabilityVerified = refresh.success && refresh.data.revalidated;
+      if (!availabilityVerified) {
+        const { logger } = await import("@/core/logging/logger");
+        logger.warn("cart.availability_unverified", {
+          messages: refresh.success ? refresh.data.messages : [refresh.error.message],
+        });
+      }
     }
+
+    // Re-read after the await: revalidation REPLACES `lines` (availability,
+    // prices) and renews the lock.
+    const s = useCartStore.getState();
+
+    // Fail closed: an unverified menu could be hiding an 86'd item, so never
+    // report a valid cart we could not check.
+    if (!availabilityVerified) {
+      return ok({
+        valid: false,
+        issues: [
+          {
+            code: "other",
+            message:
+              "We couldn't verify item availability just now. Check your connection and try again.",
+          },
+        ],
+      });
+    }
+
     const issues = s.lines
       .filter((line) => line.availability === "unavailable")
       .map((line) => ({

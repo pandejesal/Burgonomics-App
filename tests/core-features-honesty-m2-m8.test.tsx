@@ -235,7 +235,11 @@ describe("M3 — invoice invents payment mode / store address / paid status", ()
     const { html } = await generateInvoice(makeOrder(), "button");
 
     expect(html).not.toContain("ONLINE"); // payment mode is COD, not a guess
-    expect(html).not.toContain("Ahmedabad"); // no store address in the doc
+    // The seller block legitimately prints the registered legal entity and its
+    // Ahmedabad address; the STORE/fulfillment address row must still be blank
+    // rather than inventing one from the seller record.
+    expect(html).toContain("PANCHTATVA FOODS");
+    expect(html).toContain("GSTIN");
     expect(html).toContain("<strong>Address:</strong> —");
     expect(html).not.toContain("Total Amount Paid"); // money has not moved
     expect(html).toContain("Order Total");

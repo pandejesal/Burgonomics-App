@@ -26,7 +26,11 @@ export const Route = createFileRoute("/menu/product/$productId")({
   head: () => ({
     meta: [
       { title: "Product Details — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "100% Pure Vegetarian handcrafted smash burger with customizable modifiers." },
+      {
+        name: "description",
+        content:
+          "Product details, price and customisation options at Burgonomics (100% Pure Vegetarian).",
+      },
     ],
   }),
   component: ProductPage,
@@ -386,7 +390,10 @@ function ProductPage() {
                 {p.name}
               </h1>
               <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                {p.description || "Freshly grilled smash patty layered with crisp greens and gourmet house sauce."}
+                {/* Copy is data, not decoration: only the product's own
+                    description may describe it. A missing description stays
+                    missing instead of becoming an invented burger blurb. */}
+                {p.description || "Description coming soon."}
               </p>
             </div>
             <div className="shrink-0 text-right">

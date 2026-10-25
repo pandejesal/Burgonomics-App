@@ -91,6 +91,10 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "PAYMENT_RECONCILIATION_PENDING",
   "INVALID_AMOUNT",
   "MIN_ORDER",
+  // A retry whose checkout context changed: static, customer-readable copy
+  // ("Your order details changed…") — pass it through instead of collapsing
+  // into a generic failure, so the customer knows to re-check their details.
+  "CHECKOUT_CONTEXT_CHANGED",
   // Money-time refusals from the pricing engine (409). Their messages are
   // static, customer-readable sentences, so pass them verbatim instead of
   // collapsing into a generic failure. They only reach here when the create
@@ -256,6 +260,16 @@ function PaymentPage() {
     void loadTotals();
   }, [hydrated, lines, fulfillment, loadTotals]);
 
+  // Every hook must run on EVERY render. This ref sync used to sit after the
+  // hydration/empty-cart returns below, so the first hydrated render ran one
+  // hook more than the skeleton render and React threw #310 ("Rendered more
+  // hooks than during the previous render") on the money screen. It is
+  // hoisted here; `startPayment` is a hoisted function declaration so the
+  // callback can reference it before its textual definition.
+  React.useEffect(() => {
+    startPaymentRef.current = startPayment;
+  });
+
   if (!hydrated || !isBootstrapped) return <PaymentSkeleton />;
   if (!isAuthenticated) return <PaymentSkeleton />;
 
@@ -272,7 +286,9 @@ function PaymentPage() {
     );
   }
 
-  const startPayment = async () => {
+  // Hoisted function declaration (not a const arrow) so the hook above the
+  // early returns can bind it before this line is reached.
+  async function startPayment() {
     // Sync re-entry guard: a second tap before status flips must not start
     // a second payment. (Terminal statuses reset the ref, see effect below.)
     if (payInFlight.current) return;
@@ -309,6 +325,33 @@ function PaymentPage() {
 
     // 2. CASH FLOW (COD / Pay at Counter) - skip Razorpay completely!
     if (method === "cash") {
+      // COD has no server-side repricing handshake, so the freshly recomputed
+      // client bill IS the amount being settled. Recompute it AFTER preflight
+      // (which may revalidate the price lock and reprice/86 lines) and demand
+      // the SAME explicit acceptance the online path uses when it differs from
+      // the figure on screen — otherwise the order is created for a total the
+      // customer never reviewed.
+      const freshRes = await cartRepository.calculateTotals();
+      if (freshRes.success) {
+        const shownTotal = totals
+          ? Math.max(0, totals.grandTotal + tipAmount - loyaltyPointsToRedeem)
+          : undefined;
+        const freshTotal = Math.max(
+          0,
+          freshRes.data.grandTotal + tipAmount - loyaltyPointsToRedeem,
+        );
+        if (needsRepriceAcceptance(shownTotal, freshTotal, acceptedServerAmount.current)) {
+          // Release the re-entry guard before returning to the dialog.
+          payInFlight.current = false;
+          setStatus("idle");
+          setRepricePrompt({ displayed: shownTotal as number, authoritative: freshTotal });
+          return;
+        }
+      }
+      // A totals recompute failure is surfaced by createFromCurrentContext,
+      // which recomputes and refuses the order — never a COD doc at an
+      // unknown price.
+
       setStatus("waiting");
 
       try {
@@ -455,11 +498,7 @@ function PaymentPage() {
       setFailure({ code: "PAYMENT_INIT_ERROR", message, retryable: true });
       toast.error("Payment Error", { description: message });
     }
-  };
-
-  React.useEffect(() => {
-    startPaymentRef.current = startPayment;
-  });
+  }
 
   const handleSuccess = async (result: PaymentResult) => {
     // Contract §3: verification binds the gateway payment to the internal

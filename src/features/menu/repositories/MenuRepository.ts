@@ -1,5 +1,6 @@
 import {
   menuService,
+  type LiveProductPage,
   type MenuCategory,
   type MenuItem,
   type MenuSearchOptions,
@@ -77,11 +78,9 @@ export class MenuRepository {
   subscribeProducts(
     storeId: string | undefined,
     categoryId: string | undefined,
-    callback: (result: ApiResult<ProductPage>) => void,
-    page = 1,
-    pageSize = 40,
+    callback: (result: ApiResult<LiveProductPage>) => void,
   ): () => void {
-    return this.service.subscribeProducts(storeId, categoryId, callback, page, pageSize);
+    return this.service.subscribeProducts(storeId, categoryId, callback);
   }
 
   subscribeProduct(

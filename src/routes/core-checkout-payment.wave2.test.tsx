@@ -56,6 +56,9 @@ const fixture = vi.hoisted(() => {
     initializeRazorpay: vi.fn(async () => {}),
     openCheckout: vi.fn(),
     toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+    /** Set by the COD-consent case only; null keeps other suites unchanged. */
+    selectedAddress: null as Record<string, unknown> | null,
+    createOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     noop,
   };
 });
@@ -103,6 +106,31 @@ vi.mock("motion/react", () => ({
   ),
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useReducedMotion: () => false,
+}));
+// Inspectable stand-in for the Radix confirm dialog (used by the reprice gate).
+vi.mock("@/shared/components/common/ConfirmDialog", () => ({
+  ConfirmDialog: ({
+    open,
+    title,
+    description,
+    confirmLabel,
+    onConfirm,
+  }: {
+    open: boolean;
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }) =>
+    open ? (
+      <div data-testid="reprice-dialog">
+        <h2>{title}</h2>
+        <p>{description}</p>
+        <button type="button" onClick={onConfirm}>
+          {confirmLabel ?? "Confirm"}
+        </button>
+      </div>
+    ) : null,
 }));
 
 /* ── shared hooks / services ───────────────────────────────────────────── */
@@ -179,7 +207,7 @@ vi.mock("@/features/auth/state/authStore", () => {
 vi.mock("@/features/addresses", () => ({
   useAddressStore: (select: (s: unknown) => unknown) => select({ items: [], selectedId: null }),
   selectAddresses: () => [],
-  selectSelectedAddress: () => null,
+  selectSelectedAddress: () => fixture.selectedAddress,
 }));
 vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
   useLoyaltyStore: Object.assign((select: (s: { balance: number }) => unknown) => select({ balance: 0 }), {
@@ -188,7 +216,7 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
+    createFromCurrentContext: fixture.createOrder,
     finalizePaidOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     markPaymentFailed: vi.fn(async () => ({ success: true })),
   },
@@ -249,9 +277,11 @@ let root: Root;
 beforeEach(() => {
   vi.clearAllMocks();
   fixture.cart.calculateTotals.mockReset();
+  fixture.cart.validateCart.mockReset();
   fixture.openCheckout.mockReset();
   fixture.validateForPayment.mockReset();
   fixture.createPaymentOrder.mockReset();
+  fixture.selectedAddress = null;
   fixture.checkoutState.tipAmount = 0;
   fixture.checkoutState.loyaltyPointsToRedeem = 0;
   usePaymentStore.getState().reset();
@@ -394,6 +424,54 @@ describe("M5 — raw gateway failure text never reaches the customer", () => {
     expect(console.error).toHaveBeenCalledWith(
       "[payment] gateway onFailure:",
       expect.objectContaining({ description: RAW_GATEWAY_TEXT }),
+    );
+  });
+});
+
+describe("COD — checkout must accept the refreshed total before creating the order", () => {
+  it("blocks the order when validateCart's price-lock refresh raises the total, then creates it after acceptance", async () => {
+    fixture.selectedAddress = {
+      label: "home",
+      contactName: "Test Customer",
+      contactPhone: "+910000000000",
+      line1: "1 Main Street",
+      line2: "",
+      landmark: "",
+      city: "Surat",
+      state: "Gujarat",
+      pincode: "395007",
+      lat: 21.15,
+      lng: 72.77,
+    };
+    fixture.cart.validateCart.mockResolvedValue({
+      success: true,
+      data: { valid: true, issues: [] },
+    });
+    // ₹199 on screen; the post-preflight recompute returns the refreshed ₹249.
+    fixture.cart.calculateTotals.mockResolvedValueOnce(okTotals(199)).mockResolvedValue(okTotals(249));
+
+    await mount(CheckoutPage);
+    await act(async () => usePaymentStore.getState().setMethod("cash"));
+
+    const pay = buttonWithText("PAY");
+    expect(pay?.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    // No COD order may be created for a total the customer has not accepted.
+    expect(fixture.createOrder).not.toHaveBeenCalled();
+    const dialog = container.querySelector("[data-testid='reprice-dialog']");
+    expect(dialog).toBeTruthy();
+    expect(dialog?.textContent).toContain("249");
+    expect(dialog?.textContent).toContain("199");
+
+    // After explicit acceptance the same flow creates the order.
+    await act(async () => buttonWithText("Continue")!.click());
+    await act(async () => {});
+
+    expect(fixture.createOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentMethod: "cash" }),
     );
   });
 });

@@ -97,6 +97,9 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "PAYMENT_RECONCILIATION_PENDING",
   "INVALID_AMOUNT",
   "MIN_ORDER",
+  // A retry whose checkout context changed: static, customer-readable copy —
+  // pass it through so the customer knows to re-check their details.
+  "CHECKOUT_CONTEXT_CHANGED",
   // Money-time refusals from the pricing engine. Their messages are static,
   // customer-readable sentences (the only interpolation is the item name), so
   // passing them verbatim tells the customer WHICH item to remove instead of
@@ -428,6 +431,25 @@ export function CheckoutPage() {
 
     // 2. Cash on Delivery / Pay at Counter Flow
     if (paymentMethod === "cash") {
+      // Same consent rule the online path applies: the refreshed bill is what
+      // is being settled. `validateCart()` may have repriced lines during the
+      // price-lock refresh AFTER the figure on screen was rendered, so never
+      // create a COD order for a total the customer has not accepted.
+      const freshRes = await cartRepository.calculateTotals();
+      if (freshRes.success) {
+        const freshTotal = Math.max(
+          0,
+          freshRes.data.grandTotal + persistedTip - pointsDiscount,
+        );
+        if (needsRepriceAcceptance(finalPayable, freshTotal, acceptedServerAmount.current)) {
+          setBusy(false);
+          placeOrderInFlight.current = false;
+          setRepricePrompt({ displayed: finalPayable, authoritative: freshTotal });
+          return;
+        }
+      }
+      // A recompute failure is surfaced by createFromCurrentContext, which
+      // recomputes and refuses the order — never a COD doc at an unknown price.
       try {
         const orderStatus: PaymentDisplayStatus = isDelivery ? "CASH_PENDING" : "PAY_AT_STORE";
         const paymentLabel = isDelivery ? "Cash on Delivery" : isTakeaway ? "Pay at Pickup Counter" : "Pay at Dine-In Counter";

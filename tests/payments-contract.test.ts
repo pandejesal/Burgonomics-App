@@ -265,10 +265,13 @@ describe("ordersService.createOrder — persistence honesty (P1-2, finding 16)",
     expect(first.success).toBe(false);
 
     // The rejected write did commit: the retry reuses the same id and must
-    // verify ownership instead of issuing an UPDATE the rules deny.
+    // verify ownership instead of issuing an UPDATE the rules deny. The doc
+    // that landed carries the canonical fingerprint the write attempted, so a
+    // same-context retry is still recognised as the SAME checkout.
+    const attemptedDoc = mockSetDoc.mock.calls[0]?.[1] as Record<string, unknown>;
     mockGetDoc.mockResolvedValueOnce({
       exists: () => true,
-      data: () => ({ customerId: "cust_contract_1", userId: "cust_contract_1" }),
+      data: () => attemptedDoc,
     });
     mockSetDoc.mockClear();
     const retry = await ordersService.createOrder(orderInput());
@@ -292,9 +295,22 @@ describe("ordersService.createOrder — persistence honesty (P1-2, finding 16)",
   it("retrying payment for an already-persisted pending order skips the denied full setDoc", async () => {
     // Pending order was written before the gateway opened; the gateway create
     // answered 503, so the retry carries that same id (PAYMENTS_CONTRACT §3).
+    // Prime the canonical fingerprint that pending doc was written with —
+    // same checkout, so the retry stays eligible for the write skip.
+    mockSetDoc.mockResolvedValueOnce(undefined);
+    const primed = await ordersService.createOrder(orderInput());
+    expect(primed.success).toBe(true);
+    const fingerprint = (mockSetDoc.mock.calls[0]?.[1] as Record<string, unknown>)
+      .checkoutFingerprint;
+    mockSetDoc.mockClear();
+
     mockGetDoc.mockResolvedValueOnce({
       exists: () => true,
-      data: () => ({ customerId: "cust_contract_1", userId: "cust_contract_1" }),
+      data: () => ({
+        customerId: "cust_contract_1",
+        userId: "cust_contract_1",
+        checkoutFingerprint: fingerprint,
+      }),
     });
 
     const res = await ordersService.createOrder(

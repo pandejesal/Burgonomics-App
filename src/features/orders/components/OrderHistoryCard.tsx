@@ -47,7 +47,10 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
 
   const shortCode = order.shortCode || order.id.slice(-6).toUpperCase();
   const isTerminal = order.status.terminal || order.status.kind === "completed" || order.status.kind === "cancelled";
-  const isCancelled = order.status.kind === "cancelled" || order.status.code.includes("CANCEL");
+  // Quarantine only guarantees `status.kind`; a legacy doc can arrive with no
+  // `code`. Calling .includes on it threw and crashed the whole history list.
+  const statusCode = order.status.code ?? "";
+  const isCancelled = order.status.kind === "cancelled" || statusCode.includes("CANCEL");
 
   const dateFormatted = new Date(order.placedAt || Date.now()).toLocaleDateString("en-IN", {
     day: "numeric",
@@ -92,7 +95,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
                   : "bg-orange-950/80 text-orange-400 border-orange-500/40 animate-pulse"
               }`}
             >
-              {order.status.label || order.status.code}
+              {order.status.label || statusCode || "Status unavailable"}
             </span>
           </div>
 

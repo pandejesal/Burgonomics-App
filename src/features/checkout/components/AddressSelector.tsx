@@ -48,6 +48,23 @@ export function AddressSelector({
   // actually declared; the fallback above is for logic comparisons alone.
   const docRadiusKm = activeStore?.deliveryRadiusKm;
 
+  const selectAddress = (addr: Address) => {
+    void HapticService.selection();
+    onSelectAddress(addr);
+  };
+
+  // Keyboard equivalence for the radio cards (Enter / Space select). The card
+  // also contains a real link and a button, so only act when the card itself
+  // is the event target — otherwise Enter on "Pin on map" would also select.
+  const handleCardKeyDown =
+    (addr: Address) => (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        selectAddress(addr);
+      }
+    };
+
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between">
@@ -79,7 +96,7 @@ export function AddressSelector({
           </Link>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2.5" role="radiogroup" aria-label="Delivery address">
           {addresses.map((addr) => {
             const isSelected = selectedAddress?.id === addr.id;
 
@@ -102,12 +119,15 @@ export function AddressSelector({
             return (
               <div
                 key={addr.id}
-                onClick={() => {
-                  void HapticService.selection();
-                  onSelectAddress(addr);
-                }}
+                role="radio"
+                aria-checked={isSelected}
+                aria-label={`${addr.customLabel || addr.label} — ${addr.line1}, ${addr.city} ${addr.pincode}`}
+                tabIndex={0}
+                onClick={() => selectAddress(addr)}
+                onKeyDown={handleCardKeyDown(addr)}
                 className={cn(
                   "p-3.5 sm:p-4 rounded-2xl border transition-all select-none cursor-pointer flex flex-col gap-2",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
                   isSelected
                     ? isDeliverable === false
                       ? "border-amber-500 bg-amber-500/5 shadow-xs"

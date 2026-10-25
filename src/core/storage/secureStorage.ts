@@ -19,9 +19,30 @@
  */
 
 import { isNative } from "@/shared/platform/platform";
+import { logger } from "@/core/logging/logger";
 
 const NAMESPACE = "burg.secure.";
 const memoryFallback = new Map<string, string>();
+
+export const SECURE_KEYS = {
+  ACCESS_TOKEN: "auth.accessToken",
+  REFRESH_TOKEN: "auth.refreshToken",
+  USER: "auth.user",
+} as const;
+
+/**
+ * Credential-class keys. On web these already sit in plaintext localStorage
+ * (see the security model above), but on NATIVE the whole point is the
+ * Keychain/Keystore. If that write fails, falling back to localStorage would
+ * silently downgrade a credential to a plaintext WebView store — so these
+ * keys fail closed instead. Non-sensitive preferences keep the fallback.
+ */
+const TOKEN_CLASS_KEYS: ReadonlySet<string> = new Set([
+  SECURE_KEYS.ACCESS_TOKEN,
+  SECURE_KEYS.REFRESH_TOKEN,
+]);
+
+const isTokenClassKey = (key: string) => TOKEN_CLASS_KEYS.has(key);
 
 async function nativePrefGet(fullKey: string): Promise<string | null> {
   if (!isNative()) return null;
@@ -72,11 +93,29 @@ export const secureStorage = {
   },
   async set(key: string, value: string): Promise<void> {
     const fullKey = NAMESPACE + key;
-    memoryFallback.set(fullKey, value);
     if (isNative()) {
       const ok = await nativePrefSet(fullKey, value);
-      if (ok) return;
+      if (ok) {
+        memoryFallback.set(fullKey, value);
+        return;
+      }
+      if (isTokenClassKey(key)) {
+        // FAIL CLOSED: never write a credential to plaintext storage when the
+        // platform keystore refused it. Also drop any previously-planted
+        // plaintext copy so a stale token cannot outlive the keystore.
+        memoryFallback.delete(fullKey);
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.removeItem(fullKey);
+          } catch {
+            /* restricted storage — nothing more to scrub */
+          }
+        }
+        logger.warn("secureStorage.nativeWriteFailedTokenKey", { key });
+        return;
+      }
     }
+    memoryFallback.set(fullKey, value);
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(fullKey, value);
@@ -99,9 +138,3 @@ export const secureStorage = {
     }
   },
 };
-
-export const SECURE_KEYS = {
-  ACCESS_TOKEN: "auth.accessToken",
-  REFRESH_TOKEN: "auth.refreshToken",
-  USER: "auth.user",
-} as const;

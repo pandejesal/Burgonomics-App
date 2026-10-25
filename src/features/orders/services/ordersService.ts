@@ -235,15 +235,56 @@ function syncCacheScope(user: { uid: string } | null | undefined): void {
   cacheScope = key;
 }
 
-/** Stable identity of one checkout — used to reuse the order id on retry. */
+/**
+ * Canonical identity of one checkout — used to reuse the order id on retry.
+ *
+ * A retry may only reuse `input.confirmedOrderId` when the checkout it
+ * describes is UNCHANGED. The old signature covered store/fulfillment/method/
+ * total/notes/lines; a customer who went back and edited the address,
+ * instructions, tip, loyalty redemption or promo got a "success" for context
+ * that was never written (Firestore kept the previous doc). Every field that
+ * materially changes the created order is therefore part of the fingerprint.
+ */
 function checkoutFingerprint(input: CreateOrderInput): string {
+  const address = input.deliveryAddress ?? input.address ?? null;
+  const addressKey = address
+    ? [
+        address.label,
+        address.contactName,
+        address.contactPhone,
+        address.line1,
+        address.line2 ?? null,
+        address.landmark ?? null,
+        address.city,
+        address.state,
+        address.pincode,
+        address.lat ?? null,
+        address.lng ?? null,
+      ]
+    : null;
   return JSON.stringify([
     input.store?.id ?? null,
     input.fulfillment ?? null,
     input.payment?.method ?? null,
     input.totals?.grandTotal ?? null,
+    input.totals?.subtotal ?? null,
+    input.totals?.promoDiscount ?? null,
+    input.totals?.deliveryFee ?? null,
+    input.totals?.packingFee ?? null,
+    input.promo?.code ?? null,
+    input.tipAmount ?? 0,
+    input.loyaltyPointsRedeemed ?? 0,
     input.notes ?? null,
-    (input.items ?? []).map((l) => [l.productId, l.quantity, l.unitPrice]),
+    input.fulfillmentInstructions ?? null,
+    input.tableNumber ?? null,
+    addressKey,
+    (input.items ?? []).map((l) => [
+      l.productId,
+      l.quantity,
+      l.unitPrice,
+      (l.modifiers ?? []).map((m) => [m.groupId, m.optionId]),
+      l.notes ?? null,
+    ]),
   ]);
 }
 
@@ -475,17 +516,39 @@ export const ordersService = {
             typeof input.store.lat === "number" && typeof input.store.lng === "number"
               ? { lat: input.store.lat, lng: input.store.lng }
               : undefined,
+          // Client-written (rules allow it): the canonical checkout identity
+          // this doc was created for. A retry reuses the doc only when this
+          // still matches — see the `reusedOrderId` branch below.
+          checkoutFingerprint: fingerprint,
         };
         if (reusedOrderId) {
           // Payment retry or a lost-ack retry: the id may already exist (the
           // pending order created before the gateway opened, or a write whose
           // ack was lost). setDoc over it is an UPDATE the customer rules deny
-          // — verify the existing doc is ours and skip the write.
+          // — verify the existing doc belongs to THIS checkout, then skip.
           const existing = await getDoc(orderRef);
           if (existing.exists()) {
             const data = existing.data();
             if (data.customerId !== uid || data.userId !== uid) {
               return fail("NOT_OWNER", "This order belongs to a different account.", false);
+            }
+            // Ownership alone is not reuse-eligibility. A retry after the
+            // customer changed the address / notes / basket must NOT report
+            // success for a context that was never persisted: Firestore still
+            // holds the old doc, so the kitchen would receive the old order
+            // while the screen confirmed the new one. Same-context retries
+            // keep the skip (the write is rule-denied); anything else fails
+            // retryably AND drops the failed-persist retry id so the next tap
+            // mints a fresh order instead of retrying this stale one.
+            const storedFingerprint =
+              typeof data.checkoutFingerprint === "string" ? data.checkoutFingerprint : null;
+            if (storedFingerprint !== fingerprint) {
+              failedPersist = null;
+              return fail(
+                "CHECKOUT_CONTEXT_CHANGED",
+                "Your order details changed since the last attempt, so the earlier order was not reused. Please review your details and place the order again.",
+                true,
+              );
             }
           } else {
             await setDoc(orderRef, payload);

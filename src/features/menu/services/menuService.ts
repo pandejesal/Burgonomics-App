@@ -27,6 +27,18 @@ export type MenuCategory = MenuCategoryModel & { itemCount: number };
 export type MenuItem = Product;
 
 /**
+ * Live menu payload.
+ *
+ * `complete` is true only when `items` is the store's ENTIRE in-scope catalog.
+ * Consumers may prune ids absent from a complete snapshot (a real POS
+ * deletion); an incomplete snapshot is merge-only. Keeping this flag explicit
+ * is what stops a partial page from deleting products the listener never saw.
+ */
+export interface LiveProductPage extends ProductPage {
+  complete: boolean;
+}
+
+/**
  * Canonical menu source: the `products` collection (written by server
  * Petpooja sync). Partner filters by `branchId`, Delivery by `restId`
  * (stores/{id}.petpoojaRestId, equal to the branch restId once outlets are
@@ -504,6 +516,11 @@ export const menuService = {
   /**
    * Real-time listener for the canonical `products` collection.
    * Categories derive from the items (single source of truth).
+   *
+   * No store scope means NO menu: it never falls back to an unscoped
+   * collection read, because `limit(100)` over every outlet would show another
+   * store's menu as if it were this one. The consumer gets the same honest
+   * empty result `fetchStoreProducts` returns and no listener is attached.
    */
   subscribeCategories(
     storeId: string | undefined,
@@ -515,9 +532,11 @@ export const menuService = {
       try {
         const restId = await resolveRestId(storeId);
         if (cancelled) return;
-        const q = restId
-          ? query(collection(db, "products"), where("restId", "==", restId))
-          : query(collection(db, "products"), limit(100));
+        if (!restId) {
+          callback(ok([]));
+          return;
+        }
+        const q = query(collection(db, "products"), where("restId", "==", restId));
         innerUnsub = onSnapshot(
           q,
           (snap) => {
@@ -544,13 +563,21 @@ export const menuService = {
 
   /**
    * Real-time listener for canonical products & 86ing (<5s sync).
+   *
+   * The listener holds the store's whole scoped query, so it emits the whole
+   * catalog — not page 1 of a page size. The old `pageSize = 40` slice made
+   * menuStore treat items 41..N as deleted and prune them for the session.
+   * Listener payloads are always `complete: true`; paged reads stay on
+   * `listProducts`, whose pagination is unchanged.
+   *
+   * No store scope means NO menu (see `subscribeCategories`): emit an empty
+   * complete snapshot and attach no listener, rather than reading the first
+   * 100 products of every outlet.
    */
   subscribeProducts(
     storeId: string | undefined,
     categoryId: string | undefined,
-    callback: (result: ApiResult<ProductPage>) => void,
-    page = 1,
-    pageSize = 40,
+    callback: (result: ApiResult<LiveProductPage>) => void,
   ): () => void {
     let innerUnsub: Unsubscribe | null = null;
     let cancelled = false;
@@ -558,9 +585,11 @@ export const menuService = {
       try {
         const restId = await resolveRestId(storeId);
         if (cancelled) return;
-        const q = restId
-          ? query(collection(db, "products"), where("restId", "==", restId))
-          : query(collection(db, "products"), limit(100));
+        if (!restId) {
+          callback(ok({ items: [], page: 1, pageSize: 0, total: 0, complete: true }));
+          return;
+        }
+        const q = query(collection(db, "products"), where("restId", "==", restId));
         innerUnsub = onSnapshot(
           q,
           (snap) => {
@@ -569,7 +598,15 @@ export const menuService = {
               all.push(mapProductDoc(d.data(), d.id));
             });
             if (categoryId) all = all.filter((p) => p.categoryId === categoryId);
-            callback(ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length }));
+            callback(
+              ok({
+                items: all,
+                page: 1,
+                pageSize: all.length,
+                total: all.length,
+                complete: true,
+              }),
+            );
           },
           (err) => {
             console.warn("menuService.subscribeProducts snapshot error:", err);

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Download, FileText, CheckCircle2, Printer } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
-import { APP } from "@/core/constants/app";
+import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
 import type { Order } from "../models";
 
 interface InvoiceDownloadButtonProps {
@@ -70,6 +70,19 @@ export function InvoiceDownloadButton({
     const packing = order.totals?.packingFee || 0;
     const delivery = order.totals?.deliveryFee || 0;
 
+    // Seller identity is single-sourced from APP — a hardcoded company name in
+    // a customer-facing receipt is a legal claim we cannot keep in sync. Masked
+    // registration numbers (X-placeholders) are treated as unset and omitted,
+    // never printed as filler (P1-7).
+    const sellerLines = [
+      esc(APP.legalEntity),
+      esc(APP.registeredAddress),
+      !isUnsetRegistrationValue(APP.gstin) ? `GSTIN: ${esc(APP.gstin)}` : null,
+      !isUnsetRegistrationValue(APP.fssaiLicense)
+        ? `FSSAI Lic. No.: ${esc(APP.fssaiLicense)}`
+        : null,
+    ].filter(Boolean);
+
     const invoiceContent = `
       <!DOCTYPE html>
       <html>
@@ -97,14 +110,14 @@ export function InvoiceDownloadButton({
         </div>
 
         <div class="header">
-          <div class="brand">BURGONOMICS</div>
-          <div style="font-size: 11px; color: #555;">Burgonomics Foodworks Pvt. Ltd.</div>
-          <div style="font-size: 10px; color: #777;">GST/FSSAI registration particulars available on request. This is an order receipt, not a GST tax invoice.</div>
+          <div class="brand">${esc(APP.tradeName.toUpperCase())}</div>
+          <div style="font-size: 11px; color: #555;">${sellerLines.join("<br>")}</div>
+          <div style="font-size: 10px; color: #777;">This is an order receipt, not a GST tax invoice.</div>
         </div>
 
         <div class="meta-grid">
           <div>
-            <strong>Invoice & Order:</strong> #${esc(shortOrder)}<br>
+            <strong>Receipt &amp; Order:</strong> #${esc(shortOrder)}<br>
             <strong>Date & Time:</strong> ${esc(dateFormatted)}<br>
             <strong>Fulfillment:</strong> ${esc(order.fulfillment).toUpperCase()}<br>
             <strong>Payment Mode:</strong> ${order.payment?.method ? esc(order.payment.method.toUpperCase()) : "—"}

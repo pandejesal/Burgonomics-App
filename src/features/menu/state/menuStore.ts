@@ -96,6 +96,9 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
         invalidateMenuCache();
         set({ error: undefined, stale: false });
         const allProducts = res.data.items.map(enrichProduct);
+        // Only a snapshot that covers the whole catalog may delete products.
+        // A partial/legacy live page is merge-only, so unseen items survive.
+        const complete = res.data.complete === true;
         // Merge into existing buckets — the old code REPLACED every bucket
         // (pageSize 100, hasMore false), silently discarding the pagination
         // loadMore had built and resetting scroll position on every POS sync.
@@ -109,7 +112,7 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
               buckets[p.categoryId] = {
                 items: [p],
                 page: 1,
-                pageSize: 100,
+                pageSize: PAGE_SIZE,
                 total: 1,
                 hasMore: false,
                 loading: false,
@@ -124,15 +127,21 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
             buckets[p.categoryId] = {
               ...existing,
               items,
-              total: Math.max(existing.total, items.length),
+              total: complete ? items.length : Math.max(existing.total, items.length),
+              // A complete snapshot already holds everything there is to load.
+              hasMore: complete ? false : existing.hasMore,
             };
           }
+          if (!complete) return { buckets };
           // Drop items deleted from the menu (present locally, absent live).
           for (const [catId, bucket] of Object.entries(buckets)) {
             const kept = bucket.items.filter((i) => seen.has(i.id));
-            if (kept.length !== bucket.items.length) {
-              buckets[catId] = { ...bucket, items: kept, total: kept.length };
-            }
+            buckets[catId] = {
+              ...bucket,
+              items: kept,
+              total: kept.length,
+              hasMore: false,
+            };
           }
           return { buckets };
         });

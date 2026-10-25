@@ -149,6 +149,9 @@ function TrackOrderPage() {
 
   // Row renders only for a fee the order actually recorded — never a default.
   const packingFee = order.totals?.packingFee;
+  // A legacy/partial doc may omit `items` entirely — `?? 1` used to claim one
+  // item that does not exist. Count what is there and pluralise it.
+  const itemCount = order.items?.length ?? 0;
 
   return (
     <ProtectedRoute>
@@ -234,7 +237,7 @@ function TrackOrderPage() {
           {/* 3b. 60-second cancellation grace — self-serve before the kitchen starts */}
           <CancellationGraceCard order={order} onOrderCancelled={setOrder} />
 
-          {/* 4. Expandable Itemized Invoice Accordion */}
+          {/* 4. Expandable itemized receipt accordion */}
           <div className="rounded-3xl border border-divider bg-surface shadow-md overflow-hidden">
             <button
               type="button"
@@ -248,10 +251,11 @@ function TrackOrderPage() {
                 <Receipt className="h-4.5 w-4.5 text-emerald-500" />
                 <div>
                   <h3 className="font-sans text-xs font-black text-text">
-                    View Itemized Tax Invoice
+                    View Order Receipt
                   </h3>
                   <p className="text-[11px] text-text-secondary">
-                    {order.items?.length ?? 1} Items • {formatINR(order.totals?.grandTotal ?? 0)}
+                    {itemCount} {itemCount === 1 ? "Item" : "Items"} •{" "}
+                    {formatINR(order.totals?.grandTotal ?? 0)}
                   </p>
                 </div>
               </div>

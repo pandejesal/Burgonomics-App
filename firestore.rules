@@ -92,19 +92,16 @@ service cloud.firestore {
     // Orders CREATE (both lanes): keys a client must never plant at birth.
     // OTP proof fields are server-minted by POST /orders/verifyDeliveryOtp;
     // refund/pricing/dispatch fields resolve server-side (Admin SDK /
-    // functions); petpoojaOrderId is webhook-owned (menuSyncWebhook). The
-    // customer app legitimately writes items, totals, total, payment (a
-    // pending display marker) and, for walk-in orders, paymentStatus and
-    // petpoojaSyncStatus='pending'; those are validated by shape below
-    // instead of being blanket-forbidden. Totals are repriced server-side at
-    // payment; the cash lane remains a documented residual.
+    // functions); petpoojaOrderId is webhook-owned (menuSyncWebhook).
+    // Items and totals are client-authored at order create; totals are repriced
+    // server-side at payment verification and cash-lane totals remain a documented residual.
     function orderCreateForbiddenKeys() {
       return [
         'deliveryOtp', 'deliveryOtpHash', 'deliveryOtpAttempts', 'deliveryOtpLockedUntil',
         'refund', 'refundStatus', 'refundId', 'refundAmount',
         'pricing', 'pricingSnapshot', 'petpoojaOrderId', 'dispatchStatus',
         'routeTransferStatus', 'petpoojaAcceptedNoId', 'petpoojaStatus',
-        'reconciliation', 'deliveryPartner',
+        'petpoojaSyncStatus', 'reconciliation', 'deliveryPartner',
         'kotPrinted', 'kotPrintedAt', 'dispatchProvider', 'dispatchOrderId',
         'borzoOrderId', 'shadowfaxOrderId', 'porterOrderId'
       ];
@@ -114,28 +111,43 @@ service cloud.firestore {
     // pending-only: a client cannot mint a paid/completed settlement marker.
     // The walk-in lane may be born completed because cash is tendered at the
     // counter. Absent payment is fine (older clients/walk-in writes).
-    function orderCreatePaymentPendingOnly() {
+    //
+    // ALLOWLIST the map itself, both lanes: `payment.routeTransfer` (the Route
+    // receipt) and the capture/refund bookkeeping are server-written after
+    // gateway verification. executeRouteSplit's fast path treats ANY stored
+    // `payment.routeTransfer` as an already-executed payout and returns
+    // "done" without POSTing the transfer (razorpay.service.ts), so a
+    // client-planted receipt at order create silently suppresses the branch
+    // settlement. Only the display fields the apps write are allowed.
+    function orderCreatePaymentClientFieldsOnly() {
       return !('payment' in request.resource.data) || (
         request.resource.data.payment is map &&
-        (
-          !('status' in request.resource.data.payment) ||
-          request.resource.data.payment.status in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE']
+        request.resource.data.payment.keys().hasOnly([
+          'method', 'label', 'status', 'transactionId', 'paidAt'
+        ])
+      );
+    }
+    function orderCreatePaymentPendingOnly() {
+      return orderCreatePaymentClientFieldsOnly() && (
+        !('payment' in request.resource.data) || (
+          request.resource.data.payment is map &&
+          (
+            !('status' in request.resource.data.payment) ||
+            request.resource.data.payment.status in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE']
+          )
         )
       );
     }
     function orderCreatePaymentSettledWalkin() {
-      return !('payment' in request.resource.data) || (
-        request.resource.data.payment is map &&
-        (
-          !('status' in request.resource.data.payment) ||
-          request.resource.data.payment.status in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE', 'completed']
+      return orderCreatePaymentClientFieldsOnly() && (
+        !('payment' in request.resource.data) || (
+          request.resource.data.payment is map &&
+          (
+            !('status' in request.resource.data.payment) ||
+            request.resource.data.payment.status in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE', 'completed']
+          )
         )
       );
-    }
-    // The client may report only a not-yet-synced KOT marker at birth.
-    function orderCreateKotSyncPending() {
-      return !('petpoojaSyncStatus' in request.resource.data) ||
-        request.resource.data.petpoojaSyncStatus in ['pending', 'Pending'];
     }
 
     // Orders CREATE (both lanes): the canonical initial status meta only.
@@ -286,7 +298,6 @@ service cloud.firestore {
           orderCreateInitialStatus() &&
           !request.resource.data.keys().hasAny(orderCreateForbiddenKeys()) &&
           orderCreatePaymentPendingOnly() &&
-          orderCreateKotSyncPending() &&
           (
             !('paymentStatus' in request.resource.data) ||
             request.resource.data.paymentStatus in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE']
@@ -301,7 +312,6 @@ service cloud.firestore {
           orderCreateInitialStatus() &&
           !request.resource.data.keys().hasAny(orderCreateForbiddenKeys()) &&
           orderCreatePaymentSettledWalkin() &&
-          orderCreateKotSyncPending() &&
           (
             !('paymentStatus' in request.resource.data) ||
             request.resource.data.paymentStatus in ['pending', 'completed']
@@ -316,6 +326,11 @@ service cloud.firestore {
         !directDeliveredBypass() &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'totals', 'pricingSnapshot', 'pricing', 'customerId', 'userId', 'branchId',
+          // Fulfillment identity is immutable to staff clients: flipping
+          // orderType from delivery to takeaway would make directDeliveredBypass()
+          // evaluate the stored (now non-delivery) type and let a second write
+          // mark DELIVERED without the OTP handover proof.
+          'orderType', 'fulfillment',
           'paymentStatus', 'payment', 'refundStatus', 'refundId', 'refundAmount', 'routeTransferStatus',
           'petpoojaOrderId', 'petpoojaAcceptedNoId', 'petpoojaStatus', 'petpoojaSyncStatus',
           'dispatchStatus', 'dispatchProvider', 'dispatchOrderId', 'borzoOrderId', 'shadowfaxOrderId',

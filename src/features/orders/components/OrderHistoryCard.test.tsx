@@ -65,3 +65,28 @@ describe("O-09: courier tracking promise is delivery-only", () => {
     expect(html).toContain("1-Tap Reorder");
   });
 });
+
+/**
+ * ordersService.quarantine only requires `status.kind`; a legacy doc can reach
+ * the list with no `status.code`. `order.status.code.includes(...)` threw on
+ * that doc and took the whole history screen down with it.
+ */
+describe("malformed status cannot crash the history card", () => {
+  const codelessOrder = () => {
+    const order = makeOrder("delivery", true) as unknown as Record<string, any>;
+    order.status = { label: "Delivered", kind: "completed", terminal: true };
+    return order as unknown as Order;
+  };
+
+  it("renders a code-less status without throwing", () => {
+    expect(() => renderToStaticMarkup(<OrderHistoryCard order={codelessOrder()} />)).not.toThrow();
+  });
+
+  it("falls back to a readable status label when both code and label are missing", () => {
+    const order = makeOrder("delivery", true) as unknown as Record<string, any>;
+    order.status = { kind: "completed", terminal: true };
+    const html = renderToStaticMarkup(<OrderHistoryCard order={order as unknown as Order} />);
+    expect(html).toContain("Status unavailable");
+    expect(html).not.toContain("undefined");
+  });
+});

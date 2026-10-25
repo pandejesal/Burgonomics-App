@@ -572,6 +572,28 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
+  it("37d. [ORDERS-UPDATE-FULFILLMENT-IMMUTABLE] Staff cannot flip orderType to bypass delivery OTP", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "orders", "ord_otp_type_guard"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        orderType: "delivery",
+        fulfillment: "delivery",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [],
+        totals: { grandTotal: 0 },
+      });
+    });
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branch1Db, "orders", "ord_otp_type_guard"), { orderType: "takeaway" })
+    );
+    await assertFails(
+      updateDoc(doc(branch1Db, "orders", "ord_otp_type_guard"), { fulfillment: "takeaway" })
+    );
+  });
+
   it("34. [ORDERS-CREATE-WALKIN-ALLOW] Branch staff CAN birth a POS walk-in order (customerId 'cust_walkin' + staff userId + own branch, born completed)", async () => {
     const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
     await assertSucceeds(
@@ -623,6 +645,58 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         paymentStatus: "completed",
         deliveryOtp: "999999",
+      })
+    );
+  });
+
+  it("37b. [ORDERS-CREATE-PAYMENT-SERVER-FIELDS-DENY] Customer cannot plant a Route receipt or capture fields in the nested payment map", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+    };
+    for (const [id, payment] of [
+      ["ord_evil_route", { status: "pending", routeTransfer: { id: "fake" } }],
+      ["ord_evil_receipt", { status: "pending", receipt: { id: "fake" } }],
+      ["ord_evil_capture", { status: "pending", capturedAmountPaise: 100 }],
+    ] as const) {
+      await assertFails(setDoc(doc(custDb, "orders", id), { ...base, payment }));
+    }
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_pay_display_ok"), {
+        ...base,
+        payment: {
+          method: "online",
+          label: "Pay Online",
+          status: "pending",
+          transactionId: "pay_pending",
+          paidAt: "2026-10-25T00:00:00.000Z",
+        },
+      })
+    );
+  });
+
+  it("37c. [ORDERS-CREATE-WALKIN-PAYMENT-SERVER-FIELDS-DENY] Walk-in lane payment map obeys the same allowlist", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    const base = {
+      customerId: "cust_walkin",
+      userId: "branch_owner_1",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      paymentStatus: "completed",
+    };
+    await assertFails(
+      setDoc(doc(branch1Db, "orders", "ord_pos_evil_pay_1"), {
+        ...base,
+        payment: { status: "completed", routeTransfer: { id: "fake" } },
+      })
+    );
+    await assertSucceeds(
+      setDoc(doc(branch1Db, "orders", "ord_pos_pay_ok"), {
+        ...base,
+        payment: { method: "cash", label: "Cash", status: "completed" },
       })
     );
   });

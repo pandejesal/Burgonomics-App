@@ -206,6 +206,16 @@ export class OrderRepository {
     if (res.success) {
       useOrdersStore.getState().upsert(res.data);
       useOrdersStore.getState().setActiveOrderId(res.data.id);
+    } else if (res.error.code === "CHECKOUT_CONTEXT_CHANGED") {
+      // The pending order `PaymentRepository.createPaymentOrder` minted
+      // describes a DIFFERENT checkout than the one the customer is now
+      // placing (address / notes / basket / totals changed). Retrying it can
+      // never succeed and would keep echoing the stale context, so drop the
+      // attempt: the next tap mints a fresh order. Only this code clears the
+      // binding — a plain PERSIST_FAILED retry must keep reusing the same id.
+      const payments = usePaymentStore.getState();
+      payments.setInternalOrderId(null);
+      payments.setGatewayOrderId(null);
     }
     return res;
   }
