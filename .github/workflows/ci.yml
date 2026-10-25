@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
       - run: npm ci
       - run: npx firebase emulators:exec --only firestore --project burgonomics-test-rules "npx vitest run tests/rules --reporter=verbose"
 

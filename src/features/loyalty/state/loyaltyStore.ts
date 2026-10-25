@@ -6,7 +6,7 @@ import { currentScopedUid, onAuthUidChange, scopedStorageKey } from "@/features/
 // Loop 36/120 privacy (finding 6): the cached balance is per signed-in user
 // (guests keep the legacy key). STRICT scoping — no legacy fallback read,
 // so one account's cached balance never surfaces in another's session.
-const BASE_STORAGE_KEY = "burgonomics.loyalty.v1";
+const BASE_STORAGE_KEY = "burgonomics.loyalty.v1"; // gitleaks:allow — storage namespace, not a credential
 const storageKey = () => scopedStorageKey(BASE_STORAGE_KEY, currentScopedUid());
 
 interface LoyaltyState {
