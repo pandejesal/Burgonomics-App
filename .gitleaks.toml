@@ -1,0 +1,7 @@
+# Gitleaks configuration.
+# The only historical finding in this repository is a localStorage namespace
+# constant ("burgonomics.loyalty.v1"), which the default generic-api-key rule
+# flags on entropy alone. It is not a credential and must not rotate.
+[allowlist]
+  description = "Non-secret storage namespace constants"
+  regexes = ['''burgonomics\.loyalty\.v1''']
