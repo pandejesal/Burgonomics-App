@@ -5,7 +5,13 @@ import type { Store } from "../src/features/stores/models/Store";
 
 const { setDoc } = vi.hoisted(() => ({ setDoc: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("../src/core/config/firebase", () => ({ auth: { currentUser: { uid: "customer" } }, db: {} }));
-vi.mock("firebase/firestore", () => ({ doc: vi.fn(), setDoc }));
+vi.mock("firebase/firestore", () => ({
+  doc: vi.fn(),
+  setDoc,
+  // Retry persistence checks the existing doc before writing; this suite
+  // exercises fresh creates, so the doc does not exist.
+  getDoc: vi.fn().mockResolvedValue({ exists: () => false, data: () => ({}) }),
+}));
 vi.mock("../src/core/integrations/petpooja", () => ({
   petpoojaGateway: { pushOrder: vi.fn().mockResolvedValue(undefined) },
 }));

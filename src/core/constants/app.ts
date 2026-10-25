@@ -13,10 +13,15 @@ export const APP = {
   // Registration IDs: populate with the real filings when available. Values
   // still carrying the X-mask placeholder are treated as unset — customer-
   // facing legal/invoice surfaces must omit those rows, never print filler
-  // (P1-7). `cin` is intentionally empty until the real CIN is known.
+  // (P1-7). `cin` is intentionally empty: the GST certificate names a
+  // partnership, so no CIN applies unless a company is incorporated.
+  legalEntity: "PANCHTATVA FOODS",
+  tradeName: "Burgonomics",
+  registeredAddress:
+    "A-802, Unicus Shyamal, Shyamal Cross Road, Satellite, Ahmedabad, Gujarat 380015",
   cin: "",
   fssaiLicense: "1072XXXXXXXXXX",
-  gstin: "24XXXXXXXXX1Z5",
+  gstin: "24ABHFP6677N1ZG",
   minTouchTargetDp: 48,
 } as const;
 

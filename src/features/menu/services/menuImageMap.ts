@@ -31,10 +31,10 @@ export const MENU_IMAGE_MAP: Record<string, string> = {
   // Burgers - Big Bang & Favorites
   // No "American Burger" shot exists; Farm Fresh is the generic house burger
   // and is not claimed by any other item.
-  "American Burger": "/images/menu/Farm Fresh.jpg",
+  "American Burger": "/images/menu/web/american-burger.webp",
   "Great Indian Burger": "/images/menu/big-bang-burgers/great-indian-burger.jpg",
   // Gochuchang = Korean chilli paste → the kimchi-burger shot, not a sibling's.
-  "Gochuchang Burger": "/images/menu/Kimchi + coffee.png",
+  "Gochuchang Burger": "/images/menu/web/gochuchang-burger.webp",
   "Cheese Burst Burger": "/images/menu/big-bang-burgers/cheese-burst-burger.jpg",
   "Tandoori Paneer Burger": "/images/menu/big-bang-burgers/tandoori-paneer-burger.jpg",
   "Super Hero Burger": "/images/menu/big-bang-burgers/super-hero-burger.jpg",
@@ -47,20 +47,20 @@ export const MENU_IMAGE_MAP: Record<string, string> = {
   "Veggie Loaded Burger": "/images/menu/classic-burgers/veggie-loaded-burger.jpg",
   // Own shot is the Kurkure Momos photo (shared with the momo it is named
   // after) → Burning Man is the crunchy/spicy patty shot no one else uses.
-  "Kurkure Momos Burger": "/images/menu/Burning Man.jpeg",
+  "Kurkure Momos Burger": "/images/menu/web/kurkure-momos-burger.webp",
   // 4 cheese.png is Cheese Heaven Pizza's photo; the jalapeño shot shows
   // pickled jalapeños + melted cheese over a patty.
-  "Cheese Jalapeño Burger": "/images/menu/Strawberry shake + Veggie loaded burger.png",
+  "Cheese Jalapeño Burger": "/images/menu/web/cheese-jalapeno-burger.webp",
 
   // Sizzling & Dipper
   "Veg Sizzling Burger": "/images/menu/sizzling-burgers/veg-sizzling-burger.jpg",
   "Cheese Supreme Burger": "/images/menu/sizzling-burgers/cheese-supreme-burger.jpg",
   "Paneer Supreme Burger": "/images/menu/sizzling-burgers/paneer-supreme-burger.jpg",
-  "Classic Dipper Burger": "/images/menu/MYOB.png",
-  "Cheese Dipper Burger": "/images/menu/red hot.JPG",
-  "Galaxy Seal Hero Burger": "/images/menu/Hero burgr.jpg",
-  "Orbit X Paneer Burger": "/images/menu/tandoori paneer.jpg",
-  "Cosmic Lava Cheese Burger": "/images/menu/Cheese burst.jpg",
+  "Classic Dipper Burger": "/images/menu/web/dipper-burger.webp",
+  "Cheese Dipper Burger": "/images/menu/web/dipper-burger.webp",
+  "Galaxy Seal Hero Burger": "/images/menu/web/ufo-burger.webp",
+  "Orbit X Paneer Burger": "/images/menu/web/ufo-burger.webp",
+  "Cosmic Lava Cheese Burger": "/images/menu/web/ufo-burger.webp",
 
   // Combos & Meals
   "2 Jr. Hero Burger": "/images/menu/combos/2-jr-hero-burger.jpg",
@@ -75,8 +75,8 @@ export const MENU_IMAGE_MAP: Record<string, string> = {
   // No onion-rings photo exists in the set (canonical image-map.json sanctions
   // the same fries photo). Salted fries.jpg is a separate file from
   // fries/salted-fries.jpg so the two rows are still distinct mappings.
-  "Onion Rings (5 pcs.)": "/images/menu/Salted fries.jpg",
-  "Mint Fries": "/images/menu/Peri Peri Cheesy.jpeg",
+  "Onion Rings (5 pcs.)": "/images/menu/web/onion-rings.webp",
+  "Mint Fries": "/images/menu/web/mint-fries.webp",
   "Peri Peri Cheese Fries": "/images/menu/fries/peri-peri-cheesy-fries.jpg",
   "Dirty Fries": "/images/menu/fries/dirty-fries.jpg",
 
@@ -100,7 +100,7 @@ export const MENU_IMAGE_MAP: Record<string, string> = {
   "Lemon Iced Tea": "/images/menu/coolers/lemon-iced-tea.jpg",
   "Peach Iced Tea": "/images/menu/coolers/peach-iced-tea.jpg",
   "Masala Coke": "/images/menu/coolers/masala-coke.jpg",
-  "Kokum Iced Tea": "/images/menu/coolers/kokum-drink.jpg",
+  "Kokum Iced Tea": "/images/menu/web/kokum-iced-tea.webp",
 
   // Shakes & Thick Shakes
   "Oreo Shake": "/images/menu/thick-shakes/oreo-shake.jpg",
@@ -109,7 +109,7 @@ export const MENU_IMAGE_MAP: Record<string, string> = {
   // back (it used to show Strawberry Shake.png — the same picture BlueBerry
   // was showing), so BlueBerry takes the unused Biscoff shot: distinct from
   // every other live item rather than a second copy of a sibling's.
-  "BlueBerry Shake": "/images/menu/Biscoff Shake.png",
+  "BlueBerry Shake": "/images/menu/web/blueberry-shake.webp",
   "Strawberry Oreo Shake": "/images/menu/thick-shakes/strawberry-oreo-shake.jpg",
   // No biscoff shot of its own either — the cookie-crumble shake is the
   // closest unused photo, and it frees Biscoff Shake.png for BlueBerry.
@@ -117,7 +117,7 @@ export const MENU_IMAGE_MAP: Record<string, string> = {
   "Nutella Shake": "/images/menu/Nutella.JPG",
 
   // Cold Coffee
-  "Classic Cold Coffee": "/images/menu/beverages/classic-cold-coffee.jpg",
+  "Classic Cold Coffee": "/images/menu/web/classic-cold-coffee.webp",
   // Same product, two spellings in live POS data — an intentional alias, the
   // only shared value in this map (asserted as such by the test).
   "Hazlenut Cold Coffee": "/images/menu/beverages/hazelnut-cold-coffee.jpg",

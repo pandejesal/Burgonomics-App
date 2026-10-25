@@ -2,27 +2,19 @@ import { describe, it, expect } from "vitest";
 import { mapProductDoc } from "./menuService";
 
 /**
- * Availability is the CONSUMER's last line of truth.
- *
- * The Petpooja ingest writes a boolean `inStock`, but a products doc can reach
- * the customer app without one (legacy/manual/seed docs). Until now the mapper
- * defaulted that to `true`, and nothing downstream re-checks: the cart only
- * blocks `availability === "unavailable"` (cartStore.ts:174,
- * CartRepository.ts:261-265) and the payments pricing engine never reads
- * inStock at all. "We do not know" therefore became "order it".
- *
- * The scope correction for this round is explicit - no permissive
- * unknown-stock=>available mapping, preserve truthful unknown/unavailable
- * states - so these tests pin the fail-closed mapping, not the old default.
+ * Availability is shared with the server pricing gate: an EXPLICIT false is an
+ * 86; a missing field (legacy/manual/combo/import docs) is sellable. Treating
+ * unknown as unsellable made every combo unbuyable and contradicted the server,
+ * which prices missing flags as available. Non-boolean writer values still fail
+ * closed.
  */
 describe("mapProductDoc availability mapping (consumer of the Petpooja sync)", () => {
   const base = { name: "Test Item", price: 199 };
 
-  it("does NOT present a doc with no availability signal as sellable", () => {
+  it("presents a doc with no availability signal as sellable (server parity)", () => {
     const product = mapProductDoc({ ...base }, "prod_x");
-    expect(product.inStock).toBe(false);
-    // Truthful state, not a silent "sold out": the reason says why.
-    expect(product.unavailableReason).toBe("Availability unknown");
+    expect(product.inStock).toBe(true);
+    expect(product.unavailableReason).toBeUndefined();
   });
 
   it("honours an explicit true", () => {

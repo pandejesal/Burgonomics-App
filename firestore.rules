@@ -92,28 +92,50 @@ service cloud.firestore {
     // Orders CREATE (both lanes): keys a client must never plant at birth.
     // OTP proof fields are server-minted by POST /orders/verifyDeliveryOtp;
     // refund/pricing/dispatch fields resolve server-side (Admin SDK /
-    // functions); petpoojaOrderId/petpoojaStatus are webhook-owned
-    // (menuSyncWebhook); reconciliation is written by the payment server.
+    // functions); petpoojaOrderId is webhook-owned (menuSyncWebhook). The
+    // customer app legitimately writes items, totals, total, payment (a
+    // pending display marker) and, for walk-in orders, paymentStatus and
+    // petpoojaSyncStatus='pending'; those are validated by shape below
+    // instead of being blanket-forbidden. Totals are repriced server-side at
+    // payment; the cash lane remains a documented residual.
     function orderCreateForbiddenKeys() {
       return [
         'deliveryOtp', 'deliveryOtpHash', 'deliveryOtpAttempts', 'deliveryOtpLockedUntil',
         'refund', 'refundStatus', 'refundId', 'refundAmount',
-        'pricing', 'pricingSnapshot', 'petpoojaOrderId', 'petpoojaStatus',
-        'reconciliation', 'dispatchStatus', 'routeTransferStatus',
-        'deliveryPartner', 'delivery', 'porterOrderId'
+        'pricing', 'pricingSnapshot', 'petpoojaOrderId', 'dispatchStatus',
+        'routeTransferStatus', 'petpoojaAcceptedNoId', 'petpoojaStatus',
+        'reconciliation', 'deliveryPartner',
+        'kotPrinted', 'kotPrintedAt', 'dispatchProvider', 'dispatchOrderId',
+        'borzoOrderId', 'shadowfaxOrderId', 'porterOrderId'
       ];
     }
 
-    // Orders CREATE (customer lane): a nested payment.status of completed/paid
-    // is a SERVER settlement marker (gateway verify / webhook). Customers may
-    // only birth the pending display shape; the server finishes payment.
-    function orderCreatePaymentUnsettled() {
-      return !('payment' in request.resource.data)
-        || (
-          request.resource.data.payment is map
-          && !(request.resource.data.payment.get('status', '') in
-            ['completed', 'paid', 'COMPLETED', 'PAID', 'Completed', 'Paid'])
-        );
+    // Nested payment display marker at birth. The customer lane is
+    // pending-only: a client cannot mint a paid/completed settlement marker.
+    // The walk-in lane may be born completed because cash is tendered at the
+    // counter. Absent payment is fine (older clients/walk-in writes).
+    function orderCreatePaymentPendingOnly() {
+      return !('payment' in request.resource.data) || (
+        request.resource.data.payment is map &&
+        (
+          !('status' in request.resource.data.payment) ||
+          request.resource.data.payment.status in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE']
+        )
+      );
+    }
+    function orderCreatePaymentSettledWalkin() {
+      return !('payment' in request.resource.data) || (
+        request.resource.data.payment is map &&
+        (
+          !('status' in request.resource.data.payment) ||
+          request.resource.data.payment.status in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE', 'completed']
+        )
+      );
+    }
+    // The client may report only a not-yet-synced KOT marker at birth.
+    function orderCreateKotSyncPending() {
+      return !('petpoojaSyncStatus' in request.resource.data) ||
+        request.resource.data.petpoojaSyncStatus in ['pending', 'Pending'];
     }
 
     // Orders CREATE (both lanes): the canonical initial status meta only.
@@ -263,7 +285,8 @@ service cloud.firestore {
           request.resource.data.userId == request.auth.uid &&
           orderCreateInitialStatus() &&
           !request.resource.data.keys().hasAny(orderCreateForbiddenKeys()) &&
-          orderCreatePaymentUnsettled() &&
+          orderCreatePaymentPendingOnly() &&
+          orderCreateKotSyncPending() &&
           (
             !('paymentStatus' in request.resource.data) ||
             request.resource.data.paymentStatus in ['pending', 'Pending', 'PENDING', 'CASH_PENDING', 'PAY_AT_STORE']
@@ -277,6 +300,8 @@ service cloud.firestore {
           ownsBranch(request.resource.data.branchId) &&
           orderCreateInitialStatus() &&
           !request.resource.data.keys().hasAny(orderCreateForbiddenKeys()) &&
+          orderCreatePaymentSettledWalkin() &&
+          orderCreateKotSyncPending() &&
           (
             !('paymentStatus' in request.resource.data) ||
             request.resource.data.paymentStatus in ['pending', 'completed']
@@ -292,6 +317,9 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'totals', 'pricingSnapshot', 'pricing', 'customerId', 'userId', 'branchId',
           'paymentStatus', 'payment', 'refundStatus', 'refundId', 'refundAmount', 'routeTransferStatus',
+          'petpoojaOrderId', 'petpoojaAcceptedNoId', 'petpoojaStatus', 'petpoojaSyncStatus',
+          'dispatchStatus', 'dispatchProvider', 'dispatchOrderId', 'borzoOrderId', 'shadowfaxOrderId',
+          'porterOrderId', 'refund', 'refunds',
           // Loop 7: delivery-OTP proof fields are server-owned (verifyDeliveryOtp
           // path only) — staff must not clear lockouts/attempts or rewrite the
           // hash to bypass handover proof via direct client update.
@@ -341,7 +369,8 @@ service cloud.firestore {
       allow update: if isBrandOwner() || (
         ownsBranch(branchId) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'razorpayAccountId', 'petpooja', 'petpoojaStoreId', 'servicedRadiusKm'
+          'razorpayAccountId', 'petpooja', 'petpoojaStoreId', 'servicedRadiusKm',
+          'royaltyPercentage', 'packagingFee'
         ])
       );
       allow delete: if isBrandOwner();
@@ -668,6 +697,22 @@ service cloud.firestore {
     match /route_transfer_events/{docId} {
       allow read: if isBrandOwner();
       allow create, update, delete: if false;
+    }
+
+    // Refund request identity receipts (razorpay.service.ts autoRefund) —
+    // server-only. Denied explicitly rather than left to the default-deny
+    // fallback: the document id is a hash of order/payment/request ids and
+    // carries money state, so no client lane may read or write it.
+    // Allows are additive: review any future overlapping wildcard rules too.
+    match /payment_refund_requests/{docId} {
+      allow read, write: if false;
+    }
+
+    // Dispatch pending-bind correlation tokens (dispatch.router.ts claim tx)
+    // — server-only. Keep correlation metadata out of client reads/writes;
+    // callbacks must still pass the provider authentication and binding checks.
+    match /dispatch_correlation_map/{docId} {
+      allow read, write: if false;
     }
 
     match /dev_error_snapshots/{snapshotId} {

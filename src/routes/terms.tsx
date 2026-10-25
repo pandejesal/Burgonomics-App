@@ -39,7 +39,7 @@ function TermsPage() {
               Terms & Conditions
             </Text>
             <Text variant="caption" tone="secondary">
-              Last updated: August 29, 2026 · Burgonomics Foods Pvt Ltd, India
+              Last updated: August 29, 2026 · {APP.legalEntity} (trading as {APP.tradeName}), India
             </Text>
           </div>
         </div>
@@ -70,7 +70,7 @@ function TermsPage() {
               <FileText className="h-4 w-4 text-primary" /> 2b. Seller Disclosure (Consumer Protection E-Commerce Rules, 2020)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Seller:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.<br />
+              <strong>Seller:</strong> {APP.legalEntity} (trading as {APP.tradeName}), {APP.registeredAddress}, India.<br />
               {/* P1-7: registration IDs render only once real values replace the
                   X-masked placeholders — never print filler. */}
               {HAS_REG_IDS && (

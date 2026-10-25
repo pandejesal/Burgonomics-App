@@ -21,6 +21,7 @@ import type {
   SearchSuggestion,
 } from "@/features/menu/models";
 import { resolveItemImage } from "./menuImageMap";
+import { lookupMenuDescription } from "./menuDescriptions";
 
 export type MenuCategory = MenuCategoryModel & { itemCount: number };
 export type MenuItem = Product;
@@ -164,7 +165,8 @@ export function mapProductDoc(data: any, docId: string): Product {
     categoryId: data.categoryId || "uncategorized",
     categoryName: data.categoryName || data.categoryname || undefined,
     name: data.name || data.itemname || "Product",
-    description: data.description || data.itemdescription || "",
+    description:
+      data.description || data.itemdescription || lookupMenuDescription(productName) || "",
     price: typeof data.price === "number" ? data.price : parseFloat(data.price) || 0,
     compareAtPrice: data.compareAtPrice,
     discountPercentage: data.discountPercentage,
@@ -173,25 +175,25 @@ export function mapProductDoc(data: any, docId: string): Product {
     imageUrls: data.imageUrls || (imageUrl ? [imageUrl] : []),
     fallbackImageUrl: data.fallbackImageUrl,
     inStock:
-      // Consumer truth signal, so it fails CLOSED. A doc with no availability
-      // field must never render as sellable: nothing downstream re-checks
-      // (the payments pricing engine never reads inStock, and the cart's only
-      // gate is this boolean), so "we do not know" would become "order it".
-      // Strict `=== true` also closes the truthiness trap where a string
-      // "false" from a bad writer used to become available.
+      // Availability flag semantics are shared with the server pricing gate:
+      // an EXPLICIT false is an 86; a missing field is a legacy/combo/import
+      // doc and is sellable. Treating "unknown" as false made every combo
+      // unbuyable, because the combo builder never writes inStock. Explicit
+      // string "false" still fails (strict boolean compare).
       data.inStock !== undefined
         ? data.inStock === true
         : data.isAvailable !== undefined
           ? data.isAvailable === true
-          : false,
+          : true,
     customizable: customizations.length > 0 || Boolean(data.customizable),
     prepTimeMinutes: toPrepMinutes(data.prepTimeMinutes),
     badges,
     tags: data.tags || [],
     unavailableReason:
+      // Only an explicit 86 carries a reason; a missing flag is sellable.
       data.unavailableReason ??
-      (data.inStock === undefined && data.isAvailable === undefined
-        ? "Availability unknown"
+      (data.inStock === false || data.isAvailable === false
+        ? "Currently unavailable"
         : undefined),
   };
 }

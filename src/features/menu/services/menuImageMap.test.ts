@@ -52,9 +52,13 @@ const publicFiles = fs.existsSync(publicDir) ? listPublicFiles() : [];
 const publicFileSet = new Set(publicFiles);
 const publicFilesByLower = new Map(publicFiles.map((f) => [f.toLowerCase(), f]));
 
-/** Two keys, one product: POS spells it both ways. Everything else must be unique. */
-const SHARED_BY_DESIGN: ReadonlyArray<readonly [string, string]> = [
+/** Same product or one upstream photo: POS spellings and site photo families. */
+const SHARED_BY_DESIGN: ReadonlyArray<ReadonlyArray<string>> = [
   ["Hazlenut Cold Coffee", "Hazelnut Cold Coffee"],
+  // burgonomics.com publishes one dipper shot and one UFO shot; using the real
+  // shared photo beats an unrelated sibling's picture.
+  ["Classic Dipper Burger", "Cheese Dipper Burger"],
+  ["Galaxy Seal Hero Burger", "Orbit X Paneer Burger", "Cosmic Lava Cheese Burger"],
 ];
 
 describe("menuImageMap — mapping integrity", () => {
@@ -92,7 +96,7 @@ describe("menuImageMap — mapping integrity", () => {
     for (const [value, owners] of ownersByPath) {
       if (owners.length < 2) continue;
       const isKnownAlias = SHARED_BY_DESIGN.some(
-        ([a, b]) => owners.length === 2 && owners.includes(a) && owners.includes(b),
+        (group) => owners.length === group.length && group.every((name) => owners.includes(name)),
       );
       if (!isKnownAlias) violations.push(`${value} ← ${owners.join(" ∕ ")}`);
     }
