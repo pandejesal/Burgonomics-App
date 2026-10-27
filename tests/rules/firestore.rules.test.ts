@@ -875,4 +875,135 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       })
     );
   });
+
+  // =========================================================================
+  // 8. ORDER BASKET (`items`) & DISPATCH (`deliveryStatus`) IMMUTABILITY
+  // =========================================================================
+
+  it("50. [ORDERS-UPDATE-ITEMS-DENY] branch_owner and branch_staff update of `items` on an order in their branch is DENIED", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "admins", "branch_staff_1"), {
+        email: "staff1@burgonomics.com",
+        role: "branch_staff",
+        branchId: "branch_01",
+        name: "Navrangpura Staff",
+      });
+    });
+
+    const branchOwnerDb = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchOwnerDb, "orders", "order_501"), {
+        items: [{ productId: "p_tamper", name: "Tampered Burger", quantity: 1, unitPrice: 1 }],
+      })
+    );
+
+    const branchStaffDb = testEnv.authenticatedContext("branch_staff_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchStaffDb, "orders", "order_501"), {
+        items: [{ productId: "p_tamper", name: "Tampered Burger", quantity: 1, unitPrice: 1 }],
+      })
+    );
+  });
+
+  it("51. [ORDERS-UPDATE-DELIVERY-STATUS-DENY] branch_staff and branch_owner update of `deliveryStatus` on an order in their branch is DENIED", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "admins", "branch_staff_1"), {
+        email: "staff1@burgonomics.com",
+        role: "branch_staff",
+        branchId: "branch_01",
+        name: "Navrangpura Staff",
+      });
+    });
+
+    const branchStaffDb = testEnv.authenticatedContext("branch_staff_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchStaffDb, "orders", "order_501"), {
+        deliveryStatus: "DELIVERED",
+      })
+    );
+
+    const branchOwnerDb = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchOwnerDb, "orders", "order_501"), {
+        deliveryStatus: "OUT_FOR_DELIVERY",
+      })
+    );
+  });
+
+  it("52. [ORDERS-UPDATE-LEGIT-STATUS-ALLOW] Legitimate branch-staff status transition on an order in their branch still SUCCEEDS", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "admins", "branch_staff_1"), {
+        email: "staff1@burgonomics.com",
+        role: "branch_staff",
+        branchId: "branch_01",
+        name: "Navrangpura Staff",
+      });
+    });
+
+    const branchStaffDb = testEnv.authenticatedContext("branch_staff_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(branchStaffDb, "orders", "order_501"), {
+        status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
+      })
+    );
+  });
+
+  it("53. [ORDERS-CREATE-WITH-ITEMS-ALLOW] Order creation with `items` (customer and walk-in lanes) still SUCCEEDS", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_create_items_cust"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [{ productId: "p1", name: "Classic Burger", quantity: 2, unitPrice: 149 }],
+        totals: { subtotal: 298, grandTotal: 313 },
+        payment: { method: "online", label: "Pay Online", status: "pending" },
+      })
+    );
+
+    const branchOwnerDb = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      setDoc(doc(branchOwnerDb, "orders", "ord_create_items_walkin"), {
+        customerId: "cust_walkin",
+        userId: "branch_owner_1",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
+        paymentStatus: "completed",
+        total: 149,
+      })
+    );
+  });
+
+  // Phase 3 DEC-01 supersession: the Phase-1 baseline characterized the
+  // brand_owner bypass (`allow update: if isBrandOwner() || ...`) as an
+  // allowed residual. The accepted DEC-01 policy removes it — protected
+  // order fields (basket/items, pricing/payments, dispatch/POS/refund/OTP)
+  // are SERVER-ONLY for every client role, so the characterization test is
+  // superseded in place by the expected-deny contract (not dropped).
+  // Full role matrix: tests/rules/order-server-only.rules.test.ts
+  it("54. [ORDERS-UPDATE-BRAND-OWNER-BYPASS-SUPERSEDED] brand_owner protected-field patch is DENIED (DEC-01, was allowed Phase-1 baseline)", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(brandDb, "orders", "order_501"), {
+        // Masked noncritical workflow field: brand retains the safe lane.
+        status: { code: "READY_FOR_PICKUP", kind: "in_progress", label: "Ready", terminal: false },
+      })
+    );
+    await assertFails(
+      updateDoc(doc(brandDb, "orders", "order_501"), {
+        items: [{ productId: "p_admin_fix", name: "Admin Adjusted Burger", quantity: 1, unitPrice: 149 }],
+        deliveryStatus: "ASSIGNED",
+      }),
+      "DEC-01: protected order fields are server-only for brand_owner too"
+    );
+    const devDb = testEnv.authenticatedContext("developer_1").firestore();
+    await assertFails(
+      updateDoc(doc(devDb, "orders", "order_501"), {
+        items: [{ productId: "p_dev_fix", name: "Dev Adjusted Burger", quantity: 1, unitPrice: 149 }],
+      }),
+      "DEC-01: protected order fields are server-only for developer too"
+    );
+  });
 });

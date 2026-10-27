@@ -80,31 +80,180 @@ service cloud.firestore {
     // Loop 12: delivery handover needs OTP proof — POST
     // /orders/verifyDeliveryOtp flips to DELIVERED server-side (lockout +
     // timing-safe compare). A direct client status write to DELIVERED on a
-    // delivery order bypasses that proof, so staff client updates may never
-    // perform it. Takeaway/dine-in complete in person; brand owners keep
-    // full access. Missing/non-map status never matches (no block).
+    // delivery order bypasses that proof. DEC-01 (Phase 3 T3.6-Roles) now
+    // applies this to EVERY client role: brand_owner/developer lost the old
+    // unpinned bypass, so delivery DELIVERED is server-only for everyone.
+    // Takeaway/dine-in completion stays an in-person operator lane.
+    // Missing/non-map status never matches (no block).
     function directDeliveredBypass() {
       return request.resource.data.status is map
         && request.resource.data.status.code == 'DELIVERED'
         && resource.data.orderType == 'delivery';
     }
 
-    // Orders CREATE (both lanes): keys a client must never plant at birth.
-    // OTP proof fields are server-minted by POST /orders/verifyDeliveryOtp;
-    // refund/pricing/dispatch fields resolve server-side (Admin SDK /
-    // functions); petpoojaOrderId is webhook-owned (menuSyncWebhook).
-    // Items and totals are client-authored at order create; totals are repriced
-    // server-side at payment verification and cash-lane totals remain a documented residual.
-    function orderCreateForbiddenKeys() {
+    // -----------------------------------------------------------------------
+    // DEC-01 (Phase 3, T3.6-ROLES) — SERVER-OWNED ORDER FIELD SET
+    //
+    // Policy (user decision 2026-10-25): the protected order fields —
+    // basket/items, pricing/payments, dispatch state, POS sync, refunds and
+    // the delivery-OTP proof — are written ONLY through validated Cloud
+    // Functions (Admin SDK bypasses rules), for ALL client roles including
+    // brand_owner/developer. The former `allow update: if isBrandOwner() ||…`
+    // bypass is hereby removed; the brand roles now ride the SAME field mask
+    // as branch staff. Writer audit before enforcement (both app sources):
+    //   - core ordersService.ts: createOrder = one-time CREATE with items;
+    //     setWhatsappOptIn = merge {whatsappOptIn, updatedAt}; cancelOrder =
+    //     merge {status CANCELLED, completedAt}; markPaymentFailed and
+    //     finalizePaidOrder are zero-write server-truth readers.
+    //   - partner useOrders.ts updateOrderStatus = HTTP POST
+    //     /orders/bumpStatus; adminOrdersService.ts is read-only
+    //     (getDocs/onSnapshot).
+    //   - partner walk-in lane = one-time CREATE with items
+    //     (ManualOrderCreateModal.tsx via createOrderDocIfAbsent).
+    // No legitimate post-create client write to a protected field remains.
+    //
+    // =======================================================================
+    // REVIEWER RED 2026-10-27 (rules review = REVISE): ALLOWLIST INVERSION.
+    // The former mechanism here was a DENYLIST (orderServerOwnedUpdateKeys)
+    // plus map-value equality locks, and it was reproduced-bypassable two
+    // ways: (1) every server-owned lease/claim family discovered after the
+    // list was written was MISSING from it — refundActiveClaim/refundClaimed*
+    // /refundLedger/refundedTotalPaise/refundKeyedReceipts (razorpay.service
+    // claimRace), dispatchClaimedAt/porterDispatchClaimedAt/
+    // dispatchPendingCorrelation/dispatchReleasedBindings/porterDispatchStatus
+    // (F10 second-rider guard), petpoojaClaimedAt/petpoojaPushClaimedAt and
+    // routeTransferClaimedAt — a staff/brand write could forge a refund
+    // already-refunded/in-progress or freeze/mint dispatches; and (2) a
+    // LITERAL dotted key ("payment.razorpayPaymentId" as one top-level
+    // field, escaped-dot updateDoc path) changed no MAP value, so the
+    // map-equality locks never fired, while the backend
+    // readRecordedPaymentField (razorpay.service.ts ~122-132) reads that
+    // legacy literal as authoritative. Per review directive the update lane
+    // is INVERTED: only an explicit allowlist of workflow keys is ever
+    // writable, so every protected family — known today or discovered later —
+    // is denied by construction. An allowlist of dot-free literals also
+    // rejects every literal-dotted or dotted PATH write: diff().affectedKeys()
+    // reports those as dotted strings ('payment.razorpayPaymentId',
+    // 'payment.status'), and dotted strings are members of no allowlist
+    // entry, so no separate '.contains' check is possible/needed — the
+    // exact-subset test IS the dot rejection.
+    // =======================================================================
+    function orderUpdateAllowedKeys() {
       return [
-        'deliveryOtp', 'deliveryOtpHash', 'deliveryOtpAttempts', 'deliveryOtpLockedUntil',
-        'refund', 'refundStatus', 'refundId', 'refundAmount',
-        'pricing', 'pricingSnapshot', 'petpoojaOrderId', 'dispatchStatus',
-        'routeTransferStatus', 'petpoojaAcceptedNoId', 'petpoojaStatus',
-        'petpoojaSyncStatus', 'reconciliation', 'deliveryPartner',
-        'kotPrinted', 'kotPrintedAt', 'dispatchProvider', 'dispatchOrderId',
-        'borzoOrderId', 'shadowfaxOrderId', 'porterOrderId'
+        'status',        // masked workflow status (bumpStatus-era lane; DELIVERED
+                         // on delivery orders stays OTP-only via
+                         // directDeliveredBypass() above)
+        'completedAt',   // completion timestamp paired with the bump
+        'updatedAt',     // writer stamp
+        'statusHistory', // append-only timeline (see guard below)
+        'cancellationReason' // cancellation note paired with the bump
       ];
+    }
+
+    // statusHistory may only GROW: a client rewrite that erases or shrinks
+    // history (same-size content rewrites remain possible and are accepted —
+    // a fuller element-level diff is not worth the complexity for a lane no
+    // audited client writer uses) is the one erase-abuse a plain allowlist
+    // would still admit.
+    function orderStatusHistoryAppendOnly() {
+      return request.resource.data.get('statusHistory', []) is list
+        && resource.data.get('statusHistory', []) is list
+        && request.resource.data.get('statusHistory', []).size()
+          >= resource.data.get('statusHistory', []).size();
+    }
+
+    // Operator workflow lane for /orders updates — global brand roles or
+    // branch-scoped staff, the DEC-01 allowlist (orderUpdateAllowedKeys +
+    // orderStatusHistoryAppendOnly above), and the Loop-12 OTP handover proof
+    // (never a direct DELIVERED on a delivery order). Extracted as a named
+    // helper because the rules evaluator rejects the equivalent inlined
+    // `X && ((a) || (b) || (c))` grouping.
+    //
+    // hasOnly is the exact-subset test in THE ONE direction that matters:
+    // every affected key must be a member of the dot-free workflow literals.
+    // That subsumes the reviewer's "reject keys containing a dot" — affects
+    // report literal-dotted keys ("payment.razorpayPaymentId") and dotted
+    // PATH writes ("payment.status", "items.0.quantity") as dotted strings,
+    // which match no allowlist entry. A dot-free no-op (empty affected set)
+    // is vacuously accepted. (This emulator's rules compiler rejects
+    // Set.toList(), so no explicit string `.contains('.')` scan is possible;
+    // the subset test is the dot rejection.)
+    function orderOperatorUpdateLane() {
+      return (isBrandOwner() || (isBranchOwner() && ownsBranch(resource.data.branchId)))
+        && !directDeliveredBypass()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          orderUpdateAllowedKeys()
+        )
+        && orderStatusHistoryAppendOnly();
+    }
+
+    // Orders CREATE (both lanes): the canonical initial status meta only.
+    // Core ordersService.createOrder writes resolveStatus('PLACED') =
+    // {code:'PLACED',label,kind:'upcoming',terminal:false}; partner
+    // ManualOrderCreateModal writes toDeliveryStatusMeta('pending') =
+    // the same {code:'PLACED',…} shape (utils/orderContract.ts PARTNER_TO_DELIVERY).
+    // Planted terminal/in-flight statuses at birth are denied.
+    function orderCreateInitialStatus() {
+      return request.resource.data.status is map
+        && request.resource.data.status.code == 'PLACED'
+        && request.resource.data.status.terminal != true
+        && request.resource.data.status.keys().hasOnly(['code', 'label', 'kind', 'terminal']);
+    }
+
+    // =======================================================================
+    // REVIEWER RED 2026-10-27 (rules review = REVISE): CREATE ALLOWLIST.
+    // (orderCreateInitialStatus above stays the birth-status contract.)
+    // The old create rule was a key DENYLIST (orderCreateForbiddenKeys);
+    // every server-owned lease/claim family discovered after it was written
+    // (refundActiveClaim/refundClaimed*/refundLedger/refundedTotalPaise/
+    // refundKeyedReceipts, dispatchClaimedAt/porterDispatchClaimedAt/
+    // dispatchPendingCorrelation/dispatchReleasedBindings/porterDispatchStatus,
+    // petpoojaClaimedAt/petpoojaPushClaimedAt, routeTransferClaimedAt) was
+    // absent, and a LITERAL dotted key ("payment.razorpayPaymentId" as one
+    // top-level field) bypassed the payment-map allowlist because 'payment'
+    // itself stayed absent while the backend's readRecordedPaymentField
+    // treats the legacy dotted literal as authoritative. Both create lanes
+    // are INVERTED to an ALLOWLIST of exactly the keys the writer audits
+    // observed the two real creators planting (core ordersService.createOrder
+    // and partner walkInOrder/ManualOrderCreateModal): everything else —
+    // forged lease state, planted refund claims, or any literal-dotted
+    // binding — is refused by construction, for every current and future
+    // server-owned field. (Known integration dependency, unchanged by this
+    // revision: partner still stamps petpoojaSyncStatus:`pending` in
+    // ManualOrderCreateModal.tsx; that key is POS-sync-owned and stays
+    // forbidden, so the legacy walk-in payload stays denied until the
+    // partner owner's pending field removal merges.)
+    // =======================================================================
+    function orderCreateAllowedKeys() {
+      return [
+        // Identity + placement (both lanes).
+        'id', 'shortCode', 'orderId', 'customerId', 'userId', 'branchId', 'branchName', 'city',
+        'branchCoordinates', 'orderType', 'fulfillment', 'tableNumber',
+        'customerName', 'customerPhone',
+        // Basket and client-authored pricing snapshot (repriced server-side at
+        // payment verification; cash-lane totals are a documented residual).
+        'items', 'subtotal', 'tax', 'deliveryFee', 'total', 'totals', 'tipAmount',
+        'promo', 'loyaltyPointsRedeemed', 'checkoutFingerprint',
+        // Delivery context, notes and fulfilment instructions.
+        'store', 'address', 'deliveryAddress', 'notes', 'specialInstructions',
+        'fulfillmentInstructions',
+        // Workflow meta.
+        'status', 'payment', 'paymentMethod', 'paymentStatus', 'whatsappOptIn',
+        'placedAt', 'estimatedAt', 'createdAt', 'updatedAt',
+        // Best-effort POS push failure surface (display only — POS STATE —
+        // petpoojaStatus/AcceptedNoId/SyncStatus/OrderId — stays server-owned).
+        'petpoojaError'
+      ];
+    }
+
+    // Allowlist over the written top-level keys ONLY (plus the nested-map
+    // allowlists beneath them). A literal field name containing a dot
+    // ("payment.razorpayPaymentId") is a member of no entry here, so
+    // planted legacy bindings are refused; nested injections under allowed
+    // maps (e.g. inside `payment`) are refused by that map's own hasOnly
+    // allowlist in orderCreatePaymentClientFieldsOnly().
+    function orderCreateKeysAllowlisted() {
+      return orderCreateAllowedKeys().hasAll(request.resource.data.keys());
     }
 
     // Nested payment display marker at birth. The customer lane is
@@ -148,19 +297,6 @@ service cloud.firestore {
           )
         )
       );
-    }
-
-    // Orders CREATE (both lanes): the canonical initial status meta only.
-    // Core ordersService.createOrder writes resolveStatus('PLACED') =
-    // {code:'PLACED',label,kind:'upcoming',terminal:false}; partner
-    // ManualOrderCreateModal writes toDeliveryStatusMeta('pending') =
-    // the same {code:'PLACED',…} shape (utils/orderContract.ts PARTNER_TO_DELIVERY).
-    // Planted terminal/in-flight statuses at birth are denied.
-    function orderCreateInitialStatus() {
-      return request.resource.data.status is map
-        && request.resource.data.status.code == 'PLACED'
-        && request.resource.data.status.terminal != true
-        && request.resource.data.status.keys().hasOnly(['code', 'label', 'kind', 'terminal']);
     }
 
     // =========================================================================
@@ -296,7 +432,7 @@ service cloud.firestore {
           request.resource.data.customerId == request.auth.uid &&
           request.resource.data.userId == request.auth.uid &&
           orderCreateInitialStatus() &&
-          !request.resource.data.keys().hasAny(orderCreateForbiddenKeys()) &&
+          orderCreateKeysAllowlisted() &&
           orderCreatePaymentPendingOnly() &&
           (
             !('paymentStatus' in request.resource.data) ||
@@ -310,7 +446,7 @@ service cloud.firestore {
           isBranchOwner() &&
           ownsBranch(request.resource.data.branchId) &&
           orderCreateInitialStatus() &&
-          !request.resource.data.keys().hasAny(orderCreateForbiddenKeys()) &&
+          orderCreateKeysAllowlisted() &&
           orderCreatePaymentSettledWalkin() &&
           (
             !('paymentStatus' in request.resource.data) ||
@@ -319,29 +455,8 @@ service cloud.firestore {
         )
       );
 
-      allow update: if isBrandOwner() || (
-        isBranchOwner() &&
-        ownsBranch(resource.data.branchId) &&
-        // Loop 12: delivery handover needs OTP proof — never direct.
-        !directDeliveredBypass() &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'totals', 'pricingSnapshot', 'pricing', 'customerId', 'userId', 'branchId',
-          // Fulfillment identity is immutable to staff clients: flipping
-          // orderType from delivery to takeaway would make directDeliveredBypass()
-          // evaluate the stored (now non-delivery) type and let a second write
-          // mark DELIVERED without the OTP handover proof.
-          'orderType', 'fulfillment',
-          'paymentStatus', 'payment', 'refundStatus', 'refundId', 'refundAmount', 'routeTransferStatus',
-          'petpoojaOrderId', 'petpoojaAcceptedNoId', 'petpoojaStatus', 'petpoojaSyncStatus',
-          'dispatchStatus', 'dispatchProvider', 'dispatchOrderId', 'borzoOrderId', 'shadowfaxOrderId',
-          'porterOrderId', 'refund', 'refunds',
-          // Loop 7: delivery-OTP proof fields are server-owned (verifyDeliveryOtp
-          // path only) — staff must not clear lockouts/attempts or rewrite the
-          // hash to bypass handover proof via direct client update.
-          'deliveryOtpHash', 'deliveryOtp', 'deliveryOtpAttempts', 'deliveryOtpLockedUntil'
-        ])
-      ) || (
-        // Customers may cancel their own pre-terminal orders only — canonical
+      allow update: if orderOperatorUpdateLane() || (
+        // Customers may cancel their own pre-terminal orders only - canonical
         // cancelled literal-shape plus timestamps, nothing else. Terminal
         // orders are immutable to them. Key set pinned to statusMeta
         // (item86ingSync.ts:199-204): code/label/kind/terminal.
@@ -844,6 +959,55 @@ service cloud.firestore {
     match /device_tokens/{token} {
       allow read: if false;
       allow create, update, delete: if false; // server-owned via registerToken (index.ts); kills any-auth overwrite
+    }
+
+    // =========================================================================
+    // NOTIFICATION SERVER-OWNED PATHS (N09)
+    // =========================================================================
+    // Backend inventory (source-verified, functions/src):
+    //   - modules/notifications/devicePrefs.ts reads/sets
+    //     users/{uid}/device_prefs/{installationId} (Admin SDK).
+    //   - modules/notifications/sendGate.ts writes notification_quarantine
+    //     merge-rows on send-gate violations; its audit action
+    //     "notification_admin_sends" lands in admin_audit_logs (above).
+    //   - modules/tickets/supportNotifications.ts writes the attempt ledger
+    //     notification_dispatch (Admin SDK).
+    // These paths leak which device belongs to which account (and its
+    // category toggles), forensic send state and raw provider receipt lanes:
+    // NO client role — brand_owner/developer included — may read or write
+    // them. All writes stay Admin SDK (bypasses rules).
+    //
+    // Firestore rules OR overlapping allows: these explicit `if false`
+    // guards are reviewable tripwires, not hard walls. The real guarantee is
+    // the ABSENCE of any overlapping allow statement — proved by the
+    // emulator matrix in tests/rules/notification-server-only.rules.test.ts
+    // (every role × read/list/create/update × own & foreign = DENIED).
+    match /users/{prefOwnerUid}/device_prefs/{installationId} {
+      allow read, write: if false;
+    }
+
+    match /notification_quarantine/{docId} {
+      allow read, write: if false;
+    }
+
+    match /notification_dispatch/{docId} {
+      allow read, write: if false;
+    }
+
+    // Dispatcher forensics — same server-only shape as payment_refund_requests
+    // and dispatch_correlation_map (dispatch.router.ts / dispatch.webhooks.ts):
+    // pending-bind maps, provider webhook event trails, unmatched parking.
+    // Default-deny already; explicit for auditability.
+    match /dispatch_order_map/{docId} {
+      allow read, write: if false;
+    }
+
+    match /dispatch_webhook_events/{docId} {
+      allow read, write: if false;
+    }
+
+    match /unmatched_dispatch_events/{docId} {
+      allow read, write: if false;
     }
 
     // =========================================================================
