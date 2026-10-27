@@ -41,7 +41,7 @@ export function BOGOBanner({
             <span>Signature BOGO</span>
           </span>
 
-          <span className="px-2.5 py-0.5 rounded-full bg-[#FF6600] text-white text-[10px] font-black uppercase tracking-wider shadow-sm">
+          <span className="px-2.5 py-0.5 rounded-full bg-accent dark:bg-[var(--accent-hover)] text-accent-foreground text-[10px] font-black uppercase tracking-wider shadow-sm">
             1+1 FREE
           </span>
         </div>
@@ -76,7 +76,7 @@ export function BOGOBanner({
             <button
               type="button"
               onClick={() => onApplyCode(code)}
-              className="px-4 py-1.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              className="px-4 py-1.5 rounded-xl bg-accent dark:bg-[var(--accent-hover)] hover:bg-[var(--accent-hover)] dark:hover:brightness-110 text-accent-foreground text-xs font-bold shadow-xs transition-all cursor-pointer"
             >
               Apply to Cart
             </button>

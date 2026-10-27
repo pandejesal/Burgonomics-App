@@ -157,7 +157,7 @@ export function BillBreakdown({
         {/* Final "To Pay" Row */}
         <div className="pt-2.5 border-t border-divider flex items-baseline justify-between text-sm sm:text-base font-black text-text">
           <span>To Pay</span>
-          <span className="font-mono text-[#FF6600] font-black text-lg">
+          <span className="font-mono text-accent dark:text-accent-foreground font-black text-lg">
             {formatINR(toPay)}
           </span>
         </div>

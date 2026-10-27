@@ -269,12 +269,7 @@ function ProductPage() {
       return;
     }
 
-    toast.success(`Added ${qty}x ${p.name} to cart!`, {
-      action: {
-        label: "View Cart",
-        onClick: () => void navigate({ to: "/cart" }),
-      },
-    });
+    toast.success(`Added ${qty}x ${p.name} to cart!`);
     void navigate({ to: "/menu" });
   };
 
@@ -322,10 +317,10 @@ function ProductPage() {
               disabled={disabled || !isValidationPassed}
               onClick={handleAddToCart}
               className={cn(
-                "flex flex-1 items-center justify-between rounded-xl px-5 py-3.5 text-white shadow-lg transition-all active:scale-[0.98] cursor-pointer",
+                "flex flex-1 items-center justify-between rounded-xl px-5 py-3.5 text-accent-foreground shadow-lg transition-all active:scale-[0.98] cursor-pointer",
                 disabled || !isValidationPassed
                   ? "bg-zinc-700 opacity-60 cursor-not-allowed"
-                  : "bg-[#FF6600] hover:bg-[#e05a00]"
+                  : "bg-accent hover:bg-[var(--accent-hover)] dark:bg-[var(--accent-hover)] dark:hover:bg-[var(--accent-hover)]"
               )}
             >
               <span className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wide">
@@ -364,18 +359,27 @@ function ProductPage() {
             <div className="skeleton h-full w-full" />
           )}
 
-          {/* 100% Pure Veg badge */}
-          <div className="absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-full bg-surface/95 px-3 py-1 shadow-md backdrop-blur-sm border border-divider">
-            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-emerald-600 p-[1.5px]">
-              <span className="h-2 w-2 rounded-full bg-emerald-600" />
-            </span>
-            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 tracking-wider">100% PURE VEG</span>
-          </div>
+          {p.veg === true && (
+            <div className="absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-full bg-surface/95 px-3 py-1 shadow-md backdrop-blur-sm border border-divider">
+              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-emerald-600 p-[1.5px]">
+                <span className="h-2 w-2 rounded-full bg-emerald-600" />
+              </span>
+              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 tracking-wider">100% PURE VEG</span>
+            </div>
+          )}
+          {p.veg === false && (
+            <div className="absolute bottom-4 left-4 z-10 flex items-center gap-1.5 rounded-full bg-surface/95 px-3 py-1 shadow-md backdrop-blur-sm border border-divider">
+              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-red-600 p-[1.5px]">
+                <span className="h-2 w-2 rounded-full bg-red-600" />
+              </span>
+              <span className="text-xs font-bold text-red-700 dark:text-red-400 tracking-wider">NON-VEG</span>
+            </div>
+          )}
 
           {disabled && (
             <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center">
               <span className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-300 text-sm font-black uppercase tracking-wider shadow-lg">
-                Sold Out
+                {p.unavailableReason || "Sold Out"}
               </span>
             </div>
           )}
@@ -397,9 +401,21 @@ function ProductPage() {
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <span className="font-mono text-xl font-black text-[#0E4825] dark:text-[#4ADE80]">
-                {formatINR(p.price)}
-              </span>
+              <div className="flex items-baseline justify-end gap-2">
+                <span className="font-mono text-xl font-black text-[#0E4825] dark:text-[#4ADE80]">
+                  {formatINR(p.price)}
+                </span>
+                {p.compareAtPrice && p.compareAtPrice > p.price && (
+                  <span className="font-mono text-sm text-text-secondary line-through">
+                    {formatINR(p.compareAtPrice)}
+                  </span>
+                )}
+              </div>
+              {p.compareAtPrice && p.compareAtPrice > p.price && (
+                <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  {Math.round(((p.compareAtPrice - p.price) / p.compareAtPrice) * 100)}% OFF
+                </span>
+              )}
               <p className="text-[10px] text-text-secondary">Base price</p>
             </div>
           </div>
@@ -412,10 +428,15 @@ function ProductPage() {
                 <span>Prep: {p.prepTimeMinutes} mins</span>
               </span>
             )}
-            <span className="inline-flex items-center gap-1 rounded-full bg-bg-secondary border border-divider px-3 py-1 text-xs font-medium text-text">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-              <span>100% Vegetarian Kitchen</span>
-            </span>
+            {Array.isArray(p.badges) &&
+              p.badges.map((b) => (
+                <span
+                  key={b.id}
+                  className="inline-flex items-center rounded-full bg-[#0E4825] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#4ADE80] border border-[#4ADE80]/30"
+                >
+                  {b.label}
+                </span>
+              ))}
           </div>
 
           {/* Nutrition & Allergen Transparency — real product data only */}

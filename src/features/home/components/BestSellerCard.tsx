@@ -175,13 +175,18 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
                   type="button"
                   onClick={handleQuickAdd}
                   disabled={busy || isOutOfStock}
+                  aria-label={
+                    isOutOfStock
+                      ? `${product.name} is sold out`
+                      : `Add ${product.name} to cart`
+                  }
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
                   whileTap={{ scale: 0.92 }}
-                  className="inline-flex h-8 items-center justify-center gap-1 rounded-full border-2 border-primary bg-primary/5 px-3 text-xs font-bold text-primary hover:bg-primary hover:text-white transition-all duration-200 shadow-sm disabled:opacity-40 disabled:hover:bg-primary/5 disabled:hover:text-primary"
+                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-full border-2 border-primary bg-primary/5 px-3 text-xs font-bold text-primary hover:bg-primary hover:text-white transition-all duration-200 shadow-sm disabled:opacity-40 disabled:hover:bg-primary/5 disabled:hover:text-primary"
                 >
-                  <Plus className="h-3.5 w-3.5 stroke-[3px]" />
+                  <Plus className="h-3.5 w-3.5 stroke-[3px]" aria-hidden />
                   <span>{isOutOfStock ? "Sold Out" : "ADD"}</span>
                 </motion.button>
               ) : (
@@ -190,24 +195,30 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
-                  className="flex h-8 shrink-0 items-center rounded-full bg-primary text-white shadow-sm overflow-hidden"
+                  className="flex h-11 min-h-[44px] shrink-0 items-center rounded-full bg-primary text-white shadow-sm overflow-hidden"
                 >
                   <button
                     type="button"
                     onClick={handleDecrement}
                     disabled={busy}
-                    className="flex h-full w-7 shrink-0 items-center justify-center hover:bg-black/20 transition-colors"
+                    aria-label={
+                      qty <= 1
+                        ? `Remove ${product.name} from cart`
+                        : `Decrease quantity of ${product.name}`
+                    }
+                    className="flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center hover:bg-black/20 transition-colors"
                   >
-                    <Minus className="h-3.5 w-3.5 stroke-[2.5px]" />
+                    <Minus className="h-3.5 w-3.5 stroke-[2.5px]" aria-hidden />
                   </button>
-                  <span className="w-5 min-w-5 shrink-0 text-center text-xs font-black tabular-nums">{qty}</span>
+                  <span className="w-6 min-w-6 shrink-0 text-center text-xs font-black tabular-nums">{qty}</span>
                   <button
                     type="button"
                     onClick={handleIncrement}
                     disabled={busy || isOutOfStock || qty >= 99}
-                    className="flex h-full w-7 shrink-0 items-center justify-center hover:bg-black/20 transition-colors"
+                    aria-label={`Increase quantity of ${product.name}`}
+                    className="flex h-11 min-h-[44px] w-11 min-w-[44px] shrink-0 items-center justify-center hover:bg-black/20 transition-colors"
                   >
-                    <Plus className="h-3.5 w-3.5 stroke-[2.5px]" />
+                    <Plus className="h-3.5 w-3.5 stroke-[2.5px]" aria-hidden />
                   </button>
                 </motion.div>
               )}

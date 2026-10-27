@@ -6,6 +6,7 @@ import { useAuthStore } from "@/features/auth/state/authStore";
 import { useGuestOnly } from "@/features/auth/hooks/useAuthGuard";
 import { PhoneLoginForm } from "@/features/auth/components/PhoneLoginForm";
 import { sanitizePhone } from "@/features/auth/utils/validators";
+import { isAuthoredAuthMessage } from "@/features/auth/utils/authErrors";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { toUserMessage, userMessageForText } from "@/core/errors/userMessages";
 import { APP } from "@/core/constants/app";
@@ -42,13 +43,15 @@ function LoginScreen() {
   const status = useAuthStore((s) => s.status);
   const serverError = useAuthStore((s) => s.error);
   const clearError = useAuthStore((s) => s.clearError);
+  const quarantinedUid = useAuthStore((s) => s.quarantinedUid);
+  const signOutUnfinishedSession = useAuthStore((s) => s.signOutUnfinishedSession);
 
   const isBusy = status === "authenticating";
 
   const handlePhoneSubmit = async (phone: string) => {
     clearError();
     const sanitized = sanitizePhone(phone);
-    const res = await requestOtp(sanitized, "sms");
+    const res = await requestOtp("login", sanitized, "sms");
     if (res.ok) {
       toast.success(`OTP sent via SMS to +91 ${sanitized}`);
       void navigate({
@@ -56,20 +59,44 @@ function LoginScreen() {
         search: { redirect: search.redirect },
       });
     } else {
-      // P1-13: `requestOtp` failures carry raw Firebase text in `error`.
-      console.error("[auth] OTP request failed:", res.error);
-      toast.error(toUserMessage(res));
+      // Code only: provider messages may contain the phone number.
+      console.error("[auth] OTP request failed:", res.code);
+      toast.error(
+        res.error && isAuthoredAuthMessage(res.error) ? res.error : toUserMessage(res),
+      );
     }
   };
 
+  const displayError =
+    serverError && isAuthoredAuthMessage(serverError)
+      ? serverError
+      : serverError
+        ? userMessageForText(serverError)
+        : null;
+
   return (
     <AppShell title="Sign in" showTabs={false} showTopBar={false}>
+      {quarantinedUid && (
+        <div
+          role="status"
+          className="mx-auto mb-4 w-full max-w-[28rem] rounded-[var(--radius-medium)] border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-text-primary"
+        >
+          A previous sign-in did not finish cleanly.{" "}
+          <button
+            type="button"
+            className="font-semibold text-primary underline"
+            onClick={() => void signOutUnfinishedSession()}
+          >
+            Sign out of the unfinished session
+          </button>
+        </div>
+      )}
       <PhoneLoginForm
         onSubmit={handlePhoneSubmit}
         isSubmitting={isBusy}
-        // P1-13: the store holds raw Firebase text in `error` — map it before
-        // it reaches the banner (null stays null so no banner renders).
-        serverError={serverError ? userMessageForText(serverError) : null}
+        // Auth service authors all messages now; the mapper is retained as a
+        // defence for legacy persisted error strings.
+        serverError={displayError}
         onClearError={clearError}
       />
     </AppShell>

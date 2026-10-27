@@ -3,31 +3,38 @@
  * behaviour. Wraps the transport (`authService`) so screens and stores
  * never touch the transport directly.
  *
- * Backend integration: swap the injected `service` with a real
- * `httpClient`-backed implementation. The public surface (method names,
- * argument shapes, `ApiResult` returns) must stay unchanged so no UI
- * code needs to move.
+ * The leading `flow` (and `handle` on verify) is the accepted C-06 contract:
+ * a challenge is owned by a mounted surface, not by a process-global slot.
  */
 import { authService, type AuthService } from "@/features/auth/services/authService";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
-import type { ApiResult } from "@/core/network/http";
+import type { AuthFlowId } from "@/features/auth/utils/authErrors";
 
 export class AuthRepository {
   constructor(private readonly service: AuthService = authService) {}
 
-  requestOtp(phone: string, deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD, otpToken?: string) {
-    return this.service.requestOtp(phone, deliveryMethod, otpToken);
+  requestOtp(
+    flow: AuthFlowId,
+    phone: string,
+    deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
+    otpToken?: string,
+  ) {
+    return this.service.requestOtp(flow, phone, deliveryMethod, otpToken);
   }
 
-  verifyOtp(otpToken: string, code: string) {
-    return this.service.verifyOtp(otpToken, code);
+  resendOtp(flow: AuthFlowId) {
+    return this.service.resendOtp(flow);
+  }
+
+  verifyOtp(flow: AuthFlowId, handle: string, code: string) {
+    return this.service.verifyOtp(flow, handle, code);
   }
 
   refresh(refreshToken: string) {
     return this.service.refresh(refreshToken);
   }
 
-  logout(refreshToken: string | null): Promise<ApiResult<null>> {
+  logout(refreshToken: string | null) {
     return this.service.logout(refreshToken);
   }
 }

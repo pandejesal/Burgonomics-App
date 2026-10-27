@@ -56,7 +56,7 @@ export function FloatingCartBar({
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-sm">
               <ShoppingBag className="h-5 w-5 text-[#4ADE80]" />
-              <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#FF6600] px-1 text-[10px] font-black text-white ring-2 ring-[#0E4825]">
+              <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-black text-accent-foreground dark:bg-[var(--accent-hover)] ring-2 ring-[#0E4825]">
                 {itemCount}
               </span>
             </div>
@@ -77,7 +77,7 @@ export function FloatingCartBar({
           </div>
 
           {/* Right action button */}
-          <div className="flex items-center gap-1.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition-colors">
+          <div className="flex items-center gap-1.5 rounded-xl bg-accent hover:bg-[var(--accent-hover)] dark:bg-[var(--accent-hover)] dark:hover:bg-[var(--accent-hover)] px-4 py-2 text-xs font-black uppercase tracking-wider text-accent-foreground shadow-md transition-colors">
             <span>View Cart</span>
             <ArrowRight className="h-4 w-4 stroke-[2.5px]" />
           </div>

@@ -28,7 +28,7 @@ interface SearchParamsSchema {
 }
 
 const DIET_FILTER_TAGS = [
-  { id: "all", label: "All Items" },
+  { id: "all", label: "Any Diet" },
   { id: "jain", label: "Jain Friendly", icon: ShieldCheck },
   { id: "bestseller", label: "Chef Special", icon: Sparkles },
   { id: "spicy", label: "Spicy", icon: Flame },
@@ -236,7 +236,7 @@ function SearchPage() {
         {/* Sticky Search Header & Filter Bar */}
         <form
           onSubmit={handleSubmit}
-          className="sticky top-0 z-20 bg-surface/95 px-4 py-3 backdrop-blur-md border-b border-divider shadow-xs"
+          className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 px-4 py-3 backdrop-blur-md border-b border-divider shadow-xs"
         >
           {/* Input Box */}
           <label className="flex h-12 items-center gap-2 rounded-2xl border border-divider bg-bg-secondary px-4 focus-within:border-primary focus-within:bg-surface focus-within:ring-2 focus-within:ring-primary/20 transition-all">
@@ -248,7 +248,7 @@ function SearchPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search smashed burgers, sides, drinks…"
               aria-label="Search the menu"
-              className="flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled"
+              className="flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))]"
             />
             {query && (
               <button
@@ -308,7 +308,7 @@ function SearchPage() {
           </div>
 
           {/* Diet & Specialty Badges Horizontal Scroll */}
-          <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+          <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 pr-2 [mask-image:linear-gradient(to_right,black_90%,transparent_100%)]">
             {DIET_FILTER_TAGS.map((tag) => {
               const active = activeFilter === tag.id;
               const Icon = tag.icon;
@@ -320,7 +320,7 @@ function SearchPage() {
                   className={cn(
                     "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all select-none cursor-pointer border",
                     active
-                      ? "bg-[#FF6600] text-white border-[#FF6600] shadow-xs"
+                      ? "bg-accent text-accent-foreground border-accent dark:bg-[var(--accent-hover)] dark:border-[var(--accent-hover)] shadow-xs"
                       : "bg-surface text-text-secondary border-divider hover:border-primary/40 hover:text-text"
                   )}
                 >
@@ -366,7 +366,7 @@ function SearchPage() {
                     variant="titleMedium"
                     className="mb-2 inline-flex items-center gap-1.5 font-bold"
                   >
-                    <Flame className="h-4 w-4 text-[#FF6600]" aria-hidden /> Trending Searches
+                    <Flame className="h-4 w-4 text-accent" aria-hidden /> Trending Searches
                   </Text>
                   <ul className="flex flex-wrap gap-2">
                     {trending.map((t) => (
@@ -394,7 +394,7 @@ function SearchPage() {
                     <button
                       type="button"
                       onClick={clearRecent}
-                      className="text-xs font-bold text-[#FF6600] select-none active:opacity-70 transition-opacity cursor-pointer"
+                      className="text-xs font-bold text-accent dark:text-accent-foreground select-none active:opacity-70 transition-opacity cursor-pointer"
                     >
                       Clear all
                     </button>
@@ -480,7 +480,7 @@ function SearchPage() {
           {status === "ready" && results.length > 0 && filteredResults.length === 0 && (
             <EmptyState
               title="No matching items for this diet filter"
-              description="Try selecting 'All Items' or a different diet filter tag."
+              description="Try selecting 'Any Diet' or a different diet filter tag."
               actionLabel="Clear Filter"
               onAction={() => handleFilterSelect("all")}
             />

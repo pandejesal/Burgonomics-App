@@ -76,6 +76,7 @@ vi.mock("@/features/payments", async () => {
 
 import { useRazorpayPayment } from "./useRazorpayPayment";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
+import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { fail, ok } from "@/core/network/http";
 import { toast } from "sonner";
 import { userMessageFor } from "@/core/errors/userMessages";
@@ -151,6 +152,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   usePaymentStore.getState().reset();
+  useCheckoutStore.getState().reset();
 });
 
 afterEach(async () => {
@@ -214,8 +216,10 @@ describe("useRazorpayPayment - post-gateway recovery call sites (C01 / A08 B1+B9
     expect(mocks.cartClear).not.toHaveBeenCalled();
   });
 
-  it("control: a fully verified payment still clears the cart and navigates once", async () => {
+  it("control: a fully verified payment still clears the cart and checkout state, and navigates once", async () => {
     usePaymentStore.getState().setInternalOrderId("ord_hook");
+    useCheckoutStore.getState().setTipAmount(30);
+    useCheckoutStore.getState().setOrderNotes("Legacy hook notes");
     await mountHook();
     await runCheckout(
       ok({ verified: true, confirmedOrderId: "ord_hook", paymentId: "pay_hook_1" }),
@@ -228,6 +232,10 @@ describe("useRazorpayPayment - post-gateway recovery call sites (C01 / A08 B1+B9
     expect(mocks.cartClear).toHaveBeenCalledTimes(1);
     expect(mocks.navigate).toHaveBeenCalledTimes(1);
     expect(mocks.markPaymentFailed).not.toHaveBeenCalled();
+    // The confirmation screen no longer performs this cleanup, so the success
+    // path itself must not leak the consumed tip/notes into the next order.
+    expect(useCheckoutStore.getState().tipAmount).toBe(0);
+    expect(useCheckoutStore.getState().orderNotes).toBe("");
   });
 });
 

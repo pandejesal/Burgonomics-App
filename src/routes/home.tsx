@@ -185,6 +185,7 @@ function HomePage() {
             {bundle.categories.length > 0 && (
               <section aria-labelledby="cats-heading">
                 <SectionHeader
+                  headingId="cats-heading"
                   title="Explore Menu"
                   subtitle="100% Pure Veg QSR favorites"
                   actionLabel="View all"
@@ -198,6 +199,7 @@ function HomePage() {
             {isAuthenticated && bundle.quickReorder.length > 0 && (
               <section aria-labelledby="reorder-heading">
                 <SectionHeader
+                  headingId="reorder-heading"
                   title="Reorder in 1-Tap"
                   subtitle="From your previous favorites"
                   actionLabel="View all orders"
@@ -211,6 +213,7 @@ function HomePage() {
             {bundle.bestSellers.length > 0 && (
               <section aria-labelledby="best-heading">
                 <SectionHeader
+                  headingId="best-heading"
                   title="Bestsellers"
                   subtitle="Top customer favorites"
                   actionLabel="Full menu"
@@ -232,6 +235,7 @@ function HomePage() {
             {bundle.popularCombos.length > 0 && (
               <section aria-labelledby="combos-heading">
                 <SectionHeader
+                  headingId="combos-heading"
                   title="Value Combos"
                   subtitle="Pre-bundled savings"
                   actionLabel="See all combos"

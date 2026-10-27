@@ -2,13 +2,22 @@ import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
-import { AppCard } from "@/shared/components/common/AppCard";
-import { Text } from "@/shared/components/common/Text";
-import { AppBadge } from "@/shared/components/common/AppBadge";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "@/features/settings/state/settingsStore";
+import { useNotificationPrefsStore } from "@/features/settings/state/notificationPrefsStore";
 import { settingsRepository } from "@/features/settings/repositories/SettingsRepository";
+import {
+  NotificationPushStatusNotice,
+  NotificationSyncNotice,
+  isPushUnavailable,
+  pushUnavailableMessage,
+  type PushStatusSnapshot,
+} from "@/features/settings/components/NotificationSyncNotice";
+import {
+  getPushStatusSnapshot,
+  subscribePushStatus,
+} from "@/shared/platform/pushNotifications";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { toast } from "sonner";
 import { APP } from "@/core/constants/app";
@@ -33,8 +42,30 @@ function Page() {
 
 function Body() {
   const settings = useSettingsStore();
+  const notificationPrefs = useNotificationPrefsStore();
+  const [pushStatus, setPushStatus] = React.useState<PushStatusSnapshot>(getPushStatusSnapshot);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
+
+  // Permission can be changed in browser settings while this screen is open;
+  // keep the blocked notice honest without polling.
+  React.useEffect(() => {
+    const refresh = () => setPushStatus(getPushStatusSnapshot());
+    const unsubscribe = subscribePushStatus(refresh);
+    window.addEventListener("focus", refresh);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  const pushUnavailable = isPushUnavailable(pushStatus);
+  const pushNotice = pushUnavailableMessage(pushStatus);
 
   const requestDelete = async () => {
     setActionError(null);
@@ -57,31 +88,92 @@ function Body() {
   return (
     <AppShell title="Settings" backTo="/profile" showTabs showTopBar>
       <div className="mx-auto max-w-[520px] space-y-4 px-4 py-4">
-        {/* Notification preferences */}
+        {/* Notification preferences — per account/device (C-01/C-04) */}
         <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-divider space-y-3 shadow-xs">
           <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
             Notification Preferences
           </h4>
+          <p className="text-[11px] text-text-secondary leading-tight">
+            These choices apply to this device and account only.
+          </p>
+
+          {notificationPrefs.legacyDecision === "pending" && (
+            <div className="rounded-2xl border border-primary/30 bg-primary/[0.04] p-3 space-y-2">
+              <p className="text-xs font-bold text-text">
+                Keep your previous notification choices?
+              </p>
+              <p className="text-[11px] text-text-secondary leading-tight">
+                Your old settings were saved before this device had an account. They
+                won&apos;t be applied automatically. Keeping them separate is the
+                default.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => notificationPrefs.declineLegacyPreferences()}
+                  className="min-h-[40px] px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold cursor-pointer"
+                >
+                  Keep separate settings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void notificationPrefs.claimLegacyPreferences()}
+                  className="min-h-[40px] px-3 py-1.5 rounded-xl bg-bg-secondary border border-divider text-text text-[11px] font-bold cursor-pointer"
+                >
+                  Use my old choices
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-3">
             <ToggleRow
               label="Offers & promotions"
               description="Deals, combos and special limited drops."
-              value={settings.notifications.offers}
+              value={notificationPrefs.desired.offers}
               onChange={(v) => void settingsRepository.updateNotifications({ offers: v })}
             />
             <ToggleRow
               label="Order updates"
               description="Preparation, dispatch and live delivery tracking."
-              value={settings.notifications.orderUpdates}
-              onChange={(v) => void settingsRepository.updateNotifications({ orderUpdates: v })}
+              value={notificationPrefs.desired.orderUpdates}
+              onChange={(v) =>
+                void settingsRepository.updateNotifications({ orderUpdates: v })
+              }
             />
             <ToggleRow
               label="Announcements"
               description="Product launches and store news."
-              value={settings.notifications.announcements}
-              onChange={(v) => void settingsRepository.updateNotifications({ announcements: v })}
+              value={notificationPrefs.desired.announcements}
+              onChange={(v) =>
+                void settingsRepository.updateNotifications({ announcements: v })
+              }
+            />
+            <ToggleRow
+              label="Support replies"
+              description="Updates when our support team replies to your ticket."
+              value={notificationPrefs.desired.supportReplies}
+              onChange={(v) =>
+                void settingsRepository.updateNotifications({ supportReplies: v })
+              }
             />
           </div>
+
+          <NotificationPushStatusNotice status={pushStatus} />
+
+          <NotificationSyncNotice
+            status={notificationPrefs.status}
+            errorCode={notificationPrefs.errorCode}
+            canAdoptServer={
+              !!notificationPrefs.conflict?.currentPrefs &&
+              notificationPrefs.conflict.currentVersion !== null
+            }
+            pushUnavailable={pushUnavailable}
+            pushUnavailableMessage={pushNotice}
+            usingDefaults={notificationPrefs.usingDefaults}
+            onRetry={() => void notificationPrefs.retrySync()}
+            onAdoptServer={() => notificationPrefs.adoptServerVersion()}
+          />
         </div>
 
         {/* Appearance & theme */}

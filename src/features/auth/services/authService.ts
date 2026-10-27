@@ -1,199 +1,143 @@
-import { fail, ok, type ApiResult } from "@/core/network/http";
+import { ok, type ApiResult } from "@/core/network/http";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import { auth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
-import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
+import {
+  authAttempts,
+  __resetAuthAttemptsForTests,
+  type IssuedView,
+  type RequestOtpView,
+} from "@/features/auth/state/authAttempts";
+import {
+  bindHost as bindRecaptchaHost,
+  releaseHost as releaseRecaptchaHost,
+  __resetAuthBindingsForTests,
+  type BindResult,
+} from "@/features/auth/state/authBinding";
+import {
+  authFail,
+  firebaseAuthCode,
+  type AuthApiResult,
+  type AuthErrorDetails,
+  type AuthFlowId,
+} from "@/features/auth/utils/authErrors";
 
-export interface RequestOtpResponse {
-  otpToken: string;
-  expiresInSec: number;
-  resendAfterSec: number;
-  code?: string;
-  deliveryMethod?: "whatsapp" | "sms";
-}
+export type { AuthFlowId };
+
+export interface RequestOtpResponse extends RequestOtpView {}
 
 export interface VerifyOtpResponse {
   accessToken: string;
   refreshToken: string;
   user: { id: string; phone: string; name?: string; email?: string };
   payload?: any;
+  /** Local-only guard for the store's post-persist epoch check. */
+  sdkUser?: unknown;
+  attemptEpoch: number;
 }
 
-let recaptchaVerifier: RecaptchaVerifier | null = null;
-let confirmationResult: ConfirmationResult | null = null;
+export interface AuthRequestResult extends RequestOtpResponse {
+  code?: string;
+  details?: AuthErrorDetails;
+}
 
-const normalizePhoneE164 = (phone: string): string => {
-  const cleaned = phone.replace(/[^\d+]/g, "");
-  if (cleaned.startsWith("+")) return cleaned;
-  if (cleaned.startsWith("91") && cleaned.length === 12) return `+${cleaned}`;
-  return `+91${cleaned.replace(/^0+/, "")}`;
-};
+export interface AuthVerifyResult extends VerifyOtpResponse {}
 
+/**
+ * Transport + orchestration seam. All challenge ownership lives in
+ * `authAttempts`; this module adds only Firestore profile sync and session
+ * refresh/logout. Provider error text never crosses this boundary.
+ */
 export const authService = {
-  /**
-   * Initializes real RecaptchaVerifier bound to the specified container.
-   * Uses explicit render for reliable operation inside Capacitor WebViews.
-   */
-  initRecaptcha(containerId: string = "recaptcha-container") {
-    if (typeof window === "undefined") return;
-    const element = document.getElementById(containerId);
-    if (!element) {
-      console.warn(`[Auth] Recaptcha container #${containerId} not found in DOM`);
-      return;
-    }
-    try {
-      if (recaptchaVerifier) {
-        try {
-          recaptchaVerifier.clear();
-        } catch {
-          // ignore
-        }
-        recaptchaVerifier = null;
-      }
-      recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-        size: "normal",
-        callback: () => {
-          // reCAPTCHA solved
-        },
-        "expired-callback": () => {
-          console.warn("[Auth] reCAPTCHA expired, will re-render on next request.");
-        },
-      });
-      window.recaptchaVerifier = recaptchaVerifier;
-    } catch (err) {
-      console.error("[Auth] Failed to initialize RecaptchaVerifier:", err);
-    }
+  bindHost: (flow: AuthFlowId, hostId: string, element: HTMLElement, measure?: () => number): BindResult =>
+    bindRecaptchaHost(flow, hostId, element, measure),
+
+  releaseHost: (flow: AuthFlowId, hostId: string): void => {
+    releaseRecaptchaHost(flow, hostId);
   },
 
-  clearRecaptcha() {
-    if (recaptchaVerifier) {
-      try {
-        recaptchaVerifier.clear();
-      } catch {
-        // ignore
-      }
-      recaptchaVerifier = null;
-    }
-  },
-
-  async requestOtp(
+  requestOtp: (
+    flow: AuthFlowId,
     phone: string,
     deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
-    _otpToken?: string,
-  ): Promise<ApiResult<RequestOtpResponse>> {
+    otpToken?: string,
+  ): Promise<AuthApiResult<RequestOtpResponse>> =>
+    authAttempts.requestOtp(flow, phone, deliveryMethod, otpToken),
+
+  resendOtp: (flow: AuthFlowId): Promise<AuthApiResult<RequestOtpResponse>> =>
+    authAttempts.resendOtp(flow),
+
+  verifyOtp: async (
+    flow: AuthFlowId,
+    handle: string,
+    code: string,
+  ): Promise<AuthApiResult<VerifyOtpResponse>> => {
+    const result = await authAttempts.verifyOtp(flow, handle, code);
+    if (!result.success) return result;
+
+    const sdkUser = result.data.sdkUser;
+    const returnedUser: { id: string; phone: string; name?: string; email?: string } = {
+      id: result.data.user.id,
+      phone: result.data.user.phone,
+    };
+
     try {
-      const formattedPhone = normalizePhoneE164(phone);
+      const { db } = await import("@/core/config/firebase");
+      const { doc, getDoc, setDoc } = await import("firebase/firestore");
+      const userRef = doc(db, "users", returnedUser.id);
+      const userSnap = await getDoc(userRef);
 
-      if (!recaptchaVerifier) {
-        authService.initRecaptcha("recaptcha-container");
-      }
-
-      if (!recaptchaVerifier) {
-        return fail(
-          "RECAPTCHA_UNAVAILABLE",
-          "Verification check failed to load. Please refresh the page and try again.",
-        );
-      }
-
-      // Explicitly trigger render if not yet rendered
-      try {
-        await recaptchaVerifier.render();
-      } catch {
-        // Container might already have widget rendered
-      }
-
-      const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifier);
-      confirmationResult = result;
-
-      return ok({
-        otpToken: formattedPhone,
-        expiresInSec: 300,
-        resendAfterSec: 60,
-        deliveryMethod,
-      });
-    } catch (error: any) {
-      // Code only: the raw Firebase error embeds the phone in message/customData.
-      logger.error("auth.otp_request_failed", error, { code: error?.code });
-      // Reset reCAPTCHA widget on error so user can retry cleanly
-      if (recaptchaVerifier) {
-        try {
-          recaptchaVerifier.clear();
-        } catch {
-          // ignore
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          id: returnedUser.id,
+          phone: returnedUser.phone,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        const profile = userSnap.data();
+        returnedUser.name = profile?.fullName || profile?.name;
+        if (!isSyntheticEmail(profile?.email)) {
+          returnedUser.email = profile?.email;
         }
-        recaptchaVerifier = null;
-        authService.initRecaptcha("recaptcha-container");
       }
-      return fail(
-        error.code || "AUTH_OTP_REQUEST_FAILED",
-        error.message ||
-          "Failed to send SMS verification code. Please check the number and try again.",
-      );
+    } catch (error) {
+      // Profile sync is best-effort and must not leak Firestore internals.
+      logger.warn("auth.profile_sync_failed", { code: firebaseAuthCode(error) ?? "unknown" });
     }
+
+    if (!authAttempts.isIntentEpochCurrent(result.data.attemptEpoch)) {
+      await authAttempts.cleanupStaleUser(sdkUser, result.data.attemptEpoch);
+      return authFail("STALE_EPOCH");
+    }
+
+    return ok({
+      accessToken: result.data.accessToken,
+      refreshToken: result.data.refreshToken,
+      user: returnedUser,
+      sdkUser,
+      attemptEpoch: result.data.attemptEpoch,
+    } satisfies VerifyOtpResponse);
   },
 
-  async verifyOtp(otpToken: string, code: string): Promise<ApiResult<VerifyOtpResponse>> {
-    try {
-      if (!confirmationResult) {
-        return fail(
-          "NO_CHALLENGE",
-          "No active verification session found. Please request a new code.",
-        );
-      }
+  adoptChallenge: (
+    toFlow: AuthFlowId,
+    handle: string,
+  ): { ok: true } | { ok: false; code: "CHALLENGE_MISMATCH" | "STALE_EPOCH" } =>
+    authAttempts.adoptChallenge(toFlow, handle),
 
-      const userCredential = await confirmationResult.confirm(code.trim());
-      const user = userCredential.user;
+  resumeChallenge: (flow: AuthFlowId): IssuedView | null => authAttempts.resumeChallenge(flow),
 
-      const accessToken = await user.getIdToken();
-      const refreshToken = user.refreshToken;
-      const uid = user.uid;
-
-      // Firestore user profile sync
-      const returnedUser: { id: string; phone: string; name?: string; email?: string } = {
-        id: uid,
-        phone: user.phoneNumber || otpToken,
-      };
-
-      try {
-        const { db } = await import("@/core/config/firebase");
-        const { doc, getDoc, setDoc } = await import("firebase/firestore");
-        const userRef = doc(db, "users", uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            id: uid,
-            phone: returnedUser.phone,
-            createdAt: new Date().toISOString(),
-          });
-        } else {
-          const profile = userSnap.data();
-          returnedUser.name = profile?.fullName || profile?.name;
-          // P1-4: legacy docs may carry the fabricated `<phone>@burgonomics.in`
-          // address — never let it into the persisted auth user (it feeds the
-          // Razorpay prefill + secureStorage cache).
-          if (!isSyntheticEmail(profile?.email)) {
-            returnedUser.email = profile?.email;
-          }
-        }
-      } catch (dbError) {
-        console.warn("[Auth] Firestore user profile sync warning:", dbError);
-      }
-
-      return ok({
-        accessToken,
-        refreshToken,
-        user: returnedUser,
-      });
-    } catch (error: any) {
-      logger.error("auth.otp_verify_failed", error, { code: error?.code });
-      return fail(
-        error.code || "AUTH_OTP_VERIFY_FAILED",
-        error.message || "Invalid verification code. Please check and try again.",
-      );
-    }
+  invalidateAuthAttempts: (reason: "logout" | "changePhone" | "userReset"): void => {
+    authAttempts.invalidateAuthAttempts(reason);
   },
+
+  getIntentEpoch: (): number => authAttempts.getIntentEpoch(),
+
+  isIntentEpochCurrent: (epoch: number): boolean => authAttempts.isIntentEpochCurrent(epoch),
+
+  cleanupStaleUser: (user: unknown, attemptEpoch: number): Promise<void> =>
+    authAttempts.cleanupStaleUser(user, attemptEpoch),
 
   async refresh(
     _refreshToken: string,
@@ -202,15 +146,16 @@ export const authService = {
       await auth.authStateReady();
       const user = auth.currentUser;
       if (!user) {
-        return fail("AUTH_REFRESH_FAILED", "No active firebase session.");
+        return authFail("AUTH_REFRESH_FAILED");
       }
       const accessToken = await user.getIdToken(true);
       return ok({
         accessToken,
         refreshToken: user.refreshToken,
       });
-    } catch (error: any) {
-      return fail("AUTH_REFRESH_FAILED", error.message || "Session refresh failed.");
+    } catch (error) {
+      logger.warn("auth.refresh_failed", { code: firebaseAuthCode(error) ?? "unknown" });
+      return authFail("AUTH_REFRESH_FAILED");
     }
   },
 
@@ -218,17 +163,17 @@ export const authService = {
     try {
       await auth.signOut();
       return ok(null);
-    } catch (_error) {
+    } catch (error) {
+      logger.warn("auth.logout_failed", { code: firebaseAuthCode(error) ?? "unknown" });
       return ok(null);
     }
+  },
+
+  /** Test-only reset for the module-level attempt/binding singletons. */
+  __resetForTests(): void {
+    __resetAuthAttemptsForTests();
+    __resetAuthBindingsForTests();
   },
 };
 
 export type AuthService = typeof authService;
-
-declare global {
-  interface Window {
-    recaptchaVerifier?: any;
-    grecaptcha?: any;
-  }
-}

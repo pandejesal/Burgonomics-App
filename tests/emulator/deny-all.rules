@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// EMULATOR TEST LANE — fail-closed placeholder.
+//
+// This file is NEVER loaded by the lane. `tests/emulator/run-lane.mjs` builds an
+// effective firebase config in the artifacts directory whose `firestore.rules`
+// is an ABSOLUTE path to the customer worktree's canonical `firestore.rules`
+// (hash-checked against the backend copy before startup).
+//
+// It exists so that `tests/emulator/firebase.emulator.json` is safe if someone
+// runs it directly: firebase-tools treats a missing rules file as "allow all",
+// so the declared config must point at an existing, deny-everything ruleset
+// instead of a dangling path. The lane's effective config overrides it.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

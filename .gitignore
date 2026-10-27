@@ -82,3 +82,7 @@ ios/App/DerivedData
 # Local backup and test harness artifacts
 *.pre-phase2
 .harness/
+
+# Playwright runner output (never evidence — evidence lives outside the repo)
+test-results/
+playwright-report/

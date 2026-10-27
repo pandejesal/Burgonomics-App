@@ -10,7 +10,8 @@ import {
   type NotificationCategory,
 } from "@/features/notifications/state/notificationsStore";
 import { notificationRepository } from "@/features/notifications/repositories/NotificationRepository";
-import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
+import { parseNotificationRefSearch, parseStoredNotificationTarget } from "@/features/notifications/utils/notificationRouting";
+import { resolveNotificationRefNavigation } from "@/features/notifications/services/notificationInbox";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/profile/notifications")({
@@ -20,6 +21,9 @@ export const Route = createFileRoute("/profile/notifications")({
       { name: "description", content: "Offers, order updates and announcements." },
     ],
   }),
+  // Preserved through the signed-out redirect: `?ref=` is validated here and
+  // resolved only after ProtectedRoute admits an authenticated session.
+  validateSearch: parseNotificationRefSearch,
   component: Page,
 });
 
@@ -42,9 +46,33 @@ const TABS: Array<{ id: Filter; label: string }> = [
 
 function Body() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const ref = search.ref;
   const items = useNotificationsStore((s) => s.items);
   const unread = useNotificationsStore((s) => s.unreadCount);
   const [filter, setFilter] = React.useState<Filter>("all");
+  const resolvedRef = React.useRef<string | null>(null);
+
+  // Background tap contract (§11): the SW opens `?ref=<inbox doc id>`; the
+  // app resolves the document AFTER auth. A missing/denied ref leaves the
+  // customer on this screen — it never navigates to `/`.
+  React.useEffect(() => {
+    if (!ref || resolvedRef.current === ref) return;
+    resolvedRef.current = ref;
+    let cancelled = false;
+    void resolveNotificationRefNavigation(ref).then((target) => {
+      if (cancelled) return;
+      if (target.to === "/support") {
+        void navigate({ to: "/support", search: target.search });
+      } else if (target.to === "/orders/$orderId/track") {
+        void navigate({ to: "/orders/$orderId/track", params: target.params });
+      }
+      // The centre fallback leaves the customer on this screen.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ref, navigate]);
 
   const visible = React.useMemo(
     () => (filter === "all" ? items : items.filter((n) => n.category === filter)),
@@ -115,10 +143,16 @@ function Body() {
                   notification={n}
                   onRead={() => {
                     if (!n.read) void notificationRepository.markRead(n.id);
-                    // Stored deeplinks originate server-side: sanitize anyway.
-                    if (n.deeplink) {
-                      const safe = sanitizeRedirectUrl(n.deeplink, "");
-                      if (safe) void navigate({ to: safe });
+                    const target = n.deeplink
+                      ? parseStoredNotificationTarget(n.deeplink)
+                      : null;
+                    if (!target) return;
+                    if (target.to === "/support") {
+                      void navigate({ to: "/support", search: target.search });
+                    } else if (target.to === "/orders/$orderId/track") {
+                      void navigate({ to: "/orders/$orderId/track", params: target.params });
+                    } else {
+                      void navigate({ to: target.to });
                     }
                   }}
                   onRemove={() => void notificationRepository.remove(n.id)}

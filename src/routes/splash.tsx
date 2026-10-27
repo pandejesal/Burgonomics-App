@@ -15,7 +15,7 @@ export const Route = createFileRoute("/splash")({
 
 const SPLASH_HOLD_MS = 1500;
 
-function SplashPage() {
+export function SplashPage() {
   const navigate = useNavigate();
   const reduceMotion =
     typeof window !== "undefined" &&

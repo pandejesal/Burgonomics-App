@@ -17,6 +17,7 @@ import { logger } from "@/core/logging/logger";
 import { toUserMessage } from "@/core/errors/userMessages";
 import { orderRepository } from "@/features/orders";
 import { cartRepository } from "@/features/cart";
+import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { AudioService } from "@/core/services/audio";
 import { HapticService } from "@/core/services/haptics";
 import { useAuthStore } from "@/features/auth/state/authStore";
@@ -222,6 +223,11 @@ export function useRazorpayPayment(options?: UseRazorpayPaymentOptions) {
               AudioService.playSuccess();
               void HapticService.notification("success");
               void cartRepository.clear();
+              // A completed order owns its cleanup: the confirmation screen no
+              // longer resets checkout state on mount (it would wipe a newer
+              // order), so this success path must clear the tip/notes/points
+              // it just consumed — same as payment.tsx.
+              useCheckoutStore.getState().reset();
               const orderId = created.success ? created.data.id : verification.confirmedOrderId;
 
               if (options?.onSuccess) {

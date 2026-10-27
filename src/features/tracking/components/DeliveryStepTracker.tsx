@@ -102,7 +102,7 @@ export function DeliveryStepTracker({
         ) : (
           <div className="rounded-2xl border border-orange-500/30 bg-orange-950/30 px-3 py-1.5 text-right shrink-0">
             <span className="text-[9px] font-bold text-orange-400 block uppercase">Estimated ETA</span>
-            <span className="font-mono font-black text-sm text-[#FF6600] flex items-center gap-1">
+            <span className="font-mono font-black text-sm text-accent dark:text-accent-foreground flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
               <span>{etaMinutes > 0 ? `${etaMinutes} mins` : "Due now"}</span>
             </span>

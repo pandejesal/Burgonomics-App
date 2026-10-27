@@ -294,7 +294,6 @@ function RootComponent() {
           <Outlet />
         </ConsumerRouteTransition>
         <AppToaster />
-        <div id="recaptcha-container"></div>
       </QueryClientProvider>
     </GlobalErrorBoundary>
   );

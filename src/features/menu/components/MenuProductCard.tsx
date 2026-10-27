@@ -397,8 +397,8 @@ export const MenuProductCard = React.memo(function MenuProductCard({
           {image}
           <div className="flex flex-1 flex-col min-w-0 gap-1 p-2.5">
             <div className="flex items-center gap-2 min-w-0">
-              <VegIndicator veg={veg ?? true} />
-              <Text variant="titleMedium" className="truncate" title={name}>
+              <VegIndicator veg={veg ?? undefined} />
+              <Text variant="titleMedium" className="line-clamp-2 min-h-[2.5rem]" title={name}>
                 {highlightText(name, searchQuery)}
               </Text>
             </div>
@@ -450,9 +450,9 @@ export const MenuProductCard = React.memo(function MenuProductCard({
         {image}
         <div className="flex min-w-0 flex-1 flex-col gap-1 justify-between">
           <div>
-            <div className="flex items-center gap-2 min-w-0">
-              <VegIndicator veg={veg ?? true} />
-              <Text variant="titleMedium" className="truncate font-bold" title={name}>
+            <div className="flex items-start gap-2 min-w-0">
+              <VegIndicator veg={veg ?? undefined} className="mt-0.5" />
+              <Text variant="titleMedium" className="line-clamp-2 min-h-[2.5rem] font-bold" title={name}>
                 {highlightText(name, searchQuery)}
               </Text>
             </div>

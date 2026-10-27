@@ -133,12 +133,19 @@ function toPrepMinutes(value: unknown): number | undefined {
 }
 
 export function mapProductDoc(data: any, docId: string): Product {
-  const veg =
-    data.isVeg !== undefined
-      ? Boolean(data.isVeg)
-      : data.veg !== undefined
-        ? Boolean(data.veg)
-        : data.dietaryTag === "veg" || data.item_attributeid === "1";
+  let veg: boolean | undefined = undefined;
+  if (typeof data.isVeg === "boolean") veg = data.isVeg;
+  else if (typeof data.veg === "boolean") veg = data.veg;
+  else if (typeof data.dietaryTag === "string") {
+    if (/non[\s-]*veg/i.test(data.dietaryTag)) veg = false;
+    else if (/veg/i.test(data.dietaryTag)) veg = true;
+  } else if (Array.isArray(data.item_attributeid)) {
+    const attrs = data.item_attributeid.map((a: any) => String(a).toLowerCase());
+    if (attrs.some((a: string) => a.includes("nonveg") || a.includes("non-veg"))) veg = false;
+    else if (attrs.some((a: string) => a.includes("veg"))) veg = true;
+  } else if (data.item_attributeid === "1" || data.item_attributeid === 1) {
+    veg = true;
+  }
 
   const customizations = mapToCustomizationGroups(data.customizations || []);
 

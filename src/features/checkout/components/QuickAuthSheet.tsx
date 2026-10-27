@@ -4,7 +4,10 @@ import { X, ShieldCheck, Sparkles, ArrowRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/state/authStore";
+import { RecaptchaHost } from "@/features/auth/components/RecaptchaHost";
+import { authService } from "@/features/auth/services/authService";
 import { sanitizePhone, validateOtp, validatePhone } from "@/features/auth/utils/validators";
+import { isAuthoredAuthMessage } from "@/features/auth/utils/authErrors";
 import { HapticService } from "@/core/services/haptics";
 import { toUserMessage } from "@/core/errors/userMessages";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
@@ -15,21 +18,41 @@ interface QuickAuthSheetProps {
   onSuccess: () => void;
 }
 
+interface ChallengeConflict {
+  handle: string;
+  maskedPhone: string;
+  flow: string;
+}
+
 export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetProps) {
   const [phone, setPhone] = React.useState("");
   const [otp, setOtp] = React.useState("");
   const [step, setStep] = React.useState<"phone" | "otp">("phone");
   const [busy, setBusy] = React.useState(false);
+  const [maskedPhone, setMaskedPhone] = React.useState("");
+  const [conflict, setConflict] = React.useState<ChallengeConflict | null>(null);
 
   const requestOtp = useAuthStore((s) => s.requestOtp);
   const verifyOtp = useAuthStore((s) => s.verifyOtp);
+  const resetAuthAttempts = useAuthStore((s) => s.resetAuthAttempts);
+  const status = useAuthStore((s) => s.status);
+  const isBusy = busy || status === "authenticating" || status === "verifying";
 
-  // Reset sheet state every time it opens so stale OTP/phone never leaks between attempts.
+  // Reopen is a resume, not a new request: the host remounts, then the
+  // attempt layer restores the checkout-owned challenge without a network call.
   React.useEffect(() => {
     if (isOpen) {
-      setStep("phone");
       setOtp("");
       setBusy(false);
+      setConflict(null);
+      const resumed = authService.resumeChallenge("checkout");
+      if (resumed) {
+        setStep("otp");
+        setMaskedPhone(resumed.maskedPhone);
+      } else {
+        setStep("phone");
+        setMaskedPhone("");
+      }
     }
   }, [isOpen]);
 
@@ -57,16 +80,28 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await requestOtp(`+91${sanitizePhone(phone)}`, "whatsapp");
+    const res = await requestOtp("checkout", `+91${sanitizePhone(phone)}`, "sms");
     setBusy(false);
 
     if (res.ok) {
+      const active = useAuthStore.getState().challenge;
+      setMaskedPhone(active?.maskedPhone ?? "");
+      setConflict(null);
       setStep("otp");
       toast.success("OTP sent to your number!");
     } else {
-      // P1-13: the store hands back the raw Firebase message — never toast it.
-      console.error("[auth] checkout OTP request failed:", res.error);
-      toast.error(toUserMessage(res));
+      if (res.code === "CHALLENGE_ACTIVE_OTHER_FLOW" && res.details?.handle) {
+        setConflict({
+          handle: res.details.handle,
+          maskedPhone: res.details.maskedPhone ?? "",
+          flow: res.details.flow ?? "another screen",
+        });
+      }
+      // Code only: provider messages may contain the phone number.
+      console.error("[auth] checkout OTP request failed:", res.code);
+      toast.error(
+        res.error && isAuthoredAuthMessage(res.error) ? res.error : toUserMessage(res),
+      );
     }
   };
 
@@ -81,14 +116,18 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await verifyOtp(otp);
+    const active = useAuthStore.getState().challenge;
+    if (!active?.handle) {
+      setBusy(false);
+      setStep("phone");
+      toast.error("Request a new verification code to continue.");
+      return;
+    }
+    const res = await verifyOtp("checkout", active.handle, otp);
     setBusy(false);
 
     if (res.ok) {
-      // Loop 65/120: no local signup mint. The old code credited 50 phantom
-      // points per device with zero server backing (clearing storage
-      // re-minted them); the server ledger is the sole minter. Refresh from
-      // truth instead — new customers correctly see zero.
+      // Loop 65/120: no local signup mint. The server ledger is the sole minter.
       try {
         const uid = useAuthStore.getState().user?.id ?? null;
         void useLoyaltyStore.getState().refreshFromServer(uid);
@@ -99,9 +138,15 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
       onSuccess();
       onClose();
     } else {
-      // P1-13: raw `Firebase: Error (auth/invalid-verification-code).` etc.
-      console.error("[auth] checkout OTP verify failed:", res.error);
-      toast.error(toUserMessage(res));
+      // Code only; auth copy is already authored.
+      console.error("[auth] checkout OTP verify failed:", res.code);
+      if (res.code === "AUTH_CODE_EXPIRED" || res.code === "NO_CHALLENGE") {
+        setStep("phone");
+        setOtp("");
+      }
+      toast.error(
+        res.error && isAuthoredAuthMessage(res.error) ? res.error : toUserMessage(res),
+      );
     }
   };
 
@@ -182,10 +227,10 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
               <button
                 type="submit"
-                disabled={busy || phone.length < 10}
+                disabled={isBusy || phone.length < 10}
                 className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-full bg-primary py-3 text-xs font-bold text-white shadow-md hover:bg-primary-hover active:scale-[0.98] transition disabled:opacity-50 cursor-pointer"
               >
-                <span>{busy ? "Sending OTP..." : "Get Verification Code"}</span>
+                <span>{isBusy ? "Sending OTP..." : "Get Verification Code"}</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </form>
@@ -204,6 +249,11 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
                     Change Number
                   </button>
                 </div>
+                {maskedPhone && (
+                  <p className="mb-1.5 text-[11px] text-text-secondary">
+                    Sent to {maskedPhone}
+                  </p>
+                )}
                 <input
                   id="checkout-otp"
                   type="text"
@@ -220,14 +270,62 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
 
               <button
                 type="submit"
-                disabled={busy || otp.replace(/\D/g, "").length !== 6}
+                disabled={isBusy || otp.replace(/\D/g, "").length !== 6}
                 className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-full bg-primary py-3 text-xs font-bold text-white shadow-md hover:bg-primary-hover active:scale-[0.98] transition disabled:opacity-50 cursor-pointer"
               >
                 <ShieldCheck className="h-4 w-4" />
-                <span>{busy ? "Verifying..." : "Verify & Place Order"}</span>
+                <span>{isBusy ? "Verifying..." : "Verify & Place Order"}</span>
               </button>
             </form>
           )}
+
+          {conflict && (
+            <div
+              role="status"
+              className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-text-primary"
+            >
+              <p>
+                A code was already sent to {conflict.maskedPhone || "another number"} on{" "}
+                {conflict.flow}.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="font-bold text-primary underline"
+                  onClick={() => {
+                    const adopted = authService.adoptChallenge("checkout", conflict.handle);
+                    if (!adopted.ok) {
+                      toast.error(
+                        adopted.code === "STALE_EPOCH"
+                          ? "That sign-in attempt expired. Request a new code."
+                          : "That verification session is no longer active.",
+                      );
+                      return;
+                    }
+                    setMaskedPhone(conflict.maskedPhone);
+                    setConflict(null);
+                    setStep("otp");
+                  }}
+                >
+                  Resume here
+                </button>
+                <button
+                  type="button"
+                  className="font-bold text-text-secondary underline"
+                  onClick={() => {
+                    resetAuthAttempts();
+                    setConflict(null);
+                    setStep("phone");
+                    setOtp("");
+                  }}
+                >
+                  Reset and start over
+                </button>
+              </div>
+            </div>
+          )}
+
+          <RecaptchaHost flow="checkout" />
           </motion.div>
         </div>
       )}

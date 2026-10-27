@@ -82,9 +82,14 @@ export function storeSupportsFulfillment(
   f: Fulfillment | null | undefined,
 ): boolean {
   if (!store || !f) return false;
-  if (f === "delivery") return !!store.supports.delivery;
-  if (f === "takeaway") return !!store.supports.takeaway;
-  if (f === "dinein") return !!store.supports.dineIn;
+  // Persisted `activeStore` values can predate `supports` (or carry a partial/
+  // malformed object). Deny by default instead of throwing or promoting a
+  // truthy non-boolean; the canonical boolean contract is unchanged.
+  const supports = (store as { supports?: Partial<Store["supports"]> | null }).supports;
+  if (!supports || typeof supports !== "object") return false;
+  if (f === "delivery") return supports.delivery === true;
+  if (f === "takeaway") return supports.takeaway === true;
+  if (f === "dinein") return supports.dineIn === true;
   return false;
 }
 

@@ -5,6 +5,8 @@ export * from "./hooks/useCountdown";
 export * from "./hooks/useFirebaseAuth";
 export * from "./components/ProtectedRoute";
 export * from "./components/PhoneLoginForm";
+export * from "./components/RecaptchaHost";
 export * from "./components/OTPInputGrid";
 export * from "./utils/validators";
+export * from "./utils/authErrors";
 export { authService } from "./services/authService";

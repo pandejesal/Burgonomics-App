@@ -138,7 +138,7 @@ export function CreateTicketForm({
           <select
             value={selectedOrderId}
             onChange={(e) => setSelectedOrderId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-bg-secondary border border-divider text-text text-xs font-semibold focus:outline-none focus:border-[#FF6600]"
+            className="w-full px-3 py-2 rounded-xl bg-bg-secondary border border-divider text-text text-xs font-semibold focus:outline-none focus:border-accent"
           >
             <option value="">-- No specific order --</option>
             {orders.map((o) => (
@@ -189,7 +189,7 @@ export function CreateTicketForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Please share specific details (e.g. burger was cold upon arrival, or missing Peri Peri dip)..."
-          className="w-full px-3 py-2 rounded-2xl bg-bg-secondary border border-divider text-text text-xs placeholder:text-text-secondary focus:outline-none focus:border-[#FF6600]"
+          className="w-full px-3 py-2 rounded-2xl bg-bg-secondary border border-divider text-text text-xs placeholder:text-text-secondary focus:outline-none focus:border-accent"
           required
         />
       </div>
@@ -256,7 +256,7 @@ export function CreateTicketForm({
         <button
           type="submit"
           disabled={isSubmitting || description.trim().length < 10}
-          className="px-5 py-2.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+          className="px-5 py-2.5 rounded-xl bg-accent dark:bg-[var(--accent-hover)] hover:bg-[var(--accent-hover)] dark:hover:brightness-110 text-accent-foreground font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
         >
           {isSubmitting ? "Submitting..." : "Submit Support Ticket"}
         </button>

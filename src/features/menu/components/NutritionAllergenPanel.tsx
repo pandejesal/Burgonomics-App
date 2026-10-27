@@ -55,7 +55,9 @@ export function NutritionAllergenPanel({
         {veg !== undefined && (
           <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
             <span className="text-[10px] font-medium text-text-secondary block">Dietary</span>
-            <p className="text-xs font-bold text-emerald-600 mt-0.5">{veg ? "Pure Veg" : "Non-Veg"}</p>
+            <p className={cn("text-xs font-bold mt-0.5", veg ? "text-emerald-600" : "text-red-600")}>
+              {veg ? "Pure Veg" : "Non-Veg"}
+            </p>
           </div>
         )}
       </div>

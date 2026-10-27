@@ -1,0 +1,15 @@
+{
+  "//": "Scoped typecheck for the committed Playwright sticky-scroll gate. Kept out of the app tsconfig (which includes only src/**) so browser-test types are checked by an explicit command instead of never being checked.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["./sticky-scrollport.spec.ts", "./playwright.sticky-scroll.config.ts"]
+}

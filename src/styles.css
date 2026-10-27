@@ -263,8 +263,6 @@
   html,
   body {
     min-height: 100%;
-    /* Avoid horizontal scrolling from stray overflow at any breakpoint. */
-    overflow-x: hidden;
     /* Disable web text selection globally for native app experience */
     -webkit-user-select: none;
     user-select: none;
@@ -273,6 +271,34 @@
     /* Hide native scrollbars on desktop for an immersive app experience */
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE 10+ */
+  }
+
+  /* Horizontal containment lives on the ROOT only.
+     Two separate defects are avoided here:
+       1. `overflow-x: hidden` on `body` makes body an intermediate scrollport
+          (one non-visible axis computes the other from `visible` to `auto`,
+          CSS Overflow §3). Every `position: sticky` descendant — the TopBar
+          `top-0` and the search `form` `top-[3.5rem]` — is then reparented to
+          a scrollport that never scrolls, so it scrolls away with the page.
+       2. `overflow-x: clip` contains horizontal overflow without creating a
+          scroll container, so the document scroller stays the sticky
+          containing scroller. It is only available from Safari 16 / Chromium
+          90 / Firefox 81.
+     Keeping the fallback on `html` alone means the overflow propagates to the
+     viewport: `body` keeps `overflow: visible` and is never a scrollport, so
+     sticky pinning is expected to survive on older engines (the declared iOS
+     15 minimum is NOT verified on a real Safari 15 device here) while
+     horizontal containment is unchanged. The `@supports` layer is required so
+     esbuild does not collapse the `hidden; clip` pair to `clip` and drop the
+     older-engine fallback. */
+  html {
+    overflow-x: hidden;
+  }
+
+  @supports (overflow: clip) {
+    html {
+      overflow-x: clip;
+    }
   }
 
   /* Re-enable selection for inputs, textareas, editable fields, and explicitly selectable elements */

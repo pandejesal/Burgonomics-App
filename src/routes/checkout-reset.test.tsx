@@ -118,22 +118,38 @@ vi.mock("@/features/checkout", async () => {
   };
 });
 vi.mock("@/features/checkout/components/QuickAuthSheet", () => ({ QuickAuthSheet: () => null }));
-vi.mock("@/features/stores/state/storeStore", () => ({
-  useStoreSelection: (select: (s: unknown) => unknown) =>
-    select({
-      activeStore: {
-        id: "store-A",
-        name: "Surat Vesu",
-        lat: 21.15,
-        lng: 72.77,
-        pricing: {},
-        isOpen: true,
-        etaMinutes: 20,
-      },
-      fulfillment: "delivery",
-      setFulfillment: vi.fn(),
-    }),
-}));
+vi.mock("@/features/stores/state/storeStore", () => {
+  const state = {
+    activeStore: {
+      id: "store-A",
+      name: "Surat Vesu",
+      lat: 21.15,
+      lng: 72.77,
+      pricing: {},
+      isOpen: true,
+      etaMinutes: 20,
+      supports: { delivery: true, takeaway: true, dineIn: false },
+    },
+    fulfillment: "delivery",
+    setFulfillment: vi.fn(),
+  };
+  return {
+    useStoreSelection: Object.assign(
+      (select: (s: typeof state) => unknown) => select(state),
+      { getState: () => state },
+    ),
+    storeSupportsFulfillment: (
+      store: { supports?: { delivery?: boolean; takeaway?: boolean; dineIn?: boolean } } | null,
+      mode: string | null,
+    ) => {
+      if (!store || !mode) return false;
+      if (mode === "delivery") return store.supports?.delivery === true;
+      if (mode === "takeaway") return store.supports?.takeaway === true;
+      if (mode === "dinein") return store.supports?.dineIn === true;
+      return false;
+    },
+  };
+});
 vi.mock("@/features/auth/state/authStore", () => {
   const authState = {
     user: { id: "cust_reset", name: "Test Customer", phone: "+910000000000" },

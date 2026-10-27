@@ -156,13 +156,34 @@ vi.mock("@/features/checkout", () => ({
   ),
   ReviewItemsList: () => null,
 }));
-vi.mock("@/features/stores/state/storeStore", () => ({
-  useStoreSelection: (select: (s: unknown) => unknown) =>
-    select({
-      activeStore: { id: "store-A", name: "Surat Vesu", area: "Vesu", etaMinutes: 30 },
-      fulfillment: "delivery",
-    }),
-}));
+vi.mock("@/features/stores/state/storeStore", () => {
+  const state = {
+    activeStore: {
+      id: "store-A",
+      name: "Surat Vesu",
+      area: "Vesu",
+      etaMinutes: 30,
+      supports: { delivery: true, takeaway: true, dineIn: false },
+    },
+    fulfillment: "delivery",
+  };
+  return {
+    useStoreSelection: Object.assign(
+      (select: (s: typeof state) => unknown) => select(state),
+      { getState: () => state },
+    ),
+    storeSupportsFulfillment: (
+      store: { supports?: { delivery?: boolean; takeaway?: boolean; dineIn?: boolean } } | null,
+      mode: string | null,
+    ) => {
+      if (!store || !mode) return false;
+      if (mode === "delivery") return !!store.supports?.delivery;
+      if (mode === "takeaway") return !!store.supports?.takeaway;
+      if (mode === "dinein") return !!store.supports?.dineIn;
+      return false;
+    },
+  };
+});
 vi.mock("@/features/auth/state/authStore", () => {
   const authState = {
     user: { id: "cust_a", name: "Test Customer", phone: "+910000000000" },

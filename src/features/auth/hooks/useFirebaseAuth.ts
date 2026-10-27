@@ -1,7 +1,9 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useAuthStore } from "../state/authStore";
 import { sanitizePhone, validatePhone, COUNTRY_CODE } from "../utils/validators";
-import { authService } from "../services/authService";
+import type { AuthFlowId } from "../utils/authErrors";
+
+const GENERIC_AUTH_ERROR = "Authentication failed. Please try again.";
 
 export function useFirebaseAuth() {
   const status = useAuthStore((s) => s.status);
@@ -18,71 +20,78 @@ export function useFirebaseAuth() {
   const [phone, setPhone] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Initialize reCAPTCHA on mount
-  useEffect(() => {
-    authService.initRecaptcha("recaptcha-container");
-    return () => {
-      authService.clearRecaptcha();
-    };
-  }, []);
-
   const sendOtp = useCallback(
-    async (rawPhone: string, deliveryMethod: "sms" | "whatsapp" = "sms") => {
+    async (
+      flow: AuthFlowId,
+      rawPhone: string,
+      deliveryMethod: "sms" | "whatsapp" = "sms",
+    ) => {
       const sanitized = sanitizePhone(rawPhone);
       const validation = validatePhone(sanitized);
 
       if (!validation.valid) {
-        return { ok: false, error: validation.error || "Please enter a valid 10-digit mobile number" };
+        return {
+          ok: false,
+          error: validation.error || "Please enter a valid 10-digit mobile number",
+          code: "AUTH_INVALID_PHONE",
+        };
       }
 
       setIsSubmitting(true);
       clearError();
 
       try {
-        const result = await requestOtpAction(sanitized, deliveryMethod);
+        const result = await requestOtpAction(flow, sanitized, deliveryMethod);
         setIsSubmitting(false);
         return result;
-      } catch (err: any) {
+      } catch {
         setIsSubmitting(false);
-        return { ok: false, error: err.message || "Failed to send verification code" };
+        return { ok: false, error: GENERIC_AUTH_ERROR, code: "AUTH_OTP_REQUEST_FAILED" };
       }
     },
     [requestOtpAction, clearError]
   );
 
   const verifyOtp = useCallback(
-    async (code: string) => {
+    async (flow: AuthFlowId, handle: string, code: string) => {
       if (!code || code.trim().length !== 6) {
-        return { ok: false, error: "Please enter the complete 6-digit verification code" };
+        return {
+          ok: false,
+          error: "Please enter the complete 6-digit verification code",
+          code: "AUTH_INVALID_CODE",
+        };
       }
 
       setIsSubmitting(true);
       clearError();
 
       try {
-        const result = await verifyOtpAction(code.trim());
+        const result = await verifyOtpAction(flow, handle, code.trim());
         setIsSubmitting(false);
         return result;
-      } catch (err: any) {
+      } catch {
         setIsSubmitting(false);
-        return { ok: false, error: err.message || "Verification failed" };
+        return { ok: false, error: GENERIC_AUTH_ERROR, code: "AUTH_OTP_VERIFY_FAILED" };
       }
     },
     [verifyOtpAction, clearError]
   );
 
-  const resendOtp = useCallback(async () => {
-    setIsSubmitting(true);
-    clearError();
-    try {
-      const result = await resendOtpAction();
-      setIsSubmitting(false);
-      return result;
-    } catch (err: any) {
-      setIsSubmitting(false);
-      return { ok: false, error: err.message || "Failed to resend code" };
-    }
-  }, [resendOtpAction, clearError]);
+  const resendOtp = useCallback(
+    async (flow: AuthFlowId) => {
+      setIsSubmitting(true);
+      clearError();
+      try {
+        const result = await resendOtpAction(flow);
+        setIsSubmitting(false);
+        return result;
+      } catch {
+        setIsSubmitting(false);
+        return { ok: false, error: GENERIC_AUTH_ERROR, code: "AUTH_OTP_REQUEST_FAILED" };
+      }
+    },
+    [resendOtpAction, clearError]
+  );
 
   const changePhone = useCallback(() => {
     changePhoneAction();

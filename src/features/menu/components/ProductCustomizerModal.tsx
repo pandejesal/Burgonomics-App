@@ -240,7 +240,7 @@ export function ProductCustomizerModal({
               <button
                 type="button"
                 onClick={handleRepeatLastCustomization}
-                className="font-bold text-[#FF6600] hover:underline cursor-pointer"
+                className="font-bold text-accent dark:text-accent-foreground hover:underline cursor-pointer"
               >
                 Repeat Last Customization
               </button>
@@ -310,9 +310,9 @@ export function ProductCustomizerModal({
             onClick={handleAddToCart}
             disabled={isOutOfStock || !isValidationPassed}
             className={cn(
-              "flex-1 py-3.5 px-5 rounded-xl text-white font-bold text-xs sm:text-sm flex items-center justify-between shadow-lg transition-all active:scale-[0.98] cursor-pointer",
+              "flex-1 py-3.5 px-5 rounded-xl text-accent-foreground font-bold text-xs sm:text-sm flex items-center justify-between shadow-lg transition-all active:scale-[0.98] cursor-pointer",
               !isOutOfStock && isValidationPassed
-                ? "bg-[#FF6600] hover:bg-[#e05a00]"
+                ? "bg-accent dark:bg-[var(--accent-hover)] hover:bg-[var(--accent-hover)] dark:hover:brightness-110"
                 : "bg-zinc-700 opacity-60 cursor-not-allowed"
             )}
           >

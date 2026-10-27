@@ -2,6 +2,10 @@ import { delay, ok, type ApiResult } from "@/core/network/http";
 import { httpClient } from "@/core/network/httpClient";
 import { auth } from "@/core/config/firebase";
 import type { AppNotification } from "@/features/notifications/state/notificationsStore";
+import {
+  NOTIFICATION_PREFERENCE_DEFAULTS,
+  type NotificationPreferences,
+} from "@/features/settings/models";
 import { getPlatform } from "@/shared/platform/platform";
 import { getCachedDeviceToken } from "@/shared/platform/pushNotifications";
 import { logger } from "@/core/logging/logger";
@@ -17,11 +21,300 @@ async function authHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
-export interface NotificationPreferences {
-  pushEnabled: boolean;
-  orders: boolean;
-  offers: boolean;
-  announcements: boolean;
+async function getIdToken(): Promise<string | null> {
+  try {
+    return (await auth.currentUser?.getIdToken()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Base URL for the server-owned notification routes (register/unregister/prefs). */
+let cachedApiBase: string | null = null;
+
+async function resolveApiBase(): Promise<string> {
+  if (cachedApiBase) return cachedApiBase;
+  const { appConfig } = await import("@/core/config/env");
+  const paymentsBase = (
+    appConfig.integrations.paymentsApiBaseUrl ||
+    "https://asia-south1-burgonomics-7faa8.cloudfunctions.net/api/payments"
+  ).replace(/\/$/, "");
+  cachedApiBase = paymentsBase.endsWith("/payments")
+    ? paymentsBase.slice(0, -"/payments".length)
+    : paymentsBase;
+  return cachedApiBase;
+}
+
+export type DeviceUnlinkOutcome = "ok" | "failed";
+
+export type NotificationPreferencesSyncResult =
+  | {
+      status: "synced";
+      /** False when the canonical read says this installation has never saved. */
+      exists: boolean;
+      version: number;
+      prefs: NotificationPreferences;
+      replicated: boolean;
+      stale: boolean;
+    }
+  | {
+      status: "conflict";
+      /** Null when the backend's 409 envelope omitted it and the canonical
+       * read could not recover it. Callers must NOT coerce this to 0. */
+      currentVersion: number | null;
+      currentPrefs: NotificationPreferences | null;
+      code: string | null;
+    }
+  | { status: "unauthorized" }
+  | { status: "forbidden" }
+  | { status: "retryable"; code: "offline" | "server" }
+  | { status: "failed"; code: "not_found" | "bad_request" | "invalid_response" };
+
+export interface NotificationPreferencesSyncInput {
+  installationId: string;
+  prefs: NotificationPreferences;
+  expectedVersion: number;
+  mutationId: string;
+}
+
+function parseNotificationPreferences(value: unknown): NotificationPreferences | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const orderUpdates =
+    typeof source.orderUpdates === "boolean"
+      ? source.orderUpdates
+      : typeof source.orders === "boolean"
+        ? source.orders
+        : null;
+  if (
+    typeof source.offers !== "boolean" ||
+    typeof source.announcements !== "boolean" ||
+    typeof source.supportReplies !== "boolean" ||
+    orderUpdates === null
+  ) {
+    return null;
+  }
+  return {
+    offers: source.offers,
+    orderUpdates,
+    announcements: source.announcements,
+    supportReplies: source.supportReplies,
+  };
+}
+
+async function readJson(response: Response): Promise<Record<string, unknown> | null> {
+  try {
+    const body: unknown = await response.json();
+    return body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function prefsFromBody(body: Record<string, unknown> | null): NotificationPreferences | null {
+  return parseNotificationPreferences(body?.notificationPrefs ?? body?.prefs);
+}
+
+/**
+ * Parses the 409 envelope. The landed backend currently sends only
+ * `{error, code}`; it is being amended to include `currentVersion` and
+ * `currentPrefs`. A missing version is represented as `null` and must never be
+ * coerced to 0 — that would rebase a CAS write onto a non-existent version and
+ * loop forever.
+ */
+function parseConflictBody(body: Record<string, unknown> | null): {
+  currentVersion: number | null;
+  currentPrefs: NotificationPreferences | null;
+  code: string | null;
+} {
+  return {
+    currentVersion:
+      typeof body?.currentVersion === "number" && Number.isInteger(body.currentVersion)
+        ? body.currentVersion
+        : null,
+    currentPrefs: parseNotificationPreferences(body?.currentPrefs),
+    code: typeof body?.code === "string" ? body.code : null,
+  };
+}
+
+/**
+ * Canonical read. Backend path (authoritative): GET
+ * /notifications/preferences?installationId=... -> { notificationPrefs, version }.
+ * A 404 is a route/build mismatch, not "no record": it is surfaced as a
+ * terminal failure so the UI cannot fake a saved state forever.
+ */
+export async function getNotificationPreferences(
+  installationId: string,
+): Promise<NotificationPreferencesSyncResult> {
+  const idToken = await getIdToken();
+  if (!idToken) return { status: "unauthorized" };
+  const path = `/notifications/preferences?installationId=${encodeURIComponent(installationId)}`;
+  try {
+    const base = await resolveApiBase();
+    const response = await fetch(`${base}${path}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (response.status === 401) return { status: "unauthorized" };
+    if (response.status === 403) return { status: "forbidden" };
+    if (response.status === 404) {
+      logger.warn("notifications.preferencesReadRouteMissing", {
+        method: "GET",
+        path: "/notifications/preferences",
+        status: 404,
+      });
+      return { status: "failed", code: "not_found" };
+    }
+    if (response.status === 409) {
+      const body = await readJson(response);
+      return { status: "conflict", ...parseConflictBody(body) };
+    }
+    if (response.status === 400) {
+      logger.warn("notifications.preferencesReadRejected", {
+        method: "GET",
+        path: "/notifications/preferences",
+        status: 400,
+      });
+      return { status: "failed", code: "bad_request" };
+    }
+    if (!response.ok) {
+      if (response.status >= 500) {
+        logger.warn("notifications.preferencesReadFailed", { status: response.status });
+        return { status: "retryable", code: "server" };
+      }
+      logger.warn("notifications.preferencesReadRejected", {
+        method: "GET",
+        path: "/notifications/preferences",
+        status: response.status,
+      });
+      return { status: "failed", code: "bad_request" };
+    }
+    const body = await readJson(response);
+    const exists = body?.exists !== false;
+    const prefs =
+      prefsFromBody(body) ??
+      (exists ? null : { ...NOTIFICATION_PREFERENCE_DEFAULTS });
+    if (!prefs || typeof body?.version !== "number") {
+      logger.warn("notifications.preferencesReadInvalidResponse");
+      return { status: "failed", code: "invalid_response" };
+    }
+    return {
+      status: "synced",
+      exists,
+      version: body.version,
+      prefs,
+      replicated: body.replicated === true,
+      stale: body.stale === true,
+    };
+  } catch (err: unknown) {
+    logger.warn("notifications.preferencesReadError", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { status: "retryable", code: "offline" };
+  }
+}
+
+/**
+ * CAS save of the device preferences. Backend path (authoritative): POST
+ * /notifications/preferences with `{installationId, notificationPrefs,
+ * expectedVersion, mutationId?}` and a strict body (no uid/category/prefs
+ * alias). `expectedVersion: 0` creates at v1; a mismatch is a 409.
+ */
+export async function updateNotificationPreferences(
+  input: NotificationPreferencesSyncInput,
+): Promise<NotificationPreferencesSyncResult> {
+  const idToken = await getIdToken();
+  if (!idToken) return { status: "unauthorized" };
+  const path = "/notifications/preferences";
+  try {
+    const base = await resolveApiBase();
+    const response = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        installationId: input.installationId,
+        notificationPrefs: input.prefs,
+        expectedVersion: input.expectedVersion,
+        mutationId: input.mutationId,
+      }),
+    });
+    if (response.status === 401) return { status: "unauthorized" };
+    if (response.status === 403) return { status: "forbidden" };
+    if (response.status === 404) {
+      logger.warn("notifications.preferencesWriteRouteMissing", {
+        method: "POST",
+        path,
+        status: 404,
+      });
+      return { status: "failed", code: "not_found" };
+    }
+    if (response.status === 400) {
+      logger.warn("notifications.preferencesWriteRejected", {
+        method: "POST",
+        path,
+        status: 400,
+      });
+      return { status: "failed", code: "bad_request" };
+    }
+    if (response.status === 409) {
+      const body = await readJson(response);
+      const conflict = parseConflictBody(body);
+      if (conflict.currentVersion === null) {
+        // Current backend drops the version. Recover it through the canonical
+        // read (once the backend GET lands) instead of inventing version 0.
+        const canonical = await getNotificationPreferences(input.installationId);
+        if (canonical.status === "synced") {
+          return {
+            status: "conflict",
+            currentVersion: canonical.version,
+            currentPrefs: canonical.prefs,
+            code: conflict.code,
+          };
+        }
+      }
+      logger.warn("notifications.preferencesConflict", {
+        code: conflict.code,
+        hasCurrentVersion: conflict.currentVersion !== null,
+        hasCurrentPrefs: conflict.currentPrefs !== null,
+      });
+      return { status: "conflict", ...conflict };
+    }
+    if (!response.ok) {
+      if (response.status >= 500) {
+        logger.warn("notifications.preferencesWriteFailed", { status: response.status });
+        return { status: "retryable", code: "server" };
+      }
+      logger.warn("notifications.preferencesWriteRejected", {
+        method: "POST",
+        path,
+        status: response.status,
+      });
+      return { status: "failed", code: "bad_request" };
+    }
+    const body = await readJson(response);
+    const prefs = prefsFromBody(body);
+    if (!prefs || typeof body?.version !== "number") {
+      logger.warn("notifications.preferencesWriteInvalidResponse");
+      return { status: "failed", code: "invalid_response" };
+    }
+    return {
+      status: "synced",
+      // A write response means a server record exists; `exists` is advisory.
+      exists: body?.exists !== false,
+      version: body.version,
+      prefs,
+      replicated: body.replicated === true,
+      stale: body.stale === true,
+    };
+  } catch (err: unknown) {
+    logger.warn("notifications.preferencesWriteError", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { status: "retryable", code: "offline" };
+  }
 }
 
 export const notificationsService = {
@@ -105,6 +398,9 @@ export const notificationsService = {
     return ok({ id: _id });
   },
 
+  getPreferences: getNotificationPreferences,
+  updatePreferences: updateNotificationPreferences,
+
   /**
    * Registers a native device token via the server-owned
    * POST /notifications/registerToken endpoint (requireAuth).
@@ -115,21 +411,13 @@ export const notificationsService = {
    */
   async registerDeviceToken(token: string): Promise<ApiResult<null>> {
     try {
-      const { appConfig } = await import("@/core/config/env");
-      const { auth } = await import("@/core/config/firebase");
-      const idToken = await auth.currentUser?.getIdToken().catch(() => null);
+      const idToken = await getIdToken();
       if (!idToken) {
         logger.warn("notifications.registerDeviceTokenNoAuth");
         return ok(null);
       }
-      const paymentsBase = (
-        appConfig.integrations.paymentsApiBaseUrl ||
-        "https://asia-south1-burgonomics-7faa8.cloudfunctions.net/api/payments"
-      ).replace(/\/$/, "");
-      const apiBase = paymentsBase.endsWith("/payments")
-        ? paymentsBase.slice(0, -"/payments".length)
-        : paymentsBase;
-      const res = await fetch(`${apiBase}/notifications/registerToken`, {
+      const base = await resolveApiBase();
+      const res = await fetch(`${base}/notifications/registerToken`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -166,43 +454,37 @@ export const notificationsService = {
    * Unlinks the user ID from the device token on logout. Takes the uid
    * explicitly — by logout time the auth session may already be gone.
    *
-   * Loop 37/120: detaches via the server-owned POST
-   * /notifications/unregisterToken endpoint (requireAuth — callers must
-   * invoke pre-signout while authed). The old direct device_tokens write
-   * ALWAYS failed (rules deny all client writes there), so logged-out
-   * devices kept their token identity. Failures stay warn-level: logout
-   * must never fail on push cleanup.
+   * Returns `"failed"` for every non-2xx/exception so authStore can persist
+   * the bounded retry entry (contract F3/B2). `tokenOverride` is the
+   * retry-only secure copy; normal logout uses the operational cache.
    */
-  async unlinkUserFromDeviceToken(userId?: string): Promise<ApiResult<null>> {
-    const token = getCachedDeviceToken();
-    if (!token) return ok(null);
+  async unlinkUserFromDeviceToken(
+    userId?: string,
+    tokenOverride?: string,
+  ): Promise<DeviceUnlinkOutcome> {
+    const token = tokenOverride ?? getCachedDeviceToken();
+    if (!token) return "ok";
 
     try {
-      const { appConfig } = await import("@/core/config/env");
-      const { auth } = await import("@/core/config/firebase");
-      const idToken = await auth.currentUser?.getIdToken().catch(() => null);
-      if (idToken) {
-        const paymentsBase = (
-          appConfig.integrations.paymentsApiBaseUrl ||
-          "https://asia-south1-burgonomics-7faa8.cloudfunctions.net/api/payments"
-        ).replace(/\/$/, "");
-        const apiBase = paymentsBase.endsWith("/payments")
-          ? paymentsBase.slice(0, -"/payments".length)
-          : paymentsBase;
-        const res = await fetch(`${apiBase}/notifications/unregisterToken`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({ token }),
-        });
-        if (!res.ok) {
-          logger.warn("notifications.unregisterTokenFailed", { status: res.status });
-        } else {
-          logger.info("notifications.userUnlinkedFromToken");
-          return ok(null);
-        }
+      const idToken = await getIdToken();
+      if (!idToken) {
+        logger.warn("notifications.unregisterTokenNoAuth");
+        return "failed";
+      }
+      const base = await resolveApiBase();
+      const res = await fetch(`${base}/notifications/unregisterToken`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ token }),
+      });
+      if (!res.ok) {
+        logger.warn("notifications.unregisterTokenFailed", { status: res.status });
+      } else {
+        logger.info("notifications.userUnlinkedFromToken");
+        return "ok";
       }
     } catch (err: any) {
       logger.warn("notifications.unregisterTokenError", err);
@@ -210,7 +492,9 @@ export const notificationsService = {
 
     // Best-effort fallback: drop the token from the user's own fan-out list
     // (owner writes to users/{uid} are rules-allowed). The device_tokens doc
-    // itself is server-owned — no direct write is attempted anymore.
+    // itself is server-owned — no direct write is attempted anymore. This
+    // partial scrub is NOT a successful unlink, so the caller still keeps a
+    // retry entry.
     try {
       if (userId) {
         const { db } = await import("@/core/config/firebase");
@@ -223,21 +507,9 @@ export const notificationsService = {
     } catch (inner: any) {
       logger.warn("notifications.unlinkFcmTokensError", inner);
     }
-    return ok(null);
-  },
-
-  /**
-   * Updates push notification preferences for this device.
-   *
-   * Loop 38/120: local-only by design. The old code setDoc'd device_tokens,
-   * which rules ALWAYS deny (server-owned) — every call failed into a warn
-   * log while the toggle appeared synced. Nothing server-side reads these
-   * preferences (dispatch is topic/token addressed), so no endpoint is
-   * needed: the local settings store is the source of truth.
-   */
-  async updateNotificationPreferences(
-    _prefs: Partial<NotificationPreferences>,
-  ): Promise<ApiResult<null>> {
-    return ok(null);
+    return "failed";
   },
 };
+
+// Kept as a named export for the notification index barrel.
+export type { NotificationPreferences };

@@ -58,7 +58,7 @@ export function DeliveryTipSelector({
           <button
             type="button"
             onClick={() => onSelectTip(0)}
-            className="text-[11px] font-bold text-[#FF6600] hover:underline transition-colors cursor-pointer"
+            className="text-[11px] font-bold text-accent dark:text-accent-foreground hover:underline transition-colors cursor-pointer"
           >
             Clear Tip
           </button>

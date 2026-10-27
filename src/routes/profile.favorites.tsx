@@ -200,7 +200,7 @@ function Body() {
                         type="button"
                         data-testid={`quick-add-${fav.id}`}
                         onClick={() => void handleQuickAdd(fav)}
-                        className="px-3.5 py-1.5 min-h-[38px] rounded-xl bg-[#FF6600] text-white text-xs font-bold hover:bg-[#e05a00] active:scale-95 transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                        className="px-3.5 py-1.5 min-h-[38px] rounded-xl bg-accent dark:bg-[var(--accent-hover)] text-accent-foreground text-xs font-bold hover:bg-[var(--accent-hover)] dark:hover:brightness-110 active:scale-95 transition-all shadow-xs cursor-pointer flex items-center gap-1"
                       >
                         <Plus className="w-3.5 h-3.5 stroke-[2.5px]" />
                         <span>Add</span>

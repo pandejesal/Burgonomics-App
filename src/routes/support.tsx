@@ -37,6 +37,7 @@ import type {
 } from "@/features/support/models";
 import { toast } from "sonner";
 import { toUserMessage } from "@/core/errors/userMessages";
+import { validateSupportSearch } from "@/features/support/utils/supportSearch";
 
 export const Route = createFileRoute("/support")({
   head: () => ({
@@ -48,14 +49,7 @@ export const Route = createFileRoute("/support")({
       },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>) => ({
-    topic: typeof search.topic === "string" ? search.topic : undefined,
-    paymentId: typeof search.paymentId === "string" ? search.paymentId : undefined,
-    // Order-context deep link (MT-08): the tracking page routes customers here
-    // with the order id so the ticket can be traced without retyping it.
-    orderId: typeof search.orderId === "string" ? search.orderId : undefined,
-    message: typeof search.message === "string" ? search.message : undefined,
-  }),
+  validateSearch: validateSupportSearch,
   component: Page,
 });
 
@@ -152,7 +146,7 @@ function Page() {
           <button
             type="button"
             onClick={() => setOpenTicket(true)}
-            className="w-full py-2.5 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider transition-all active:scale-98 flex items-center justify-center gap-2 shadow-md cursor-pointer"
+            className="w-full py-2.5 rounded-2xl bg-accent dark:bg-[var(--accent-hover)] hover:bg-[var(--accent-hover)] dark:hover:brightness-110 text-accent-foreground font-black text-xs uppercase tracking-wider transition-all active:scale-98 flex items-center justify-center gap-2 shadow-md cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Raise Support Ticket</span>
@@ -169,6 +163,7 @@ function Page() {
           <TicketListAccordion
             tickets={tickets}
             onOpenNewTicket={() => setOpenTicket(true)}
+            initialOpenId={search.ticketId}
           />
         </section>
 
@@ -227,7 +222,7 @@ function Page() {
             </Text>
           </div>
           {faqs && faqs.length > 0 && (
-            <label className="flex h-11 items-center gap-2 rounded-2xl border border-divider bg-surface px-4 focus-within:border-[#FF6600]">
+            <label className="flex h-11 items-center gap-2 rounded-2xl border border-divider bg-surface px-4 focus-within:border-accent">
               <input
                 type="search"
                 value={faqQuery}
@@ -467,7 +462,7 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
           onChange={(e) => setComment(e.target.value.slice(0, 500))}
           rows={3}
           placeholder="What did you love or dislike?"
-          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-accent"
         />
       </label>
       <label className="flex flex-col gap-1">
@@ -477,7 +472,7 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
           onChange={(e) => setSuggestion(e.target.value.slice(0, 500))}
           rows={2}
           placeholder="Anything we should build next?"
-          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-accent"
         />
       </label>
       {error && (

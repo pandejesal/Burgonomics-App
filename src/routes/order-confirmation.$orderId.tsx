@@ -24,8 +24,6 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { HapticService } from "@/core/services/haptics";
-import { cartRepository } from "@/features/cart";
-import { usePaymentStore } from "@/features/payments";
 import {
   orderRepository,
   useOrdersStore,
@@ -40,7 +38,6 @@ import {
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { ReviewItemsList } from "@/features/checkout";
-import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { db } from "@/core/config/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 
@@ -75,15 +72,19 @@ function OrderConfirmationPage() {
   React.useEffect(() => {
     if (typeof order?.whatsappOptIn === "boolean") setWhatsappOptIn(order.whatsappOptIn);
   }, [order?.id, order?.whatsappOptIn]);
-  const resetPayment = usePaymentStore((s) => s.reset);
 
+  // Deliberately no mount-time cleanup here. Every fresh placement path
+  // clears the cart/checkout state and payment reconciliation itself, tied to
+  // the order it just completed (checkout.tsx cash/free/online,
+  // payment.tsx cash/online, useRazorpayPayment). Clearing on receipt mount
+  // destroyed whatever NEW order the customer had started and could erase an
+  // unrelated pending reconciliation, so revisiting an old receipt — by back
+  // button or deep link — must stay read-only.
   // Loyalty sync hook lives here (above ALL early returns): it was below the
   // `!order` return, so cache-miss→data transitions changed this component's
   // hook count between renders (minified #310 crash for every real order).
-  // Loop 65/120: no local earn. The old effect credited 5% phantom points
-  // per order (celebrated below as wallet credit) with zero server backing —
-  // the server has no purchase-earn program. Refresh converges the display
-  // to ledger truth instead (post-confirm debits included).
+  // Loop 65/120: no local earn — the server has no purchase-earn program, so
+  // refresh converges the display to ledger truth instead.
   const syncedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (!order || syncedRef.current === order.id) return;
@@ -95,14 +96,6 @@ function OrderConfirmationPage() {
       // best-effort; wallet screen re-syncs on mount
     }
   }, [order]);
-
-  // Guarantee cart is cleared and payment state is reset on arrival
-  React.useEffect(() => {
-    void cartRepository.clear();
-    useCheckoutStore.getState().reset();
-    resetPayment();
-    void HapticService.notification("success");
-  }, [resetPayment]);
 
   // Real-time Firestore snapshot subscription with fallback to repository
   React.useEffect(() => {
@@ -406,7 +399,7 @@ function OrderConfirmationPage() {
               void HapticService.impact("medium");
               void navigate({ to: "/orders/$orderId/track", params: { orderId: order.id } });
             }}
-            className="w-full py-4 px-6 min-h-[50px] rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all cursor-pointer"
+            className="w-full py-4 px-6 min-h-[50px] rounded-2xl bg-accent dark:bg-[var(--accent-hover)] hover:bg-[var(--accent-hover)] dark:hover:brightness-110 text-accent-foreground font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all cursor-pointer"
           >
             <RouteIcon className="w-5 h-5 stroke-[2.5px]" />
             <span>Track Your Order Live →</span>

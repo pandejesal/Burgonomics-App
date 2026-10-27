@@ -45,7 +45,7 @@ import { appConfig, isDev, isReleaseBuild } from "@/core/config/env";
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
 import { ReviewItemsList, useCheckoutStore } from "@/features/checkout";
 import type { CartTotals } from "@/features/cart/models";
-import { useStoreSelection } from "@/features/stores/state/storeStore";
+import { useStoreSelection, storeSupportsFulfillment } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 import {
@@ -128,6 +128,14 @@ function PaymentPage() {
   const itemCount = useCartStore(selectItemCount);
   const activeStore = useStoreSelection((s) => s.activeStore);
   const fulfillment = useStoreSelection((s) => s.fulfillment);
+  // A mode only counts when the active outlet actually offers it. Store
+  // capabilities are deny-by-default (storesService), so an unknown outlet or
+  // a legacy record without `supports` grants nothing. `null` stays
+  // "unselected", never a defaulted delivery order.
+  const fulfillmentReady =
+    activeStore !== null &&
+    activeStore.supports != null &&
+    storeSupportsFulfillment(activeStore, fulfillment);
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const isBootstrapped = useAuthStore((s) => s.isBootstrapped);
   const user = useAuthStore((s) => s.user);
@@ -293,6 +301,25 @@ function PaymentPage() {
     // a second payment. (Terminal statuses reset the ref, see effect below.)
     if (payInFlight.current) return;
     payInFlight.current = true;
+    // Fulfillment gate (T2.2): read the LIVE store selection, not this
+    // render's closure — a branch/fulfillment switch can happen between
+    // render and tap, and a stale snapshot must never authorise a payment.
+    // Null means "unselected", never a defaulted delivery order; an absent
+    // outlet or an unsupported/legacy-capability mode is equally invalid.
+    // This runs before offline/totals guards, preflight, any internal order,
+    // cash creation, or gateway call. Release the ref and return to idle so a
+    // blocked FailurePanel Retry is retryable instead of stuck.
+    const selection = useStoreSelection.getState();
+    const snapshotStore = selection.activeStore;
+    const fulfillmentReadyNow =
+      snapshotStore !== null &&
+      snapshotStore.supports != null &&
+      storeSupportsFulfillment(snapshotStore, selection.fulfillment);
+    if (!fulfillmentReadyNow) {
+      payInFlight.current = false;
+      setStatus("idle");
+      return;
+    }
     // Belt-and-braces behind the disabled button: never fire Razorpay offline.
     if (!useAppConfig.getState().isOnline) {
       // Release the re-entry guard: `setStatus("idle")` is a no-op when the
@@ -300,6 +327,22 @@ function PaymentPage() {
       // terminal-status effect below never runs and the button stays dead.
       payInFlight.current = false;
       setPreflightIssue("You are offline. Reconnect to place your order.");
+      setStatus("idle");
+      return;
+    }
+    // Belt-and-braces behind the disabled CTA (mirrors checkout.tsx):
+    // a persisted tip makes the tip-only figure read as payable while the
+    // bill itself is unknown. With no computed bill there is no honest amount
+    // to display or charge — never create the internal payment-pending order,
+    // never open the gateway. The totalsFailed alert / "—" placeholder and the
+    // disabled CTA already explain the state; stay quiet here.
+    if (totals === null || totalsFailed) {
+      // Mirror the offline guard: `retry()` has already flipped the status to
+      // "retrying" (CTA stuck loading, FailurePanel hidden) — releasing the
+      // re-entry ref alone would leave that unactionable state forever, since
+      // the terminal-status effect never fires. Return to idle so the failure
+      // panel and Retry stay actionable after a failed recompute.
+      payInFlight.current = false;
       setStatus("idle");
       return;
     }
@@ -676,27 +719,42 @@ function PaymentPage() {
               className="flex-1 max-w-[280px] h-12 rounded-xl text-base font-bold shadow-md shadow-primary/20 active:scale-[0.98] transition-transform"
               onClick={() => void startPayment()}
               loading={busy && !payBlocked}
-              disabled={finalPayable <= 0 || !isOnline || payBlocked}
+              disabled={
+                totals === null ||
+                totalsFailed ||
+                finalPayable <= 0 ||
+                !isOnline ||
+                payBlocked ||
+                !fulfillmentReady
+              }
               title={
                 payBlocked
                   ? "We are confirming your payment — please do not pay again"
-                  : !isOnline
-                    ? "Back online to place your order"
-                    : totalsFailed
-                      ? "Couldn't compute your bill — retry above"
-                      : undefined
+                  : !fulfillmentReady
+                    ? activeStore
+                      ? "Choose a fulfillment mode to continue"
+                      : "Choose an outlet to see fulfillment options"
+                    : !isOnline
+                      ? "Back online to place your order"
+                      : totalsFailed
+                        ? "Couldn't compute your bill — retry above"
+                        : totals === null
+                          ? "Bill is still being computed"
+                          : undefined
               }
               iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
             >
               {payBlocked
                 ? "Payment under review"
-                : status === "failed" || status === "cancelled"
-                ? "Retry checkout"
-                : method === "online"
-                  ? "Pay Online"
-                  : isDelivery
-                    ? "Place COD Order"
-                    : "Place Order"}
+                : !fulfillmentReady
+                  ? "Choose fulfillment"
+                  : status === "failed" || status === "cancelled"
+                    ? "Retry checkout"
+                    : method === "online"
+                      ? "Pay Online"
+                      : isDelivery
+                        ? "Place COD Order"
+                        : "Place Order"}
             </AppButton>
           </div>
         </div>
@@ -762,7 +820,7 @@ function PaymentPage() {
                     </span>
                   )}
                   <AppBadge tone="neutral" className="capitalize">
-                    {fulfillment === "dinein" ? "Dine-in" : fulfillment}
+                    {fulfillment === "dinein" ? "Dine-in" : (fulfillment ?? "Not selected")}
                   </AppBadge>
                 </div>
               </div>
@@ -923,6 +981,31 @@ function PaymentPage() {
               iconLeft={<RefreshCcw className="h-3.5 w-3.5" aria-hidden />}
             >
               Retry
+            </AppButton>
+          </div>
+        )}
+
+        {/* Fulfillment gate (T2.2): PAY is blocked before any preflight/order/
+            gateway call until the customer has a valid mode for the active
+            outlet. The action routes to checkout, which owns the existing
+            mode chooser — no second payment funnel is built here. */}
+        {!fulfillmentReady && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <Text variant="bodyMedium" tone="error">
+              {activeStore
+                ? "Choose how you'd like this order — delivery, takeaway, or dine-in — before paying."
+                : "Choose an outlet and a fulfillment mode before paying."}
+            </Text>
+            <AppButton
+              size="sm"
+              onClick={() => void navigate({ to: "/checkout" })}
+              iconLeft={<ArrowLeft className="h-3.5 w-3.5" aria-hidden />}
+            >
+              Review Checkout
             </AppButton>
           </div>
         )}

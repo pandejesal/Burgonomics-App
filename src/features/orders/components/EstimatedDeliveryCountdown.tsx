@@ -78,7 +78,7 @@ export function EstimatedDeliveryCountdown({
         <div className="text-right">
           {hasEstimate ? (
             <>
-              <span className="font-mono text-xl sm:text-2xl font-black text-[#FF6600]">
+              <span className="font-mono text-xl sm:text-2xl font-black text-accent dark:text-accent-foreground">
                 {formattedCountdown}
               </span>
               <span className="block text-[10px] uppercase font-bold text-text-secondary">

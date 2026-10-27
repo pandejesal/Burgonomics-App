@@ -77,7 +77,7 @@ export function CouponCard({
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-[#FF6600] text-white text-[10px] font-black uppercase tracking-wider shadow-xs">
+              <span className="px-2.5 py-0.5 rounded-full bg-accent dark:bg-[var(--accent-hover)] text-accent-foreground text-[10px] font-black uppercase tracking-wider shadow-xs">
                 {offer.discount.label || "PROMO"}
               </span>
 

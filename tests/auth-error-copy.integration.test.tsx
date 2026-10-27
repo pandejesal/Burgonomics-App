@@ -55,7 +55,11 @@ describe("login error copy at the rendered screen boundary", () => {
     boundary.state = {
       status: "unauthenticated",
       error: null,
-      requestOtp: vi.fn().mockResolvedValue({ ok: false, error: rawError }),
+      requestOtp: vi.fn().mockResolvedValue({
+        ok: false,
+        error: rawError,
+        code: "AUTH_OTP_REQUEST_FAILED",
+      }),
       clearError: vi.fn(),
     };
     container = document.createElement("div");
@@ -101,9 +105,9 @@ describe("login error copy at the rendered screen boundary", () => {
       form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
 
-    expect(boundary.state!.requestOtp).toHaveBeenCalledWith("9876543210", "sms");
+    expect(boundary.state!.requestOtp).toHaveBeenCalledWith("login", "9876543210", "sms");
     expect(boundary.toastError).toHaveBeenCalledExactlyOnceWith(GENERIC_ERROR_MESSAGE);
     expect(boundary.toastError).not.toHaveBeenCalledWith(rawError);
-    expect(diagnostic).toHaveBeenCalledWith("[auth] OTP request failed:", rawError);
+    expect(diagnostic).toHaveBeenCalledWith("[auth] OTP request failed:", "AUTH_OTP_REQUEST_FAILED");
   });
 });

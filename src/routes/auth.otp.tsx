@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { OTPInputGrid } from "@/features/auth/components/OTPInputGrid";
+import { RecaptchaHost } from "@/features/auth/components/RecaptchaHost";
 import { Text } from "@/shared/components/common/Text";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { useGuestOnly } from "@/features/auth/hooks/useAuthGuard";
 import { useCountdown } from "@/features/auth/hooks/useCountdown";
 import { OTP_LENGTH, validateOtp, COUNTRY_CODE } from "@/features/auth/utils/validators";
+import { isAuthoredAuthMessage } from "@/features/auth/utils/authErrors";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { authService } from "@/features/auth/services/authService";
 import { toUserMessage, userMessageForText } from "@/core/errors/userMessages";
@@ -65,34 +67,43 @@ function OtpScreen() {
     }
   }, [challenge, status, navigate, search.redirect]);
 
-  // Setup reCAPTCHA container for SMS resends
+  // Setup: adopt the explicit login challenge into the mounted OTP surface.
+  // Adoption is what makes the unmounted login host stop bricking this screen;
+  // verification without it is a CHALLENGE_MISMATCH.
   useEffect(() => {
-    authService.initRecaptcha("recaptcha-container");
-    return () => {
-      authService.clearRecaptcha();
-    };
-  }, []);
+    if (!challenge) return;
+    const adopted = authService.adoptChallenge("otp", challenge.handle);
+    if (!adopted.ok) {
+      toast.error(
+        adopted.code === "STALE_EPOCH"
+          ? "This sign-in attempt expired. Request a new code."
+          : "This verification session is no longer active. Request a new code.",
+      );
+    }
+  }, [challenge]);
 
   const submit = async (value: string) => {
     const v = validateOtp(value);
-    if (!v.valid) return;
-    const res = await verifyOtp(value);
+    if (!v.valid || !challenge) return;
+    const res = await verifyOtp("otp", challenge.handle, value);
     if (res.ok) {
       toast.success("Signed in successfully");
       // Seamlessly preserve guest cart, selected branch, and fulfillment
       void navigate({ to: redirectTarget, replace: true });
     } else {
       setCode("");
-      // P1-13: the store keeps the raw Firebase text — map it for the toast.
-      console.error("[auth] OTP verify failed:", res.error);
-      toast.error(toUserMessage(res));
+      // Code only: provider messages may contain the phone number.
+      console.error("[auth] OTP verify failed:", res.code);
+      toast.error(
+        res.error && isAuthoredAuthMessage(res.error) ? res.error : toUserMessage(res),
+      );
     }
   };
 
   const handleResend = async () => {
     if (isResending || !isDone) return;
     setIsResending(true);
-    const res = await resendOtp();
+    const res = await resendOtp("otp");
     setIsResending(false);
 
     if (res.ok) {
@@ -100,10 +111,11 @@ function OtpScreen() {
       setCode("");
       toast.success("New verification code sent via SMS");
     } else {
-      // "Please wait 12s before requesting a new code." is store-authored copy
-      // and passes through; a raw Firebase failure does not (P1-13).
-      console.error("[auth] OTP resend failed:", res.error);
-      toast.error(toUserMessage(res));
+      // Auth service authors all copy; only the code is diagnostic.
+      console.error("[auth] OTP resend failed:", res.code);
+      toast.error(
+        res.error && isAuthoredAuthMessage(res.error) ? res.error : toUserMessage(res),
+      );
     }
   };
 
@@ -161,7 +173,9 @@ function OtpScreen() {
             className="rounded-[var(--radius-medium)] border border-error/40 bg-error/10 px-4 py-3"
           >
             <Text variant="bodyMedium" tone="error">
-              {userMessageForText(serverError)}
+              {isAuthoredAuthMessage(serverError)
+                ? serverError
+                : userMessageForText(serverError)}
             </Text>
           </div>
         )}
@@ -195,8 +209,8 @@ function OtpScreen() {
           )}
         </div>
 
-        {/* reCAPTCHA container for SMS resends */}
-        <div id="recaptcha-container" className="flex justify-center my-1" />
+        {/* Per-mount reCAPTCHA host for SMS resends. */}
+        <RecaptchaHost flow="otp" />
       </div>
     </AppShell>
   );

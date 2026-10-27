@@ -68,7 +68,7 @@ export function RazorpayModalHandler({
                   void HapticService.impact("medium");
                   onRetryPayment();
                 }}
-                className="w-full py-3.5 px-4 min-h-[44px] rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all active:scale-[0.98]"
+                className="w-full py-3.5 px-4 min-h-[44px] rounded-2xl bg-accent dark:bg-[var(--accent-hover)] hover:bg-[var(--accent-hover)] dark:hover:brightness-110 text-accent-foreground font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all active:scale-[0.98]"
               >
                 <RefreshCw className="w-4 h-4 stroke-[2.5px]" />
                 <span>Retry Payment</span>

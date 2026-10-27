@@ -9,13 +9,22 @@ interface Props {
   actionLabel?: string;
   actionTo?: string;
   className?: string;
+  /** Optional id for the real <h2>, so a surrounding section can label itself. */
+  headingId?: string;
 }
 
-export function SectionHeader({ title, subtitle, actionLabel, actionTo, className }: Props) {
+export function SectionHeader({
+  title,
+  subtitle,
+  actionLabel,
+  actionTo,
+  className,
+  headingId,
+}: Props) {
   return (
     <header className={cn("mb-3 flex items-end justify-between gap-3 px-4", className)}>
       <div className="min-w-0">
-        <h2 className="type-headline-medium truncate">{title}</h2>
+        <h2 id={headingId} className="type-headline-medium truncate">{title}</h2>
         {subtitle && <p className="type-body-medium text-text-secondary mt-0.5">{subtitle}</p>}
       </div>
       {actionLabel && actionTo && (

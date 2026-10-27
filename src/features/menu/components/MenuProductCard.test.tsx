@@ -240,13 +240,39 @@ describe("B04: MenuProductCard touch floors, roles and reflow tokens", () => {
     const host = render(<MenuProductCard product={{ ...product, name, description }} layout="grid" />);
 
     const title = Array.from(host.querySelectorAll("h5")).find((h) => h.textContent === name)!;
-    expect(title.className).toContain("truncate");
+    expect(title.className).toContain("line-clamp-2");
+    expect(title.className).toContain("min-h-[2.5rem]");
     expect(title.getAttribute("title")).toBe(name);
     expect(host.querySelector("a")!.getAttribute("aria-label")).toBe(`${name}, ₹299.00`);
 
     const desc = Array.from(host.querySelectorAll("p")).find((p) => p.className.includes("line-clamp-2"))!;
     expect(desc).toBeDefined();
     expect(desc.textContent).toBe(description);
+
+    // Also assert row layout 2-line clamp
+    const hostRow = render(<MenuProductCard product={{ ...product, name, description }} layout="row" />);
+    const titleRow = Array.from(hostRow.querySelectorAll("h5")).find((h) => h.textContent === name)!;
+    expect(titleRow.className).toContain("line-clamp-2");
+    expect(titleRow.className).toContain("min-h-[2.5rem]");
+  });
+
+  it("reflects veg tri-state: true -> green VegIndicator, false -> red VegIndicator, undefined -> hidden", () => {
+    // 1. veg: true
+    const hostTrue = render(<MenuProductCard product={{ ...product, veg: true }} layout="grid" />);
+    const vegTrue = hostTrue.querySelector('[aria-label="Vegetarian"]');
+    expect(vegTrue).not.toBeNull();
+    expect(vegTrue!.className).toContain("border-veg");
+
+    // 2. veg: false
+    const hostFalse = render(<MenuProductCard product={{ ...product, veg: false }} layout="grid" />);
+    const vegFalse = hostFalse.querySelector('[aria-label="Non-vegetarian"]');
+    expect(vegFalse).not.toBeNull();
+    expect(vegFalse!.className).toContain("border-nonveg");
+
+    // 3. veg: undefined
+    const hostUndef = render(<MenuProductCard product={{ ...product, veg: undefined }} layout="grid" />);
+    expect(hostUndef.querySelector('[aria-label="Vegetarian"]')).toBeNull();
+    expect(hostUndef.querySelector('[aria-label="Non-vegetarian"]')).toBeNull();
   });
 
   it("in-cart row stepper: 44px +/- targets, quantity roles, and no ADD left behind", () => {

@@ -44,7 +44,11 @@ import {
   PromoInput,
 } from "@/features/cart";
 import type { CartTotals } from "@/features/cart/models";
-import { useStoreSelection } from "@/features/stores/state/storeStore";
+import {
+  useStoreSelection,
+  storeSupportsFulfillment,
+} from "@/features/stores/state/storeStore";
+import type { Fulfillment } from "@/features/stores/models/Store";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { DEFAULT_DELIVERY_RADIUS_KM } from "@/features/stores/utils/serviceArea";
 import {
@@ -318,6 +322,35 @@ export function CheckoutPage() {
   const isTakeaway = fulfillment === "takeaway";
   const isDineIn = fulfillment === "dinein";
 
+  // A mode only counts when the active outlet actually offers it. Store
+  // capabilities are deny-by-default (storesService), so an unknown outlet or
+  // a legacy record without `supports` grants nothing: the screen says a choice
+  // is required instead of presenting a guessed "delivery" order.
+  const supportedModes: Fulfillment[] = activeStore?.supports
+    ? (["delivery", "takeaway", "dinein"] as const).filter((mode) =>
+        storeSupportsFulfillment(activeStore, mode),
+      )
+    : [];
+  const fulfillmentIsSupported =
+    activeStore !== null &&
+    activeStore.supports != null &&
+    storeSupportsFulfillment(activeStore, fulfillment);
+
+  const handleSelectFulfillment = (mode: Fulfillment) => {
+    const liveStore = useStoreSelection.getState().activeStore;
+    if (
+      !liveStore ||
+      liveStore.supports == null ||
+      !storeSupportsFulfillment(liveStore, mode)
+    ) {
+      toast.error("This outlet doesn't offer that fulfillment mode.");
+      return;
+    }
+    setValidationError(null);
+    void HapticService.selection();
+    setFulfillment(mode);
+  };
+
   const rawGrandTotal = totals?.grandTotal ?? 0;
   // The delivery tip is a real charge: the server reprices with the same
   // `tipAmount` this screen reads, so it must already sit inside To Pay —
@@ -328,6 +361,38 @@ export function CheckoutPage() {
   // render, which returns before the checkout body is initialized.
   async function handlePlaceOrder() {
     setValidationError(null);
+
+    // Re-read the LIVE store selection at the top: the rendered bill,
+    // `isDelivery` and `finalPayable` belong to the render that produced them.
+    // A branch/mode switch between render and tap must not authorise an order
+    // for the new state using the old closure.
+    const liveSelection = useStoreSelection.getState();
+    const liveStore = liveSelection.activeStore;
+    const liveMode = liveSelection.fulfillment;
+
+    // Fail-closed before ANY preflight, internal order, or gateway call: an
+    // unselected/unsupported/missing-outlet mode must never fall through to a
+    // cash or online order that guesses how the customer wants their food.
+    if (
+      !liveStore ||
+      liveStore.supports == null ||
+      !storeSupportsFulfillment(liveStore, liveMode)
+    ) {
+      setValidationError(
+        liveStore
+          ? "Choose how you'd like your order — delivery, takeaway, or dine-in."
+          : "Choose an outlet before placing your order.",
+      );
+      return;
+    }
+
+    // Fresh state is valid, but the visible bill was priced for a different
+    // outlet/mode: running this closure would settle the wrong order. Send the
+    // customer back through checkout instead of silently re-deriving.
+    if (liveStore.id !== activeStore?.id || liveMode !== fulfillment) {
+      setValidationError("Your checkout details changed. Review your order and try again.");
+      return;
+    }
 
     const uid = useAuthStore.getState().user?.id ?? null;
     const pendingRecon = usePaymentStore.getState().reconciliationPending || !!loadPaymentReconciliation(uid);
@@ -815,38 +880,44 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
-              aria-disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
+              disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending || !fulfillmentIsSupported}
+              aria-disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending || !fulfillmentIsSupported}
               title={
                 reconciliationPending
                   ? "We are confirming your payment — please do not pay again"
-                  : !kitchen.isOpen
-                    ? KITCHEN_CLOSED_MESSAGE
-                    : !isOnline
-                      ? "Back online to place your order"
-                      : totalsFailed
-                        ? "Couldn't compute your bill — retry above"
-                        : totals === null
-                          ? "Bill is still being computed"
-                          : undefined
+                  : !fulfillmentIsSupported
+                    ? activeStore
+                      ? "Choose a fulfillment mode to continue"
+                      : "Choose an outlet to see fulfillment options"
+                    : !kitchen.isOpen
+                      ? KITCHEN_CLOSED_MESSAGE
+                      : !isOnline
+                        ? "Back online to place your order"
+                        : totalsFailed
+                          ? "Couldn't compute your bill — retry above"
+                          : totals === null
+                            ? "Bill is still being computed"
+                            : undefined
               }
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-accent dark:bg-[var(--accent-hover)] hover:bg-[var(--accent-hover)] dark:hover:brightness-110 py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-accent-foreground shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
               <span>
                 {reconciliationPending
                   ? "PAYMENT UNDER REVIEW"
-                  : busy
-                    ? "Processing Order..."
-                    : !kitchen.isOpen
-                      ? "KITCHEN CLOSED"
-                      : !isOnline
-                        ? "OFFLINE — RECONNECT TO PAY"
-                        : totalsFailed
-                          ? "PAY — BILL UNAVAILABLE"
-                          : totals === null
-                            ? "PAY — CHECKING BILL"
-                            : `PAY ${formatINR(finalPayable)} SECURELY`}
+                  : !fulfillmentIsSupported
+                    ? "CHOOSE FULFILLMENT"
+                    : busy
+                      ? "Processing Order..."
+                      : !kitchen.isOpen
+                        ? "KITCHEN CLOSED"
+                        : !isOnline
+                          ? "OFFLINE — RECONNECT TO PAY"
+                          : totalsFailed
+                            ? "PAY — BILL UNAVAILABLE"
+                            : totals === null
+                              ? "PAY — CHECKING BILL"
+                              : `PAY ${formatINR(finalPayable)} SECURELY`}
               </span>
             </button>
           </div>
@@ -916,11 +987,13 @@ export function CheckoutPage() {
 
         {/* 1. Fulfillment Mode Details */}
         <FulfillmentDetailsCard
-          fulfillment={fulfillment ?? "delivery"}
+          fulfillment={fulfillmentIsSupported ? fulfillment : null}
           store={activeStore}
+          supportedModes={supportedModes}
           selectedAddress={selectedAddress}
           tableNumber={tableNumber}
           onTableNumberChange={(t) => setTableNumber(t)}
+          onSelectFulfillment={handleSelectFulfillment}
         />
 
         {/* Address Selection with Geofencing (Delivery Mode Only) — Standard Delivery only */}
@@ -931,7 +1004,7 @@ export function CheckoutPage() {
               selectedAddress={selectedAddress}
               activeStore={activeStore}
               onSelectAddress={(addr) => selectAddress(addr.id)}
-              onSwitchToTakeaway={() => setFulfillment("takeaway")}
+              onSwitchToTakeaway={() => handleSelectFulfillment("takeaway")}
             />
 
             <div className="pt-2 border-t border-divider">
@@ -962,7 +1035,7 @@ export function CheckoutPage() {
                 2. Order Review ({itemCount} {itemCount === 1 ? "Item" : "Items"})
               </h2>
             </div>
-            <Link to="/cart" className="text-xs font-bold text-[#FF6600] hover:underline">
+            <Link to="/cart" className="text-xs font-bold text-accent dark:text-accent-foreground hover:underline">
               Edit Cart
             </Link>
           </div>
@@ -975,7 +1048,7 @@ export function CheckoutPage() {
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
                   </span>
                   <p className="text-xs font-bold text-text truncate">
-                    <span className="text-[#FF6600] mr-1">{line.quantity}x</span> {line.name}
+                    <span className="text-accent dark:text-accent-foreground mr-1">{line.quantity}x</span> {line.name}
                   </p>
                 </div>
                 <span className="text-xs font-mono font-bold text-text shrink-0">
@@ -1109,7 +1182,7 @@ export function CheckoutPage() {
 
             <div className="border-t border-divider pt-2.5 flex justify-between text-sm sm:text-base font-black text-text">
               <span>To Pay</span>
-              <span className="font-mono text-[#FF6600] font-black text-lg">{totals ? formatINR(finalPayable) : "—"}</span>
+              <span className="font-mono text-accent dark:text-accent-foreground font-black text-lg">{totals ? formatINR(finalPayable) : "—"}</span>
             </div>
           </div>
         </section>

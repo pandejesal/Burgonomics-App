@@ -59,6 +59,10 @@ export interface AppConfig {
     petpoojaEnabled: boolean;
     mapsApiKey: string;
     firebaseConfig: string;
+    /** Optional official Play Store listing (HTTPS) for force-update. */
+    androidStoreUrl: string;
+    /** Optional official App Store listing (HTTPS) for force-update. */
+    iosStoreUrl: string;
   };
 }
 
@@ -110,6 +114,12 @@ export const appConfig: AppConfig = {
     mapsApiKey: readEnv("VITE_MAPS_API_KEY", readEnv("VITE_MAPS_KEY", "")),
     // Publishable Firebase config as JSON string. Parsed by consumers.
     firebaseConfig: readEnv("VITE_FIREBASE_CONFIG", ""),
+    // Optional official store listings for the force-update screen. Empty is
+    // valid: the screen then offers the real support route instead of
+    // inventing a store id. Values are allowlisted to HTTPS Play/App Store
+    // listing URLs at the route boundary.
+    androidStoreUrl: readEnv("VITE_ANDROID_STORE_URL", ""),
+    iosStoreUrl: readEnv("VITE_IOS_STORE_URL", ""),
   },
 };
 

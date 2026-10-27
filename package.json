@@ -20,7 +20,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run --exclude 'tests/rules/**'",
-    "test:rules": "node scripts/test-rules.mjs"
+    "test:rules": "node scripts/test-rules.mjs",
+    "test:sticky": "playwright test -c tests/playwright/playwright.sticky-scroll.config.ts",
+    "test:sticky:types": "tsc -p tests/playwright/tsconfig.browser-tests.json --noEmit"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.0",
@@ -104,6 +106,7 @@
     "@capacitor/ios": "^8.5.0",
     "@eslint/js": "^10.0.1",
     "@firebase/rules-unit-testing": "^5.0.2",
+    "@playwright/test": "1.63.0",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^26.6.2",
     "@types/react": "^19.2.0",

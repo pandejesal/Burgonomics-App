@@ -1,11 +1,12 @@
 import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { MapPin, ShoppingBag, Trash2, Timer, Sparkles, ArrowRight, Plus, Minus, ShieldCheck, Heart } from "lucide-react";
+import { MapPin, Trash2, Timer, Sparkles, ArrowRight, Plus, Minus, ShieldCheck, Heart } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { HapticService } from "@/core/services/haptics";
 
 import { AppShell } from "@/shared/layouts/AppShell";
+import { BrandMascot } from "@/shared/components/common/BrandMascot";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
@@ -167,8 +168,8 @@ function CartPage() {
     return (
       <AppShell title="Your cart" backTo="/menu" showTabs showTopBar>
         <div className="mx-auto max-w-[520px] px-4 py-12 text-center space-y-4">
-          <div className="w-20 h-20 mx-auto rounded-3xl bg-[#0E4825]/10 border border-[#0E4825]/20 flex items-center justify-center text-4xl shadow-inner">
-            📦
+          <div className="flex justify-center mb-2">
+            <BrandMascot size={120} float />
           </div>
           <div className="space-y-1">
             <h2 className="text-xl font-black text-text">
@@ -181,7 +182,7 @@ function CartPage() {
           <div className="pt-2">
             <Link
               to="/menu"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent hover:bg-[var(--accent-hover)] dark:bg-[var(--accent-hover)] dark:hover:bg-[var(--accent-hover)] text-accent-foreground font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95"
             >
               <span>Explore Menu</span>
               <ArrowRight className="w-4 h-4" />
@@ -319,7 +320,7 @@ function CartPage() {
               onClick={() => void onCheckout()}
               disabled={checkoutBusy || lines.length === 0 || !kitchen.isOpen}
               title={!kitchen.isOpen ? KITCHEN_CLOSED_MESSAGE : undefined}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-accent hover:bg-[var(--accent-hover)] dark:bg-[var(--accent-hover)] dark:hover:bg-[var(--accent-hover)] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-accent-foreground shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <span>{!kitchen.isOpen ? "Kitchen Closed" : "Proceed to Checkout"}</span>
               <ArrowRight className="h-4 w-4 stroke-[2.5px]" />
@@ -377,7 +378,7 @@ function CartPage() {
           <button
             type="button"
             onClick={() => setFulfillmentOpen(true)}
-            className="text-xs font-bold text-[#FF6600] hover:underline shrink-0 cursor-pointer"
+            className="text-xs font-bold text-accent dark:text-accent-foreground hover:underline shrink-0 cursor-pointer"
           >
             Change
           </button>
@@ -423,7 +424,7 @@ function CartPage() {
             ))}
           </div>
           <div className="pt-1">
-            <Link to="/menu" className="text-xs font-bold text-[#FF6600] hover:underline">
+            <Link to="/menu" className="text-xs font-bold text-accent dark:text-accent-foreground hover:underline">
               + Add more items from menu
             </Link>
           </div>

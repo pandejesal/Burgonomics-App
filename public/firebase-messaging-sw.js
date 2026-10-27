@@ -2,18 +2,33 @@
  * Serves web-push background notifications. Firebase web config below is
  * browser-public by design (same values as src/core/config/firebase.ts).
  * Registered by the app only after the user grants notification permission.
+ *
+ * C-06 audit (2026-10-25): the previous copy was a proven defect, not just
+ * style drift.
+ *  1. Duplicate display: the Firebase SDK already calls
+ *     `self.registration.showNotification()` for a payload with a
+ *     `notification` block (@firebase/messaging dist/index.sw.cjs `onPush`:
+ *     `if (!!internalPayload.notification) await showNotification(...)`) and
+ *     THEN invokes `onBackgroundMessage`. The old handler displayed a second
+ *     notification from the same payload.
+ *  2. Targetless tap / root fallback: the SDK owns `notificationclick` for
+ *     notifications it displayed and stops propagation; the old handler also
+ *     resolved `deeplink -> ticketId -> orderId -> "/"`. Account payloads no
+ *     longer carry those ids, so taps could land on `/` or do nothing.
+ *  3. Privacy: the old handler copied raw `payload.data` into the notification
+ *     and routed from it. Routing now derives only from `ref`; public
+ *     offers/announcements get public routes.
+ * Fix: no custom showNotification, no payload id routing, and our click
+ * listener is registered BEFORE `firebase.messaging()` so it owns the tap and
+ * opens the real notification-centre route.
  */
 /* eslint-disable no-undef */
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js");
 
 /**
- * Server-controlled push payloads are untrusted input. This is the service-
- * worker copy of the app's allowlist (src/features/auth/utils/routeUtils.ts
- * sanitizeRedirectUrl + shared/platform/pushNotifications.ts
- * resolvePushDeeplink): only same-origin absolute paths are ever opened.
- * Previously the SW handed `data.deeplink` straight to clients.openWindow,
- * so a forged FCM payload could open any origin inside the app window.
+ * Server-controlled push payloads are untrusted input. Only same-origin
+ * absolute paths are ever opened.
  */
 function sanitizeSameOriginPath(raw) {
   if (typeof raw !== "string" || raw.length === 0) return "";
@@ -25,24 +40,44 @@ function sanitizeSameOriginPath(raw) {
   return raw;
 }
 
-function ticketIdFrom(data) {
-  var raw = data && typeof data.ticketId === "string" ? data.ticketId : "";
-  return /^[\w-]{1,64}$/.test(raw) ? raw : "";
+function refIdFrom(data) {
+  var raw = data && typeof data.ref === "string" ? data.ref : "";
+  return /^[\w-]{1,128}$/.test(raw) ? raw : "";
 }
 
-function orderIdFrom(data) {
-  var raw = data && typeof data.orderId === "string" ? data.orderId : "";
-  return /^[\w-]+$/.test(raw) ? raw : "";
+function purposeFrom(data) {
+  return data && typeof data.purpose === "string" ? data.purpose : "";
 }
 
-/** Same precedence as resolvePushDeeplink: deeplink -> ticket -> order -> "/". */
+/**
+ * Account notifications open the inbox route with the document id; the app
+ * resolves the real order/ticket target after auth. Public broadcasts keep
+ * public destinations. The terminal fallback is the notification centre —
+ * never "/".
+ */
 function resolveNotificationTarget(data) {
-  var safe = sanitizeSameOriginPath(data && data.deeplink);
-  if (safe) return safe;
-  var ticketId = ticketIdFrom(data);
-  if (ticketId) return "/support?ticketId=" + encodeURIComponent(ticketId);
-  var orderId = orderIdFrom(data);
-  return orderId ? "/orders/" + orderId + "/track" : "/";
+  var ref = refIdFrom(data);
+  if (ref) return "/profile/notifications?ref=" + encodeURIComponent(ref);
+  var purpose = purposeFrom(data);
+  if (purpose === "offers") return "/offers";
+  if (purpose === "announcements") return "/home";
+  return "/profile/notifications";
+}
+
+/**
+ * The SDK displays a notification with `data = { FCM_MSG: payload }`; a
+ * notification we show ourselves (or one from another sender) carries its own
+ * data object. Read our fields in both shapes without ever using private
+ * deeplink/order/ticket ids.
+ */
+function payloadDataFrom(notification) {
+  var raw = notification && notification.data;
+  if (!raw || typeof raw !== "object") return {};
+  var fcm = raw.FCM_MSG;
+  if (fcm && typeof fcm === "object" && fcm.data && typeof fcm.data === "object") {
+    return fcm.data;
+  }
+  return raw;
 }
 
 /** Absolute URL for a same-origin path; "" when it cannot be built. */
@@ -84,6 +119,40 @@ function findMatchingClient(clientList, targetPath, origin) {
   return null;
 }
 
+/**
+ * Registered BEFORE `firebase.messaging()` so this handler runs first. It
+ * stops the SDK's own click handler (which would otherwise stop propagation
+ * and open a targetless link) and opens the resolved route instead.
+ */
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  try {
+    event.stopImmediatePropagation();
+  } catch (e) {
+    // Older workers may not expose it; the URL still opens below.
+  }
+
+  var data = payloadDataFrom(event.notification);
+  var targetPath = sanitizeSameOriginPath(resolveNotificationTarget(data));
+  if (!targetPath) return;
+
+  var origin = self.location.origin;
+  var targetUrl = absoluteUrlFor(targetPath, origin);
+  if (!targetUrl) return;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+      var match = findMatchingClient(clientList || [], targetPath, origin);
+      if (match) {
+        return match.focus();
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+
 try {
   firebase.initializeApp({
     apiKey: "AIzaSyAuoa6yU-S8bNR3QDI3DjTUvbKNyBu3_Fs",
@@ -94,38 +163,10 @@ try {
     appId: "1:738930066637:web:fc1aa0f0e2a52a19df9584",
   });
 
-  var messaging = firebase.messaging();
-
-  messaging.onBackgroundMessage(function (payload) {
-    var title = (payload.notification && payload.notification.title) || "Burgonomics";
-    var options = {
-      body: (payload.notification && payload.notification.body) || "Order update available",
-      icon: "/burgonomics-logo.png",
-      badge: "/favicon.ico",
-      data: payload.data || {},
-    };
-    return self.registration.showNotification(title, options);
-  });
-
-  self.addEventListener("notificationclick", function (event) {
-    event.notification.close();
-    var data = event.notification.data || {};
-    var origin = self.location.origin;
-    var targetPath = resolveNotificationTarget(data);
-    var targetUrl = absoluteUrlFor(targetPath, origin) || origin + "/";
-
-    event.waitUntil(
-      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
-        var match = findMatchingClient(clientList || [], targetPath, origin);
-        if (match) {
-          return match.focus();
-        }
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(targetUrl);
-        }
-      })
-    );
-  });
+  // Initializes the SDK's push handler. The SDK displays the generic
+  // notification payload exactly once; we intentionally do NOT register an
+  // onBackgroundMessage handler that would display it a second time.
+  firebase.messaging();
 } catch (e) {
   // Service worker must never throw at install time.
 }

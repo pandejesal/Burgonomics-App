@@ -28,6 +28,12 @@ export const SECURE_KEYS = {
   ACCESS_TOKEN: "auth.accessToken",
   REFRESH_TOKEN: "auth.refreshToken",
   USER: "auth.user",
+  // Retry-only copy of the FCM token for a failed logout unlink (F3/B2).
+  // Registration never reads this key; only pendingUnlink.ts does.
+  PENDING_UNLINK_TOKEN: "notifications.pendingUnlinkToken",
+  // UID-only marker for an SDK user left behind by a cancelled auth attempt.
+  // Never stores a phone number, code, or token.
+  AUTH_QUARANTINED_UID: "auth.quarantinedUid",
 } as const;
 
 /**
@@ -40,6 +46,9 @@ export const SECURE_KEYS = {
 const TOKEN_CLASS_KEYS: ReadonlySet<string> = new Set([
   SECURE_KEYS.ACCESS_TOKEN,
   SECURE_KEYS.REFRESH_TOKEN,
+  // Push tokens are not auth credentials, but a retry copy that silently
+  // downgraded to plaintext on native would defeat the retry-only contract.
+  SECURE_KEYS.PENDING_UNLINK_TOKEN,
 ]);
 
 const isTokenClassKey = (key: string) => TOKEN_CLASS_KEYS.has(key);

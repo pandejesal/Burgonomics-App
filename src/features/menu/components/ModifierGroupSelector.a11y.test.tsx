@@ -101,6 +101,24 @@ describe("L1 — modifier options are real, keyboard-operable controls", () => {
     expect(document.activeElement).toBe(options[0]);
   });
 
+  it("uses semantic accent colors for the required label", async () => {
+    await mount(
+      <ModifierGroupSelector
+        group={singleGroup}
+        selectedOptionIds={["opt_brioche"]}
+        onToggleOption={vi.fn()}
+      />,
+    );
+
+    const requiredLabel = Array.from(host!.querySelectorAll<HTMLElement>("span"))
+      .find((element) => element.textContent === "Required");
+    expect(requiredLabel).toBeDefined();
+    expect(requiredLabel!.className).toContain("bg-accent/10");
+    expect(requiredLabel!.className).toContain("text-accent");
+    expect(requiredLabel!.className).toContain("dark:text-accent-foreground");
+    expect(requiredLabel!.className).not.toContain("#FF6600");
+  });
+
   it("renders multi-choice options as checkboxes with per-option checked state", async () => {
     await mount(
       <ModifierGroupSelector

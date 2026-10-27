@@ -9,6 +9,20 @@ import {
 } from "../src/features/auth/utils/validators";
 import { useCartStore } from "../src/features/cart/state/cartStore";
 import { useAuthStore } from "../src/features/auth/state/authStore";
+import { authRepository } from "../src/features/auth/repositories/AuthRepository";
+import type { OtpChallenge } from "../src/features/auth/state/authStore";
+
+const otpChallenge = (overrides: Partial<OtpChallenge> = {}): OtpChallenge => ({
+  handle: "handle_test",
+  phone: "+919825012345",
+  maskedPhone: "******2345",
+  requestedAt: Date.now(),
+  issuedAt: Date.now(),
+  resendAfterSec: 60,
+  displayExpiresAt: Date.now() + 300_000,
+  deliveryMethod: "sms",
+  ...overrides,
+});
 
 describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => {
   beforeEach(() => {
@@ -113,18 +127,21 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
     });
   });
 
-  describe("4b. OTP Resend Cooldown Is Store-Enforced", () => {
-    it("refuses resend inside the cooldown without touching the network", async () => {
-      useAuthStore.setState({
-        status: "otp_sent",
-        challenge: {
-          otpToken: "+919825012345",
-          phone: "+919825012345",
-          requestedAt: Date.now(),
-          resendAfterSec: 60,
+  describe("4b. OTP resend is delegated to the attempt-layer cooldown", () => {
+    it("surfaces the attempt-layer cooldown without touching the SDK", async () => {
+      const resend = vi.spyOn(authRepository, "resendOtp").mockResolvedValue({
+        success: false,
+        error: {
+          code: "AUTH_OTP_COOLDOWN",
+          message: "Please wait 42s before requesting a new code.",
         },
       });
-      const res = await useAuthStore.getState().resendOtp();
+      useAuthStore.setState({
+        status: "otp_sent",
+        challenge: otpChallenge(),
+      });
+      const res = await useAuthStore.getState().resendOtp("login");
+      resend.mockRestore();
       expect(res.ok).toBe(false);
       expect(res.error).toMatch(/wait \d+s/);
       // Challenge untouched — no new request was issued.
@@ -132,25 +149,44 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
     });
 
     it("refuses resend with no active challenge", async () => {
-      useAuthStore.setState({ challenge: null });
-      const res = await useAuthStore.getState().resendOtp();
-      expect(res.ok).toBe(false);
-    });
-
-    it("opens the gate after the cooldown (attempts a fresh request, no Firebase needed to prove it)", async () => {
-      useAuthStore.setState({
-        status: "otp_sent",
-        challenge: {
-          otpToken: "+919825012345",
-          phone: "+919825012345",
-          requestedAt: Date.now() - 61 * 1000,
-          resendAfterSec: 60,
+      const resend = vi.spyOn(authRepository, "resendOtp").mockResolvedValue({
+        success: false,
+        error: {
+          code: "NO_CHALLENGE",
+          message: "No active verification session found. Please request a new code.",
         },
       });
-      const res = await useAuthStore.getState().resendOtp();
-      // In node there is no reCAPTCHA, so the fresh request fails downstream —
-      // the point is the store no longer refuses with the cooldown error.
-      expect(res.error).not.toMatch(/wait \d+s/);
+      useAuthStore.setState({ challenge: null });
+      const res = await useAuthStore.getState().resendOtp("login");
+      resend.mockRestore();
+      expect(res.ok).toBe(false);
+      expect(res.code).toBe("NO_CHALLENGE");
+    });
+
+    it("opens the gate after the cooldown and swaps in the new handle", async () => {
+      const issuedAt = Date.now() + 1;
+      const resend = vi.spyOn(authRepository, "resendOtp").mockResolvedValue({
+        success: true,
+        data: {
+          handle: "handle_new",
+          flow: "login",
+          phone: "+919825012345",
+          maskedPhone: "******2345",
+          issuedAt,
+          resendAfterSec: 60,
+          displayExpiresAt: issuedAt + 300_000,
+          deliveryMethod: "sms",
+          expiresInSec: 300,
+        },
+      });
+      useAuthStore.setState({
+        status: "otp_sent",
+        challenge: otpChallenge({ issuedAt: Date.now() - 61 * 1000 }),
+      });
+      const res = await useAuthStore.getState().resendOtp("login");
+      resend.mockRestore();
+      expect(res.ok).toBe(true);
+      expect(useAuthStore.getState().challenge?.handle).toBe("handle_new");
     });
   });
 

@@ -278,13 +278,7 @@ function MenuPage() {
       void HapticService.impact("medium");
 
       toast.success(`✓ ${p.name} added`, {
-        action: {
-          label: "View Cart",
-          onClick: () => {
-            void navigate({ to: "/cart" });
-          },
-        },
-        duration: 3000,
+        duration: 2500,
       });
     },
     [store, navigate],

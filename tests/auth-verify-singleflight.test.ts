@@ -39,10 +39,14 @@ const seedChallenge = () =>
     accessToken: null,
     refreshToken: null,
     challenge: {
-      otpToken: "otp_token_1",
+      handle: "handle_verify_1",
       phone: USER.phone,
+      maskedPhone: "******2345",
       requestedAt: Date.now(),
+      issuedAt: Date.now(),
       resendAfterSec: 30,
+      displayExpiresAt: Date.now() + 300_000,
+      deliveryMethod: "sms",
     },
     isBootstrapped: true,
     error: null,
@@ -76,8 +80,8 @@ describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => 
       },
     );
 
-    const first = useAuthStore.getState().verifyOtp("123456");
-    const second = useAuthStore.getState().verifyOtp("123456");
+    const first = useAuthStore.getState().verifyOtp("login", "handle_verify_1", "123456");
+    const second = useAuthStore.getState().verifyOtp("login", "handle_verify_1", "123456");
 
     // Flush microtasks to let the first call enter the repository.
     await Promise.resolve();
@@ -96,11 +100,11 @@ describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => 
       .spyOn(authRepository, "verifyOtp")
       .mockResolvedValue({ success: false, error: { code: "INVALID", message: "bad code" } } as any);
 
-    const first = await useAuthStore.getState().verifyOtp("000000");
+    const first = await useAuthStore.getState().verifyOtp("login", "handle_verify_1", "000000");
     expect(first.ok).toBe(false);
     expect(useAuthStore.getState().status).toBe("otp_sent");
 
-    const second = await useAuthStore.getState().verifyOtp("123456");
+    const second = await useAuthStore.getState().verifyOtp("login", "handle_verify_1", "123456");
     expect(second.ok).toBe(false);
     expect(verify).toHaveBeenCalledTimes(2);
   });
@@ -115,7 +119,7 @@ describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => 
       data: { user: USER, accessToken: "a", refreshToken: "r" },
     } as any);
 
-    const res = await useAuthStore.getState().verifyOtp("123456");
+    const res = await useAuthStore.getState().verifyOtp("login", "handle_verify_1", "123456");
     expect(res.ok).toBe(true);
 
     await vi.waitFor(() => {
