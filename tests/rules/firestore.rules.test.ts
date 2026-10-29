@@ -94,6 +94,13 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         loyaltyPoints: 250,
       });
 
+      // Existing user profile (self-profile owner path for R17 trust-field tests)
+      await setDoc(doc(db, "users", "cust_100"), {
+        id: "cust_100",
+        phone: "+919876543210",
+        fullName: "Rahul Patel",
+      });
+
       // Existing Branch 01
       await setDoc(doc(db, "branches", "branch_01"), {
         name: "Burgonomics Navrangpura",
@@ -353,6 +360,28 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       updateDoc(doc(branch1Db, "support_tickets", "tkt_rules_01"), {
         status: "resolved",
         refundAmount: 99,
+      })
+    );
+  });
+
+  it("20b. [ORDER-REFUND-LEDGER-DENY] Branch staff CANNOT plant refund ledger/accounting fields", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branch1Db, "orders", "order_501"), {
+        refundLedger: { fake_refund: 5000 },
+        refundedTotalPaise: 5000,
+        refundOverCapturedPaise: 5000,
+        refundNeedsReview: false,
+      })
+    );
+  });
+
+  it("20c. [ORDER-REFUND-LEDGER-BRAND-DENY] Brand Owner CANNOT plant refund ledger/accounting fields", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(brandDb, "orders", "order_501"), {
+        refundLedger: { fake_refund: 5000 },
+        refundedTotalPaise: 5000,
       })
     );
   });
@@ -721,4 +750,107 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       })
     );
   });
+
+  // =========================================================================
+  // R17: users/{uid} tenant/trust field protection
+  // =========================================================================
+
+  it("50. [USERS-CREATE-CLEAN-ALLOW] Self can create a clean user profile doc", async () => {
+    const newCustDb = testEnv.authenticatedContext("cust_new").firestore();
+    await assertSucceeds(
+      setDoc(doc(newCustDb, "users", "cust_new"), {
+        id: "cust_new",
+        phone: "+919000000000",
+        fullName: "New User",
+        createdAt: new Date().toISOString(),
+      })
+    );
+  });
+
+  it("51. [USERS-CREATE-PROTECTED-DENY] Self cannot birth protected tenant/trust fields", async () => {
+    const newCustDb = testEnv.authenticatedContext("cust_new").firestore();
+    await assertFails(
+      setDoc(doc(newCustDb, "users", "cust_new"), {
+        id: "cust_new",
+        phone: "+919000000000",
+        role: "brand_owner",
+      })
+    );
+    await assertFails(
+      setDoc(doc(newCustDb, "users", "cust_new"), {
+        id: "cust_new",
+        phone: "+919000000000",
+        branchIds: ["branch_01"],
+      })
+    );
+    await assertFails(
+      setDoc(doc(newCustDb, "users", "cust_new"), {
+        id: "cust_new",
+        phone: "+919000000000",
+        cityIds: ["Ahmedabad"],
+      })
+    );
+    await assertFails(
+      setDoc(doc(newCustDb, "users", "cust_new"), {
+        id: "cust_new",
+        phone: "+919000000000",
+        active: false,
+      })
+    );
+    await assertFails(
+      setDoc(doc(newCustDb, "users", "cust_new"), {
+        id: "cust_new",
+        phone: "+919000000000",
+        isDeleted: true,
+      })
+    );
+    await assertFails(
+      setDoc(doc(newCustDb, "users", "cust_new"), {
+        id: "cust_new",
+        phone: "+919000000000",
+        deletedAt: new Date().toISOString(),
+      })
+    );
+  });
+
+  it("52. [USERS-UPDATE-ALLOWED-FIELD-ALLOW] Self can update non-protected profile fields", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(
+      updateDoc(doc(custDb, "users", "cust_100"), { fullName: "Rahul P." })
+    );
+  });
+
+  it("53. [USERS-UPDATE-PROTECTED-DENY] Self cannot update protected tenant/trust fields", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(updateDoc(doc(custDb, "users", "cust_100"), { role: "brand_owner" }));
+    await assertFails(updateDoc(doc(custDb, "users", "cust_100"), { branchIds: ["branch_01"] }));
+    await assertFails(updateDoc(doc(custDb, "users", "cust_100"), { cityIds: ["Ahmedabad"] }));
+    await assertFails(updateDoc(doc(custDb, "users", "cust_100"), { active: false }));
+    await assertFails(updateDoc(doc(custDb, "users", "cust_100"), { isDeleted: true }));
+    await assertFails(updateDoc(doc(custDb, "users", "cust_100"), { deletedAt: new Date().toISOString() }));
+  });
+
+  it("54. [USERS-BRAND-ASSIGNMENT-PATH-ALLOW] Authorized brand authority retains tenant/trust field assignment path", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(brandDb, "users", "cust_100"), {
+        branchIds: ["branch_01"],
+        cityIds: ["Ahmedabad"],
+        active: false,
+        isDeleted: true,
+        deletedAt: new Date().toISOString(),
+      })
+    );
+  });
+
+  // =========================================================================
+  // 8. NESTED payment MAP AT ORDER CREATE — ALLOWLIST, BOTH LANES
+  //
+  // The pending-status check alone let a client plant `payment.routeTransfer`
+  // (or receipt/capture bookkeeping) at birth. executeRouteSplit's fast path
+  // treats ANY stored `payment.routeTransfer` as an already-executed payout
+  // and returns "done" without POSTing the transfer, so a planted receipt
+  // suppressed the real branch settlement. Only the display fields the apps
+  // write (method/label/status/transactionId/paidAt) may be born client-side.
+  // =========================================================================
 });
