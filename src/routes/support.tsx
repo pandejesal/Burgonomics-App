@@ -135,16 +135,16 @@ function Page() {
 
   return (
     <AppShell title="Help & Support" backTo="/profile" showTabs showTopBar>
-      <div className="mx-auto max-w-[560px] space-y-5 px-4 py-4 select-none pb-20">
+      <div className="mx-auto max-w-[560px] space-y-6 px-4 pb-20 pt-4 select-none">
         {/* Support & SLA Guarantee Banner */}
-        <div className="p-4 rounded-3xl bg-[#0E4825] border border-emerald-500/40 text-white space-y-2 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 font-black text-sm">
-              <ShieldCheck className="w-5 h-5 text-emerald-300" />
-              <span>Burgonomics Customer Care</span>
-            </div>
+        <div className="space-y-3 rounded-3xl border border-divider bg-surface p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-text">
+              <ShieldCheck className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="type-title-large text-text">Burgonomics Customer Care</span>
           </div>
-          <p className="text-xs text-emerald-100 leading-relaxed">
+          <p className="text-base leading-relaxed text-text-secondary">
             Need help with your meal or delivery? Send a ticket below and our support team will
             get back to you — track its status right on this page. For urgent help, contact the
             store directly.
@@ -152,18 +152,18 @@ function Page() {
           <button
             type="button"
             onClick={() => setOpenTicket(true)}
-            className="w-full py-2.5 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider transition-all active:scale-98 flex items-center justify-center gap-2 shadow-md cursor-pointer"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover active:scale-[0.99] cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            <span>Raise Support Ticket</span>
+            <Plus className="h-4 w-4" aria-hidden />
+            <span>Raise support ticket</span>
           </button>
         </div>
 
         {/* Live Support Tickets Accordion */}
-        <section className="space-y-2">
+        <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <Text variant="titleMedium" className="font-bold">
-              Your Active & Past Tickets ({tickets.length})
+            <Text variant="titleMedium" className="font-semibold">
+              Your Active &amp; Past Tickets ({tickets.length})
             </Text>
           </div>
           <TicketListAccordion
@@ -173,8 +173,8 @@ function Page() {
         </section>
 
         {/* Direct Contact Channels */}
-        <section className="space-y-2">
-          <Text variant="titleMedium" className="font-bold">
+        <section className="space-y-3">
+          <Text variant="titleMedium" className="font-semibold">
             Direct Contact Channels
           </Text>
           {channelsError ? (
@@ -203,16 +203,16 @@ function Page() {
         </section>
 
         {/* Share Feedback */}
-        <div className="p-4 rounded-3xl bg-surface border border-divider space-y-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-text text-xs">Share Store Feedback</h3>
-              <p className="text-[11px] text-text-secondary">Rate your food, service, or suggest a new burger flavor.</p>
+        <div className="space-y-3 rounded-3xl border border-divider bg-surface p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h3 className="type-title-large text-text">Share store feedback</h3>
+              <p className="text-sm leading-relaxed text-text-secondary">Rate your food, service, or suggest a new burger flavour.</p>
             </div>
             <button
               type="button"
               onClick={() => setOpenFeedback(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text font-bold text-xs cursor-pointer transition-colors"
+              className="min-h-11 shrink-0 rounded-xl border border-divider bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:bg-bg-secondary cursor-pointer"
             >
               Feedback
             </button>
@@ -220,21 +220,21 @@ function Page() {
         </div>
 
         {/* FAQs */}
-        <section className="space-y-2">
+        <section className="space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <Text variant="titleMedium" className="font-bold">
+            <Text variant="titleMedium" className="font-semibold">
               Frequently Asked Questions
             </Text>
           </div>
           {faqs && faqs.length > 0 && (
-            <label className="flex h-11 items-center gap-2 rounded-2xl border border-divider bg-surface px-4 focus-within:border-[#FF6600]">
+            <label className="flex h-12 items-center gap-2 rounded-2xl border border-divider bg-surface px-4 focus-within:border-primary">
               <input
                 type="search"
                 value={faqQuery}
                 onChange={(e) => setFaqQuery(e.target.value)}
-                placeholder="Search FAQs (e.g., refund, delivery time, coins)..."
+                placeholder="Search FAQs (e.g. refund, delivery time, coins)…"
                 aria-label="Search frequently asked questions"
-                className="flex-1 bg-transparent text-text outline-none text-xs placeholder:text-text-secondary"
+                className="flex-1 bg-transparent text-base text-text outline-none placeholder:text-text-secondary"
               />
             </label>
           )}
@@ -329,23 +329,23 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
       target={channel.kind === "whatsapp" ? "_blank" : undefined}
       rel={channel.kind === "whatsapp" ? "noreferrer noopener" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-2xl border border-divider bg-surface p-3 transition-colors text-text",
-        disabled ? "opacity-70" : "hover:border-[#0E4825] hover:bg-bg-secondary",
+        "flex min-h-11 items-center gap-3 rounded-2xl border border-divider bg-surface p-4 transition-colors text-text",
+        disabled ? "opacity-70" : "hover:border-primary hover:bg-bg-secondary",
       )}
       aria-disabled={disabled || undefined}
     >
-      <div className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-[#0E4825] text-emerald-300">
+      <div className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-primary text-primary-foreground">
         <Icon className="h-5 w-5" aria-hidden />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-bold text-xs truncate">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold break-words">
             {channel.label}
           </span>
           {!channel.available && <AppBadge tone="neutral">Soon</AppBadge>}
         </div>
         {channel.helper && (
-          <span className="text-[11px] text-text-secondary block truncate">
+          <span className="block text-sm leading-relaxed text-text-secondary break-words">
             {channel.helper}
           </span>
         )}
@@ -362,21 +362,21 @@ function FaqAccordion({ item }: { item: FaqItem }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-secondary transition-colors"
+        className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-secondary"
       >
         <div className="min-w-0 flex-1">
-          <span className="text-xs font-bold text-text block truncate">
+          <span className="block text-sm font-semibold text-text break-words">
             {item.question}
           </span>
           {item.category && (
-            <span className="text-[10px] text-text-secondary uppercase font-semibold">
+            <span className="type-label-medium text-text-secondary">
               {item.category}
             </span>
           )}
         </div>
         <ChevronDown
           className={cn(
-            "h-4 w-4 flex-none text-neutral-400 transition-transform",
+            "h-4 w-4 flex-none text-text-secondary transition-transform",
             open && "rotate-180",
           )}
           aria-hidden
@@ -384,7 +384,7 @@ function FaqAccordion({ item }: { item: FaqItem }) {
       </button>
       {open && (
         <div className="px-4 pb-4">
-          <p className="text-xs text-text-secondary leading-relaxed">
+          <p className="text-sm leading-relaxed text-text-secondary">
             {item.answer}
           </p>
         </div>
@@ -428,9 +428,9 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form onSubmit={submit} className="space-y-4">
       <fieldset>
-        <legend className="text-xs font-bold uppercase text-text">Your rating</legend>
+        <legend className="type-label-large text-text">Your rating</legend>
         <div
           role="radiogroup"
           aria-label="Rate your experience"
@@ -451,7 +451,7 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
                 <Star
                   className={cn(
                     "h-7 w-7 transition-colors",
-                    filled ? "fill-amber-400 text-amber-400" : "text-text-secondary",
+                    filled ? "fill-accent text-accent" : "text-text-secondary",
                   )}
                   aria-hidden
                 />
@@ -460,24 +460,24 @@ function FeedbackForm({ onSubmitted }: { onSubmitted: () => void }) {
           })}
         </div>
       </fieldset>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-text-secondary">Comment</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="type-label-large text-text-secondary">Comment</span>
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value.slice(0, 500))}
           rows={3}
           placeholder="What did you love or dislike?"
-          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-base leading-relaxed text-text placeholder:text-text-secondary outline-none focus:border-primary"
         />
       </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-bold uppercase text-text-secondary">Suggestion (optional)</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="type-label-large text-text-secondary">Suggestion (optional)</span>
         <textarea
           value={suggestion}
           onChange={(e) => setSuggestion(e.target.value.slice(0, 500))}
           rows={2}
           placeholder="Anything we should build next?"
-          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-xs text-text placeholder:text-text-secondary outline-none focus:border-[#FF6600]"
+          className="rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-base leading-relaxed text-text placeholder:text-text-secondary outline-none focus:border-primary"
         />
       </label>
       {error && (

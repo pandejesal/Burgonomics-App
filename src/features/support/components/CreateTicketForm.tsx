@@ -118,27 +118,27 @@ export function CreateTicketForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-5 rounded-3xl bg-[#0D0D0D] border border-neutral-800 space-y-4 text-white shadow-xl">
+    <form onSubmit={handleSubmit} className="space-y-5 rounded-3xl border border-divider bg-surface p-5 text-text shadow-xl">
       {/* Header */}
-      <div className="border-b border-neutral-800 pb-3">
-        <h2 className="text-base font-black text-white flex items-center gap-2">
+      <div className="border-b border-divider pb-3">
+        <h2 className="type-title-large flex items-center gap-2 text-text">
           <span>Report an Issue / Support Ticket</span>
         </h2>
-        <p className="text-xs text-neutral-400 mt-0.5">
+        <p className="mt-1 text-sm leading-relaxed text-text-secondary">
           Submit details for rapid resolution with our branch manager
         </p>
       </div>
 
       {/* 1. Order Selector */}
       {orders.length > 0 && (
-        <div className="space-y-1.5">
-          <label className="block text-xs font-bold uppercase text-text-secondary">
-            Select Related Order
+        <div className="space-y-2">
+          <label className="block type-label-large text-text-secondary">
+            Select related order
           </label>
           <select
             value={selectedOrderId}
             onChange={(e) => setSelectedOrderId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-bg-secondary border border-divider text-text text-xs font-semibold focus:outline-none focus:border-[#FF6600]"
+            className="min-h-11 w-full rounded-xl border border-divider bg-bg-secondary px-3 py-2 text-base font-medium text-text focus:border-primary focus:outline-none"
           >
             <option value="">-- No specific order --</option>
             {orders.map((o) => (
@@ -151,73 +151,75 @@ export function CreateTicketForm({
       )}
 
       {/* 2. Issue Category Grid */}
-      <div className="space-y-1.5">
-        <label className="block text-xs font-bold uppercase text-text-secondary">
-          Issue Category
+      <div className="space-y-2">
+        <label className="block type-label-large text-text-secondary">
+          Issue category
         </label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.code}
               type="button"
               onClick={() => setCategory(cat.code)}
-              className={`p-2.5 rounded-2xl border text-left transition-colors cursor-pointer ${
+              aria-pressed={category === cat.code}
+              className={`min-h-11 rounded-2xl border p-3 text-left transition-colors cursor-pointer ${
                 category === cat.code
-                  ? "bg-[#0E4825] border-emerald-500 text-white shadow-xs"
-                  : "bg-bg-secondary border-divider text-text-secondary hover:text-text"
+                  ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                  : "border-divider bg-bg-secondary text-text-secondary hover:text-text"
               }`}
             >
-              <div className="text-base mb-1">{cat.icon}</div>
-              <span className="font-bold text-xs block leading-tight">{cat.label}</span>
+              <div className="mb-1 text-base" aria-hidden>{cat.icon}</div>
+              <span className="block text-sm font-semibold leading-tight">{cat.label}</span>
             </button>
           ))}
         </div>
       </div>
 
       {/* 3. Description Field */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <label className="font-bold uppercase text-text-secondary">
-            Describe the Problem
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <label className="type-label-large text-text-secondary">
+            Describe the problem
           </label>
-          <span className={`text-[11px] ${description.length >= 10 ? "text-emerald-500 dark:text-emerald-400" : "text-text-secondary"}`}>
+          <span className={`text-sm ${description.length >= 10 ? "text-success" : "text-text-secondary"}`}>
             {description.length}/10 min chars
           </span>
         </div>
         <textarea
-          rows={3}
+          rows={4}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Please share specific details (e.g. burger was cold upon arrival, or missing Peri Peri dip)..."
-          className="w-full px-3 py-2 rounded-2xl bg-bg-secondary border border-divider text-text text-xs placeholder:text-text-secondary focus:outline-none focus:border-[#FF6600]"
+          placeholder="Please share specific details (e.g. burger was cold upon arrival, or missing Peri Peri dip)…"
+          className="w-full rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-base leading-relaxed text-text placeholder:text-text-secondary focus:border-primary focus:outline-none"
           required
         />
       </div>
 
       {/* 4. Photo Upload Area */}
       <div className="space-y-2">
-        <label className="block text-xs font-bold uppercase text-text-secondary">
-          Attach Photos (Optional, max 3)
+        <label className="block type-label-large text-text-secondary">
+          Attach photos (optional, max 3)
         </label>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {previews.map((src, index) => (
-            <div key={index} className="relative w-16 h-16 rounded-xl overflow-hidden border border-divider group">
-              <img src={src} alt={`Attachment ${index + 1}`} className="w-full h-full object-cover" />
+            <div key={index} className="group relative h-16 w-16 overflow-hidden rounded-xl border border-divider">
+              <img src={src} alt={`Attachment ${index + 1}`} className="h-full w-full object-cover" />
               <button
                 type="button"
                 onClick={() => handleRemovePhoto(index)}
-                className="absolute top-1 right-1 p-0.5 rounded-full bg-black/80 text-white hover:bg-red-600 transition-colors cursor-pointer"
+                aria-label={`Remove attachment ${index + 1}`}
+                className="absolute right-1 top-1 rounded-full bg-black/80 p-1 text-white transition-colors hover:bg-error cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
           ))}
 
           {photoFiles.length < 3 && (
-            <label className="w-16 h-16 rounded-xl border border-dashed border-divider bg-bg-secondary hover:bg-surface flex flex-col items-center justify-center cursor-pointer text-text-secondary hover:text-text transition-colors">
-              <Camera className="w-5 h-5 mb-0.5" />
-              <span className="text-[9px] font-bold">Add Photo</span>
+            <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-divider bg-bg-secondary text-text-secondary transition-colors hover:bg-surface hover:text-text">
+              <Camera className="mb-0.5 h-5 w-5" aria-hidden />
+              <span className="text-sm font-medium">Add photo</span>
               <input
                 type="file"
                 accept="image/*"
@@ -231,23 +233,23 @@ export function CreateTicketForm({
       </div>
 
       {/* 5. Support-flow notice — honest generic copy (no unverifiable SLA guarantee) */}
-      <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs text-emerald-800 dark:text-emerald-300">
-        <div className="flex items-center gap-1.5 font-bold">
-          <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+      <div className="space-y-1.5 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm text-text-secondary">
+        <div className="flex items-center gap-1.5 font-semibold text-text">
+          <Clock className="h-4 w-4 shrink-0 text-primary-text" aria-hidden />
           <span>How support works</span>
         </div>
-        <p className="text-[11px] text-text-secondary leading-relaxed">
+        <p className="text-sm leading-relaxed text-text-secondary">
           Our store team is notified as soon as you submit. Track status and responses under Your Tickets below.
         </p>
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-divider">
+      <div className="flex items-center justify-end gap-2.5 border-t border-divider pt-3">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-xl bg-bg-secondary text-text-secondary hover:text-text border border-divider font-bold text-xs"
+            className="min-h-11 rounded-xl border border-divider bg-bg-secondary px-4 py-2 text-sm font-semibold text-text-secondary hover:text-text"
           >
             Cancel
           </button>
@@ -256,9 +258,9 @@ export function CreateTicketForm({
         <button
           type="submit"
           disabled={isSubmitting || description.trim().length < 10}
-          className="px-5 py-2.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-95 cursor-pointer disabled:opacity-50"
         >
-          {isSubmitting ? "Submitting..." : "Submit Support Ticket"}
+          {isSubmitting ? "Submitting…" : "Submit support ticket"}
         </button>
       </div>
     </form>

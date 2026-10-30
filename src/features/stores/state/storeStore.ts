@@ -9,6 +9,7 @@ import {
   isStoreInDeliveryArea,
   OUT_OF_AREA_MESSAGE,
 } from "@/features/stores/utils/serviceArea";
+import { haversineKm } from "@/features/stores/utils/distance";
 
 export type { Store, Fulfillment } from "@/features/stores/models/Store";
 /**
@@ -88,6 +89,24 @@ export function storeSupportsFulfillment(
   return false;
 }
 
+/**
+ * Directory request generation (module-scoped, never persisted). Only the
+ * newest in-flight read may publish; mount, retry and refresh can overlap.
+ */
+let directoryGeneration = 0;
+
+/** Top-5 by straight-line distance from the rows already in memory. */
+function rankNearest(stores: Store[], coords: Coords | null): Store[] {
+  if (!coords) {
+    return [...stores].sort((a, b) => a.name.localeCompare(b.name)).slice(0, 5);
+  }
+  return [...stores]
+    .map((store) => ({ store, km: haversineKm(coords, { lat: store.lat, lng: store.lng }) }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, 5)
+    .map(({ store }) => store);
+}
+
 export const useStoreSelection = create<StoreState>()(
   persist(
     (set, get) => ({
@@ -105,7 +124,9 @@ export const useStoreSelection = create<StoreState>()(
       // persisted selection loads.
       isHydrated: false,
       fulfillmentStatus: "none",
-      status: "ready",
+      // "idle" = nothing has been requested yet. A "ready" default is what let
+      // the store screen render an empty catalogue before the first read.
+      status: "idle",
       stores: [],
       nearby: [],
       coords: null,
@@ -172,29 +193,35 @@ export const useStoreSelection = create<StoreState>()(
       markFulfillmentSelecting: () => set({ fulfillmentStatus: "selecting" }),
 
       async loadStores(coords) {
-        set({ status: "loading", error: null, coords: coords ?? get().coords });
-        const res = await storeRepository.list(coords ?? get().coords ?? undefined);
+        // Single-winner: only the newest directory request may publish, so a
+        // slow earlier response can never overwrite a newer list.
+        const generation = ++directoryGeneration;
+        const where = coords ?? get().coords;
+        set({ status: "loading", error: null, coords: where ?? null });
+        const res = await storeRepository.list(where ?? undefined);
+        if (generation !== directoryGeneration) return;
         if (!res.success) {
+          // A real failure stays a failure: the screen renders its error state
+          // and never an empty "no stores" catalogue.
           set({ status: "error", error: res.error.message });
           return;
         }
-        set({ status: "ready", stores: res.data });
+        set({
+          status: "ready",
+          stores: res.data,
+          // `nearby` is a slice of the SAME read — no second directory query.
+          // Ranked from the position CURRENT at publish time: a GPS fix can
+          // land while the read is still in flight.
+          nearby: rankNearest(res.data, get().coords),
+        });
       },
 
       async loadNearby(coords) {
-        set({ status: "detecting_location", coords, error: null });
-        const res = await storeRepository.nearby(coords.lat, coords.lng);
-        if (!res.success) {
-          set({ status: "error", error: res.error.message });
-          return;
-        }
-        // Also refresh full list so the screen has both.
-        const full = await storeRepository.list(coords);
-        set({
-          status: "ready",
-          nearby: res.data,
-          stores: full.success ? full.data : get().stores,
-        });
+        // Deliberately NO network call. A position update used to re-read the
+        // whole directory TWICE for a top-5 slice: a duplicate of the list query
+        // plus a second failure mode. Proximity is a pure function of the rows
+        // already in memory, recomputed from the CURRENT coordinates.
+        set({ coords, nearby: rankNearest(get().stores, coords) });
       },
 
       async refresh() {
@@ -260,14 +287,13 @@ export const useStoreSelection = create<StoreState>()(
           return;
         }
         // Re-hydrate fulfillmentStatus from the persisted pair.
-        if (state.activeStore && state.fulfillment) {
-          state.fulfillmentStatus = storeSupportsFulfillment(state.activeStore, state.fulfillment)
+        const fulfillmentStatus = state.activeStore && state.fulfillment
+          ? storeSupportsFulfillment(state.activeStore, state.fulfillment)
             ? "selected"
-            : "unsupported";
-        } else {
-          state.fulfillmentStatus = "none";
-        }
-        state.isHydrated = true;
+            : "unsupported"
+          : "none";
+        // Persist already published its snapshot; notify subscribed route gates.
+        useStoreSelection.setState({ isHydrated: true, fulfillmentStatus });
       },
       migrate: (persisted, version) => {
         if (!persisted || typeof persisted !== "object") {

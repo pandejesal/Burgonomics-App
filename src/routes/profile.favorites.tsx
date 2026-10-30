@@ -121,9 +121,9 @@ function Body() {
                   setTab(t.id);
                 }}
                 className={cn(
-                  "flex-1 rounded-full py-2 text-xs font-bold transition-all cursor-pointer",
+                  "min-h-11 flex-1 rounded-full py-2 text-sm font-semibold transition-colors cursor-pointer",
                   active
-                    ? "bg-[#0E4825] text-white shadow-xs"
+                    ? "bg-primary text-primary-foreground shadow-xs"
                     : "text-text-secondary hover:text-text"
                 )}
               >
@@ -141,7 +141,7 @@ function Body() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search favourite ${TABS.find((t) => t.id === tab)?.label.toLowerCase()}…`}
               aria-label="Search favourites"
-              className="flex-1 bg-transparent outline-none text-xs font-medium text-text placeholder:text-text-disabled"
+              className="flex-1 bg-transparent text-base font-medium text-text outline-none placeholder:text-text-disabled"
             />
           </label>
         )}
@@ -157,11 +157,11 @@ function Body() {
           <ul className="space-y-2.5">
             {items.map((fav) => (
               <li key={fav.id}>
-                <div className="rounded-2xl border border-divider bg-surface p-3 flex items-center justify-between gap-3 shadow-xs select-none">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-divider bg-surface p-4 shadow-xs select-none">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     <div
                       aria-hidden
-                      className="grid h-14 w-14 flex-none place-items-center overflow-hidden rounded-xl bg-[#0E4825]/10 text-[#0E4825]"
+                      className="grid h-14 w-14 flex-none place-items-center overflow-hidden rounded-xl bg-primary/10 text-primary-text"
                     >
                       {fav.imageUrl ? (
                         <SafeImage
@@ -171,38 +171,38 @@ function Body() {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <Heart className="h-5 w-5 fill-[#0E4825]/20" aria-hidden />
+                        <Heart className="h-5 w-5 fill-primary/20" aria-hidden />
                       )}
                     </div>
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex min-w-0 items-center gap-1.5">
                         <div
-                          className="w-3.5 h-3.5 rounded-[2px] border border-emerald-600 bg-emerald-950/20 flex items-center justify-center shrink-0"
+                          className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border border-veg bg-veg/10"
                           aria-label="100% Pure Veg"
                         >
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                          <div className="h-1.5 w-1.5 rounded-full bg-veg" />
                         </div>
-                        <h4 className="text-xs sm:text-sm font-bold text-text truncate">
+                        <h4 className="text-base font-semibold leading-snug text-text">
                           {fav.name}
                         </h4>
                       </div>
                       {fav.priceLabel && (
-                        <span className="block text-xs font-mono font-bold text-text">
+                        <span className="block text-sm font-semibold tabular-nums text-text">
                           {fav.priceLabel}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     {fav.kind === "product" && (
                       <button
                         type="button"
                         data-testid={`quick-add-${fav.id}`}
                         onClick={() => void handleQuickAdd(fav)}
-                        className="px-3.5 py-1.5 min-h-[38px] rounded-xl bg-[#FF6600] text-white text-xs font-bold hover:bg-[#e05a00] active:scale-95 transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                        className="flex min-h-11 items-center gap-1 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover active:scale-95 cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5 stroke-[2.5px]" />
+                        <Plus className="h-3.5 w-3.5 stroke-[2.5px]" aria-hidden />
                         <span>Add</span>
                       </button>
                     )}
@@ -214,7 +214,7 @@ function Body() {
                         const res = await favoritesRepository.remove(fav.id);
                         if (res.success) toast.success("Removed from favourites");
                       }}
-                      className="grid h-10 w-10 min-h-[40px] min-w-[40px] flex-none place-items-center rounded-full text-text-secondary transition-colors hover:bg-red-500/10 hover:text-red-500 cursor-pointer"
+                      className="grid h-11 w-11 min-h-11 min-w-11 flex-none place-items-center rounded-full text-text-secondary transition-colors hover:bg-error/10 hover:text-error cursor-pointer"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </button>

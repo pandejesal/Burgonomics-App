@@ -58,35 +58,35 @@ export function EstimatedDeliveryCountdown({
   const isDelivery = fulfillment === "delivery";
 
   return (
-    <div className={cn("rounded-2xl border border-divider bg-surface p-4 sm:p-5 space-y-4 shadow-xs", className)}>
+    <div className={cn("space-y-5 rounded-2xl border border-divider bg-surface p-5 shadow-xs", className)}>
       {/* Header with Countdown */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-[#0E4825]/10 text-[#0E4825] dark:text-[#4ADE80] flex items-center justify-center">
-            <Clock className="w-4 h-4" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary-text">
+            <Clock className="h-4 w-4" aria-hidden />
           </div>
-          <div>
-            <h3 className="text-xs font-black uppercase tracking-wider text-text">
+          <div className="min-w-0">
+            <h3 className="type-title-large text-text">
               {isDelivery ? "Estimated Delivery" : "Estimated Pickup"}
             </h3>
-            <p className="text-[11px] text-text-secondary">
+            <p className="text-sm leading-relaxed text-text-secondary">
               {isDelivery ? "Arriving at your doorstep" : "Counter collection in store"}
             </p>
           </div>
         </div>
 
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           {hasEstimate ? (
             <>
-              <span className="font-mono text-xl sm:text-2xl font-black text-[#FF6600]">
+              <span className="text-2xl font-semibold tabular-nums text-accent">
                 {formattedCountdown}
               </span>
-              <span className="block text-[10px] uppercase font-bold text-text-secondary">
-                Mins Remaining
+              <span className="block text-sm font-medium text-text-secondary">
+                Minutes remaining
               </span>
             </>
           ) : (
-            <span className="text-[11px] font-bold text-text-secondary">
+            <span className="text-sm font-semibold text-text-secondary">
               Estimate unavailable
             </span>
           )}
@@ -96,9 +96,9 @@ export function EstimatedDeliveryCountdown({
       {/* Makeline 4-stage visual progress bar */}
       <div className="pt-2">
         <div className="relative flex items-center justify-between">
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 w-full bg-bg-secondary -z-0 rounded-full">
+          <div className="absolute left-0 top-1/2 -z-0 h-1 w-full -translate-y-1/2 rounded-full bg-bg-secondary">
             <div
-              className="h-full bg-[#0E4825] rounded-full transition-all duration-500"
+              className="h-full rounded-full bg-primary transition-all duration-500"
               style={{
                 width: `${Math.min(100, (activeIndex / 3) * 100)}%`,
               }}
@@ -114,19 +114,21 @@ export function EstimatedDeliveryCountdown({
               <div key={stage.key} className="relative z-10 flex flex-col items-center gap-1.5">
                 <div
                   className={cn(
-                    "w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center transition-all bg-surface",
+                    "flex h-8 w-8 items-center justify-center rounded-full border-2 bg-surface transition-all",
                     isCompleted
-                      ? "border-[#0E4825] bg-[#0E4825] text-white shadow-xs"
+                      ? "border-primary bg-primary text-primary-foreground shadow-xs"
                       : "border-divider text-text-secondary",
-                    isCurrent && "ring-4 ring-[#0E4825]/20 animate-pulse"
+                    isCurrent && "ring-4 ring-primary/20 animate-pulse"
                   )}
                 >
-                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <Icon className="h-4 w-4" aria-hidden />
                 </div>
+                {/* Four stage labels share one phone row: 12px is the floor
+                    here, still well above the previous 9px. */}
                 <span
                   className={cn(
-                    "text-[9px] sm:text-[10px] font-bold text-center max-w-[65px] leading-tight",
-                    isCompleted ? "text-text" : "text-text-secondary"
+                    "max-w-[65px] text-center text-xs leading-tight",
+                    isCompleted ? "font-medium text-text" : "font-medium text-text-secondary"
                   )}
                 >
                   {stage.key === "dispatched"

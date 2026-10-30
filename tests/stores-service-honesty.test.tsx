@@ -71,7 +71,7 @@ describe("EstimatedDeliveryCountdown honesty (P1-3)", () => {
       <EstimatedDeliveryCountdown fulfillment="delivery" status={status} />,
     );
     expect(html).toContain("Estimate unavailable");
-    expect(html).not.toContain("Mins Remaining");
+    expect(html).not.toContain("Minutes remaining");
   });
 
   it("still ticks a real estimate", () => {
@@ -79,7 +79,9 @@ describe("EstimatedDeliveryCountdown honesty (P1-3)", () => {
       <EstimatedDeliveryCountdown fulfillment="delivery" status={status} estimatedMinutes={30} />,
     );
     expect(html).toContain("30:00");
-    expect(html).toContain("Mins Remaining");
+    // Sentence-case interface copy replaced the old all-caps label; the
+    // honesty assertion (no estimate => no countdown) is unchanged above.
+    expect(html).toContain("Minutes remaining");
     expect(html).not.toContain("Estimate unavailable");
   });
 });

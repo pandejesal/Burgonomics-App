@@ -99,22 +99,22 @@ export function OrderCancellationGrace({ order, onCancelled }: OrderCancellation
       <div
         role="status"
         aria-live="polite"
-        className="rounded-3xl border border-divider bg-surface p-4 text-text shadow-md space-y-3"
+        className="space-y-4 rounded-3xl border border-divider bg-surface p-5 text-text shadow-md"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-2 rounded-xl bg-[#0E4825] border border-emerald-500/40 text-emerald-300 motion-safe:animate-pulse">
-              <Timer className="w-4 h-4" aria-hidden="true" />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary-text motion-safe:animate-pulse">
+              <Timer className="h-4 w-4" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <span className="block font-bold text-xs text-text">
+              <span className="block text-sm font-semibold text-text">
                 Free cancellation for{" "}
-                <span className="font-black tabular-nums">
+                <span className="tabular-nums">
                   0:{String(remaining).padStart(2, "0")}
                 </span>{" "}
                 more
               </span>
-              <span className="block text-[11px] text-text-secondary">
+              <span className="block text-sm leading-relaxed text-text-secondary">
                 Cancel now for an instant refund — no questions asked.
               </span>
             </div>
@@ -125,20 +125,20 @@ export function OrderCancellationGrace({ order, onCancelled }: OrderCancellation
             onClick={handleCancel}
             disabled={isCancelling}
             aria-busy={isCancelling}
-            className="shrink-0 py-2.5 px-3.5 rounded-xl bg-[#0E4825] hover:bg-[#135d30] disabled:opacity-60 border border-emerald-500/40 text-emerald-300 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:cursor-wait"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
           >
-            <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
+            <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{isCancelling ? "Cancelling…" : "Cancel Order"}</span>
           </button>
         </div>
 
         {/* Animated grace-window progress bar. */}
         <div
-          className="h-1.5 w-full rounded-full bg-bg-secondary border border-divider overflow-hidden"
+          className="h-1.5 w-full overflow-hidden rounded-full border border-divider bg-bg-secondary"
           aria-hidden="true"
         >
           <div
-            className="h-full rounded-full bg-emerald-500 dark:bg-emerald-400 transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
+            className="h-full rounded-full bg-success transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -148,23 +148,23 @@ export function OrderCancellationGrace({ order, onCancelled }: OrderCancellation
 
   if (showSupport) {
     return (
-      <div className="rounded-3xl border border-divider bg-surface p-4 text-text shadow-md space-y-3">
-        <span className="block font-bold text-xs text-text">Need help or cancellation?</span>
-        <span className="block text-[11px] text-text-secondary">
+      <div className="space-y-3 rounded-3xl border border-divider bg-surface p-5 text-text shadow-md">
+        <span className="block type-title-large text-text">Need help or cancellation?</span>
+        <span className="block text-sm leading-relaxed text-text-secondary">
           The free-cancellation window has closed — our team can still assist you.
         </span>
 
-        <div className="flex items-center gap-2 pt-1 border-t border-divider">
+        <div className="flex flex-wrap items-center gap-2.5 border-t border-divider pt-3">
           {canCall ? (
             <a
               href={`tel:${storePhone}`}
-              className="flex-1 py-2.5 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface"
             >
-              <Phone className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" aria-hidden="true" />
+              <Phone className="h-3.5 w-3.5 text-primary-text" aria-hidden="true" />
               <span>Call Store</span>
             </a>
           ) : (
-            <span className="flex-1 text-text-secondary italic text-[11px] text-center">
+            <span className="flex-1 text-center text-sm italic text-text-secondary">
               Store phone unavailable
             </span>
           )}
@@ -174,13 +174,13 @@ export function OrderCancellationGrace({ order, onCancelled }: OrderCancellation
               href={waHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 py-2.5 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface"
             >
-              <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" aria-hidden="true" />
+              <MessageCircle className="h-3.5 w-3.5 text-[#25D366]" aria-hidden="true" />
               <span>WhatsApp Support</span>
             </a>
           ) : (
-            <span className="flex-1 text-text-secondary italic text-[11px] text-center">
+            <span className="flex-1 text-center text-sm italic text-text-secondary">
               WhatsApp unavailable
             </span>
           )}

@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Search } from "lucide-react";
 import { useCallback, useEffect } from "react";
 
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -6,10 +7,9 @@ import { FailureState } from "@/shared/components/feedback/FailureState";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 
 import { useStoreSelection } from "@/features/stores/state/storeStore";
-import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
+import { useAuthStore } from "@/features/auth/state/authStore";
 
 import { useHomeStore } from "@/features/home";
-import { CategoryPills } from "@/features/menu/components/CategoryPills";
 import { BrandHeader } from "@/features/home/components/BrandHeader";
 import { BannerCarousel } from "@/features/home/components/BannerCarousel";
 import { CategoryGrid } from "@/features/home/components/CategoryGrid";
@@ -17,15 +17,13 @@ import { HorizontalRail } from "@/features/home/components/HorizontalRail";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 import { BestSellerCard } from "@/features/home/components/BestSellerCard";
 import { ComboCard } from "@/features/home/components/ComboCard";
-import { QuickReorderRail } from "@/features/home/components/QuickReorderRail";
 import { HomeSkeleton } from "@/features/home/components/HomeSkeleton";
+import { HomeAnnouncements } from "@/features/home/components/HomeAnnouncements";
+import { FavoritesRail } from "@/features/home/components/FavoritesRail";
 import { FloatingCartBar } from "@/features/cart/components/FloatingCartBar";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import type { Product } from "@/features/menu/models";
-import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
-import { orderRepository } from "@/features/orders/repositories/OrderRepository";
-import type { QuickReorderItem } from "@/features/home/models";
 
 export const Route = createFileRoute("/home")({
   head: () => ({
@@ -48,13 +46,14 @@ function HomePage() {
   const store = useStoreSelection((s) => s.activeStore);
   const isHydrated = useStoreSelection((s) => s.isHydrated);
 
-  const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const user = useAuthStore((s) => s.user);
 
   const status = useHomeStore((s) => s.status);
   const bundle = useHomeStore((s) => s.bundle);
   const error = useHomeStore((s) => s.error);
   const load = useHomeStore((s) => s.load);
+  const loadedStoreId = useHomeStore((s) => s.lastLoadedStoreId);
+  const loadedUserId = useHomeStore((s) => s.lastLoadedUserId);
 
   // Bounce guests without a chosen store to Store Selection.
   useEffect(() => {
@@ -70,24 +69,6 @@ function HomePage() {
     }
   }, [store, user?.id, load]);
 
-  const { reorder } = useReorderItems();
-
-  const handleQuickReorder = useCallback(
-    async (item: QuickReorderItem) => {
-      try {
-        const res = await orderRepository.getOrder(item.orderId);
-        if (res.success && res.data) {
-          await reorder(res.data);
-        } else {
-          void navigate({ to: "/orders" });
-        }
-      } catch {
-        void navigate({ to: "/orders" });
-      }
-    },
-    [reorder, navigate],
-  );
-
   const handleCardClick = useCallback(
     (productId: string) => {
       void navigate({ to: "/menu/product/$productId", params: { productId } });
@@ -100,7 +81,11 @@ function HomePage() {
   if (!isHydrated) return null;
   if (!store) return null;
 
-  const isLoading = status === "loading" || (status === "idle" && !bundle);
+  const scopedUserId = user?.id ?? null;
+  const hasScopedResult =
+    loadedStoreId === store.id && loadedUserId === scopedUserId && bundle !== null;
+  const isLoading =
+    status === "loading" || (status !== "error" && !hasScopedResult);
   const isRefreshing = status === "refreshing";
 
   const handleRefresh = async () => {
@@ -114,39 +99,22 @@ function HomePage() {
       showTabs
       showTopBar={false}
     >
-      <div className="mx-auto max-w-[520px] pb-10">
+      <div className="mx-auto max-w-[520px] pb-16">
+        {/* One page-level heading for assistive tech; the visual wordmark is
+            rendered by BrandHeader so it stays a single tappable home control. */}
+        <h1 className="sr-only">Burgonomics Home</h1>
         {/* Full-bleed Header — single fulfillment switch inside (Delivery / Takeaway / Dine-In) */}
-        <BrandHeader onSearchClick={() => void navigate({ to: "/search" })} />
+        <BrandHeader />
 
-        {/* Category shortcut pills — real categories from POS (not hardcoded) */}
-        {bundle && (
-          <div className="px-4 mt-3">
-            <CategoryPills
-              categories={[
-                { id: "all", name: "All Items" },
-                ...bundle.categories.map((c) => ({
-                  id: c.id,
-                  name: c.name,
-                  count: c.itemCount,
-                  isVeg: true,
-                })),
-              ]}
-              selectedCategory="all"
-              onSelectCategory={(catId) => {
-                if (catId === "all") void navigate({ to: "/menu" });
-                else void navigate({ to: "/menu", search: { category: catId } });
-              }}
-              className="mt-3"
-            />
-          </div>
-        )}
+        {/* Category entrances live in the two-column grid below; the pill strip
+            duplicated them on Home and is intentionally removed. */}
 
         {/* Offline strip */}
         {!online && (
           <div className="mt-4 px-4">
             <div
               role="status"
-              className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs font-medium text-amber-900 dark:text-amber-200"
+              className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm font-medium text-warning"
             >
               You are offline. Showing the latest cached content.
             </div>
@@ -154,11 +122,7 @@ function HomePage() {
         )}
 
         {/* Body Content */}
-        {isLoading ? (
-          <div className="mt-4">
-            <HomeSkeleton />
-          </div>
-        ) : status === "error" && !bundle ? (
+        {status === "error" ? (
           <div className="mt-6 px-4">
             <FailureState
               title="We couldn't load Home"
@@ -166,47 +130,56 @@ function HomePage() {
               onRetry={handleRefresh}
             />
           </div>
-        ) : status === "empty" || !bundle ? (
+        ) : isLoading ? (
+          <div className="mt-4">
+            <HomeSkeleton />
+          </div>
+        ) : status === "empty" || !hasScopedResult || !bundle ? (
           <div className="mt-4 px-4">
             <PetpoojaSyncPlaceholder storeId={store.id} onRetry={handleRefresh} />
           </div>
         ) : (
-          <div className="mt-4 space-y-6">
+          <div className="mt-3 space-y-6">
             {/* POS-driven Promo Banner Carousel — single source of truth */}
-            {bundle.banners.length > 0 && <BannerCarousel banners={bundle.banners} />}
+            {bundle.banners.length > 0 && <BannerCarousel key={store.id} banners={bundle.banners} />}
 
-            {/* 3-Column Explore Menu Grid */}
+            {/* Menu heading and Search share one row below the promo; the four
+                photo shortcuts follow. Order matches the observed reference. */}
             {bundle.categories.length > 0 && (
               <section aria-labelledby="cats-heading">
-                <SectionHeader
-                  title="Explore Menu"
-                  subtitle="100% Pure Veg QSR favorites"
-                  actionLabel="View all"
-                  actionTo="/menu"
-                />
-                <CategoryGrid categories={bundle.categories} />
+                <div className="flex items-center justify-between gap-3 px-4">
+                  <h2
+                    id="cats-heading"
+                    className="type-brand-heading min-w-0 break-words text-2xl leading-tight text-text-primary"
+                  >
+                    On the menu
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => void navigate({ to: "/search" })}
+                    aria-label="Search the menu"
+                    className="flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-bg-secondary px-4 py-2 text-sm font-medium leading-snug text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  >
+                    <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>Search</span>
+                  </button>
+                </div>
+                <CategoryGrid categories={bundle.categories} className="mt-4 pb-4" />
               </section>
             )}
 
-            {/* Quick Reorder Rail (for authenticated users) */}
-            {isAuthenticated && bundle.quickReorder.length > 0 && (
-              <section aria-labelledby="reorder-heading">
-                <SectionHeader
-                  title="Reorder in 1-Tap"
-                  subtitle="From your previous favorites"
-                  actionLabel="View all orders"
-                  actionTo="/orders"
-                />
-                <QuickReorderRail items={bundle.quickReorder} onReorder={handleQuickReorder} />
-              </section>
-            )}
+            {/* On Home the saved basket follows the shortcuts instead of
+                covering them; Menu/Search retain their floating cart bar. */}
+            <FloatingCartBar compact inline />
+
+            <FavoritesRail />
 
             {/* Bestsellers Snap-Scroll Rail with BestSellerCard */}
             {bundle.bestSellers.length > 0 && (
-              <section aria-labelledby="best-heading">
+              <section aria-labelledby="best-heading" className="pt-4">
                 <SectionHeader
-                  title="Bestsellers"
-                  subtitle="Top customer favorites"
+                  id="best-heading"
+                  title="Best sellers"
                   actionLabel="Full menu"
                   actionTo="/menu"
                 />
@@ -222,12 +195,12 @@ function HomePage() {
               </section>
             )}
 
-            {/* Curated Value Combos Rail — POS cat_combos only */}
+            {/* Actual meal/combo products from this outlet's normalized catalog. */}
             {bundle.popularCombos.length > 0 && (
-              <section aria-labelledby="combos-heading">
+              <section aria-labelledby="combos-heading" className="pt-4">
                 <SectionHeader
-                  title="Value Combos"
-                  subtitle="Pre-bundled savings"
+                  id="combos-heading"
+                  title="Make it a meal"
                   actionLabel="See all combos"
                   actionTo="/menu"
                 />
@@ -244,12 +217,12 @@ function HomePage() {
                 Refreshing menu…
               </p>
             )}
+
+            <HomeAnnouncements />
           </div>
         )}
       </div>
 
-      {/* Floating Mini Cart Bar */}
-      <FloatingCartBar />
     </AppShell>
   );
 }

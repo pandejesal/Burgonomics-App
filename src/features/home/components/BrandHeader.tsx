@@ -1,27 +1,29 @@
-import * as React from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { MapPin, ChevronDown, Search, Bell, Sparkles } from "lucide-react";
+﻿import * as React from "react";
+import { Link } from "@tanstack/react-router";
+import { MapPin, ChevronDown, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ModeSegmentedSwitch } from "./ModeSegmentedSwitch";
 import { useStoreSelection, type Fulfillment } from "@/features/stores/state/storeStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
-import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
 import { HapticService } from "@/core/services/haptics";
 
 interface BrandHeaderProps {
-  onSearchClick?: () => void;
   className?: string;
 }
 
-export function BrandHeader({ onSearchClick, className }: BrandHeaderProps) {
-  const navigate = useNavigate();
+/**
+ * Compact brand strip, unboxed outlet row, then the 48px mode control.
+ *
+ * Search deliberately does not live here: it sits beside the Menu heading below
+ * the promo, so the top of Home is brand + outlet + mode only.
+ */
+export function BrandHeader({ className }: BrandHeaderProps) {
   const activeStore = useStoreSelection((s) => s.activeStore);
   const fulfillment = useStoreSelection((s) => s.fulfillment);
   const setFulfillment = useStoreSelection((s) => s.setFulfillment);
 
   const selectedAddress = useAddressStore(selectSelectedAddress);
-  const loyaltyBalance = useLoyaltyStore((s) => s.balance);
   const unreadCount = useNotificationsStore((s) => s.unreadCount);
 
   const handleModeChange = (mode: Fulfillment) => {
@@ -30,120 +32,76 @@ export function BrandHeader({ onSearchClick, className }: BrandHeaderProps) {
 
   const outletDisplay = activeStore
     ? activeStore.name.replace("Burgonomics - ", "")
-    : "Select Outlet";
+    : "Select outlet";
 
   const locationSubtitle =
     fulfillment === "delivery"
       ? selectedAddress
-        ? `${selectedAddress.customLabel || selectedAddress.label.toUpperCase()} • ${selectedAddress.line1}`
+        ? `${selectedAddress.customLabel || selectedAddress.label} · ${selectedAddress.line1}`
         : "Tap to set delivery location"
       : activeStore
         ? activeStore.address.split(",")[0]
-        : "Ahmedabad, Gujarat";
+        : "Choose an outlet";
 
   return (
-    <header
-      className={cn(
-        "relative w-full bg-primary text-white pt-3 pb-6 px-4 rounded-b-3xl shadow-medium transition-all duration-300",
-        className,
-      )}
-    >
-      {/* Top Brand Bar */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        {/* Mascot + Brand Title */}
+    <header className={cn("w-full bg-background px-4 pt-3 pb-3 text-text-primary", className)}>
+      {/* Brand strip: mascot + company wordmark, notifications only */}
+      <div className="flex min-h-11 items-center justify-between gap-3">
         <Link
           to="/home"
-          className="flex items-center gap-2 focus:outline-none shrink-0"
+          aria-label="Burgonomics Home"
+          className="flex min-h-11 min-w-0 items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           onClick={() => void HapticService.selection()}
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white p-0.5 shadow-sm ring-2 ring-white/30 shrink-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface p-0.5">
             <img
               src="/burgonomics-logo.png"
-              alt="Burgonomics Mascot"
+              alt=""
               className="h-full w-full object-contain"
             />
           </div>
-          <span className="font-display text-lg font-black tracking-tight text-white uppercase">
+          <span className="type-brand-heading min-w-0 break-words text-2xl text-primary-text">
             BURGONOMICS
           </span>
         </Link>
 
-        {/* Right action group: Loyalty Points + Notifications */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Link
-            to="/offers"
-            aria-label="Loyalty Points"
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-[11px] font-bold text-amber-300 transition-colors shrink-0"
-          >
-            <Sparkles className="h-3 w-3 text-amber-300" />
-            <span>{loyaltyBalance} pts</span>
-          </Link>
-
+        <div className="shrink-0">
           <Link
             to="/profile/notifications"
             aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
-            className="relative flex h-8 w-8 items-center justify-center rounded-full bg-white/15 border border-white/25 hover:bg-white/25 transition-colors text-white shrink-0"
+            className="relative flex h-11 w-11 items-center justify-center rounded-full text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <Bell className="h-4 w-4" />
+            <Bell className="h-5 w-5" aria-hidden="true" />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent ring-1.5 ring-primary" />
+              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
             )}
           </Link>
         </div>
       </div>
 
-      {/* Outlet & Location Selector Pill */}
-      <div className="mb-3.5">
-        <Link
-          to="/stores"
-          onClick={() => void HapticService.selection()}
-          className="flex items-center gap-2.5 rounded-full bg-white/15 border border-white/20 px-3.5 py-2 hover:bg-white/20 transition-all text-left backdrop-blur-xs shadow-xs active:scale-[0.99]"
-        >
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-xs">
-            <MapPin className="h-3.5 w-3.5 stroke-[2.5px]" />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <span className="font-sans text-xs font-black text-white truncate">
-                {outletDisplay}
-              </span>
-              <ChevronDown className="h-3.5 w-3.5 text-white/80 shrink-0" />
-            </div>
-            <p className="text-[10px] text-white/80 font-medium truncate">
-              {locationSubtitle}
-            </p>
-          </div>
-        </Link>
-      </div>
-
-      {/* 3-Mode Fulfillment Segmented Switch */}
-      <div className="mb-3.5">
-        <ModeSegmentedSwitch
-          value={fulfillment}
-          onChange={handleModeChange}
-        />
-      </div>
-
-      {/* Full-width Search Bar */}
-      <div>
-        <button
-          type="button"
-          onClick={() => {
-            void HapticService.selection();
-            if (onSearchClick) onSearchClick();
-            else void navigate({ to: "/search" });
-          }}
-          className="flex w-full items-center gap-2.5 rounded-full bg-white px-4 py-2.5 text-left text-xs text-text-secondary shadow-md hover:shadow-lg transition-all active:scale-[0.99]"
-        >
-          <Search className="h-4 w-4 text-primary shrink-0 stroke-[2.5px]" />
-          <span className="flex-1 truncate text-gray-500 font-medium">
-            Search delicious burgers, combos, wraps...
+      {/* Outlet row: unboxed, city then outlet, wraps instead of clipping */}
+      <Link
+        to="/stores"
+        onClick={() => void HapticService.selection()}
+        className="mt-1 flex min-h-11 items-start gap-2.5 rounded-md py-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <MapPin className="mt-1 h-5 w-5 shrink-0 text-text-primary" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="block break-words text-sm leading-snug text-text-secondary">
+            {locationSubtitle}
           </span>
-          <span className="flex h-4 w-4 items-center justify-center rounded-[3px] border border-emerald-600 p-[1px] shrink-0">
-            <span className="h-2 w-2 rounded-full bg-emerald-600" />
+          <span className="mt-0.5 flex items-start gap-1">
+            <span className="type-subheading min-w-0 break-words text-base leading-snug text-text-primary">
+              {outletDisplay}
+            </span>
+            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" aria-hidden="true" />
           </span>
-        </button>
+        </span>
+      </Link>
+
+      {/* Single-row 3-mode control: 48px minimum, grows with text */}
+      <div className="mt-3">
+        <ModeSegmentedSwitch value={fulfillment} onChange={handleModeChange} />
       </div>
     </header>
   );

@@ -16,8 +16,6 @@ import {
   CreditCard,
   Sparkles,
   Timer,
-  Wallet,
-  Coins,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -31,6 +29,7 @@ import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAcceptance";
+import { hasUnreviewedLegacyNotes } from "@/features/checkout/utils/orderNotes";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { HapticService } from "@/core/services/haptics";
 import { AudioService } from "@/core/services/audio";
@@ -54,7 +53,6 @@ import {
   PaymentMethodSelector,
   calculateHaversineKm,
 } from "@/features/checkout";
-import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { useAddressStore, selectAddresses, selectSelectedAddress } from "@/features/addresses";
 import {
   usePaymentStore,
@@ -143,7 +141,7 @@ export function CheckoutPage() {
   const user = useAuthStore((s) => s.user);
 
   const orderNotes = useCheckoutStore((s) => s.orderNotes);
-  const setOrderNotes = useCheckoutStore((s) => s.setOrderNotes);
+  const legacyOrderNotes = useCheckoutStore((s) => s.legacyOrderNotes);
   const tableNumber = useCheckoutStore((s) => s.tableNumber ?? "");
   const setTableNumber = useCheckoutStore((s) => s.setTableNumber ?? (() => {}));
   
@@ -220,28 +218,30 @@ export function CheckoutPage() {
   // Kitchen-hours gate: PAY must lock itself at 23:00 IST even if this screen
   // has been sitting open since noon (the hook re-checks on tick + focus).
   const kitchen = useKitchenHours();
-  // Seeded from the persisted checkout store so a tip or points redemption
-  // chosen on the cart screen is still priced here — the payment payload
-  // (`PaymentRepository.createPaymentOrder`) reads the same values, so the
-  // To Pay below must already include them.
-  const [redeemPoints, setRedeemPoints] = React.useState(
-    () => useCheckoutStore.getState().loyaltyPointsToRedeem > 0,
-  );
+  // The tip chosen on the cart is still a real charge. Loyalty redemption was
+  // withdrawn (D31–D33): the checkout screen no longer offers it, the preview
+  // it shows carries zero points, and every payload pins 0 regardless of any
+  // legacy persisted value.
   const persistedTip = useCheckoutStore((s) => s.tipAmount);
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
 
-  const rawLoyaltyBalance = useLoyaltyStore((s) => s.balance);
-  // Finite-clamped: a hand-edited localStorage balance (999999) used to flow
-  // straight into the displayed discount and loyaltyPointsToRedeem. The server
-  // re-caps at charge time; the preview must not promise free money either.
-  const loyaltyBalance =
-    Number.isFinite(rawLoyaltyBalance) && (rawLoyaltyBalance as number) > 0
-      ? Math.floor(rawLoyaltyBalance as number)
-      : 0;
-  // 1 point = Rs.1, capped at 20% of subtotal — matches the server cap, so the
-  // displayed price is the price the gateway actually charges.
-  const maxPointsDiscount = Math.min(loyaltyBalance, Math.floor((totals?.subtotal ?? 0) * 0.2));
-  const pointsDiscount = redeemPoints ? maxPointsDiscount : 0;
+  // Legacy notes must be reviewed before money can move - including on a
+  // direct /checkout deep link. That covers BOTH an oversized inherited order
+  // note AND per-item notes carried by the current cart: neither is deleted or
+  // silently passed through.
+  const linesWithLegacyNotes = lines.filter((line) => (line.notes ?? "").trim().length > 0);
+  const legacyNotesPending = hasUnreviewedLegacyNotes(legacyOrderNotes, lines);
+  // The two review reasons read differently to the customer, so the alert
+  // below must not claim "longer than 240 characters" for an item note.
+  const legacyDraftPending = legacyOrderNotes.trim().length > 0;
+  const lineNotesPending = linesWithLegacyNotes.length > 0;
+
+  // Outlet/account lifecycle fence for the note draft (shared with the cart).
+  const uid = user?.id ?? null;
+  const storeId = activeStore?.id ?? null;
+  React.useEffect(() => {
+    useCheckoutStore.getState().bindNotesScope(uid, storeId);
+  }, [uid, storeId]);
 
   // 10-Minute Price Lock Countdown Timer (honest: no lock => no banner)
   React.useEffect(() => {
@@ -318,7 +318,7 @@ export function CheckoutPage() {
   // The delivery tip is a real charge: the server reprices with the same
   // `tipAmount` this screen reads, so it must already sit inside To Pay —
   // otherwise checkout quotes less than the gateway collects.
-  const finalPayable = Math.max(0, rawGrandTotal + persistedTip - pointsDiscount);
+  const finalPayable = Math.max(0, rawGrandTotal + persistedTip);
 
   // Hoisted so the ref-sync effect also runs safely on the initial skeleton
   // render, which returns before the checkout body is initialized.
@@ -347,6 +347,16 @@ export function CheckoutPage() {
     // send a payment for an order the kitchen can no longer accept.
     if (!kitchen.isOpen) {
       setValidationError(KITCHEN_CLOSED_MESSAGE);
+      return;
+    }
+
+    // An unresolved oversized note (saved by an older build) blocks payment —
+    // even on a direct /checkout entry with no cart visit. It is reviewed in
+    // the cart; this screen never edits it.
+    if (legacyNotesPending) {
+      setValidationError(
+        "A saved cooking note needs review before you can pay. Open the cart to shorten or discard it.",
+      );
       return;
     }
 
@@ -403,6 +413,17 @@ export function CheckoutPage() {
     if (placeOrderInFlight.current) return;
     setBusy(true);
     placeOrderInFlight.current = true;
+
+    // Capture the note draft BEFORE any async work. A draft written after this
+    // instant (same account and outlet included) is NEWER and must survive the
+    // completion of this order.
+    const notesDraftMark = useCheckoutStore
+      .getState()
+      .captureNotesDraft(
+        useAuthStore.getState().user?.id ?? null,
+        useStoreSelection.getState().activeStore?.id ?? null,
+      );
+
     // 1. Cart preflight validation
     const validation = await cartRepository.validateCart();
     if (!validation.success || !validation.data.valid) {
@@ -419,12 +440,14 @@ export function CheckoutPage() {
       return;
     }
 
-    // Sync the checkout-screen loyalty toggle into the persisted store BEFORE
-    // any create call: OrderRepository/PaymentRepository read
-    // checkout.loyaltyPointsToRedeem (which nothing else sets), not this
-    // component's local redeemPoints flag.
-    useCheckoutStore.getState().setLoyaltyPointsToRedeem(pointsDiscount);
+    // D31–D33: redemption withdrew from the customer app. Pin the persisted
+    // value to 0 before any create call so a legacy localStorage choice can
+    // never reach an order, a coupon reprice, or the gateway payload.
+    useCheckoutStore.getState().setLoyaltyPointsToRedeem(0);
 
+    // The note draft belongs to the account/outlet that placed the order; it is
+    // cleared only after success, only while it is still the exact draft
+    // (`notesDraftMark`) captured above.
     // 2. Cash on Delivery / Pay at Counter Flow
     if (paymentMethod === "cash") {
       try {
@@ -448,15 +471,10 @@ export function CheckoutPage() {
 
         AudioService.playSuccess();
         void HapticService.notification("success");
-        // Loop 65/120: no local decrement — the server debits redeemed coins
-        // on confirm (Loop 63). Refresh converges the display to ledger truth.
-        try {
-          const uid = useAuthStore.getState().user?.id ?? null;
-          void useLoyaltyStore.getState().refreshFromServer(uid);
-        } catch {
-          // best-effort; the confirmation screen re-syncs
-        }
+        // D31–D33: no loyalty balance refresh — balances/ledger are server-owned
+        // and the customer app no longer presents them.
         void cartRepository.clear();
+        useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
         void navigate({
           to: "/orders/$orderId/track",
           params: { orderId: created.data.id },
@@ -496,6 +514,7 @@ export function CheckoutPage() {
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
+        useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
         void navigate({
           to: "/orders/$orderId/track",
           params: { orderId: free.data.id },
@@ -516,7 +535,7 @@ export function CheckoutPage() {
       setPaymentStatus("preparing");
       setPaymentFailure(null);
       const orderRes = await paymentRepository.createPaymentOrder({
-        loyaltyPointsToRedeem: redeemPoints ? pointsDiscount : 0,
+        loyaltyPointsToRedeem: 0,
       });
       if (!orderRes.success) {
         setBusy(false);
@@ -692,18 +711,13 @@ export function CheckoutPage() {
               setPaymentStatus("success");
               AudioService.playSuccess();
               void HapticService.notification("success");
-              // Loop 65/120: no local decrement — the server debits redeemed
-              // coins on confirm (Loop 63). Refresh converges to ledger truth.
-              try {
-                const uid = useAuthStore.getState().user?.id ?? null;
-                void useLoyaltyStore.getState().refreshFromServer(uid);
-              } catch {
-                // best-effort; the confirmation screen re-syncs
-              }
+              // D31–D33: balances/ledger stay server-owned; nothing to refresh
+              // here because the app no longer presents a wallet.
               const reconUid = useAuthStore.getState().user?.id ?? null;
               clearPaymentReconciliation(reconUid);
               usePaymentStore.getState().clearReconciliation();
               void cartRepository.clear();
+              useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
               const orderId = created.success ? created.data.id : verify.data.confirmedOrderId;
               void navigate({
                 to: "/orders/$orderId/track",
@@ -779,75 +793,77 @@ export function CheckoutPage() {
       showTopBar
       bottomSlot={
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
-          <div className="mx-auto flex max-w-[520px] items-center justify-between gap-4">
+          <div className="mx-auto flex max-w-[520px] flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase font-bold text-text-secondary">To Pay</p>
-              <p className="font-mono text-xl font-black text-text">
+              <p className="text-sm font-medium text-text-secondary">To Pay</p>
+              <p className="type-price whitespace-nowrap text-xl text-text-primary">
                 {totals ? formatINR(finalPayable) : "—"}
               </p>
             </div>
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
-              aria-disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
+              disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending || legacyNotesPending}
+              aria-disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending || legacyNotesPending}
               title={
                 reconciliationPending
                   ? "We are confirming your payment — please do not pay again"
-                  : !kitchen.isOpen
-                    ? KITCHEN_CLOSED_MESSAGE
-                    : !isOnline
-                      ? "Back online to place your order"
-                      : totalsFailed
-                        ? "Couldn't compute your bill — retry above"
-                        : totals === null
-                          ? "Bill is still being computed"
-                          : undefined
+                  : legacyNotesPending
+                    ? "Review your saved cooking note in the cart first"
+                    : !kitchen.isOpen
+                      ? KITCHEN_CLOSED_MESSAGE
+                      : !isOnline
+                        ? "Back online to place your order"
+                        : totalsFailed
+                          ? "Couldn't compute your bill — retry above"
+                          : totals === null
+                            ? "Bill is still being computed"
+                            : undefined
               }
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
+              className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 type-button text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
               <span>
                 {reconciliationPending
-                  ? "PAYMENT UNDER REVIEW"
+                  ? "Payment under review"
                   : busy
                     ? "Processing Order..."
                     : !kitchen.isOpen
-                      ? "KITCHEN CLOSED"
+                      ? "Kitchen closed"
                       : !isOnline
-                        ? "OFFLINE — RECONNECT TO PAY"
+                        ? "Offline — reconnect to pay"
                         : totalsFailed
-                          ? "PAY — BILL UNAVAILABLE"
+                          ? "Pay — bill unavailable"
                           : totals === null
-                            ? "PAY — CHECKING BILL"
-                            : `PAY ${formatINR(finalPayable)} SECURELY`}
+                            ? "Pay — checking bill"
+                            : `Pay ${formatINR(finalPayable)} securely`}
               </span>
             </button>
           </div>
         </div>
       }
     >
-      <div className="mx-auto max-w-[520px] space-y-4 px-4 py-3 pb-28">
+      <div className="mx-auto max-w-[520px] space-y-6 px-4 py-5 pb-36">
         {/* Kitchen closed: browsing stays open, ordering is gated below. */}
         <KitchenClosedBanner />
 
         {/* Price Lock Banner */}
         {remainingLockSeconds !== null && (
-          <div className="flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-500/25 px-3.5 py-2 text-amber-800 dark:text-amber-300 shadow-xs">
-            <div className="flex items-center gap-2 text-xs font-semibold">
-              <Timer className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-large)] border border-warning/30 bg-warning/10 px-4 py-3 text-warning">
+            <div className="flex min-w-0 flex-1 items-start gap-2 type-caption">
+              <Timer className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
                 {remainingLockSeconds === 0
-                  ? "Price Lock Expired — Rechecked At Checkout"
-                  : "Checkout Price Locked"}
+                  ? "Price lock expired — rechecked at checkout"
+                  : "Checkout price locked"}
               </span>
             </div>
-            <span className="font-mono text-xs font-black">{formatCountdown(remainingLockSeconds)}</span>
+            <span className="type-price shrink-0 text-sm">{formatCountdown(remainingLockSeconds)}</span>
           </div>
         )}
 
         {validationError && (
-          <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs">
+          <div role="alert" aria-live="assertive" className="rounded-[var(--radius-large)] border border-error/30 bg-error/10 p-4 type-body-medium text-error">
             {validationError}
           </div>
         )}
@@ -876,12 +892,12 @@ export function CheckoutPage() {
         {/* Bill unavailable: totals computation failed (e.g. no store pricing).
             PAY stays disabled until recompute succeeds — never charge ₹0. */}
         {totalsFailed && (
-          <div role="alert" aria-live="assertive" className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs font-bold text-red-500 shadow-xs flex items-center justify-between gap-3">
+          <div role="alert" aria-live="assertive" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-error/30 bg-error/10 p-4 type-body-medium text-error">
             <span>Couldn&apos;t compute your bill. Check your connection and retry.</span>
             <button
               type="button"
               onClick={() => void recompute()}
-              className="shrink-0 px-3 py-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 transition-colors cursor-pointer"
+              className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-full bg-error/15 px-4 type-button-sm transition-colors hover:bg-error/25"
             >
               Retry
             </button>
@@ -899,7 +915,7 @@ export function CheckoutPage() {
 
         {/* Address Selection with Geofencing (Delivery Mode Only) — Standard Delivery only */}
         {isDelivery && (
-          <div className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-3">
+          <div className="space-y-4 rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
             <AddressSelector
               addresses={addresses}
               selectedAddress={selectedAddress}
@@ -909,15 +925,15 @@ export function CheckoutPage() {
             />
 
             <div className="pt-2 border-t border-divider">
-              <div className="flex items-center gap-2.5 rounded-xl border border-[#0E4825]/30 bg-[#0E4825]/5 p-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0E4825] text-white">
+              <div className="flex flex-wrap items-start gap-2.5 rounded-[var(--radius-medium)] border border-primary/30 bg-primary/5 p-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary text-primary-foreground">
                   <Bike className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-text">Standard Delivery</p>
-                  <p className="text-[11px] text-text-secondary">{activeStore?.etaMinutes != null ? `Delivered hot in ~${activeStore.etaMinutes} mins • No scheduling needed` : "Delivered hot • No scheduling needed"}</p>
+                  <p className="type-body font-semibold text-text-primary">Standard Delivery</p>
+                  <p className="type-caption text-text-secondary">{activeStore?.etaMinutes != null ? `Delivered hot in ~${activeStore.etaMinutes} mins • No scheduling needed` : "Delivered hot • No scheduling needed"}</p>
                 </div>
-                <span className="shrink-0 rounded-full bg-[#0E4825] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+                <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 type-caption font-semibold text-primary-text">
                   ASAP
                 </span>
               </div>
@@ -926,130 +942,127 @@ export function CheckoutPage() {
         )}
 
         {/* 2. Order Review & Cooking Notes */}
-        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-divider pb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#0E4825]/10 text-[#0E4825] dark:text-[#4ADE80] flex items-center justify-center">
+        <section className="space-y-4 rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-divider pb-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary/10 text-primary-text">
                 <ShoppingBag className="h-4 w-4" />
               </div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-text">
+              <h2 className="type-title-medium text-text-primary">
                 2. Order Review ({itemCount} {itemCount === 1 ? "Item" : "Items"})
               </h2>
             </div>
-            <Link to="/cart" className="text-xs font-bold text-[#FF6600] hover:underline">
+            <Link to="/cart" className="-mr-2 inline-flex min-h-11 items-center px-2 type-caption font-semibold text-primary-text hover:underline">
               Edit Cart
             </Link>
           </div>
 
           <div className="space-y-2 divide-y divide-divider/50">
             {lines.map((line) => (
-              <div key={line.lineId} className="flex items-center justify-between pt-2 first:pt-0 select-none">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border border-emerald-600 p-[1px]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+              <div key={line.lineId} className="flex items-start justify-between gap-3 pt-3 first:pt-0 select-none">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <span className="mt-1 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border border-success p-[1px]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
                   </span>
-                  <p className="text-xs font-bold text-text truncate">
-                    <span className="text-[#FF6600] mr-1">{line.quantity}x</span> {line.name}
+                  <p className="type-body break-words font-medium text-text-primary">
+                    <span className="mr-1 font-semibold text-primary-text">{line.quantity}x</span> {line.name}
                   </p>
                 </div>
-                <span className="text-xs font-mono font-bold text-text shrink-0">
+                <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
                   {formatINR(line.unitPrice * line.quantity)}
                 </span>
               </div>
             ))}
           </div>
 
-          <div className="pt-2">
-            <label htmlFor="order-notes" className="block text-[11px] font-bold text-text-secondary mb-1">
-              Cooking / Delivery Instructions
-            </label>
-            <input
-              id="order-notes"
-              type="text"
-              placeholder="e.g. Leave package at door, extra napkins, less spicy..."
-              value={orderNotes}
-              onChange={(e) => setOrderNotes(e.target.value)}
-              className="w-full min-h-[44px] rounded-xl border border-divider bg-bg-secondary px-3.5 py-2 text-xs text-text outline-none focus:border-primary transition-colors"
-            />
+          <div className="space-y-2 border-t border-divider pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-text">Cooking instructions</p>
+              <Link to="/cart" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-text hover:underline">
+                Edit in Cart
+              </Link>
+            </div>
+            {legacyDraftPending ? (
+              <div role="alert" className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3">
+                <p className="text-sm font-medium text-text">
+                  Your saved note needs review before payment
+                </p>
+                <p className="text-sm text-text-secondary">
+                  It was saved by an older version and is longer than the 240-character limit.
+                  It is not attached to this order. Review it in the cart.
+                </p>
+                <p className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-sm text-text">
+                  {legacyOrderNotes}
+                </p>
+              </div>
+            ) : lineNotesPending ? (
+              <div role="alert" className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3">
+                <p className="text-sm font-medium text-text">
+                  Item notes need review before payment
+                </p>
+                <p className="text-sm text-text-secondary">
+                  Some items still carry a note from an older cart. Move it into the order
+                  note or remove it in the cart — it is not attached to this order.
+                </p>
+              </div>
+            ) : orderNotes.trim().length > 0 ? (
+              <p className="whitespace-pre-wrap break-words rounded-xl border border-divider bg-bg-secondary p-3 text-sm text-text">
+                {orderNotes}
+              </p>
+            ) : (
+              <p className="text-sm text-text-secondary">No cooking instructions added.</p>
+            )}
           </div>
         </section>
 
-        {/* 3. Coupons & Loyalty Rewards */}
-        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-3">
-          <div className="flex items-center gap-2 border-b border-divider pb-2">
-            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
+        {/* 3. Coupons */}
+        <section className="space-y-4 rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
+          <div className="flex items-center gap-2 border-b border-divider pb-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-accent/10 text-accent-text">
               <Sparkles className="h-4 w-4" />
             </div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-text">
-              3. Coupons & Loyalty Points
+            <h2 className="type-title-medium text-text-primary">
+              3. Coupons
             </h2>
           </div>
 
           <PromoInput applied={promo} onChanged={() => void recompute()} />
 
-          {/* Loyalty Points redemption toggle — 1 pt = Rs.1, max 20% of subtotal */}
-          <div className="flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3.5 select-none">
-            <div className="flex items-center gap-2.5">
-              <Coins className="h-5 w-5 text-amber-600 shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-text">
-                  Redeem Loyalty Points
-                </p>
-                <p className="text-[11px] text-text-secondary">
-                  Balance: {loyaltyBalance} pts ({formatINR(maxPointsDiscount)} max off)
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled={maxPointsDiscount <= 0}
-              onClick={() => {
-                void HapticService.selection();
-                setRedeemPoints(!redeemPoints);
-              }}
-              aria-pressed={redeemPoints}
-              aria-label="Redeem loyalty points"
-              className={`rounded-full px-3.5 py-1.5 min-h-[44px] text-xs font-bold transition-all cursor-pointer disabled:opacity-40 ${
-                redeemPoints
-                  ? "bg-[#0E4825] text-white shadow-xs"
-                  : "bg-surface border border-divider text-text hover:border-primary"
-              }`}
-            >
-              {redeemPoints ? "Applied" : "Redeem"}
-            </button>
-          </div>
+          {/* D31–D33: loyalty balance/redemption UI removed. Server-held
+              balances and ledger history are preserved; the client always
+              sends zero points. */}
         </section>
 
         {/* 4. Bill Summary */}
-        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-2.5">
-          <div className="flex items-center gap-2 border-b border-divider pb-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-text">
+        <section className="space-y-4 rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
+          <div className="flex items-center gap-2 border-b border-divider pb-3">
+            <h2 className="type-title-medium text-text-primary">
               4. Bill Breakdown
             </h2>
           </div>
 
-          <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between text-text-secondary">
+          <div className="space-y-2.5 type-caption">
+            <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Item Total</span>
-              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.subtotal) : <span className="text-warning">unavailable</span>}</span>
+              <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">{totals ? formatINR(totals.subtotal) : <span className="text-warning">unavailable</span>}</span>
             </div>
-            <div className="flex justify-between text-text-secondary">
+            <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Govt. GST (5% included)</span>
-              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.taxes) : <span className="text-warning">unavailable</span>}</span>
+              <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">{totals ? formatINR(totals.taxes) : <span className="text-warning">unavailable</span>}</span>
             </div>
-            <div className="flex justify-between text-text-secondary">
+            <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Restaurant Packaging</span>
-              <span className="font-mono font-bold text-text">
-                {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning">unavailable</span>}
+              <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
+                {isDineIn ? <span className="font-semibold text-success">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning">unavailable</span>}
               </span>
             </div>
             {/* Delivery Fee — same rule as BillBreakdown: only delivery shows it. */}
             {isDelivery && (
-              <div className="flex justify-between text-text-secondary">
+              <div className="flex items-start justify-between gap-3 text-text-secondary">
                 <span>Delivery Fee</span>
-                <span className="font-mono font-bold text-text">
+                <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
                   {totals?.deliveryFee === 0 ? (
-                    <span className="font-bold text-[#4ADE80] uppercase text-[10px]">FREE</span>
+                    <span className="font-semibold text-success">FREE</span>
                   ) : totals ? (
                     formatINR(totals.deliveryFee)
                   ) : (
@@ -1061,35 +1074,28 @@ export function CheckoutPage() {
 
             {/* Delivery Partner Tip — chosen on the cart, charged by the server. */}
             {persistedTip > 0 && (
-              <div className="flex justify-between text-text-secondary">
+              <div className="flex items-start justify-between gap-3 text-text-secondary">
                 <span>Delivery Partner Tip</span>
-                <span className="font-mono font-bold text-text">{formatINR(persistedTip)}</span>
+                <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">{formatINR(persistedTip)}</span>
               </div>
             )}
 
             {totals?.promoDiscount ? (
-              <div className="flex justify-between text-[#4ADE80] font-semibold">
+              <div className="flex items-start justify-between gap-3 font-medium text-success">
                 <span>Coupon Discount ({promo?.code ?? "PROMO"})</span>
-                <span className="font-mono font-bold">-{formatINR(totals.promoDiscount)}</span>
+                <span className="type-price shrink-0 whitespace-nowrap text-right">-{formatINR(totals.promoDiscount)}</span>
               </div>
             ) : null}
 
-            {redeemPoints && pointsDiscount > 0 && (
-              <div className="flex justify-between text-[#4ADE80] font-semibold">
-                <span>Loyalty Points Redeemed</span>
-                <span className="font-mono font-bold">-{formatINR(pointsDiscount)}</span>
-              </div>
-            )}
-
-            <div className="border-t border-divider pt-2.5 flex justify-between text-sm sm:text-base font-black text-text">
+            <div className="flex items-start justify-between gap-3 border-t border-divider pt-3 type-title-medium text-text-primary">
               <span>To Pay</span>
-              <span className="font-mono text-[#FF6600] font-black text-lg">{totals ? formatINR(finalPayable) : "—"}</span>
+              <span className="type-price shrink-0 whitespace-nowrap text-right text-lg text-text-primary">{totals ? formatINR(finalPayable) : "—"}</span>
             </div>
           </div>
         </section>
 
         {/* 5. Payment Method Selector */}
-        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs">
+        <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
           <PaymentMethodSelector
             selectedMethod={paymentMethod}
             onSelectMethod={(method) => setPaymentMethod(method)}

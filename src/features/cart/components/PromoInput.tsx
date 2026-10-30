@@ -101,10 +101,10 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
         <div className="flex min-w-0 items-center gap-2">
           <Tag className="h-4 w-4 shrink-0 text-success" aria-hidden />
           <div className="min-w-0">
-            <Text variant="titleMedium" className="truncate">
+            <Text variant="titleMedium" className="break-words">
               {applied.description ?? applied.code}
             </Text>
-            <Text variant="caption" tone="secondary" className="truncate">
+            <Text variant="caption" tone="secondary" className="break-words">
               {applied.code} · {applied.savingsLabel ?? `−${formatINR(applied.discount)}`}
             </Text>
           </div>
@@ -113,7 +113,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
           type="button"
           onClick={() => void remove()}
           aria-label="Remove offer"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-text-secondary hover:bg-bg-secondary"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-text-secondary hover:bg-bg-secondary"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>
@@ -124,7 +124,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
   return (
     <div className="space-y-2">
       <form onSubmit={apply} className="space-y-1">
-        <label className="flex items-center gap-2 rounded-[var(--radius-medium)] border border-divider bg-surface px-3">
+        <label className="flex items-center gap-2 rounded-[var(--radius-medium)] border border-text-secondary/60 bg-surface px-3">
           <Tag className="h-4 w-4 text-text-secondary" aria-hidden />
           <input
             type="text"
@@ -138,7 +138,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            className="min-h-[44px] flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled"
+            className="min-h-[44px] min-w-0 flex-1 bg-transparent outline-none type-body-large placeholder:text-text-secondary"
           />
           <AppButton type="submit" variant="ghost" size="sm" disabled={!code.trim()} loading={busy}>
             Apply
@@ -153,7 +153,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
       {showBrowseLink && (
         <Link
           to="/offers"
-          className="inline-flex items-center gap-1.5 type-label-large text-primary hover:underline"
+          className="inline-flex min-h-11 items-center gap-1.5 type-label-large text-primary-text hover:underline"
         >
           <Sparkles className="h-4 w-4" aria-hidden />
           Browse available offers

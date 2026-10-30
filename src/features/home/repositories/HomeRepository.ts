@@ -4,7 +4,6 @@ import type {
   Banner,
   Combo,
   HomeBundle,
-  QuickReorderItem,
   RecommendationItem,
 } from "@/features/home/models";
 import type { MenuCategory, MenuItem } from "@/features/menu/services/menuService";
@@ -39,9 +38,6 @@ export class HomeRepository {
   }
   getRecommendations(storeId: string): Promise<ApiResult<RecommendationItem[]>> {
     return this.service.getRecommendations(storeId);
-  }
-  getQuickReorder(userId: string): Promise<ApiResult<QuickReorderItem[]>> {
-    return this.service.getQuickReorder(userId);
   }
 }
 

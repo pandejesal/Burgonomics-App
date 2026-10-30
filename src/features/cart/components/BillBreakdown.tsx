@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Receipt, Info, Sparkles, ShieldCheck } from "lucide-react";
+import { Receipt, Info, Sparkles } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
 import { cn } from "@/lib/utils";
 import type { Fulfillment } from "@/features/stores/models/Store";
@@ -59,78 +59,81 @@ export function BillBreakdown({
   // of the item total double-charges the 5% GST the customer already paid.
   const toPay = Math.max(
     0,
-    subtotal - discountAmount - coinsRedeemed + actualPackagingFee + actualDeliveryFee + tipAmount
+    subtotal - discountAmount - coinsRedeemed + actualPackagingFee + actualDeliveryFee + tipAmount,
   );
 
   return (
-    <div className={cn("p-4 sm:p-5 rounded-2xl bg-surface border border-divider space-y-3.5 shadow-xs", className)}>
-      <div className="flex items-center justify-between pb-2 border-b border-divider">
+    <div
+      className={cn(
+        "space-y-4 border-t border-divider py-5",
+        className,
+      )}
+    >
+      <div className="flex flex-col gap-1 border-b border-divider pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <Receipt className="w-4 h-4 text-[#0E4825] dark:text-[#4ADE80]" />
-          <h4 className="text-sm font-bold text-text uppercase tracking-tight">
-            Bill Details
-          </h4>
+          <Receipt className="h-5 w-5 shrink-0 text-primary dark:text-primary-text" aria-hidden />
+          <h4 className="type-title-medium text-text-primary">Bill Details</h4>
         </div>
-        <span className="text-[10px] text-text-secondary font-medium">
-          Inclusive of all taxes (5% GST)
-        </span>
+        <span className="type-caption text-text-secondary">Inclusive of all taxes (5% GST)</span>
       </div>
 
-      <div className="space-y-2 text-xs">
-        {/* Item Total */}
-        <div className="flex items-center justify-between text-text">
-          <span>Item Total</span>
-          <span className="font-mono font-bold">{formatINR(subtotal)}</span>
+      <div className="space-y-2.5 type-caption">
+        <div className="flex items-start justify-between gap-3 text-text-primary">
+          <span className="min-w-0">Item Total</span>
+          <span className="type-price shrink-0 whitespace-nowrap text-right">
+            {formatINR(subtotal)}
+          </span>
         </div>
 
-        {/* Coupon Discount */}
         {discountAmount > 0 && (
-          <div className="flex items-center justify-between text-[#4ADE80]">
-            <span className="flex items-center gap-1 font-medium">
-              <Sparkles className="w-3 h-3 text-amber-300" />
+          <div className="flex items-start justify-between gap-3 text-success">
+            <span className="flex min-w-0 items-center gap-1 font-medium">
+              <Sparkles className="h-4 w-4 shrink-0 text-accent" aria-hidden />
               <span>Coupon Discount</span>
             </span>
-            <span className="font-mono font-bold">- {formatINR(discountAmount)}</span>
+            <span className="type-price shrink-0 whitespace-nowrap text-right">
+              - {formatINR(discountAmount)}
+            </span>
           </div>
         )}
 
-        {/* Loyalty Points */}
         {coinsRedeemed > 0 && (
-          <div className="flex items-center justify-between text-[#4ADE80]">
-            <span className="font-medium">Loyalty Points Redeemed</span>
-            <span className="font-mono font-bold">- {formatINR(coinsRedeemed)}</span>
+          <div className="flex items-start justify-between gap-3 text-success">
+            <span className="min-w-0 font-medium">Loyalty Points Redeemed</span>
+            <span className="type-price shrink-0 whitespace-nowrap text-right">
+              - {formatINR(coinsRedeemed)}
+            </span>
           </div>
         )}
 
-        {/* Taxes & Charges */}
-        <div className="flex items-center justify-between text-text-secondary">
+        <div className="flex items-start justify-between gap-3 text-text-secondary">
           <span
-            className="cursor-help flex items-center gap-1 hover:text-text"
+            className="flex min-w-0 cursor-help items-center gap-1 hover:text-text-primary"
             title={`2.5% CGST (₹${cgst}) + 2.5% SGST (₹${sgst}) — already part of Item Total`}
           >
             <span>Govt. GST (5% included)</span>
-            <Info className="w-3 h-3 opacity-60" />
+            <Info className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
           </span>
-          <span className="font-mono font-bold">{formatINR(calculatedGST)}</span>
+          <span className="type-price shrink-0 whitespace-nowrap text-right">
+            {formatINR(calculatedGST)}
+          </span>
         </div>
 
-        {/* Restaurant Packaging Fee */}
         {actualPackagingFee > 0 && (
-          <div className="flex items-center justify-between text-text-secondary">
-            <span>Restaurant Packaging</span>
-            <span className="font-mono font-bold">{formatINR(actualPackagingFee)}</span>
+          <div className="flex items-start justify-between gap-3 text-text-secondary">
+            <span className="min-w-0">Restaurant Packaging</span>
+            <span className="type-price shrink-0 whitespace-nowrap text-right">
+              {formatINR(actualPackagingFee)}
+            </span>
           </div>
         )}
 
-        {/* Delivery Fee */}
         {isDelivery && (
-          <div className="flex items-center justify-between text-text-secondary">
-            <span>Delivery Fee</span>
-            <span className="font-mono font-bold">
+          <div className="flex items-start justify-between gap-3 text-text-secondary">
+            <span className="min-w-0">Delivery Fee</span>
+            <span className="type-price shrink-0 whitespace-nowrap text-right">
               {actualDeliveryFee === 0 ? (
-                <span className="text-[#4ADE80] uppercase text-[10px] font-black">
-                  FREE
-                </span>
+                <span className="text-success font-semibold">FREE</span>
               ) : (
                 formatINR(actualDeliveryFee)
               )}
@@ -138,26 +141,27 @@ export function BillBreakdown({
           </div>
         )}
 
-        {/* Delivery Partner Tip */}
         {tipAmount > 0 && (
-          <div className="flex items-center justify-between text-text">
-            <span>Delivery Partner Tip</span>
-            <span className="font-mono font-bold">{formatINR(tipAmount)}</span>
+          <div className="flex items-start justify-between gap-3 text-text-primary">
+            <span className="min-w-0">Delivery Partner Tip</span>
+            <span className="type-price shrink-0 whitespace-nowrap text-right">
+              {formatINR(tipAmount)}
+            </span>
           </div>
         )}
 
-        {/* Total Savings Banner */}
         {totalSavings > 0 && (
-          <div className="p-2.5 rounded-xl bg-[#0E4825]/15 border border-[#0E4825]/40 text-[#4ADE80] flex items-center justify-between font-bold text-xs">
-            <span>Your Total Savings</span>
-            <span className="font-mono">{formatINR(totalSavings)}</span>
+          <div className="flex items-start justify-between gap-3 rounded-[var(--radius-medium)] border border-primary/30 bg-primary/10 px-3 py-2.5 text-primary-text">
+            <span className="min-w-0 font-semibold">Your Total Savings</span>
+            <span className="type-price shrink-0 whitespace-nowrap text-right">
+              {formatINR(totalSavings)}
+            </span>
           </div>
         )}
 
-        {/* Final "To Pay" Row */}
-        <div className="pt-2.5 border-t border-divider flex items-baseline justify-between text-sm sm:text-base font-black text-text">
-          <span>To Pay</span>
-          <span className="font-mono text-[#FF6600] font-black text-lg">
+        <div className="flex items-center justify-between gap-3 border-t border-divider pt-3">
+          <span className="type-title-medium text-text-primary">To Pay</span>
+          <span className="type-price whitespace-nowrap text-right text-lg text-text-primary sm:text-xl">
             {formatINR(toPay)}
           </span>
         </div>

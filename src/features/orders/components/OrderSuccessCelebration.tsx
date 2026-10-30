@@ -122,9 +122,9 @@ export function OrderSuccessCelebration({
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", damping: 15 }}
-          className="absolute -bottom-1 -right-1 grid h-9 w-9 place-items-center rounded-full bg-[#0E4825] text-white border-2 border-surface shadow-lg"
+          className="absolute -bottom-1 -right-1 grid h-9 w-9 place-items-center rounded-full border-2 border-surface bg-primary text-primary-foreground shadow-lg"
         >
-          <CheckCircle2 className="h-6 w-6 text-[#4ADE80]" />
+          <CheckCircle2 className="h-6 w-6" aria-hidden />
         </motion.div>
       </motion.div>
 
@@ -132,17 +132,17 @@ export function OrderSuccessCelebration({
         initial={{ y: 15, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.15, duration: 0.4 }}
-        className="mt-4 space-y-1.5"
+        className="mt-4 space-y-2"
       >
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0E4825]/10 border border-[#0E4825]/20 text-[#0E4825] dark:text-[#4ADE80] text-xs font-black uppercase tracking-wider">
-          <Sparkles className="w-3.5 h-3.5 text-[#FF6600]" />
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-semibold text-primary-text">
+          <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden />
           <span>Order Placed Successfully!</span>
         </div>
-        <h1 className="text-xl sm:text-2xl font-black text-text tracking-tight">
-          Your Delicious Burgers Are In The Works!
+        <h1 className="type-display-medium text-text">
+          Your delicious burgers are in the works!
         </h1>
-        <p className="text-xs sm:text-sm text-text-secondary">
-          Order ID: <span className="font-mono font-bold text-text">{orderNumber}</span> • {petpoojaStatus === "Synced"
+        <p className="text-base leading-relaxed text-text-secondary">
+          Order ID: <span className="font-semibold tabular-nums text-text">{orderNumber}</span> • {petpoojaStatus === "Synced"
             ? "We've sent your ticket to the kitchen."
             : "Kitchen confirmation is pending."}
         </p>

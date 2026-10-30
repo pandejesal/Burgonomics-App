@@ -56,13 +56,13 @@ export const TicketListAccordion = React.memo(function TicketListAccordion({
               type="button"
               aria-expanded={open}
               onClick={() => setOpenId(open ? null : t.id)}
-              className="flex w-full items-center justify-between gap-2 p-3.5 text-left cursor-pointer"
+              className="flex min-h-11 w-full items-center justify-between gap-3 p-4 text-left cursor-pointer"
             >
               <div className="min-w-0">
-                <p className="truncate text-xs font-bold text-text">
+                <p className="text-sm font-semibold text-text break-words">
                   {t.ticketNumber} · {t.categoryLabel}
                 </p>
-                <p className="truncate text-[11px] text-text-secondary">{t.description}</p>
+                <p className="text-sm leading-relaxed text-text-secondary break-words">{t.description}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <AppBadge tone={t.status === "RESOLVED" ? "success" : t.status === "ESCALATED" ? "warning" : "neutral"}>
@@ -72,12 +72,12 @@ export const TicketListAccordion = React.memo(function TicketListAccordion({
               </div>
             </button>
             {open && (
-              <div className="space-y-1.5 border-t border-divider px-3.5 py-3 text-[11px] text-text-secondary">
+              <div className="space-y-2 border-t border-divider px-4 py-3.5 text-sm leading-relaxed text-text-secondary">
                 <p>Opened {new Date(t.createdAt).toLocaleString()}</p>
                 {t.orderShortCode && <p>Order: {t.orderShortCode}</p>}
-                {t.priority === "urgent" && <p className="font-bold text-warning">Marked urgent</p>}
+                {t.priority === "urgent" && <p className="font-semibold text-warning">Marked urgent</p>}
                 {t.managerResponse ? (
-                  <p className="rounded-xl bg-bg-secondary p-2.5 text-text">{t.managerResponse}</p>
+                  <p className="rounded-xl bg-bg-secondary p-3 text-text">{t.managerResponse}</p>
                 ) : (
                   <p>No response yet — the store team has been notified.</p>
                 )}

@@ -3,6 +3,7 @@ import {
   type MenuCategory,
   type MenuItem,
   type MenuSearchOptions,
+  type MenuStoreSnapshot,
 } from "@/features/menu/services/menuService";
 import type {
   CustomizationGroup,
@@ -89,6 +90,17 @@ export class MenuRepository {
     callback: (result: ApiResult<ProductDetails | null>) => void,
   ): () => void {
     return this.service.subscribeProduct(id, callback);
+  }
+
+  /**
+   * Whole store-scoped snapshot + explicit removals. The continuous menu needs
+   * this to keep every already-rendered card current without a page-1 shape.
+   */
+  subscribeStoreProducts(
+    storeId: string | undefined,
+    callback: (result: ApiResult<MenuStoreSnapshot>) => void,
+  ): () => void {
+    return this.service.subscribeStoreProducts(storeId, callback);
   }
 }
 

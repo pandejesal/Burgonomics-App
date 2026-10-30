@@ -19,8 +19,9 @@ export function ComboCard({ combo, className }: Props) {
   const savingsPct = combo.originalPrice ? Math.round((savings / combo.originalPrice) * 100) : 0;
 
   const handleClick = () => {
-    if (combo.id && combo.id.startsWith("prd_")) {
-      void navigate({ to: "/menu/product/$productId", params: { productId: combo.id } });
+    const productId = combo.productId || (combo.id?.startsWith("prd_") ? combo.id : undefined);
+    if (productId) {
+      void navigate({ to: "/menu/product/$productId", params: { productId } });
     } else {
       void navigate({ to: "/menu" });
     }
@@ -30,27 +31,26 @@ export function ComboCard({ combo, className }: Props) {
     <button
       type="button"
       onClick={handleClick}
-      aria-label={`${combo.name}, ${combo.description}, ${formatINR(combo.price)}, save ${formatINR(savings)}`}
-      className="block text-left cursor-pointer"
+      aria-label={`${combo.name}, ${combo.description}, ${formatINR(combo.price)}${savings > 0 ? `, save ${formatINR(savings)}` : ""}`}
+      className="block rounded-2xl text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       <AppCard
-        elevation="low"
+        elevation="flat"
         padded={false}
         className={cn(
-          "w-[240px] overflow-hidden transition-transform duration-200 active:scale-[0.98]",
+          "w-[264px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-none border-0 bg-transparent shadow-none",
           className,
         )}
       >
         <div
           className={cn(
-            "relative h-32 bg-gradient-to-br overflow-hidden bg-bg-secondary",
-            !combo.imageUrl && "grid place-items-center text-5xl",
-            !combo.imageUrl && combo.gradient,
+            "relative aspect-[4/3] overflow-hidden rounded-xl bg-bg-secondary",
+            !combo.imageUrl && "grid place-items-center",
           )}
           aria-hidden
         >
           {savingsPct > 0 && (
-            <AppBadge tone="success" className="absolute left-2 top-2 z-10 font-bold shadow-xs">
+            <AppBadge tone="success" className="absolute left-3 top-3 z-10 text-sm font-medium">
               Save {savingsPct}%
             </AppBadge>
           )}
@@ -61,27 +61,25 @@ export function ComboCard({ combo, className }: Props) {
               alt={combo.name}
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+              className="h-full w-full object-cover"
             />
-          ) : combo.visual ? (
-            <span>{combo.visual}</span>
           ) : (
-            <span className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Burgonomics</span>
+            <span className="p-4 text-sm text-text-secondary">Photo unavailable</span>
           )}
         </div>
-        <div className="p-3 bg-surface">
-          <Text variant="titleMedium" className="truncate font-bold">
+        <div className="pt-3">
+          <Text as="h3" variant="titleMedium" className="text-base font-semibold leading-snug break-words">
             {combo.name}
           </Text>
-          <Text variant="bodyMedium" tone="secondary" className="line-clamp-2 text-xs">
+          <Text variant="bodyMedium" tone="secondary" className="mt-2 text-sm leading-relaxed">
             {combo.description}
           </Text>
-          <div className="mt-2 flex items-baseline gap-2">
-            <Text variant="headlineMedium" className="text-primary tracking-wide">
+          <div className="mt-4 flex flex-wrap items-baseline gap-2">
+            <Text as="span" variant="bodyLarge" className="text-base font-semibold text-primary-text">
               {formatINR(combo.price)}
             </Text>
             {savings > 0 && (
-              <span className="type-caption text-text-disabled line-through">
+              <span className="text-sm text-text-secondary line-through">
                 {formatINR(combo.originalPrice)}
               </span>
             )}

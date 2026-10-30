@@ -20,7 +20,6 @@ import { profileRepository } from "@/features/profile/repositories/ProfileReposi
 import { favoritesRepository } from "@/features/favorites/repositories/FavoritesRepository";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
 import { ProfileHeader } from "@/features/profile/components/ProfileHeader";
-import { GrillCoinsWalletCard } from "@/features/profile/components/GrillCoinsWalletCard";
 import {
   ProfileMenuList,
   type ProfileMenuItem,
@@ -33,7 +32,7 @@ export const Route = createFileRoute("/profile/")({
   head: () => ({
     meta: [
       { title: "Profile — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "Manage your Burgonomics account, saved addresses, favorites and loyalty points." },
+      { name: "description", content: "Manage your Burgonomics account, saved addresses, favourites and orders." },
     ],
   }),
   component: Page,
@@ -117,7 +116,7 @@ function Page() {
       to: "/profile/notifications",
       Icon: Bell,
       trailing: unreadCount > 0 ? (
-        <span className="px-2 py-0.5 rounded-full bg-accent text-white text-[10px] font-black">
+        <span className="rounded-full bg-accent px-2 py-0.5 text-sm font-semibold text-accent-foreground">
           {unreadCount}
         </span>
       ) : undefined,
@@ -144,13 +143,12 @@ function Page() {
 
   return (
     <AppShell title="Profile" showTabs showTopBar>
-      <div className="mx-auto max-w-[520px] space-y-4 px-4 py-4">
+      <div className="mx-auto max-w-[520px] space-y-5 px-4 py-5">
         <ProfileHeader profile={activeProfile} completion={completion} />
-        <GrillCoinsWalletCard />
         <ProfileMenuList title="Account" items={accountItems} />
         <ProfileMenuList title="More" items={helpItems} />
         <ProfileMenuList items={dangerItems} />
-        <p className="pt-2 text-center text-xs text-text-secondary">
+        <p className="pt-2 text-center text-sm text-text-secondary">
           Burgonomics — 100% Pure Vegetarian
         </p>
       </div>

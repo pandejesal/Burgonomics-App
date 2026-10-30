@@ -23,19 +23,40 @@ const RAW_PRICING_TEXT = "RAW PRICING DIAGNOSTIC";
 const RAW_GATEWAY_TEXT = "RAW GATEWAY TEXT bank declined 51 (BAD_REQUEST_ERROR)";
 
 const fixture = vi.hoisted(() => {
-  const lines = [{ lineId: "l1", name: "Test Burger", quantity: 1, unitPrice: 199 }];
+  const lines = [
+    {
+      lineId: "l1",
+      name: "Test Burger",
+      quantity: 1,
+      unitPrice: 199,
+      notes: undefined as string | undefined,
+    },
+  ];
   const cartState = { lines, promo: null, priceLockExpiresAt: null };
   const checkoutState = {
     orderNotes: "",
+    legacyOrderNotes: "",
     deliveryInstructions: "",
     pickupInstructions: "",
     diningNotes: "",
     tipAmount: 0,
     loyaltyPointsToRedeem: 0,
     tableNumber: "",
+    notesRevision: 0,
+    notesScope: null as { uid: string | null; storeId: string | null } | null,
     setOrderNotes: vi.fn(),
     setTableNumber: vi.fn(),
     setLoyaltyPointsToRedeem: vi.fn(),
+    resolveLegacyOrderNotes: vi.fn(),
+    clearNotesAfterCompletedOrder: vi.fn(),
+    bindNotesScope: vi.fn(),
+    // Mirrors the store contract: the mark carries the revision at capture
+    // time, so an in-flight order can only clear the exact draft it placed.
+    captureNotesDraft: vi.fn((uid: string | null, storeId: string | null) => ({
+      uid,
+      storeId,
+      revision: checkoutState.notesRevision,
+    })),
   };
   const noop = vi.fn();
   return {
@@ -74,7 +95,11 @@ vi.mock("@tanstack/react-router", () => ({
     _$path: path,
   }),
   useNavigate: () => fixture.navigate,
-  Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  // Keep the destination visible to tests: the checkout screen must point the
+  // customer at the cart for note review (and never edit notes itself).
+  Link: ({ to, children }: { to?: unknown; children?: React.ReactNode }) => (
+    <a data-to={typeof to === "string" ? to : undefined}>{children}</a>
+  ),
 }));
 vi.mock("@/shared/layouts/AppShell", () => ({
   AppShell: ({
@@ -252,6 +277,19 @@ beforeEach(() => {
   fixture.openCheckout.mockReset();
   fixture.validateForPayment.mockReset();
   fixture.createPaymentOrder.mockReset();
+  // Notes fixtures are shared module state: reset them per test.
+  fixture.checkoutState.orderNotes = "";
+  fixture.checkoutState.legacyOrderNotes = "";
+  fixture.checkoutState.notesRevision = 0;
+  fixture.checkoutState.notesScope = null;
+  fixture.lines.length = 0;
+  fixture.lines.push({
+    lineId: "l1",
+    name: "Test Burger",
+    quantity: 1,
+    unitPrice: 199,
+    notes: undefined,
+  });
   usePaymentStore.getState().reset();
   sessionStorage.clear();
   container = document.createElement("div");
@@ -270,8 +308,11 @@ async function mount(Page: React.ComponentType) {
 }
 
 function buttonWithText(text: string): HTMLButtonElement | undefined {
+  // Case-insensitive: the customer CTA is sentence-case ("Pay … securely"),
+  // so tests must not depend on an uppercase label.
+  const needle = text.toLowerCase();
   return Array.from(container.querySelectorAll("button")).find((b) =>
-    b.textContent?.includes(text),
+    (b.textContent ?? "").toLowerCase().includes(needle),
   );
 }
 
@@ -380,5 +421,64 @@ describe("M5 — raw gateway failure text never reaches the customer", () => {
       "[payment] gateway onFailure:",
       expect.objectContaining({ description: RAW_GATEWAY_TEXT }),
     );
+  });
+});
+
+describe("Checkout notes — read-only summary and the review gates", () => {
+  const editInCartLink = () =>
+    Array.from(container.querySelectorAll('a[data-to="/cart"]')).find((link) =>
+      (link.textContent ?? "").includes("Edit in Cart"),
+    );
+
+  it("shows the order note read-only with an Edit in Cart link and no editor", async () => {
+    fixture.checkoutState.orderNotes = "less spicy";
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(199));
+
+    await mount(CheckoutPage);
+
+    // The note is shown as text …
+    expect(container.textContent).toContain("less spicy");
+    // … and the checkout screen never edits it itself: one editor, in the cart.
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(container.querySelector("#order-notes")).toBeNull();
+    expect(editInCartLink()).toBeTruthy();
+    // A clean draft raises neither review alert.
+    expect(container.textContent).not.toContain("needs review before payment");
+  });
+
+  it("blocks PAY and alerts when an oversized legacy note still needs review", async () => {
+    fixture.checkoutState.legacyOrderNotes = "x".repeat(260);
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(199));
+
+    await mount(CheckoutPage);
+
+    expect(container.textContent).toContain("needs review before payment");
+    const pay = buttonWithText("securely");
+    expect(pay).toBeDefined();
+    expect(pay?.disabled).toBe(true);
+    expect(pay?.title).toContain("cooking note");
+    // Direct /checkout entry never exposes an editor for the oversized draft.
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(editInCartLink()).toBeTruthy();
+  });
+
+  it("blocks PAY when a legacy per-item note still needs review and points to the cart", async () => {
+    fixture.lines.push({
+      lineId: "l2",
+      name: "Older Burger",
+      quantity: 1,
+      unitPrice: 199,
+      notes: "no onions",
+    });
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(398));
+
+    await mount(CheckoutPage);
+
+    expect(container.textContent).toContain("Item notes need review before payment");
+    const pay = buttonWithText("securely");
+    expect(pay).toBeDefined();
+    expect(pay?.disabled).toBe(true);
+    expect(pay?.title).toContain("cooking note");
+    expect(editInCartLink()).toBeTruthy();
   });
 });

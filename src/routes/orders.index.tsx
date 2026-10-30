@@ -226,24 +226,24 @@ function OrderHistoryPage() {
             type="button"
             aria-label="Refresh orders"
             onClick={handleRefresh}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-text-primary hover:bg-neutral-800 cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-text-primary hover:bg-bg-secondary cursor-pointer"
           >
-            <RefreshCw className={`h-4.5 w-4.5 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4.5 w-4.5 ${loading ? "animate-spin" : ""}`} aria-hidden />
           </button>
         }
       >
-        <div className="mx-auto max-w-[540px] space-y-4 px-4 py-3 pb-24 select-none">
+        <div className="mx-auto max-w-[540px] space-y-5 px-4 pb-24 pt-4 select-none">
           {/* Offline Banner */}
           {!isOnline && (
-            <div className="flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-950/40 p-3 text-xs text-amber-300">
-              <WifiOff className="h-4 w-4 shrink-0" />
+            <div className="flex items-center gap-2.5 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm font-medium text-warning">
+              <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
               <span>You're offline. Displaying cached orders.</span>
             </div>
           )}
 
           {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" aria-hidden />
             <input
               type="text"
               value={searchInput}
@@ -254,14 +254,14 @@ function OrderHistoryPage() {
                 requestGeneration.current += 1;
                 setSearchInput(e.target.value);
               }}
-              placeholder="Search by Order # or item name..."
+              placeholder="Search by Order # or item name…"
               aria-label="Search orders"
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-surface border border-divider text-text placeholder-text-secondary text-xs font-medium focus:outline-none focus:border-primary"
+              className="min-h-11 w-full rounded-2xl border border-divider bg-surface py-2.5 pl-10 pr-4 text-base font-medium text-text placeholder:text-text-secondary focus:border-primary focus:outline-none"
             />
           </div>
 
           {/* Segmented Filter Tabs */}
-          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-bg-secondary border border-divider">
+          <div className="flex items-center gap-1.5 rounded-2xl border border-divider bg-bg-secondary p-1.5">
             {BUCKETS.map((b) => (
               <button
                 key={b.id}
@@ -272,9 +272,9 @@ function OrderHistoryPage() {
                   setBucket(b.id);
                 }}
                 aria-pressed={bucket === b.id}
-                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer text-center ${
+                className={`min-h-11 flex-1 rounded-xl px-3 py-2 text-center text-sm font-semibold transition-colors cursor-pointer ${
                   bucket === b.id
-                    ? "bg-[#0E4825] border border-emerald-500/40 text-emerald-300 shadow-xs"
+                    ? "bg-primary text-primary-foreground shadow-xs"
                     : "text-text-secondary hover:text-text"
                 }`}
               >
@@ -285,7 +285,7 @@ function OrderHistoryPage() {
 
           {/* Orders Stream List */}
           {loading ? (
-            <div className="space-y-3 pt-2">
+            <div className="space-y-4 pt-2">
               <Skeleton className="h-44 w-full rounded-3xl" />
               <Skeleton className="h-44 w-full rounded-3xl" />
               <Skeleton className="h-44 w-full rounded-3xl" />
@@ -298,13 +298,13 @@ function OrderHistoryPage() {
               onAction={handleRefresh}
             />
           ) : orders.length === 0 ? (
-            <div className="text-center py-16 bg-surface rounded-3xl border border-dashed border-divider p-8 space-y-4">
-              <div className="w-16 h-16 mx-auto rounded-full bg-[#0E4825]/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <ShoppingBag className="w-8 h-8" />
+            <div className="space-y-4 rounded-3xl border border-dashed border-divider bg-surface p-8 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary-text">
+                <ShoppingBag className="h-8 w-8" aria-hidden />
               </div>
-              <div>
-                <h3 className="font-black text-text text-base">No Orders Found</h3>
-                <p className="text-xs text-text-secondary mt-1">
+              <div className="space-y-1">
+                <h3 className="type-title-large text-text">No Orders Found</h3>
+                <p className="text-sm leading-relaxed text-text-secondary">
                   {bucket === "ongoing"
                     ? "You don't have any active orders cooking right now."
                     : "You haven't placed any past orders matching this filter."}
@@ -313,10 +313,10 @@ function OrderHistoryPage() {
 
               <Link
                 to="/menu"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-accent hover:bg-accent-hover text-white font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-95"
               >
-                <span>Order Your First Burger</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Order your first burger</span>
+                <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
             </div>
           ) : (
@@ -331,9 +331,9 @@ function OrderHistoryPage() {
                     type="button"
                     disabled={loadingMore}
                     onClick={() => void loadMore()}
-                    className="px-6 py-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                    className="min-h-11 rounded-xl border border-divider bg-surface px-6 py-2 text-sm font-semibold text-text transition-colors hover:bg-bg-secondary disabled:opacity-50 cursor-pointer"
                   >
-                    {loadingMore ? "Loading more..." : "Load Older Feasts"}
+                    {loadingMore ? "Loading more…" : "Load Older Feasts"}
                   </button>
                 </div>
               )}

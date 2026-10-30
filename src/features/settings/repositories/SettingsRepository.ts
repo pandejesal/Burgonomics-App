@@ -4,9 +4,13 @@
  * settings across devices by wiring `update()` to PATCH /v1/settings.
  */
 import type { ApiResult } from "@/core/network/http";
-import { ok } from "@/core/network/http";
+import { fail, ok } from "@/core/network/http";
 import { settingsService } from "@/features/settings/services/settingsService";
-import { useSettingsStore } from "@/features/settings/state/settingsStore";
+import {
+  isLanguagePreference,
+  isThemePreference,
+  useSettingsStore,
+} from "@/features/settings/state/settingsStore";
 import type { AppSettings } from "@/features/settings/models";
 
 import { notificationsService } from "@/features/notifications/services/notificationsService";
@@ -27,6 +31,15 @@ export class SettingsRepository {
   }
 
   async update(patch: Partial<AppSettings>): Promise<ApiResult<void>> {
+    // Repository is a runtime boundary: feature code and stored payloads can
+    // both reach it, so reject unsupported enums before they are persisted.
+    if (patch.theme !== undefined && !isThemePreference(patch.theme)) {
+      return fail("invalid_theme", "That appearance option is not available.", false);
+    }
+    if (patch.language !== undefined && !isLanguagePreference(patch.language)) {
+      return fail("invalid_language", "That language option is not available.", false);
+    }
+
     useSettingsStore.getState().update(patch);
     const res = await settingsService.update(patch);
     if (!res.success) return res;

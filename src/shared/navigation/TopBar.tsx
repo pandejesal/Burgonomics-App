@@ -25,7 +25,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
   return (
     <header
       className={cn(
-        "sticky top-0 z-30 flex min-h-[calc(3.5rem_+_env(safe-area-inset-top,0px))] items-center gap-2 border-b border-white/10 bg-primary/95 backdrop-blur-md text-white px-2 pt-[env(safe-area-inset-top,0px)] shadow-lg shadow-primary/20",
+        "sticky top-0 z-30 flex min-h-[calc(3.5rem_+_env(safe-area-inset-top,0px))] items-center gap-2 border-b border-divider bg-surface/95 px-2 pt-[env(safe-area-inset-top,0px)] text-text-primary backdrop-blur-md",
         ios && "justify-between",
         className,
       )}
@@ -36,7 +36,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
             type="button"
             onClick={handleBack}
             aria-label="Go back"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full select-none hover:bg-white/10 active:scale-90 active:opacity-75 transition-all duration-150 text-white"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full select-none text-text-primary transition-all duration-150 hover:bg-bg-secondary active:scale-90 active:opacity-75"
           >
             <BackIcon className={cn(ios ? "h-6 w-6" : "h-5 w-5")} aria-hidden />
           </button>
@@ -45,7 +45,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
             to={backTo!}
             onClick={() => void HapticService.impact("light")}
             aria-label="Go back"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full select-none hover:bg-white/10 active:scale-90 active:opacity-75 transition-all duration-150 text-white"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full select-none text-text-primary transition-all duration-150 hover:bg-bg-secondary active:scale-90 active:opacity-75"
           >
             <BackIcon className={cn(ios ? "h-6 w-6" : "h-5 w-5")} aria-hidden />
           </Link>
@@ -56,7 +56,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
 
       <h1
         className={cn(
-          "type-display-medium min-w-0 flex-1 truncate px-1 text-white uppercase tracking-wider",
+          "type-title-large min-w-0 flex-1 truncate px-1 text-text-primary",
           ios ? "text-center" : "text-left",
         )}
       >

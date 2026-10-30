@@ -57,7 +57,13 @@ import { useOrdersStore } from "@/features/orders/state/ordersStore";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { useFavoritesStore } from "@/features/favorites/state/favoritesStore";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
-import { useSettingsStore } from "@/features/settings/state/settingsStore";
+import {
+  applyThemePreference,
+  bootstrapThemeAuthority,
+  readSystemPrefersDark,
+  useSettingsStore,
+  watchSystemTheme,
+} from "@/features/settings/state/settingsStore";
 import { useSearchStore } from "@/features/menu/state/searchStore";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { APP } from "@/core/constants/app";
@@ -67,6 +73,11 @@ import { appConfig, isProd } from "@/core/config/env";
 import { GlobalErrorBoundary, GlobalErrorFallback } from "@/shared/components/error";
 import { getPlatform } from "@/shared/platform/platform";
 import { ConsumerRouteTransition } from "@/shared/components/common/ConsumerRouteTransition";
+
+// Apply the persisted (or system) appearance while route modules evaluate,
+// before React's first paint. The root effect below owns OS-change and resume
+// syncing; this call only prevents the light-then-dark hydration flash.
+bootstrapThemeAuthority();
 
 if (typeof window !== "undefined" && !isProd()) {
   const keyId = appConfig.integrations.razorpayKeyId;
@@ -91,7 +102,7 @@ function NotFoundComponent() {
         <div className="mt-6">
           <Link
             to="/home"
-            className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-orange-gradient px-6 type-label-large text-primary-foreground shadow-[var(--shadow-brand)]"
+            className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-primary px-6 type-button text-primary-foreground shadow-[var(--shadow-brand)] transition-colors hover:bg-primary-hover"
           >
             Take me home
           </Link>
@@ -127,9 +138,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       {
         name: "viewport",
-        content: "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1",
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { name: "theme-color", content: "#023020" },
+      { name: "theme-color", content: "#FFFFFF" },
+      { name: "color-scheme", content: "light dark" },
       { title: `${APP.name} — ${APP.tagline}` },
       {
         name: "description",
@@ -149,11 +161,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Lilita+One&family=Montserrat:wght@300;400;500;600;700;800;900&display=swap",
+        rel: "preload",
+        href: "/fonts/MontserratVariable.woff2",
+        as: "font",
+        type: "font/woff2",
+        crossOrigin: "anonymous",
+      },
+      {
+        rel: "preload",
+        href: "/fonts/MonstroSolid.woff2",
+        as: "font",
+        type: "font/woff2",
+        crossOrigin: "anonymous",
       },
     ],
   }),
@@ -172,7 +192,7 @@ function RootShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
@@ -208,36 +228,36 @@ function RootComponent() {
     void useSearchStore.persist.rehydrate();
   }, []);
 
-  // Sync theme with document element
+  // Single theme authority: re-apply after rehydration, follow OS changes while
+  // the preference is "system", and re-assert on bfcache restore / app resume.
   useEffect(() => {
-    const root = window.document.documentElement;
-    const applyTheme = () => {
-      let activeTheme: "light" | "dark" = "light";
+    const mediaQuery =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-color-scheme: dark)")
+        : null;
 
-      if (theme === "system") {
-        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
-        activeTheme = systemTheme;
-      } else {
-        activeTheme = theme === "dark" ? "dark" : "light";
-      }
-
-      if (activeTheme === "dark") {
-        root.classList.add("dark");
-      } else {
-        root.classList.remove("dark");
-      }
+    const syncTheme = () => {
+      applyThemePreference(theme, {
+        systemPrefersDark: mediaQuery?.matches ?? readSystemPrefersDark(),
+      });
     };
 
-    applyTheme();
+    syncTheme();
+    const stopWatchingSystemTheme = watchSystemTheme(theme, syncTheme, mediaQuery);
 
-    if (theme === "system") {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      const listener = () => applyTheme();
-      mediaQuery.addEventListener("change", listener);
-      return () => mediaQuery.removeEventListener("change", listener);
-    }
+    const syncWhenVisible = () => {
+      if (window.document.visibilityState === "visible") syncTheme();
+    };
+    const syncOnPageShow = () => syncTheme();
+
+    window.document.addEventListener("visibilitychange", syncWhenVisible);
+    window.addEventListener("pageshow", syncOnPageShow);
+
+    return () => {
+      stopWatchingSystemTheme();
+      window.document.removeEventListener("visibilitychange", syncWhenVisible);
+      window.removeEventListener("pageshow", syncOnPageShow);
+    };
   }, [theme]);
 
   // Sync active platform class (supports ?platform=ios simulation)

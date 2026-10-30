@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Locate, RefreshCw, Search as SearchIcon, X, AlertTriangle } from "lucide-react";
+import { Locate, RefreshCw, Search as SearchIcon, X, AlertTriangle, MapPin } from "lucide-react";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { Text } from "@/shared/components/common/Text";
 import { AppButton } from "@/shared/components/common/AppButton";
@@ -18,14 +18,21 @@ import {
   useLocationPermission,
   type Store,
 } from "@/features/stores";
-import { useAddressStore, selectSelectedAddress } from "@/features/addresses/state/addressStore";
+import {
+  useAddressStore,
+  selectSelectedAddress,
+  selectAddresses,
+} from "@/features/addresses/state/addressStore";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { cartRepository, useCartStore, selectHasItems } from "@/features/cart";
+import { ModeSegmentedSwitch } from "@/features/home/components/ModeSegmentedSwitch";
 import { cn } from "@/lib/utils";
 import { haversineKm } from "@/features/stores/utils/distance";
 import {
+  hasUsableCoords,
   isStoreInDeliveryArea,
+  selectVisibleStores,
   getDeliveryDistanceKm,
   MAX_PICKUP_DISTANCE_KM,
   PICKUP_TOO_FAR_MESSAGE,
@@ -34,6 +41,22 @@ import {
 /** Rounds a km distance to 1 decimal, or undefined when it is not usable. */
 function roundKm(km: number): number | undefined {
   return Number.isFinite(km) ? Number.parseFloat(km.toFixed(1)) : undefined;
+}
+
+/**
+ * Distance for display and sorting, ALWAYS recomputed from the position the
+ * customer currently has. A `distanceKm` left over from an earlier read (or a
+ * previous address) must never decide what the card claims.
+ */
+function withCurrentDistance(
+  list: Store[],
+  coords: { lat: number; lng: number } | null,
+): Store[] {
+  if (!coords) return list;
+  return list.map((s) => ({
+    ...s,
+    distanceKm: roundKm(getDeliveryDistanceKm(s, coords.lat, coords.lng)),
+  }));
 }
 
 /**
@@ -63,7 +86,6 @@ function StoreSelectionPage() {
     recentStores,
     searchHistory,
     stores,
-    nearby,
     status,
     coords,
     error,
@@ -75,13 +97,14 @@ function StoreSelectionPage() {
     setActiveStore,
     setFulfillment,
     addSearchTerm,
-    markPermissionDenied,
   } = useStoreSelection();
 
   const permission = useLocationPermission();
   
   // Get selected delivery address for coordinate precedence
   const selectedAddress = useAddressStore(selectSelectedAddress);
+  // Only offer the saved-address shortcut when one actually exists.
+  const savedAddresses = useAddressStore(selectAddresses);
 
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Store[] | null>(null);
@@ -97,16 +120,23 @@ function StoreSelectionPage() {
 
   const [sortBy, setSortBy] = useState<"distance" | "alphabetical">("alphabetical");
 
-  // Compute user coordinates with precedence:
-  // (a) selected delivery address with lat/lng
+  // Position precedence:
+  // (a) selected delivery address with a finite lat/lng
   // (b) device/cached GPS
-  // (c) null -> show all unblocked
+  // (c) null -> the screen asks for a location instead of guessing one
   const userCoords = useMemo(() => {
-    if (selectedAddress?.lat !== undefined && selectedAddress?.lng !== undefined) {
-      return { lat: selectedAddress.lat, lng: selectedAddress.lng };
-    }
-    return coords ?? permission.coords ?? null;
+    const addressCoords =
+      selectedAddress?.lat !== undefined && selectedAddress?.lng !== undefined
+        ? { lat: selectedAddress.lat, lng: selectedAddress.lng }
+        : null;
+    const candidate = addressCoords ?? coords ?? permission.coords ?? null;
+    // A non-finite pair is "no position", never a position at (0,0).
+    return hasUsableCoords(candidate) ? candidate : null;
   }, [selectedAddress, coords, permission.coords]);
+
+  const hasLocation = hasUsableCoords(userCoords);
+  // Delivery is also the policy for an unresolved mode (see serviceArea).
+  const deliveryMode = fulfillment === "delivery" || fulfillment === null;
 
   /**
    * Delivery-area annotation for one card.
@@ -120,9 +150,10 @@ function StoreSelectionPage() {
     const uc = userCoords;
     if (!uc) return { store: s, outOfArea: false };
 
-    const distanceKm = s.distanceKm ?? roundKm(getDeliveryDistanceKm(s, uc.lat, uc.lng));
-    const store =
-      s.distanceKm === undefined && distanceKm !== undefined ? { ...s, distanceKm } : s;
+    // Recomputed from the CURRENT position: a stale distanceKm from an earlier
+    // read (or a previous address) must never decide the badge or the claim.
+    const distanceKm = roundKm(getDeliveryDistanceKm(s, uc.lat, uc.lng));
+    const store = distanceKm !== undefined ? { ...s, distanceKm } : s;
     const outOfArea =
       fulfillment === "delivery" && !isStoreInDeliveryArea(s, uc.lat, uc.lng);
     return { store, outOfArea };
@@ -140,11 +171,19 @@ function StoreSelectionPage() {
   const handleSortByDistance = async () => {
     if (sortBy === "distance") return;
 
-    const activeCoords = coords ?? permission.coords;
-    if (!activeCoords) {
+    // Sorting by distance needs a position: ask for one instead of guessing.
+    if (hasLocation) {
+      setSortBy("distance");
+      toast.success("Sorted by distance", {
+        description: "Nearest kitchens are displayed first.",
+      });
+      return;
+    }
+
+    if (!hasLocation) {
       const res = await permission.request();
       if (res.status === "granted" && res.coords) {
-        await loadNearby(res.coords);
+        // The coords effect below owns the nearby re-rank.
         setSortBy("distance");
         toast.success("Sorted by distance", {
           description: "Nearest kitchens are displayed first.",
@@ -154,50 +193,33 @@ function StoreSelectionPage() {
           description: "Burgonomics needs GPS permissions to calculate distance and sort.",
         });
       }
-    } else {
-      setSortBy("distance");
-      toast.success("Sorted by distance", {
-        description: "Nearest kitchens are displayed first.",
-      });
     }
   };
 
-  // Initial load — try location first; fall back to a coord-less list.
+  /**
+   * First load: read the directory IMMEDIATELY, and ask for a position in
+   * parallel. Waiting for the GPS prompt before reading anything is what made
+   * the screen sit on its "ready + empty" default and claim there were no
+   * stores.
+   */
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      // If we already have cached coordinates, load nearby immediately!
-      if (permission.coords && permission.status === "granted") {
-        await loadNearby(permission.coords);
-        return;
-      }
-
-      if (status !== "idle" && stores.length > 0) return;
-      const res = await permission.request();
-      if (cancelled) return;
-      if (res.status === "granted" && res.coords) {
-        await loadNearby(res.coords);
-        const s = useStoreSelection.getState();
-        // Only prompt the nearest-store sheet when nothing is selected yet.
-        if (!s.activeStore && s.nearby[0]) {
-          setNearestSheet(s.nearby[0]);
-        }
-      } else {
-        if (res.status === "denied" || res.status === "blocked") {
-          markPermissionDenied();
-        }
-        await loadStores();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    // The directory read owns `status`. The location outcome must NOT rewrite
+    // it: writing "permission_denied" while the read was still pending cleared
+    // `directoryPending` and rendered a false "No stores" for a customer who
+    // already had a usable saved address. Permission state is the hook's to
+    // own, and it already exposes status/coords/error.
+    void loadStores();
+    void permission.request();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync background coordinates and recalculate nearby stores dynamically
+  /**
+   * The single owner of position updates. `loadNearby` records the coordinates
+   * and re-ranks the rows already in memory, so a granted fix can never
+   * duplicate the directory read or start a second load race.
+   */
   useEffect(() => {
-    if (permission.coords && permission.status === "granted") {
+    if (permission.status === "granted" && permission.coords) {
       void loadNearby(permission.coords);
     }
   }, [permission.coords, permission.status, loadNearby]);
@@ -210,23 +232,24 @@ function StoreSelectionPage() {
       setSearching(false);
       return;
     }
+    let cancelled = false;
     setSearching(true);
     const t = setTimeout(async () => {
       const results = await searchStores(q);
+      if (cancelled) return;
       setSearchResults(results);
       setSearching(false);
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [query, searchStores]);
 
   const onUseLocation = async () => {
     const res = await permission.request();
     if (res.status === "granted" && res.coords) {
-      await loadNearby(res.coords);
-      const first = useStoreSelection.getState().nearby[0];
-      if (first) {
-        setNearestSheet(first);
-      }
+      // The coords effect owns the re-rank; no second directory read here.
       if (res.error) {
         // P1-8: dev-only diagnostics — production never exposes raw GPS
         // errors or the mock Bandra fallback coordinates to customers.
@@ -339,38 +362,64 @@ function StoreSelectionPage() {
     }, 200);
   };
 
-  const initialLoading =
-    (status === "loading" || status === "detecting_location") && stores.length === 0;
+  const resolvingLocation = permission.status === "idle" || permission.status === "prompting";
+  const directoryPending = (status === "idle" || status === "loading") && stores.length === 0;
+  // Never a false "no stores": idle, the first GPS prompt and an in-flight read
+  // are all loading states.
+  const initialLoading = !error && (directoryPending || (!hasLocation && resolvingLocation));
+  const locationRequired = !hasLocation && !resolvingLocation && !error;
+
+  /**
+   * ONE visibility policy for every list on this screen (all stores, nearby,
+   * recently viewed, search results, nearest candidate). `selectVisibleStores`
+   * fails closed without a position, so a missing location can never leak the
+   * whole directory or a distant outlet into the UI.
+   */
+  const visibleAll = useMemo(
+    () => selectVisibleStores(stores, userCoords, fulfillment),
+    [stores, userCoords, fulfillment],
+  );
+  const visibleRecents = useMemo(
+    () => selectVisibleStores(recentStores, userCoords, fulfillment),
+    [recentStores, userCoords, fulfillment],
+  );
+  const visibleSearch = useMemo(
+    () => (searchResults ? selectVisibleStores(searchResults, userCoords, fulfillment) : null),
+    [searchResults, userCoords, fulfillment],
+  );
 
   const listStores = useMemo(() => {
-    const baseList = searchResults ?? stores;
-    // Use userCoords which includes selected address coords as highest precedence
-    const activeCoords = userCoords;
-
-    if (sortBy === "distance" && activeCoords) {
-      return [...baseList]
-        .map((s) => ({
-          ...s,
-          distanceKm: s.distanceKm ?? haversineKm(activeCoords, { lat: s.lat, lng: s.lng }),
-        }))
-        .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+    const base = withCurrentDistance(visibleSearch ?? visibleAll, userCoords);
+    if (sortBy === "distance" && userCoords) {
+      return [...base].sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
     }
+    return base;
+  }, [visibleSearch, visibleAll, sortBy, userCoords]);
 
-    // Even when not sorting by distance, compute distance for delivery area checking
-    if (activeCoords) {
-      return [...baseList].map((s) => ({
-        ...s,
-        distanceKm: s.distanceKm ?? haversineKm(activeCoords, { lat: s.lat, lng: s.lng }),
-      }));
-    }
-
-    return [...baseList].sort((a, b) => a.name.localeCompare(b.name));
-  }, [searchResults, stores, sortBy, userCoords]);
-
+  /** Nearest candidates: the same visible set, ranked by the current position. */
   const nearbyList = useMemo(
-    () => (searchResults ? [] : nearby.slice(0, 3)),
-    [nearby, searchResults],
+    () =>
+      searchResults || !userCoords
+        ? []
+        : [...withCurrentDistance(visibleAll, userCoords)]
+            .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+            .slice(0, 3),
+    [visibleAll, searchResults, userCoords],
   );
+
+  /**
+   * Offer the nearest kitchen once per mount when nothing is selected yet. The
+   * candidate is already radius-filtered; nothing is auto-selected and no cart
+   * is touched — the sheet still asks.
+   */
+  const autoPromptedRef = React.useRef(false);
+  useEffect(() => {
+    if (autoPromptedRef.current || activeStore) return;
+    const candidate = nearbyList[0];
+    if (!candidate) return;
+    autoPromptedRef.current = true;
+    setNearestSheet(candidate);
+  }, [nearbyList, activeStore]);
 
   // De-dupe rows already shown above: Recently viewed (2) and Nearby render
   // their own cards, so the All-stores list skips those ids when not
@@ -378,20 +427,22 @@ function StoreSelectionPage() {
   const visibleStores = useMemo(() => {
     if (searchResults) return listStores;
     const shown = new Set([
-      ...recentStores.slice(0, 2).map((s) => s.id),
+      ...visibleRecents.slice(0, 2).map((s) => s.id),
       ...nearbyList.map((s) => s.id),
     ]);
     if (shown.size === 0) return listStores;
     return listStores.filter((s) => !shown.has(s.id));
-  }, [listStores, searchResults, recentStores, nearbyList]);
+  }, [listStores, searchResults, visibleRecents, nearbyList]);
 
   // Visual truth for the sort tabs: highlight Nearest only when live coords
   // exist to order by (listStores already falls back to alphabetical sort
   // without them, so highlighting sortBy alone would lie).
-  const effectiveSortBy =
-    sortBy === "distance" && (coords ?? permission.coords) ? "distance" : "alphabetical";
+  const effectiveSortBy = sortBy === "distance" && userCoords ? "distance" : "alphabetical";
 
-  const showEmpty = !initialLoading && !error && listStores.length === 0;
+  const hasDirectoryRows = stores.length > 0;
+  // Three distinct truths: nothing to show yet (loading), a real failure
+  // (error), or zero rows that survive the radius for a known position.
+  const showEmpty = !initialLoading && !error && !locationRequired && listStores.length === 0;
 
   return (
     <AppShell
@@ -418,6 +469,12 @@ function StoreSelectionPage() {
       <div className="mx-auto max-w-[520px] space-y-5 px-4 pb-8 pt-3">
         {/* Search + location */}
         <div className="space-y-2">
+          {/* Mode is explicit, never inferred. The radius policy is per
+              fulfillment (store radius for delivery, the 25 km pickup ceiling
+              for takeaway/dine-in), so without this control an outlet that is
+              pickup-eligible is unreachable from this screen and the empty
+              copy's "switch mode" advice has no way to be followed. */}
+          <ModeSegmentedSwitch value={fulfillment} onChange={setFulfillment} />
           <div className="flex items-center gap-2">
             <div className="relative flex-1 min-w-0">
               <SearchBar
@@ -457,49 +514,36 @@ function StoreSelectionPage() {
             </Text>
           )}
 
-          {permission.status === "unavailable" && (
-            <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 space-y-2">
-              <div className="flex items-start gap-2 text-destructive">
-                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <Text variant="bodyMedium" className="font-semibold text-error">
-                    GPS Signal Offline
-                  </Text>
-                  <Text variant="caption" className="text-text-secondary block">
-                    Please make sure location service is enabled on your device and try again.
-                  </Text>
-                </div>
-              </div>
-              <AppButton
-                variant="outlined"
-                size="sm"
-                onClick={() => void onUseLocation()}
-                loading={permission.isLoading}
-                iconLeft={<Locate className="h-3.5 w-3.5" />}
-                className="bg-surface text-xs font-semibold"
-              >
-                Retry GPS
-              </AppButton>
-            </div>
-          )}
-
-          {(permission.status === "denied" ||
-            permission.status === "blocked" ||
-            status === "permission_denied") && (
+          {locationRequired && (
             <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 space-y-3">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-warning" />
                 <div className="space-y-1">
                   <Text variant="bodyMedium" className="font-semibold text-text-primary">
-                    Location Access Needed
+                    {permission.status === "blocked"
+                      ? "Location is blocked"
+                      : permission.status === "unavailable"
+                        ? "GPS is unavailable"
+                        : "Choose your location"}
                   </Text>
                   <Text variant="caption" className="text-text-secondary block">
-                    To show nearest kitchens first with distance and delivery time, allow
-                    location access. You can still search or pick a kitchen below without it.
+                    {deliveryMode
+                      ? "We only list kitchens that can deliver to your location, so set one to see them."
+                      : "We only list kitchens within pickup range of your location, so set one to see them."}
                   </Text>
+                  {permission.status === "blocked" && (
+                    <Text variant="caption" className="text-[11px] font-medium text-text-secondary">
+                      Turn location on in your browser or site settings, then tap Use my location.
+                    </Text>
+                  )}
+                  {permission.status === "unavailable" && (
+                    <Text variant="caption" className="text-[11px] font-medium text-text-secondary">
+                      Make sure location services are enabled on your device, then try again.
+                    </Text>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <AppButton
                   variant="outlined"
                   size="sm"
@@ -508,26 +552,24 @@ function StoreSelectionPage() {
                   iconLeft={<Locate className="h-3.5 w-3.5" />}
                   className="bg-surface text-xs font-semibold shrink-0 whitespace-nowrap"
                 >
-                  Retry Detection
+                  Use my location
                 </AppButton>
-                <Text
-                  variant="caption"
-                  tone="secondary"
-                  className="text-[11px] font-medium min-w-0 flex-1"
-                >
-                  or pick a kitchen manually below:
-                </Text>
+                {savedAddresses.length > 0 && (
+                  <AppButton
+                    variant="outlined"
+                    size="sm"
+                    onClick={() => void navigate({ to: "/profile/addresses" })}
+                    iconLeft={<MapPin className="h-3.5 w-3.5" />}
+                    className="bg-surface text-xs font-semibold shrink-0 whitespace-nowrap"
+                  >
+                    Saved addresses
+                  </AppButton>
+                )}
               </div>
-              {permission.status === "blocked" && (
-                <Text variant="caption" className="text-[11px] font-medium text-text-secondary">
-                  Location is blocked: turn it on in your browser or site settings, then tap
-                  Retry Detection.
-                </Text>
-              )}
             </div>
           )}
 
-          {coords && status !== "permission_denied" && permission.status !== "prompting" && (
+          {hasLocation && !initialLoading && !locationRequired && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Text variant="caption" tone="secondary" className="flex items-center gap-1">
@@ -599,7 +641,7 @@ function StoreSelectionPage() {
         )}
 
         {/* Recent stores */}
-        {!searchResults && !initialLoading && recentStores.length > 0 && (
+        {!searchResults && !initialLoading && !locationRequired && visibleRecents.length > 0 && (
           <section aria-labelledby="recent-stores">
             <Text
               as="h2"
@@ -611,7 +653,7 @@ function StoreSelectionPage() {
               Recently viewed
             </Text>
             <div className="space-y-2">
-              {recentStores.slice(0, 2).map((s) => {
+              {visibleRecents.slice(0, 2).map((s) => {
                 const { store, outOfArea } = annotateForArea(s);
                 return (
                   <StoreCard
@@ -659,12 +701,12 @@ function StoreSelectionPage() {
         )}
 
         {/* All / Search results */}
-        {!initialLoading && !error && (
+        {!initialLoading && !error && !locationRequired && (
           <section aria-labelledby="all-stores">
             <div className="mb-3 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
               <Text as="h2" variant="titleMedium" tone="secondary" id="all-stores">
                 {searchResults
-                  ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
+                  ? `${listStores.length} result${listStores.length === 1 ? "" : "s"}`
                   : "All stores"}
               </Text>
               {searching ? (
@@ -714,16 +756,32 @@ function StoreSelectionPage() {
             </div>
 
             {showEmpty ? (
-              <EmptyState
-                title="No stores found"
-                description={
-                  query
-                    ? `We couldn't find a store matching "${query}". Try a different city or area.`
-                    : "No stores are available right now."
-                }
-                actionLabel={query ? "Clear search" : "Retry"}
-                onAction={() => (query ? setQuery("") : void refresh())}
-              />
+              searchResults ? (
+                <EmptyState
+                  title={`No stores in your area match "${query}"`}
+                  description="Try a different city or area, or clear the search."
+                  actionLabel="Clear search"
+                  onAction={() => setQuery("")}
+                />
+              ) : hasDirectoryRows ? (
+                <EmptyState
+                  title={deliveryMode ? "No stores deliver here yet" : "No stores nearby for pickup"}
+                  description={
+                    fulfillment === "takeaway" || fulfillment === "dinein"
+                      ? `Every kitchen is beyond the ${MAX_PICKUP_DISTANCE_KM} km pickup range for this location. Choose a closer address or switch to delivery.`
+                      : "Every kitchen is outside the delivery area for this location. Choose a closer address or switch to takeaway."
+                  }
+                  actionLabel="Use my location"
+                  onAction={() => void onUseLocation()}
+                />
+              ) : (
+                <EmptyState
+                  title="No stores found"
+                  description="No stores are available right now."
+                  actionLabel="Retry"
+                  onAction={() => void refresh()}
+                />
+              )
             ) : (
               <div className="space-y-2">
                 {visibleStores.map((s) => {

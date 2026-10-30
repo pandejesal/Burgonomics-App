@@ -4,7 +4,6 @@ import { Home, UtensilsCrossed, ShoppingBag, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCartStore, selectItemCount } from "@/features/cart/state/cartStore";
 import { useHydrated } from "@/shared/hooks/useHydrated";
-import { isIOS } from "@/shared/platform/platform";
 import { HapticService } from "@/core/services/haptics";
 
 interface Tab {
@@ -22,22 +21,48 @@ const TABS: Tab[] = [
 ];
 
 /**
- * Floating branded bottom nav — 4-tab bar with Forest Green active anchor,
- * subtle top indicator, and vibrant orange cart badge.
+ * Inset floating bottom nav: a solid surface bar, modest 16px radius, one
+ * restrained shadow, 8px above the safe area.
+ *
+ * Deliberately not glass: no backdrop blur and no translucent fill, so the bar
+ * reads as an object above the page rather than a pane of the page. The active
+ * tab is carried by colour and weight only — no full-width indicator rule.
  */
 export function BottomTabBar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const hydrated = useHydrated();
   const cartCount = useCartStore(selectItemCount);
-  const ios = isIOS();
+  const navRef = React.useRef<HTMLElement>(null);
+
+  // Publish the real rendered height so the content padding and the floating
+  // cart bar clear this bar without hard-coded assumptions. The min-height is
+  // in rem, so at 200% text the bar grows and this follows it.
+  React.useEffect(() => {
+    const el = navRef.current;
+    if (!el || typeof document === "undefined") return;
+    const root = document.documentElement;
+    const apply = () => {
+      const height = Math.ceil(el.getBoundingClientRect().height);
+      if (height <= 0) return;
+      root.style.setProperty("--bottom-nav-height", `${height}px`);
+      // Height plus the 8px gap below it plus 8px of clearance above it.
+      root.style.setProperty("--bottom-nav-offset", `${height + 16}px`);
+    };
+    apply();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div
-      aria-hidden={false}
-      className="glass-panel fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] md:max-w-[480px] max-md:max-w-full shadow-high pb-[env(safe-area-inset-bottom,0px)] bg-surface/95 backdrop-blur-md border-t border-border"
-    >
-      <nav aria-label="Primary" className="w-full">
-        <ul className="grid grid-cols-4 py-2 px-2">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] px-3 pb-[calc(env(safe-area-inset-bottom,0px)+8px)]">
+      <nav
+        ref={navRef}
+        aria-label="Primary"
+        className="pointer-events-auto rounded-2xl border border-border bg-surface shadow-medium"
+      >
+        <ul className="grid grid-cols-4 px-1 py-1.5">
           {TABS.map(({ to, label, Icon, match }) => {
             const active = match(path);
             const showBadge = label === "Cart" && hydrated && cartCount > 0;
@@ -51,28 +76,15 @@ export function BottomTabBar() {
                   aria-current={active ? "page" : undefined}
                   aria-label={label}
                   className={cn(
-                    "group relative flex min-h-[50px] w-full flex-col items-center justify-center gap-1",
-                    "transition-all duration-200 ease-out",
-                    "active:scale-95",
+                    "group relative flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5",
+                    "transition-colors duration-200 ease-out",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                     active ? "text-primary dark:text-primary-text" : "text-text-secondary hover:text-text-primary",
                   )}
                 >
-                  {/* Top active indicator line (CSS transition — the shared
-                      shell must not pull motion into every page's chunk). */}
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute -top-2 inset-x-4 h-1 rounded-full bg-primary dark:bg-primary-text transition-all duration-200 ease-out",
-                      active ? "opacity-100 scale-x-100" : "opacity-0 scale-x-50",
-                    )}
-                  />
-
                   <div className="relative">
                     <Icon
-                      className={cn(
-                        "h-5.5 w-5.5 transition-transform",
-                        active && "scale-105 stroke-[2.5px]",
-                      )}
+                      className={cn("h-5 w-5 transition-transform", active && "scale-105 stroke-[2.5px]")}
                       aria-hidden
                     />
 
@@ -81,7 +93,7 @@ export function BottomTabBar() {
                         key={cartCount}
                         aria-label={`${cartCount} items in cart`}
                         className={cn(
-                          "absolute -right-2.5 -top-1.5 grid h-4.5 min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-extrabold text-accent-foreground shadow-sm",
+                          "absolute -right-3 -top-2 grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-xs font-semibold leading-none text-accent-foreground shadow-sm",
                           "animate-[tabBadgePop_0.25s_ease-out]",
                         )}
                       >
@@ -92,10 +104,8 @@ export function BottomTabBar() {
 
                   <span
                     className={cn(
-                      "text-[11px] tracking-tight transition-colors font-sans",
-                      active
-                        ? "font-bold text-primary dark:text-primary-text"
-                        : "font-medium text-text-secondary",
+                      "type-label-medium tracking-normal transition-colors",
+                      active ? "font-semibold" : "font-medium",
                     )}
                   >
                     {label}

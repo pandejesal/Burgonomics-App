@@ -1,4 +1,4 @@
-import { ok, fail, type ApiResult } from "@/core/network/http";
+import { ok, fail, type ApiFailure, type ApiResult } from "@/core/network/http";
 import type { Store } from "@/features/stores/models/Store";
 import { haversineKm } from "@/features/stores/utils/distance";
 import { db } from "@/core/config/firebase";
@@ -85,47 +85,71 @@ const withDistance = (stores: Store[], coords?: { lat: number; lng: number }): S
     .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
 };
 
+/**
+ * Reads the outlet directory.
+ *
+ * THROWS on a read failure: a Firestore error is not an empty directory, and
+ * the previous `catch { return [] }` made every network/permission failure
+ * indistinguishable from "no stores exist", which the screen then rendered as a
+ * truthful empty state (so the customer only ever saw stores after a manual
+ * Retry). `stores` stays authoritative; `admin_stores` is consulted only when
+ * `stores` is genuinely empty.
+ */
 async function fetchFirestoreStores(): Promise<Store[]> {
-  try {
-    const storesSnap = await getDocs(query(collection(db, "stores"), limit(DIRECTORY_LIMIT)));
-    if (!storesSnap.empty) {
-      const stores: Store[] = [];
-      storesSnap.forEach((d) => {
-        // Fail closed: docs without finite coords are dropped (with a warn).
-        const store = mapStoreDoc(d.data(), d.id);
-        if (store) stores.push(store);
-      });
-      return stores;
-    }
-
-    // Fallback to admin_stores
-    const adminStoresSnap = await getDocs(query(collection(db, "admin_stores"), limit(DIRECTORY_LIMIT)));
-    if (!adminStoresSnap.empty) {
-      const stores: Store[] = [];
-      adminStoresSnap.forEach((d) => {
-        const store = mapStoreDoc(d.data(), d.id);
-        if (store) stores.push(store);
-      });
-      return stores;
-    }
-  } catch (err) {
-    console.warn("storesService: Firestore fetch error:", err);
+  const storesSnap = await getDocs(query(collection(db, "stores"), limit(DIRECTORY_LIMIT)));
+  if (!storesSnap.empty) {
+    const stores: Store[] = [];
+    // Fail closed: docs without finite coords are dropped (with a warn).
+    storesSnap.forEach((d) => {
+      const store = mapStoreDoc(d.data(), d.id);
+      if (store) stores.push(store);
+    });
+    return stores;
   }
-  // No mock fallback in production — return empty array
-  return [];
+
+  // Fallback to admin_stores
+  const adminStoresSnap = await getDocs(
+    query(collection(db, "admin_stores"), limit(DIRECTORY_LIMIT)),
+  );
+  const stores: Store[] = [];
+  adminStoresSnap.forEach((d) => {
+    const store = mapStoreDoc(d.data(), d.id);
+    if (store) stores.push(store);
+  });
+  // No mock fallback in production — a genuinely empty directory is [].
+  return stores;
+}
+
+/**
+ * A failed read becomes a retryable `ApiResult` failure (never `ok([])`), so the
+ * screen keeps its real error state instead of claiming an empty catalogue. The
+ * raw provider message stays in the log: it can carry paths/ids that must not
+ * reach customer copy.
+ */
+function directoryReadFailure(err: unknown): ApiFailure {
+  console.warn("storesService: Firestore read failed:", err);
+  return fail("STORES_UNAVAILABLE", "The store directory could not be loaded.", true);
 }
 
 export const storesService = {
   async list(coords?: { lat: number; lng: number }): Promise<ApiResult<Store[]>> {
-    const allStores = await fetchFirestoreStores();
-    return ok(withDistance(allStores, coords));
+    try {
+      const allStores = await fetchFirestoreStores();
+      return ok(withDistance(allStores, coords));
+    } catch (err) {
+      return directoryReadFailure(err);
+    }
   },
 
   async nearby(lat?: number, lng?: number): Promise<ApiResult<Store[]>> {
     const coords = lat !== undefined && lng !== undefined ? { lat, lng } : undefined;
-    const allStores = await fetchFirestoreStores();
-    const ranked = withDistance(allStores, coords);
-    return ok(ranked.slice(0, 5));
+    try {
+      const allStores = await fetchFirestoreStores();
+      const ranked = withDistance(allStores, coords);
+      return ok(ranked.slice(0, 5));
+    } catch (err) {
+      return directoryReadFailure(err);
+    }
   },
 
   async byId(id: string): Promise<ApiResult<Store | null>> {
@@ -152,11 +176,15 @@ export const storesService = {
 
   async search(query: string, coords?: { lat: number; lng: number }): Promise<ApiResult<Store[]>> {
     const q = query.trim().toLowerCase();
-    const allStores = await fetchFirestoreStores();
-    if (!q) return ok(withDistance(allStores, coords));
-    const filtered = allStores.filter((s) =>
-      [s.name, s.city, s.area, s.address].some((f) => f.toLowerCase().includes(q)),
-    );
-    return ok(withDistance(filtered, coords));
+    try {
+      const allStores = await fetchFirestoreStores();
+      if (!q) return ok(withDistance(allStores, coords));
+      const filtered = allStores.filter((s) =>
+        [s.name, s.city, s.area, s.address].some((f) => f.toLowerCase().includes(q)),
+      );
+      return ok(withDistance(filtered, coords));
+    } catch (err) {
+      return directoryReadFailure(err);
+    }
   },
 };

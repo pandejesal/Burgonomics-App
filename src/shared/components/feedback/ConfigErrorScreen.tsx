@@ -17,30 +17,32 @@ export function ConfigErrorScreen({ error }: { error: unknown }) {
         alignItems: "center",
         justifyContent: "center",
         padding: "24px",
-        background: "#F5F5F5",
-        color: "#0E4825",
+        // System colours keep this dependency-free crash screen legible in
+        // both OS appearances without importing the app theme chain.
+        background: "Canvas",
+        color: "CanvasText",
         fontFamily: "system-ui, -apple-system, sans-serif",
       }}
     >
       <div style={{ maxWidth: "420px", textAlign: "center" }}>
-        <p style={{ fontSize: "13px", fontWeight: 800, letterSpacing: "0.12em", margin: "0 0 8px" }}>
+        <p style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 8px" }}>
           BURGONOMICS
         </p>
-        <h1 style={{ fontSize: "20px", fontWeight: 800, margin: "0 0 12px" }}>
+        <h1 style={{ fontSize: "24px", fontWeight: 600, margin: "0 0 12px" }}>
           The app could not start
         </h1>
-        <p style={{ fontSize: "14px", lineHeight: 1.5, margin: "0 0 12px" }}>
+        <p style={{ fontSize: "16px", lineHeight: 1.6, margin: "0 0 12px" }}>
           A required service is not configured. Please update the app — if this
           keeps happening, contact support.
         </p>
-        <details style={{ fontSize: "12px", textAlign: "left" }}>
-          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Technical details</summary>
+        <details style={{ fontSize: "14px", textAlign: "left" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Technical details</summary>
           <pre
             style={{
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
-              background: "#fff",
-              border: "1px solid #ddd",
+              background: "Canvas",
+              border: "1px solid GrayText",
               borderRadius: "8px",
               padding: "12px",
               marginTop: "8px",

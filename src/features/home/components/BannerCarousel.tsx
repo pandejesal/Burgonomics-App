@@ -86,10 +86,9 @@ function parseTailwindGradient(gradient: string): string {
 /**
  * BannerCarousel — horizontal promo carousel.
  *
- * Swipe fixes (2026-10-06):
- * - Removed `touch-pan-y` which disabled native horizontal panning.
- * - Replaced useDirectionalScroll with native scroll + pointer drag handling.
- * - Uses CSS scroll-snap only (no JS scrollLeft writes during drag).
+ * Touch/pen gestures stay native; mouse drags scrub the carousel.
+ * Y-axis scroll chaining must stay enabled even though the shared scrollbar
+ * utility contains overscroll on both axes.
  * - Colors: gradient from Firestore (Tailwind classes) parsed to CSS linear-gradient()
  *   so arbitrary runtime values work without build-time safelist.
  */
@@ -99,7 +98,24 @@ export function BannerCarousel({ banners, className }: Props) {
   const [active, setActive] = React.useState(0);
   const [isInteracting, setIsInteracting] = React.useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false);
-  const dragRef = React.useRef<{ startX: number; startY: number; scrollLeft: number } | null>(null);
+  const suppressDragClickRef = React.useRef(false);
+  const dragRef = React.useRef<{
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    pointerId: number;
+    axis: "pending" | "x";
+    captured: boolean;
+    scrollSnapType: string;
+  } | null>(null);
+
+  // A WebView can restore a partial offset on re-entry; paint the first slide
+  // at its actual leading edge when the banner set changes.
+  const firstBannerId = banners[0]?.id;
+  React.useLayoutEffect(() => {
+    if (scrollerRef.current && scrollerRef.current.scrollLeft !== 0) scrollerRef.current.scrollLeft = 0;
+    setActive(0);
+  }, [firstBannerId]);
 
   // Honour the OS motion preference: no rotation and no animated scrolling for
   // users who asked for reduced motion (WCAG 2.2.2 pause/stop/hide).
@@ -148,56 +164,82 @@ export function BannerCarousel({ banners, className }: Props) {
     el.scrollTo({ left: idx * el.clientWidth, behavior: scrollBehavior });
   };
 
-  // Pointer drag for swipe (mouse + touch). Replaces useDirectionalScroll.
-  const onPointerDown = (e: React.PointerEvent) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    // Let the browser handle vertical scrolling naturally; only capture horizontal intent.
-    dragRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft };
-    setIsInteracting(true);
-    // Set pointer capture so we get move/up even if finger leaves element
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    const el = scrollerRef.current;
-    const drag = dragRef.current;
-    if (!el || !drag) return;
-    // Horizontal drag delta
-    const dx = e.clientX - drag.startX;
-    // Vertical drag delta (to detect vertical scroll intent)
-    const dy = e.clientY - drag.startY;
-    // If mostly vertical, release capture and let page scroll
-    if (Math.abs(dx) < Math.abs(dy) && Math.abs(dy) > 10) {
-      onPointerUp(e);
+  // Native touch/pen scrolling owns both axes and pinch zoom. Only a mouse
+  // needs JS dragging; snap must not fight its intermediate scrollLeft writes.
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    suppressDragClickRef.current = false;
+    if (e.pointerType !== "mouse") {
+      setIsInteracting(true);
       return;
     }
+    if (e.button !== 0) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollLeft: el.scrollLeft,
+      pointerId: e.pointerId,
+      axis: "pending",
+      captured: false,
+      scrollSnapType: el.style.scrollSnapType,
+    };
+    setIsInteracting(true);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse") return;
+    const el = scrollerRef.current;
+    const drag = dragRef.current;
+    if (!el || !drag || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+
+    if (drag.axis === "pending") {
+      // Vertical wins ties so the page can scroll; only a clear horizontal
+      // gesture becomes a carousel drag.
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) {
+        dragRef.current = null;
+        setIsInteracting(false);
+        return;
+      }
+      if (Math.abs(dx) <= 10 || Math.abs(dx) <= Math.abs(dy)) return;
+      drag.axis = "x";
+      suppressDragClickRef.current = true;
+      el.style.scrollSnapType = "none";
+      if (typeof el.setPointerCapture === "function") {
+        el.setPointerCapture(drag.pointerId);
+        drag.captured = true;
+      }
+    }
+
     el.scrollLeft = drag.scrollLeft - dx;
   };
 
-  const onPointerUp = (e: React.PointerEvent) => {
-    const drag = dragRef.current;
-    const el = scrollerRef.current;
-    if (drag) {
-      // If minimal movement, treat as tap
-      const dx = Math.abs(e.clientX - drag.startX);
-      if (dx < 10) {
-        // Tap handling is on individual slides via onClick below
-      }
-    }
-    dragRef.current = null;
+  const endMouseDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     setIsInteracting(false);
-    // Release pointer capture
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {
-      // ignore
+    if (e.pointerType !== "mouse") return;
+    const el = scrollerRef.current;
+    const drag = dragRef.current;
+    if (!el || !drag || e.pointerId !== drag.pointerId) return;
+    dragRef.current = null;
+    if (drag.axis !== "x") return;
+    el.style.scrollSnapType = drag.scrollSnapType;
+    if (drag.captured && el.hasPointerCapture(drag.pointerId)) {
+      el.releasePointerCapture(drag.pointerId);
+    }
+    if (el.clientWidth > 0) {
+      const nearest = Math.max(0, Math.min(banners.length - 1, Math.round(el.scrollLeft / el.clientWidth)));
+      goTo(nearest);
     }
   };
 
-  const onPointerCancel = (e: React.PointerEvent) => {
-    dragRef.current = null;
-    setIsInteracting(false);
+  const suppressDragClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Keyboard clicks have detail 0 and must still activate the real link.
+    if (!suppressDragClickRef.current || e.detail === 0) return;
+    suppressDragClickRef.current = false;
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   if (banners.length === 0) return null;
@@ -214,12 +256,20 @@ export function BannerCarousel({ banners, className }: Props) {
     >
       <div
         ref={scrollerRef}
-        className="flex w-full overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth overscroll-x-contain"
-        style={{ WebkitOverflowScrolling: "touch" }}
+        className="flex w-full overflow-x-auto no-scrollbar snap-x snap-mandatory overscroll-x-contain"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          touchAction: "auto",
+          overscrollBehaviorY: "auto",
+          overflowAnchor: "none",
+          scrollPaddingInline: "0px",
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
+        onPointerUp={endMouseDrag}
+        onPointerCancel={endMouseDrag}
+        onLostPointerCapture={endMouseDrag}
+        onClickCapture={suppressDragClick}
       >
         {banners.map((b, i) => (
           <a
@@ -232,79 +282,74 @@ export function BannerCarousel({ banners, className }: Props) {
             onClick={(e) => {
               // Client-side routing, but the href keeps the slide focusable,
               // Enter-activatable and openable in a new tab.
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
               e.preventDefault();
               void HapticService.selection();
               void navigate({ to: b.ctaHref });
             }}
-            className="block w-full shrink-0 px-4 snap-center cursor-pointer"
+            className="block w-full min-w-0 shrink-0 px-4 snap-start cursor-pointer"
           >
             <div
               role="group"
               aria-roledescription="slide"
               aria-label={`${b.title}. ${b.subtitle}. ${b.ctaLabel}`}
+              // Larger image-led promo (2:1, 180px floor). Height is a minimum
+              // and the ratio is preferred, so 200% text grows the slide instead
+              // of clipping it; the photo layer clips, the text never does.
               className={cn(
-                "relative flex w-full min-h-[160px] items-center justify-between gap-4 overflow-hidden rounded-2xl p-4 text-left shadow-medium transition-transform duration-200 active:scale-[0.99]",
-                // Tailwind utility for text color only (white); gradient is applied via inline style
+                "relative flex w-full min-h-[180px] aspect-[2/1] items-end rounded-xl text-left transition-transform duration-200 active:scale-[0.99]",
                 "text-white",
               )}
-              // Apply gradient via inline style so arbitrary Firestore values work.
-              // Firestore stores Tailwind classes: "bg-gradient-to-br from-[#B2452B] to-[#E06637] text-white"
-              // We parse them to CSS linear-gradient() for runtime rendering.
-              style={{
-                background: b.gradient ? parseTailwindGradient(b.gradient) : BRAND_FALLBACK_GRADIENT,
-              }}
             >
-              {/* Ambient lighting */}
-              <div className="absolute inset-0 bg-black/10 mix-blend-overlay pointer-events-none" />
-
-              <div className="relative min-w-0 flex-1 z-10">
-                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 backdrop-blur-sm text-[10px] font-extrabold uppercase tracking-wider text-amber-300 border border-white/10">
-                  <span>CRAFT BURGERS</span>
-                  <span>•</span>
-                  <span>FRESH DAILY</span>
-                </div>
-
-                <h3 className="font-display text-2xl font-black mt-2 leading-tight tracking-tight text-white drop-shadow-sm">
-                  {b.title}
-                </h3>
-                <p className="mt-1 line-clamp-2 text-xs font-medium text-white/90">
-                  {b.subtitle}
-                </p>
-
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-accent px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-accent-hover transition-colors">
-                    {b.ctaLabel || "Order Now"} →
-                  </span>
-                </div>
-              </div>
-
-              {b.imageUrl ? (
-                <div className="relative z-10 h-28 w-28 shrink-0 overflow-hidden rounded-2xl border border-white/20 shadow-xl bg-black/20">
+              <div aria-hidden="true" className="absolute inset-0 overflow-hidden rounded-xl">
+                {b.imageUrl ? (
                   <SafeImage
                     src={b.imageUrl}
                     fallbackSrc={b.fallbackImageUrl}
-                    alt={b.title}
+                    alt=""
                     loading={i === 0 ? "eager" : "lazy"}
                     decoding="async"
                     fetchPriority={i === 0 ? "high" : undefined}
-                    className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+                    className="h-full w-full object-cover"
                   />
-                </div>
-              ) : (
-                <div
-                  aria-hidden
-                  className="grid h-24 w-24 shrink-0 place-items-center rounded-full bg-white/15 backdrop-blur border border-white/20"
-                >
-                  <span className="text-[11px] font-bold text-white/80 uppercase tracking-wider">Burgonomics</span>
-                </div>
-              )}
+                ) : (
+                  <div
+                    className="h-full w-full"
+                    style={{
+                      background: b.gradient ? parseTailwindGradient(b.gradient) : BRAND_FALLBACK_GRADIENT,
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Readable scrim under the text only; the poster stays visible above it. */}
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 rounded-xl bg-gradient-to-t from-black/80 via-black/35 to-black/5"
+              />
+
+              <div className="relative z-10 w-full px-4 pb-3.5 pt-8">
+                <h2 className="type-brand-heading break-words text-lg leading-snug text-white sm:text-xl">
+                  {b.title}
+                </h2>
+                <p className="mt-0.5 break-words text-sm font-normal leading-snug text-white/90">
+                  {b.subtitle}
+                </p>
+                <span className="mt-2 inline-flex min-h-8 items-center rounded-full bg-white/95 px-3 py-1 text-xs font-semibold leading-snug text-text-primary dark:text-text-inverse">
+                  {b.ctaLabel || "Order now"}
+                </span>
+              </div>
             </div>
           </a>
         ))}
       </div>
 
       {banners.length > 1 && (
-        <div role="tablist" aria-label="Select banner" className="mt-3 flex justify-center gap-1.5">
+        // Indicators occupy a reserved 28px band directly under the poster.
+        // Each control keeps a 44px pointer target that overflows the band
+        // invisibly, so the gap to the Menu row stays tight without shrinking
+        // the hit area or overlapping the slide's CTA.
+        <div role="tablist" aria-label="Select banner" className="flex h-7 items-center justify-center gap-1">
           {banners.map((b, idx) => (
             <button
               key={b.id}
@@ -313,13 +358,18 @@ export function BannerCarousel({ banners, className }: Props) {
               aria-selected={idx === active}
               aria-label={`Go to banner ${idx + 1}`}
               onClick={() => goTo(idx)}
-              className={cn(
-                "h-1.5 rounded-full transition-all duration-300",
-                idx === active
-                  ? "w-6 bg-primary dark:bg-primary-text"
-                  : "w-1.5 bg-border hover:bg-text-secondary",
-              )}
-            />
+              className="grid h-11 w-11 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "block h-2 rounded-full transition-all duration-300",
+                  idx === active
+                    ? "w-6 bg-primary dark:bg-primary-text"
+                    : "w-2 bg-text-secondary",
+                )}
+              />
+            </button>
           ))}
         </div>
       )}

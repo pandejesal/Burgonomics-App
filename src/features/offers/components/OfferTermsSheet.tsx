@@ -46,7 +46,7 @@ export function OfferTermsSheet({ offer, open, onOpenChange }: Props) {
         <div className="flex flex-wrap items-center gap-1.5">
           <AppBadge tone="primary">{discount.label}</AppBadge>
           {code && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-primary/60 px-2 py-0.5 font-mono uppercase tracking-wider text-primary type-caption">
+            <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-primary/60 px-2 py-1 text-sm font-semibold uppercase text-primary-text">
               <Tag className="h-3.5 w-3.5" aria-hidden />
               {code}
             </span>
@@ -54,7 +54,7 @@ export function OfferTermsSheet({ offer, open, onOpenChange }: Props) {
           {offer.automatic && <AppBadge tone="success">Auto-applied</AppBadge>}
         </div>
 
-        <dl className="space-y-2 rounded-[var(--radius-medium)] border border-divider bg-bg-secondary p-3">
+        <dl className="space-y-3 rounded-[var(--radius-medium)] border border-divider bg-bg-secondary p-4">
           {typeof eligibility.minOrderValue === "number" && (
             <Row icon={<Info className="h-4 w-4" aria-hidden />} label="Minimum order">
               ₹{eligibility.minOrderValue}

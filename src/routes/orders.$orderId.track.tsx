@@ -161,15 +161,16 @@ function TrackOrderPage() {
           <button
             aria-label="Refresh status"
             onClick={() => void trackingHook.refresh()}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-text-primary hover:bg-bg-secondary cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-text-primary hover:bg-bg-secondary cursor-pointer"
           >
             <RefreshCw
               className={`h-4.5 w-4.5 ${trackingHook.status === "refreshing" ? "animate-spin" : ""}`}
+              aria-hidden
             />
           </button>
         }
       >
-        <div className="mx-auto max-w-[540px] space-y-4 px-4 py-3 pb-16 select-none">
+        <div className="mx-auto max-w-[540px] space-y-5 px-4 pb-16 pt-4 select-none">
           {/* Live-update health: a failing poll used to render nowhere, so the
               page silently showed stale stages. A paused state keeps the last
               known truth visible without inventing a status update. */}
@@ -177,9 +178,9 @@ function TrackOrderPage() {
             <div
               data-testid="tracking-pause-banner"
               role="status"
-              className="flex items-center gap-3 rounded-2xl border border-divider bg-surface p-3"
+              className="flex items-center gap-3 rounded-2xl border border-divider bg-surface p-4"
             >
-              <p className="flex-1 text-[11px] text-text-secondary">
+              <p className="flex-1 text-sm leading-relaxed text-text-secondary">
                 {trackingHook.status === "offline"
                   ? "You're offline — live updates are paused. Showing the last known status."
                   : trackingHook.snapshot
@@ -190,7 +191,7 @@ function TrackOrderPage() {
                 <button
                   type="button"
                   onClick={() => void trackingHook.refresh()}
-                  className="rounded-full bg-accent px-3 py-1.5 text-xs font-black text-white cursor-pointer hover:bg-accent-hover"
+                  className="min-h-11 shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground cursor-pointer hover:bg-primary-hover"
                 >
                   Retry
                 </button>
@@ -214,9 +215,9 @@ function TrackOrderPage() {
               customerAddressText={addressText}
             />
           ) : (
-            <div className="rounded-3xl border border-divider bg-surface p-5 text-center space-y-1 shadow-md">
-              <p className="text-xs font-black text-text">Live location unavailable</p>
-              <p className="text-[11px] text-text-secondary">
+            <div className="space-y-1.5 rounded-3xl border border-divider bg-surface p-6 text-center shadow-md">
+              <p className="type-title-large text-text">Live location unavailable</p>
+              <p className="text-sm leading-relaxed text-text-secondary">
                 {trackingState.isTakeawayOrDineIn
                   ? "The map appears once outlet coordinates are confirmed."
                   : "The map appears once outlet and delivery coordinates are confirmed."}
@@ -242,59 +243,59 @@ function TrackOrderPage() {
                 void HapticService.selection();
                 setReceiptOpen(!receiptOpen);
               }}
-              className="flex w-full items-center justify-between p-4 text-left hover:bg-bg-secondary transition-colors cursor-pointer"
+              className="flex min-h-11 w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-bg-secondary cursor-pointer"
             >
-              <div className="flex items-center gap-2.5">
-                <Receipt className="h-4.5 w-4.5 text-emerald-500" />
-                <div>
-                  <h3 className="font-sans text-xs font-black text-text">
+              <div className="flex items-center gap-3">
+                <Receipt className="h-4.5 w-4.5 shrink-0 text-primary-text" aria-hidden />
+                <div className="min-w-0">
+                  <h3 className="type-title-large text-text">
                     View Itemized Tax Invoice
                   </h3>
-                  <p className="text-[11px] text-text-secondary">
+                  <p className="text-sm leading-relaxed text-text-secondary tabular-nums">
                     {order.items?.length ?? 1} Items • {formatINR(order.totals?.grandTotal ?? 0)}
                   </p>
                 </div>
               </div>
               {receiptOpen ? (
-                <ChevronUp className="h-4 w-4 text-text-secondary" />
+                <ChevronUp className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
               ) : (
-                <ChevronDown className="h-4 w-4 text-text-secondary" />
+                <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
               )}
             </button>
 
             {receiptOpen && (
-              <div className="border-t border-divider p-4 space-y-3 bg-bg-secondary/40">
-                <div className="space-y-2">
+              <div className="space-y-4 border-t border-divider bg-bg-secondary/40 p-4">
+                <div className="space-y-2.5">
                   {order.items?.map((item, i) => (
-                    <div key={i} className="flex justify-between text-xs">
+                    <div key={i} className="flex justify-between gap-3 text-sm">
                       <span className="font-medium text-text">
                         {item.quantity}x {item.name}
                       </span>
-                      <span className="font-bold text-text">
+                      <span className="font-semibold tabular-nums text-text">
                         {formatINR((item.unitPrice || 0) * (item.quantity || 1))}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-divider pt-2 space-y-1 text-[11px] text-text-secondary">
-                  <div className="flex justify-between">
-                    <span>GST & Taxes</span>
-                    <span>{formatINR(order.totals?.taxes ?? 0)}</span>
+                <div className="space-y-2 border-t border-divider pt-3 text-sm text-text-secondary">
+                  <div className="flex justify-between gap-3">
+                    <span>GST &amp; taxes</span>
+                    <span className="tabular-nums">{formatINR(order.totals?.taxes ?? 0)}</span>
                   </div>
                   {packingFee != null && (
-                    <div className="flex justify-between">
-                      <span>Packaging Charge</span>
-                      <span>{formatINR(packingFee)}</span>
+                    <div className="flex justify-between gap-3">
+                      <span>Packaging charge</span>
+                      <span className="tabular-nums">{formatINR(packingFee)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span>Delivery Fee</span>
-                    <span>{order.totals?.deliveryFee === 0 ? "FREE" : formatINR(order.totals?.deliveryFee ?? 0)}</span>
+                  <div className="flex justify-between gap-3">
+                    <span>Delivery fee</span>
+                    <span className="tabular-nums">{order.totals?.deliveryFee === 0 ? "Free" : formatINR(order.totals?.deliveryFee ?? 0)}</span>
                   </div>
-                  <div className="border-t border-divider pt-2 flex justify-between font-sans text-xs font-black text-text">
+                  <div className="flex justify-between gap-3 border-t border-divider pt-3 text-base font-semibold text-text">
                     <span>Total Paid ({order.payment?.method?.toUpperCase() ?? "PAID"})</span>
-                    <span className="text-emerald-500 font-mono text-sm">
+                    <span className="text-sm font-semibold tabular-nums text-success">
                       {formatINR(order.totals?.grandTotal ?? 0)}
                     </span>
                   </div>
@@ -412,17 +413,17 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
     return (
       <div
         data-testid="cancellation-grace-card"
-        className="rounded-3xl border border-divider bg-surface p-4 space-y-3 shadow-md"
+        className="space-y-4 rounded-3xl border border-divider bg-surface p-5 shadow-md"
       >
-        <div className="flex items-center gap-2.5">
-          <span className="rounded-2xl bg-amber-500/10 p-2 text-amber-500">
-            <Clock className="h-4 w-4 animate-pulse" />
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl bg-warning/10 p-2 text-warning">
+            <Clock className="h-4 w-4 animate-pulse" aria-hidden />
           </span>
-          <div>
-            <h3 className="font-sans text-xs font-black text-text">
+          <div className="min-w-0">
+            <h3 className="type-title-large text-text">
               Cancellation Grace Period: {remainingSec}s remaining
             </h3>
-            <p className="text-[11px] text-text-secondary">
+            <p className="text-sm leading-relaxed text-text-secondary">
               Cancel free of charge before the kitchen starts grilling.
             </p>
           </div>
@@ -438,7 +439,7 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
           className="h-1.5 w-full overflow-hidden rounded-full bg-bg-secondary"
         >
           <div
-            className="h-full rounded-full bg-amber-500 transition-all duration-1000 ease-linear"
+            className="h-full rounded-full bg-warning transition-all duration-1000 ease-linear"
             style={{ width: `${(remainingSec / 60) * 100}%` }}
           />
         </div>
@@ -447,7 +448,7 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
           type="button"
           data-testid="cancel-order-button"
           onClick={() => void handleCancel()}
-          className="w-full rounded-xl border border-divider bg-bg-secondary py-2.5 text-xs font-black text-text transition-colors hover:bg-surface cursor-pointer"
+          className="min-h-11 w-full rounded-xl border border-divider bg-bg-secondary py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface cursor-pointer"
         >
           Cancel Order
         </button>
@@ -458,32 +459,32 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
   return (
     <div
       data-testid="grace-expired-card"
-      className="rounded-3xl border border-divider bg-surface p-4 space-y-3 shadow-md"
+      className="space-y-4 rounded-3xl border border-divider bg-surface p-5 shadow-md"
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-3">
         <span className="rounded-2xl bg-bg-secondary p-2 text-text-secondary">
-          <Clock className="h-4 w-4" />
+          <Clock className="h-4 w-4" aria-hidden />
         </span>
-        <div>
-          <h3 className="font-sans text-xs font-black text-text">Cancellation window closed</h3>
-          <p className="text-[11px] text-text-secondary">
+        <div className="min-w-0">
+          <h3 className="type-title-large text-text">Cancellation window closed</h3>
+          <p className="text-sm leading-relaxed text-text-secondary">
             The kitchen has your order — the store can still help with changes or a cancellation.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2.5">
         {safeStorePhone ? (
           <a
             href={`tel:${safeStorePhone}`}
             data-testid="call-store-link"
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-bg-secondary py-2.5 text-xs font-black text-text transition-colors hover:bg-surface"
+            className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-bg-secondary px-2 py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface"
           >
-            <Phone className="h-3.5 w-3.5 text-emerald-500" />
+            <Phone className="h-3.5 w-3.5 shrink-0 text-primary-text" aria-hidden />
             <span>Need changes? Call Store</span>
           </a>
         ) : (
-          <span className="self-center text-[11px] italic text-text-secondary">
+          <span className="self-center text-sm italic text-text-secondary">
             Store phone unavailable
           </span>
         )}
@@ -493,9 +494,9 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
           target="_blank"
           rel="noreferrer noopener"
           data-testid="whatsapp-support-link"
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-[#0E4825] py-2.5 text-xs font-black text-emerald-300 transition-colors hover:bg-[#135d30]"
+          className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-primary px-2 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
-          <MessageSquare className="h-3.5 w-3.5" />
+          <MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>WhatsApp Support</span>
         </a>
 
@@ -504,9 +505,9 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
           to="/support"
           search={{ topic: "order", orderId: order.id }}
           data-testid="raise-ticket-link"
-          className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary py-2 text-xs font-black text-text transition-colors hover:bg-surface"
+          className="col-span-2 flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary px-2 py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface"
         >
-          <FileText className="h-3.5 w-3.5 text-amber-500" />
+          <FileText className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
           <span>Raise Support Ticket</span>
         </Link>
       </div>
@@ -517,7 +518,7 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
 function TrackSkeleton() {
   return (
     <AppShell title="Track Order" backTo="/orders" showTabs={false} showTopBar>
-      <div className="mx-auto max-w-[540px] space-y-3 px-4 py-4">
+      <div className="mx-auto max-w-[540px] space-y-4 px-4 py-4">
         <Skeleton className="h-40 w-full rounded-3xl" />
         <Skeleton className="h-64 w-full rounded-3xl" />
         <Skeleton className="h-28 w-full rounded-3xl" />

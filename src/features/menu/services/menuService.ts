@@ -68,6 +68,20 @@ export interface MenuSearchOptions {
   kind?: MenuSearchKind;
 }
 
+/** One real-time, store-scoped menu snapshot plus explicit removals. */
+export interface MenuStoreSnapshot {
+  products: Product[];
+  /** Ids Firestore reported as removed/changed out of the query — never inferred. */
+  removedIds: string[];
+  /**
+   * True only for the whole-scoped query below (no page window, no limit).
+   * Page-shaped/partial payloads must leave this false so consumers keep
+   * loaded items and their remaining pagination instead of reconciling to a
+   * subset.
+   */
+  complete: boolean;
+}
+
 function categoryHaystack(p: Product): string {
   return `${p.categoryName ?? ""} ${p.categoryId ?? ""}`;
 }
@@ -136,6 +150,7 @@ export function mapProductDoc(data: any, docId: string): Product {
 
   const badges = Array.isArray(data.badges) ? [...data.badges] : [];
   if (
+    data.isBestSeller === true ||
     data.isBestseller ||
     data.bestseller ||
     (Array.isArray(data.tags) && data.tags.includes("bestseller"))
@@ -196,6 +211,18 @@ export function mapProductDoc(data: any, docId: string): Product {
   };
 }
 
+/** Map a raw product doc into the detail shape the customizer needs. */
+function toProductDetails(data: any, docId: string): ProductDetails {
+  const baseProduct = mapProductDoc(data, docId);
+  return {
+    ...baseProduct,
+    customizations: mapToCustomizationGroups(data.customizations || []),
+    ingredients: data.ingredients || [],
+    nutrition: data.nutrition || [],
+    allowSpecialInstructions: data.allowSpecialInstructions ?? true,
+  };
+}
+
 /** Delivery store id → Petpooja restID (equal once outlets are linked). */
 const restIdCache = new Map<string, string | undefined>();
 async function resolveRestId(storeId: string | undefined): Promise<string | undefined> {
@@ -213,6 +240,33 @@ async function resolveRestId(storeId: string | undefined): Promise<string | unde
     // store lookup failure — fall through to raw store id (uncached: retry next call)
   }
   return storeId;
+}
+
+/**
+ * Verified delivery-store → Petpooja restID mapping, used wherever a *wrong*
+ * answer would be worse than no answer (single-product reads for the cart).
+ *
+ * Unlike `resolveRestId` this never falls back to the raw store id: an unlinked
+ * store, a missing store doc or a failed read all return `null`, and callers
+ * fail closed instead of reading another outlet's inventory.
+ */
+const verifiedRestIdCache = new Map<string, string>();
+async function resolveVerifiedRestId(storeId: string | undefined): Promise<string | null> {
+  if (!storeId) return null;
+  const cached = verifiedRestIdCache.get(storeId);
+  if (cached) return cached;
+  try {
+    const snap = await getDoc(doc(db, "stores", storeId));
+    const raw = snap.exists() ? (snap.data() as any)?.petpoojaRestId : undefined;
+    if (typeof raw === "string" && raw.trim().length > 0) {
+      const restId = raw.trim();
+      verifiedRestIdCache.set(storeId, restId);
+      return restId;
+    }
+  } catch (e) {
+    console.warn("menuService.resolveVerifiedRestId failed:", e);
+  }
+  return null;
 }
 
 async function fetchStoreProducts(restId: string | undefined): Promise<Product[]> {
@@ -277,7 +331,86 @@ function deriveCategories(all: Product[]): MenuCategory[] {
   return [...seen.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
+/**
+ * Unscoped read — the legacy exact-SKU / shared-link path (search, favourites,
+ * the product route before a store is selected). Unchanged semantics: direct
+ * doc first, then the Petpooja item-id join.
+ */
+async function loadProductUnscoped(id: string): Promise<ApiResult<ProductDetails | null>> {
+  const direct = await getDoc(doc(db, "products", id));
+  if (direct.exists()) return ok(toProductDetails(direct.data(), direct.id));
+
+  const alt = await getDocs(
+    query(collection(db, "products"), where("petpoojaItemId", "==", id), limit(1)),
+  );
+  if (alt.empty) return ok(null);
+  return ok(toProductDetails(alt.docs[0].data(), alt.docs[0].id));
+}
+
+/**
+ * Store-bound read for the cart / reorder path.
+ *
+ * `storeId` is a promise about WHICH outlet's inventory may be returned:
+ * - the store must resolve to a verified restID, or the read fails closed;
+ * - a direct doc hit must be owned by that restID, else the answer is "not in
+ *   this store" (ok(null)) rather than another outlet's copy;
+ * - the legacy `petpoojaItemId` join is bounded to the same restID and must be
+ *   unambiguous. A bare `limit(1)` used to hand back an arbitrary outlet's doc.
+ */
+async function loadProductScoped(
+  id: string,
+  storeId: string,
+): Promise<ApiResult<ProductDetails | null>> {
+  const restId = await resolveVerifiedRestId(storeId);
+  if (!restId) {
+    return fail(
+      "PRODUCT_SCOPE_UNRESOLVED",
+      "This store's menu isn't linked yet, so item details can't be verified.",
+    );
+  }
+
+  const direct = await getDoc(doc(db, "products", id));
+  if (direct.exists()) {
+    const data = direct.data();
+    const owner = typeof data.restId === "string" ? data.restId : undefined;
+    // Ownership is a fact we either have or do not: an unowned/unverifiable doc
+    // is not this store's product.
+    return owner === restId ? ok(toProductDetails(data, direct.id)) : ok(null);
+  }
+
+  const matches = await getDocs(
+    query(
+      collection(db, "products"),
+      where("petpoojaItemId", "==", id),
+      where("restId", "==", restId),
+      limit(2),
+    ),
+  );
+  if (matches.empty) return ok(null);
+  if (matches.docs.length > 1) {
+    return fail(
+      "PRODUCT_AMBIGUOUS",
+      "More than one item matches this reference. Please pick it from the menu.",
+    );
+  }
+  return ok(toProductDetails(matches.docs[0].data(), matches.docs[0].id));
+}
+
 export const menuService = {
+  /** One full, verified outlet snapshot for Home's categories and food rails. */
+  async listHomeCatalog(storeId: string): Promise<ApiResult<{ products: Product[]; categories: MenuCategory[] }>> {
+    try {
+      const restId = await resolveVerifiedRestId(storeId);
+      if (!restId) {
+        return fail("MENU_SCOPE_UNRESOLVED", "This store's menu isn't linked yet.");
+      }
+      const products = await fetchStoreProductsCached(restId);
+      return ok({ products, categories: deriveCategories(products) });
+    } catch {
+      return fail("MENU_FETCH_FAILED", "Could not load this store's menu.");
+    }
+  },
+
   async listCategories(storeId?: string): Promise<ApiResult<MenuCategory[]>> {
     try {
       const restId = await resolveRestId(storeId);
@@ -308,31 +441,11 @@ export const menuService = {
     }
   },
 
-  async getProduct(id: string, _storeId?: string): Promise<ApiResult<ProductDetails | null>> {
+  async getProduct(id: string, storeId?: string): Promise<ApiResult<ProductDetails | null>> {
     try {
-      const direct = await getDoc(doc(db, "products", id));
-      let data: any = direct.exists() ? direct.data() : undefined;
-      let docId = id;
-      if (data === undefined) {
-        // Fall back to Petpooja item-id lookup (doc ids are prod_{itemid}).
-        const alt = await getDocs(
-          query(collection(db, "products"), where("petpoojaItemId", "==", id), limit(1))
-        );
-        if (alt.empty) return ok(null);
-        data = alt.docs[0].data();
-        docId = alt.docs[0].id;
-      }
-      const baseProduct = mapProductDoc(data, docId);
-      const customizations = mapToCustomizationGroups(data.customizations || []);
-
-      const details: ProductDetails = {
-        ...baseProduct,
-        customizations,
-        ingredients: data.ingredients || [],
-        nutrition: data.nutrition || [],
-        allowSpecialInstructions: data.allowSpecialInstructions ?? true,
-      };
-      return ok(details);
+      return storeId !== undefined
+        ? await loadProductScoped(id, storeId)
+        : await loadProductUnscoped(id);
     } catch (e: any) {
       console.error("Failed to get product", e);
       return fail("MENU_FETCH_FAILED", "Could not load product details.");
@@ -513,9 +626,13 @@ export const menuService = {
       try {
         const restId = await resolveRestId(storeId);
         if (cancelled) return;
-        const q = restId
-          ? query(collection(db, "products"), where("restId", "==", restId))
-          : query(collection(db, "products"), limit(100));
+        // No restId means NO scope. The old fallback streamed the first 100
+        // products of every outlet as if they were this store's menu.
+        if (!restId) {
+          callback(fail("MENU_SCOPE_UNRESOLVED", "No menu is linked to this store yet."));
+          return;
+        }
+        const q = query(collection(db, "products"), where("restId", "==", restId));
         innerUnsub = onSnapshot(
           q,
           (snap) => {
@@ -556,9 +673,12 @@ export const menuService = {
       try {
         const restId = await resolveRestId(storeId);
         if (cancelled) return;
-        const q = restId
-          ? query(collection(db, "products"), where("restId", "==", restId))
-          : query(collection(db, "products"), limit(100));
+        // Same scope rule as the category listener: no restId, no stream.
+        if (!restId) {
+          callback(fail("MENU_SCOPE_UNRESOLVED", "No menu is linked to this store yet."));
+          return;
+        }
+        const q = query(collection(db, "products"), where("restId", "==", restId));
         innerUnsub = onSnapshot(
           q,
           (snap) => {
@@ -587,6 +707,59 @@ export const menuService = {
   },
 
   /**
+   * Real-time, store-scoped menu snapshot for the continuous menu page.
+   *
+   * Unlike `subscribeProducts` (page-shaped and optionally category-filtered)
+   * this delivers the whole scoped query plus the ids Firestore explicitly
+   * reported as removed. The menu store needs both: one to update cards that
+   * were loaded long ago, the other to only ever delete on real evidence.
+   */
+  subscribeStoreProducts(
+    storeId: string | undefined,
+    callback: (result: ApiResult<MenuStoreSnapshot>) => void,
+  ): () => void {
+    let innerUnsub: Unsubscribe | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const restId = await resolveRestId(storeId);
+        if (cancelled) return;
+        if (!restId) {
+          callback(fail("MENU_SCOPE_UNRESOLVED", "No menu is linked to this store yet."));
+          return;
+        }
+        innerUnsub = onSnapshot(
+          query(collection(db, "products"), where("restId", "==", restId)),
+          (snap) => {
+            const products: Product[] = [];
+            snap.forEach((d) => products.push(mapProductDoc(d.data(), d.id)));
+            const removedIds = snap
+              .docChanges()
+              .filter((change) => change.type === "removed")
+              .map((change) => change.doc.id);
+            // The query is `where(restId == …)` with no limit and no page
+            // window, so membership in this payload is the store's whole
+            // catalog. That is the ONE place allowed to claim completeness.
+            callback(ok({ products, removedIds, complete: true }));
+          },
+          (err) => {
+            console.warn("menuService.subscribeStoreProducts snapshot error:", err);
+            callback(fail("MENU_SYNC_FAILED", "Failed to sync the menu in real-time."));
+          },
+        );
+      } catch (err) {
+        console.warn("menuService.subscribeStoreProducts setup error:", err);
+        callback(fail("MENU_SYNC_FAILED", "Failed to sync the menu in real-time."));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (innerUnsub) innerUnsub();
+    };
+  },
+
+  /**
    * Real-time single product listener (e.g. For product details modal).
    */
   subscribeProduct(
@@ -601,17 +774,7 @@ export const menuService = {
           return;
         }
         const data = snap.data();
-        const baseProduct = mapProductDoc(data, snap.id);
-        const customizations = mapToCustomizationGroups(data.customizations || []);
-
-        const details: ProductDetails = {
-          ...baseProduct,
-          customizations,
-          ingredients: data.ingredients || [],
-          nutrition: data.nutrition || [],
-          allowSpecialInstructions: data.allowSpecialInstructions ?? true,
-        };
-        callback(ok(details));
+        callback(ok(toProductDetails(data, snap.id)));
       },
       (err) => {
         console.warn("menuService.subscribeProduct snapshot error:", err);

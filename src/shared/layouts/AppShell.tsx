@@ -33,7 +33,7 @@ export function AppShell({
   const isMounted = typeof document !== "undefined";
 
   return (
-    <div className="app-shell" vaul-drawer-wrapper="">
+    <div className="app-shell bg-background text-text-primary" vaul-drawer-wrapper="">
       <OfflineBanner />
       <ConsentBanner />
       {showTopBar && title && <TopBar title={title} backTo={backTo} rightSlot={rightSlot} />}
@@ -41,7 +41,7 @@ export function AppShell({
         className={cn(
           "min-h-[calc(100dvh-3.5rem-env(safe-area-inset-top,0px))]",
           !showTopBar && "pt-[env(safe-area-inset-top,0px)]",
-          showTabs && "pb-[calc(88px+env(safe-area-inset-bottom,0px))]",
+          showTabs && "pb-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))]",
           contentClassName,
         )}
       >

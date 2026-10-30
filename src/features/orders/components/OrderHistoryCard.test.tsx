@@ -41,9 +41,11 @@ const makeOrder = (fulfillment: string, terminal = false): Order =>
   }) as unknown as Order;
 
 describe("O-09: courier tracking promise is delivery-only", () => {
-  it("offers Live Porter GPS for an active delivery order", () => {
+  it("offers delivery tracking without inventing a courier or a live GPS feed", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("delivery")} />);
-    expect(html).toContain("Live Porter GPS");
+    expect(html).toContain("Track delivery");
+    expect(html).not.toContain("Porter");
+    expect(html).not.toContain("GPS");
   });
 
   it("never promises courier GPS on an active dine-in order", () => {
@@ -62,6 +64,6 @@ describe("O-09: courier tracking promise is delivery-only", () => {
   it("offers Reorder instead of tracking for a terminal order", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("delivery", true)} />);
     expect(html).not.toContain("Live Porter GPS");
-    expect(html).toContain("1-Tap Reorder");
+    expect(html).toContain("Reorder");
   });
 });

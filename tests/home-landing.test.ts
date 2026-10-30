@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import type { Fulfillment } from "../src/features/stores/models/Store";
 
@@ -65,19 +66,49 @@ describe("Prompt 09: Customer Home & Landing Experience Suite", () => {
     });
   });
 
-  describe("4. 60-30-10 Design Token Verification", () => {
-    it("validates semantic theme color tokens for brand identity", () => {
-      const themePalette = {
-        canvasLight: "#F5F5F5",
-        canvasDark: "#0A0A0A",
-        brandForestGreen: "#0E4825",
-        accentVibrantOrange: "#FF6600",
-        highContrastText: "#4ADE80",
-      };
+  describe("4. Theme token verification", () => {
+    const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
-      expect(themePalette.brandForestGreen).toBe("#0E4825");
-      expect(themePalette.accentVibrantOrange).toBe("#FF6600");
-      expect(themePalette.highContrastText).toBe("#4ADE80");
+    function tokenBlock(selector: string): string {
+      const match = new RegExp(`(?:^|\\n)${selector.replace(".", "\\.")} \\{`).exec(css);
+      expect(match).not.toBeNull();
+      const start = match!.index + match![0].length;
+      return css.slice(start, css.indexOf("}", start));
+    }
+
+    it("uses the settled white / black canvases and forest-green primary", () => {
+      expect(css).not.toContain("#F5F5F5");
+      expect(css).not.toContain("#0A0A0A");
+      expect(css).not.toContain("#FF6600");
+
+      expect(tokenBlock(":root")).toContain("--background: #FFFFFF");
+      expect(tokenBlock(".dark")).toContain("--background: #000000");
+      expect(css).toContain("--primary: #0E4825");
+      expect(css).toContain("--accent: #C2410C");
+    });
+
+    it("serves the owner's MonstroSolid / Montserrat roles without remote fonts", () => {
+      expect(css).toContain('font-family: "Montserrat"');
+      expect(css).toContain("MontserratVariable.woff2");
+      expect(css).toContain("font-weight: 100 900");
+      expect(css).toContain("font-display: swap");
+      expect(css).toContain('--font-sans: "Montserrat"');
+      expect(css).toContain('--font-display: "MonstroSolid"');
+      expect(css).toContain('--font-mono: "Montserrat"');
+      expect(css).not.toContain("fonts.googleapis");
+      // The display face never replaces body, price or control text.
+      expect(css).toContain(".type-brand-heading");
+      expect(css).toMatch(/\.type-brand-heading \{[\s\S]*?font-family: var\(--font-brand\)/);
+      for (const role of ["type-body", "type-caption", "type-button", "type-price", "type-label-large"]) {
+        expect(css).toMatch(new RegExp(`\\.${role} \\{[\\s\\S]*?font-family: var\\(--font-sans\\)`));
+      }
+    });
+
+    it("keeps body copy at 16px and metadata at 14px", () => {
+      expect(css).toMatch(/body \{[\s\S]*?font-size: 16px;/);
+      expect(css).toMatch(/\.type-body \{[\s\S]*?font-size: 16px;/);
+      expect(css).toMatch(/\.type-caption \{[\s\S]*?font-size: 14px;/);
+      expect(css).toMatch(/\.type-label-large \{[\s\S]*?font-size: 14px;/);
     });
   });
 });

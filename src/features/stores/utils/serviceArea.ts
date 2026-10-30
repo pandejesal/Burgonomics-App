@@ -66,3 +66,69 @@ export function isStoreInDeliveryArea(
   if (!Number.isFinite(distanceKm)) return true;
   return distanceKm <= radius;
 }
+
+
+/** Structural minimum a store must expose to be judged visible. */
+export interface StoreVisibilityCandidate {
+  lat: number;
+  lng: number;
+  deliveryRadiusKm?: number | null;
+}
+
+export type StoreVisibilityFulfillment = "delivery" | "takeaway" | "dinein" | null | undefined;
+
+/**
+ * A position is usable only when it is finite AND inside the coordinate domain.
+ * `lat: 360` is finite but impossible, and haversine is periodic, so an
+ * out-of-range pair can compute a near-zero distance and look adjacent — an
+ * invalid position must fail closed, never be treated as "next door".
+ */
+export function hasUsableCoords(
+  coords: { lat: number; lng: number } | null | undefined,
+): coords is { lat: number; lng: number } {
+  if (!coords) return false;
+  if (typeof coords.lat !== "number" || typeof coords.lng !== "number") return false;
+  if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return false;
+  return coords.lat >= -90 && coords.lat <= 90 && coords.lng >= -180 && coords.lng <= 180;
+}
+
+/**
+ * The ONE radius policy for "which outlets may the customer see for this
+ * fulfillment mode", shared by every list on the store-selection screen (all
+ * stores, nearby, recently viewed, search results and the nearest-store
+ * candidate) so they can never disagree.
+ *
+ * Policy — the same numbers the guards already enforce:
+ *   - DELIVERY (and any unknown mode: the strict default) ->
+ *     `store.deliveryRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM`, exactly as
+ *     {@link isStoreInDeliveryArea} computes it. The 7 km fallback stays
+ *     logic-only; callers must never present it as a fact.
+ *   - TAKEAWAY / DINE-IN -> the app-wide {@link MAX_PICKUP_DISTANCE_KM} ceiling.
+ *
+ * Fails CLOSED, unlike {@link isStoreInDeliveryArea}: with no usable customer
+ * position (or a store without a usable in-range position) nothing is visible,
+ * because an unknown position cannot prove reachability. The legacy guard keeps its
+ * fail-open semantics for its existing consumers (selection, checkout).
+ *
+ * Distances are always recomputed from the supplied coordinates; a stale
+ * `distanceKm` carried on a row is never consulted.
+ */
+export function selectVisibleStores<T extends StoreVisibilityCandidate>(
+  stores: readonly T[],
+  coords: { lat: number; lng: number } | null | undefined,
+  fulfillment: StoreVisibilityFulfillment,
+): T[] {
+  if (!hasUsableCoords(coords)) return [];
+  const userLat = coords.lat;
+  const userLng = coords.lng;
+  return stores.filter((store) => {
+    // A store whose own position is unknown or impossible cannot be proven
+    // reachable — the same domain rule applies to the customer's position.
+    if (!hasUsableCoords({ lat: store.lat, lng: store.lng })) return false;
+    if (fulfillment === "takeaway" || fulfillment === "dinein") {
+      return getDeliveryDistanceKm(store, userLat, userLng) <= MAX_PICKUP_DISTANCE_KM;
+    }
+    return isStoreInDeliveryArea(store, userLat, userLng);
+  });
+}
+

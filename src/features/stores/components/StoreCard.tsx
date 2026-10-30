@@ -193,7 +193,9 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                   as="h3"
                   variant="titleMedium"
                   className={cn(
-                    "truncate font-bold text-[14px] leading-tight tracking-tight",
+                    // Outlet names are how a customer tells two nearby branches
+                    // apart, so they wrap to two lines instead of truncating.
+                    "line-clamp-2 min-w-0 break-words font-bold text-[14px] leading-tight tracking-tight",
                     outOfArea || isPickupTooFar ? "text-text-secondary" : "text-text-primary",
                   )}
                 >

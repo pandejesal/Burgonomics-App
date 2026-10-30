@@ -209,11 +209,11 @@ export function LiveOrderMap({
   return (
     <div className="relative rounded-3xl border border-divider bg-surface overflow-hidden shadow-xl">
       {/* Map Header Overlay */}
-      <div className="absolute top-3 left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/90 backdrop-blur-md border border-divider text-[11px] font-bold text-text shadow-md">
+      <div className="absolute left-3 right-3 top-3 z-[1000] flex items-center justify-between gap-2 pointer-events-none">
+        <div className="flex items-center gap-2 rounded-full border border-divider bg-surface/90 px-3 py-1.5 text-xs font-semibold text-text shadow-md backdrop-blur-md">
           {hasRiderGps && (
             <span
-              className="rider-pin w-2 h-2 rounded-full bg-emerald-400 animate-ping"
+              className="rider-pin h-2 w-2 rounded-full bg-success animate-ping"
               data-testid="rider-pin"
             />
           )}
@@ -227,8 +227,8 @@ export function LiveOrderMap({
         </div>
 
         {isReconnecting && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-950/90 border border-amber-500/60 text-amber-300 text-[11px] font-bold">
-            <WifiOff className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-1.5 rounded-full border border-warning/50 bg-warning/15 px-3 py-1.5 text-xs font-semibold text-warning backdrop-blur-md">
+            <WifiOff className="h-3.5 w-3.5" aria-hidden />
             <span>Reconnecting...</span>
           </div>
         )}
@@ -257,7 +257,7 @@ export function LiveOrderMap({
                 <Marker position={dropLatLng} icon={dropIcon} />
                 <Polyline
                   positions={[storeLatLng, dropLatLng]}
-                  color="#FF6600"
+                  color="#0E4825"
                   weight={4}
                   dashArray="6, 8"
                   opacity={0.8}
@@ -273,33 +273,33 @@ export function LiveOrderMap({
             <MapBoundsAdjuster points={mapPoints} />
           </MapContainer>
         ) : (
-          <div className="w-full h-full bg-bg-secondary flex items-center justify-center text-xs text-text-secondary">
+          <div className="flex h-full w-full items-center justify-center bg-bg-secondary text-sm text-text-secondary">
             Loading live map...
           </div>
         )}
 
         {/* Courier unconfirmed badge */}
         {courierUnconfirmed && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] px-3 py-1.5 rounded-full bg-surface/90 backdrop-blur-md border border-divider text-[11px] font-bold text-text-secondary whitespace-nowrap shadow-md pointer-events-none">
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-[1000] -translate-x-1/2 whitespace-nowrap rounded-full border border-divider bg-surface/90 px-3.5 py-1.5 text-xs font-medium text-text-secondary shadow-md backdrop-blur-md">
             Out for delivery — courier details appear after dispatch
           </div>
         )}
       </div>
 
       {/* Map Action Bar Footer */}
-      <div className="p-3 bg-surface border-t border-divider flex items-center justify-between text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider bg-surface p-3.5">
         {googleMapsUrl ? (
           <a
             href={googleMapsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-bold text-primary hover:text-primary-hover transition-colors"
+            className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary-text transition-colors hover:text-primary-hover"
           >
-            <Navigation className="w-3.5 h-3.5" />
+            <Navigation className="h-3.5 w-3.5" aria-hidden />
             <span>Open in Google Maps</span>
           </a>
         ) : (
-          <span className="text-[11px] text-text-secondary italic">Directions unavailable</span>
+          <span className="text-sm italic text-text-secondary">Directions unavailable</span>
         )}
 
         {safeTrackingUrl && hasRiderGps && !isTakeawayOrDineIn && (
@@ -307,10 +307,10 @@ export function LiveOrderMap({
             href={safeTrackingUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 font-bold text-accent hover:text-accent-hover transition-colors"
+            className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-accent transition-colors hover:text-accent-hover"
           >
             <span>Porter Live Radar</span>
-            <ExternalLink className="w-3 h-3" />
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </a>
         )}
       </div>

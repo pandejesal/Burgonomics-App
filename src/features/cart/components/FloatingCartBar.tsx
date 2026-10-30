@@ -12,6 +12,8 @@ import { useHydrated } from "@/shared/hooks/useHydrated";
 interface FloatingCartBarProps {
   className?: string;
   bottomOffset?: string;
+  compact?: boolean;
+  inline?: boolean;
 }
 
 /**
@@ -21,7 +23,9 @@ interface FloatingCartBarProps {
  */
 export function FloatingCartBar({
   className,
-  bottomOffset = "bottom-[calc(64px+env(safe-area-inset-bottom,0px)+8px)]",
+  bottomOffset = "bottom-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))]",
+  compact = false,
+  inline = false,
 }: FloatingCartBarProps) {
   const hydrated = useHydrated();
   const lines = useCartStore((s) => s.lines);
@@ -42,51 +46,50 @@ export function FloatingCartBar({
         exit={{ y: 80, opacity: 0, scale: 0.95 }}
         transition={{ type: "spring", stiffness: 400, damping: 28 }}
         className={cn(
-          "fixed inset-x-0 z-50 mx-auto w-full max-w-[520px] px-4 pointer-events-none",
-          bottomOffset,
+          "mx-auto w-full max-w-[520px] px-4 pointer-events-none",
+          inline ? "relative" : "fixed inset-x-0 z-50",
+          !inline && bottomOffset,
           className,
         )}
       >
         <Link
           to="/cart"
           onClick={() => void HapticService.selection()}
-          className="pointer-events-auto flex w-full items-center justify-between gap-3 rounded-2xl bg-[#0E4825] px-4 py-3 text-white shadow-2xl transition-transform duration-150 active:scale-[0.98] border border-[#4ADE80]/30 hover:border-[#4ADE80]/60 cursor-pointer"
+          className={cn("pointer-events-auto flex min-h-[72px] w-full items-center justify-between gap-3 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-4 py-3 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer", compact && "min-h-14")}
         >
-          {/* Left info: Icon & counts */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-sm">
-              <ShoppingBag className="h-5 w-5 text-[#4ADE80]" />
-              <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#FF6600] px-1 text-[10px] font-black text-white ring-2 ring-[#0E4825]">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className={cn("relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary-foreground/15 text-primary-foreground", compact && "hidden")}>
+              <ShoppingBag className="h-5 w-5" aria-hidden />
+              <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-sm font-semibold leading-none text-accent-foreground ring-2 ring-primary">
                 {itemCount}
               </span>
             </div>
 
-            <div className="min-w-0">
-              <div className="flex items-baseline gap-1.5">
-                <span className="font-mono text-sm font-extrabold text-white">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="type-price text-base text-primary-foreground">
                   {formatINR(subtotal)}
                 </span>
-                <span className="text-[11px] text-white/80 font-medium">
+                <span className="type-caption text-primary-foreground/85">
                   ({itemCount} {itemCount === 1 ? "item" : "items"})
                 </span>
               </div>
-              <p className="text-[10px] text-[#4ADE80] font-medium truncate">
+              <p className={cn("type-caption text-primary-foreground/85", compact && "hidden")}>
                 100% Pure Veg • Taxes included
               </p>
             </div>
           </div>
 
-          {/* Right action button */}
-          <div className="flex items-center gap-1.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition-colors">
+          <span className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-primary-foreground px-4 text-sm font-semibold text-primary shadow-sm transition-colors">
             <span>View Cart</span>
-            <ArrowRight className="h-4 w-4 stroke-[2.5px]" />
-          </div>
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </span>
         </Link>
       </motion.aside>
     </AnimatePresence>
   );
 
-  if (typeof document === "undefined") return content;
+  if (inline || typeof document === "undefined") return content;
   return createPortal(content, document.body);
 }
 

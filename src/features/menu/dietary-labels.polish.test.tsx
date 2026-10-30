@@ -19,6 +19,7 @@ vi.mock("@/core/services/haptics", () => ({ HapticService: { impact: vi.fn() } }
 vi.mock("@/core/services/audio", () => ({ AudioService: { playClick: vi.fn() } }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
+  useNavigate: () => vi.fn(),
 }));
 
 import { BestSellerCard } from "@/features/home/components/BestSellerCard";
@@ -44,7 +45,7 @@ describe("dietary indicators reflect explicit data only", () => {
         const elements = {
           bestseller: <BestSellerCard product={runtimeProduct} />,
           customizer: <ProductCustomizerModal product={runtimeProduct} isOpen onClose={() => {}} />,
-          "cart row": <CartItemRow line={line} onQuantityChange={() => {}} onRemove={() => {}} onNotesChange={() => {}} />,
+          "cart row": <CartItemRow line={line} onQuantityChange={() => {}} onRemove={() => {}} />,
           "cart list": <CartItemList />,
         };
         const container = document.createElement("div");

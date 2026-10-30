@@ -31,13 +31,13 @@ function SplashPage() {
 
   return (
     <div
-      className="flex min-h-dvh flex-col items-center justify-center gap-5 bg-[#023020] px-6 text-center"
+      className="flex min-h-dvh flex-col items-center justify-center gap-5 bg-background px-6 text-center text-primary-text"
       role="status"
       aria-label={`${APP.name} loading`}
     >
       <BrandMascot size={160} float={!reduceMotion} />
       <BrandWordmark />
-      <span className="type-caption uppercase tracking-widest text-primary-foreground/70">
+      <span className="type-caption text-text-secondary">
         {APP.vegPromise}
       </span>
     </div>
