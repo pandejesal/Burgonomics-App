@@ -721,4 +721,68 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       })
     );
   });
+
+  // =========================================================================
+  // 8. TENANT / SERVER-OWNED FIELD MASKS (30 Oct hardening regressions)
+  // =========================================================================
+
+  it("50. [USERS-CREATE-TENANT-DENY] Customer cannot birth their user doc with tenant or lifecycle authority", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    for (const planted of [{ branchIds: ["branch_01"] }, { cityIds: ["ahmedabad"] }, { active: true }, { isDeleted: false }]) {
+      await assertFails(setDoc(doc(custDb, "users", "cust_100"), { name: "Customer", ...planted }));
+    }
+  });
+
+  it("51. [USERS-UPDATE-TENANT-DENY] Customer cannot grant themselves tenant scope or self-reactivate a deleted profile", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "cust_100"), { name: "Customer" });
+    });
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    for (const planted of [{ branchIds: ["branch_01"] }, { cityIds: ["ahmedabad"] }, { active: true }, { isDeleted: false }, { deletedAt: null }]) {
+      await assertFails(updateDoc(doc(custDb, "users", "cust_100"), planted));
+    }
+  });
+
+  it("52. [USERS-UPDATE-CLEAN-ALLOW] Customer can still update their own ordinary profile fields", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "cust_100"), { name: "Customer" });
+    });
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(updateDoc(doc(custDb, "users", "cust_100"), { name: "Renamed Customer" }));
+  });
+
+  it("53. [BRAND-ORDER-REFUND-LEDGER-DENY] Brand owner cannot plant refund accounting the rules now reserve for the server", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    for (const planted of [
+      { refundLedger: { captured: 349 } },
+      { refundedTotalPaise: 34900 },
+      { refundOverCapturedPaise: 1000 },
+      { refundNeedsReview: true },
+    ]) {
+      await assertFails(updateDoc(doc(brandDb, "orders", "order_501"), planted));
+    }
+  });
+
+  it("54. [BRAND-OTP-UPDATE-DENY] Brand owner cannot rewrite delivery OTP proof fields on an update", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertFails(updateDoc(doc(brandDb, "orders", "ord_deliver_01"), { deliveryOtp: "000000" }));
+  });
+
+  it("55. [BRAND-DIRECT-DELIVERED-DENY] Brand owner cannot flip a delivery order to DELIVERED without OTP proof", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), {
+        status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
+      })
+    );
+  });
+
+  it("56. [BRAND-WORKFLOW-UPDATE-ALLOW] Brand owner can still advance a delivery order through a non-terminal workflow status", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), {
+        status: { code: "READY_FOR_PICKUP", label: "Ready", kind: "in_progress", terminal: false },
+      })
+    );
+  });
 });
