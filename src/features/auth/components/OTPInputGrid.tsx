@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export interface OTPInputGridProps {
@@ -14,13 +14,24 @@ export interface OTPInputGridProps {
   ariaLabel?: string;
 }
 
+const isDigit = (slot: string | undefined): boolean => Boolean(slot) && /^\d$/.test(slot as string);
+
 /**
- * Enterprise 6-digit OTP input grid:
- * - Auto-forward cursor advance
- * - Backspace retreat
- * - Arrow navigation
- * - Full clipboard paste support
- * - Native WebOTP API auto-read for SMS verification on supported devices
+ * Fixed-length slot model: every box owns one position, so clearing a middle
+ * digit leaves the later boxes where the user typed them. The old string
+ * rebuild collapsed holes and silently shifted digits left, which produced a
+ * valid-looking but wrong code.
+ */
+function toSlots(value: string, length: number): string[] {
+  return Array.from({ length }, (_, index) => (isDigit(value[index]) ? value[index] : ""));
+}
+
+/**
+ * Six-digit OTP input grid:
+ * - Auto-forward cursor advance, backspace retreat, arrow navigation
+ * - Paste / autofill fills from the focused box
+ * - WebOTP auto-read fills only; completion is decided in one place so a late
+ *   WebOTP callback and the final keystroke cannot both submit
  */
 export function OTPInputGrid({
   length = 6,
@@ -34,115 +45,146 @@ export function OTPInputGrid({
   ariaLabel = "One-time passcode",
 }: OTPInputGridProps) {
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const hasTriggeredComplete = useRef(false);
+  const [slots, setSlots] = useState<string[]>(() => toSlots(value, length));
+  const slotsRef = useRef<string[]>(slots);
+  const lastEmitted = useRef(value);
+  const completionFired = useRef(false);
+  const mountedRef = useRef(true);
+  const onChangeRef = useRef(onChange);
+  const disabledRef = useRef(disabled);
+  onChangeRef.current = onChange;
+  disabledRef.current = disabled;
 
-  // 1. WebOTP API: Auto-read SMS OTP on supported browsers (Chrome on Android)
   useEffect(() => {
-    if (typeof window === "undefined" || !("credentials" in navigator)) {
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    try {
-      (navigator.credentials as any)
-        .get({
-          otp: { transport: ["sms"] },
-          signal: abortController.signal,
-        })
-        .then((content: any) => {
-          if (content && content.code) {
-            const rawCode = content.code.replace(/\D/g, "").slice(0, length);
-            if (rawCode.length === length) {
-              onChange(rawCode);
-              if (onComplete) {
-                onComplete(rawCode);
-              }
-            }
-          }
-        })
-        .catch((_err: any) => {
-          // WebOTP aborted or not supported/timed out, graceful fallback
-        });
-    } catch {
-      // Ignore unsupported browser environments
-    }
-
+    mountedRef.current = true;
     return () => {
-      abortController.abort();
+      mountedRef.current = false;
     };
-  }, [length, onChange, onComplete]);
+  }, []);
 
-  // 2. Trigger onComplete callback once all digits are entered
+  // Adopt external value changes (parent reset / new challenge) but never our
+  // own echo, or a controlled parent would rewrite the grid on every keystroke.
   useEffect(() => {
-    const cleanValue = value.replace(/\D/g, "");
-    if (cleanValue.length === length) {
-      if (!hasTriggeredComplete.current) {
-        hasTriggeredComplete.current = true;
-        if (onComplete) {
-          onComplete(cleanValue);
-        }
-      }
-    } else {
-      hasTriggeredComplete.current = false;
+    if (value === lastEmitted.current) return;
+    lastEmitted.current = value;
+    const next = toSlots(value, length);
+    slotsRef.current = next;
+    setSlots(next);
+  }, [value, length]);
+
+  const emit = (next: string[]): string => {
+    slotsRef.current = next;
+    setSlots(next);
+    // Emit POSITIONAL text: an empty slot becomes a space (trailing ones
+    // trimmed). Filtering holes out shifted every later digit one place on the
+    // next mount, because toSlots can only restore positions it is given.
+    const joined = next
+      .map((slot) => (isDigit(slot) ? slot : " "))
+      .join("")
+      .replace(/\s+$/, "");
+    if (joined !== lastEmitted.current) {
+      lastEmitted.current = joined;
+      onChangeRef.current(joined);
     }
-  }, [value, length, onComplete]);
-
-  const handleDigitChange = (idx: number, rawInput: string) => {
-    const cleanDigits = rawInput.replace(/\D/g, "");
-
-    // Multi-digit paste or autofill in a single box
-    if (cleanDigits.length > 1) {
-      const text = cleanDigits.slice(0, length);
-      onChange(text);
-      const targetFocusIdx = Math.min(text.length, length - 1);
-      inputRefs.current[targetFocusIdx]?.focus();
-      return;
-    }
-
-    const singleDigit = cleanDigits.slice(-1);
-    const charArray = (value + "").padEnd(length, " ").split("");
-    charArray[idx] = singleDigit || " ";
-    const updated = charArray.join("").replace(/\s/g, "").slice(0, length);
-    onChange(updated);
-
-    // Auto-advance forward to next box if digit entered
-    if (singleDigit && idx < length - 1) {
-      inputRefs.current[idx + 1]?.focus();
-    }
+    return joined;
   };
 
-  const handleKeyDown = (idx: number) => (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Block non-numeric characters that might slip through
+  const applyFrom = (startIndex: number, text: string): void => {
+    const digits = text.replace(/\D/g, "");
+    if (!digits) return;
+    const next = [...slotsRef.current];
+    const chars = digits.split("");
+    for (let offset = 0; offset < chars.length && startIndex + offset < length; offset += 1) {
+      next[startIndex + offset] = chars[offset];
+    }
+    emit(next);
+    inputRefs.current[Math.min(startIndex + chars.length, length - 1)]?.focus();
+  };
+
+  // Single completion authority: fires only for a fully filled grid of real
+  // digits, never while disabled, and never twice for the same filled state.
+  useEffect(() => {
+    const complete = slots.length === length && slots.every(isDigit);
+    if (!complete) {
+      completionFired.current = false;
+      return;
+    }
+    if (disabled || completionFired.current) return;
+    completionFired.current = true;
+    onComplete?.(slots.join(""));
+  }, [slots, length, disabled, onComplete]);
+
+  // WebOTP: fill only. Completion is left to the effect above.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("credentials" in navigator)) return;
+
+    const abortController = new AbortController();
+    try {
+      (navigator.credentials as any)
+        .get({ otp: { transport: ["sms"] }, signal: abortController.signal })
+        .then((content: any) => {
+          if (!mountedRef.current || disabledRef.current) return;
+          const code = String(content?.code ?? "").replace(/\D/g, "").slice(0, length);
+          if (code.length !== length) return;
+          const next = Array.from({ length }, (_, index) => code[index]);
+          emit(next);
+        })
+        .catch(() => {
+          // Aborted, unsupported or timed out — manual entry continues.
+        });
+    } catch {
+      // Ignore unsupported browser environments.
+    }
+
+    return () => abortController.abort();
+  }, [length]);
+
+  const handleDigitChange = (index: number, rawInput: string) => {
+    const digits = rawInput.replace(/\D/g, "");
+
+    if (!digits) {
+      // Explicit clear of this slot: keep later slots exactly where they are.
+      const next = [...slotsRef.current];
+      next[index] = "";
+      emit(next);
+      return;
+    }
+
+    if (digits.length > 1) {
+      // Paste / autofill arriving in one box — start at the focused slot.
+      applyFrom(index, digits);
+      return;
+    }
+
+    const next = [...slotsRef.current];
+    next[index] = digits.slice(-1);
+    emit(next);
+
+    if (index < length - 1) inputRefs.current[index + 1]?.focus();
+  };
+
+  const handleKeyDown = (index: number) => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (["e", "E", "+", "-", "."].includes(e.key)) {
       e.preventDefault();
       return;
     }
 
-    // Backspace retreat to previous input box if current box is empty
-    if (e.key === "Backspace") {
-      if (!value[idx] && idx > 0) {
-        inputRefs.current[idx - 1]?.focus();
-      }
+    if (e.key === "Backspace" && !slotsRef.current[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
     }
-
-    // Arrow navigation
-    if (e.key === "ArrowLeft" && idx > 0) {
-      inputRefs.current[idx - 1]?.focus();
+    if (e.key === "ArrowLeft" && index > 0) {
+      inputRefs.current[index - 1]?.focus();
     }
-    if (e.key === "ArrowRight" && idx < length - 1) {
-      inputRefs.current[idx + 1]?.focus();
+    if (e.key === "ArrowRight" && index < length - 1) {
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (index: number) => (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pasteText = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, length);
-    if (pasteText) {
-      e.preventDefault();
-      onChange(pasteText);
-      const targetFocusIdx = Math.min(pasteText.length, length - 1);
-      inputRefs.current[targetFocusIdx]?.focus();
-    }
+    if (!pasteText) return;
+    e.preventDefault();
+    applyFrom(index, pasteText);
   };
 
   return (
@@ -152,7 +194,7 @@ export function OTPInputGrid({
       className="flex items-center justify-between gap-2.5 sm:gap-3 my-2"
     >
       {Array.from({ length }).map((_, idx) => {
-        const digit = value[idx] ?? "";
+        const digit = slots[idx] ?? "";
         const isFilled = Boolean(digit);
         const borderClass = error
           ? "border-error focus:border-error ring-1 ring-error/20"
@@ -179,7 +221,7 @@ export function OTPInputGrid({
             autoFocus={autoFocus && idx === 0}
             onChange={(e) => handleDigitChange(idx, e.target.value)}
             onKeyDown={handleKeyDown(idx)}
-            onPaste={handlePaste}
+            onPaste={handlePaste(idx)}
             className={cn(
               "h-14 w-12 sm:w-14 rounded-[var(--radius-medium)] border-[1.5px] bg-surface text-center shadow-low float-interactive transition-colors",
               "type-display-medium font-semibold text-text-primary outline-none",

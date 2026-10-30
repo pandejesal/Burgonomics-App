@@ -159,8 +159,11 @@ export class PaymentRepository {
     const auth = useAuthStore.getState();
     const address = selectSelectedAddress(useAddressStore.getState());
     const checkout = useCheckoutStore.getState();
-    const loyaltyPointsToRedeem =
-      opts?.loyaltyPointsToRedeem ?? checkout.loyaltyPointsToRedeem;
+    // D31–D33: loyalty redemption is not offered to customers any more. The
+    // transport pins 0 unconditionally — an explicit caller argument, a legacy
+    // persisted value, or a deep link without the cart cannot redeem points.
+    void opts?.loyaltyPointsToRedeem;
+    const loyaltyPointsToRedeem = 0;
     const tipAmount = checkout.tipAmount;
 
     const checkoutSnapshot = {

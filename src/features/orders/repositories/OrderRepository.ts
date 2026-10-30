@@ -179,7 +179,10 @@ export class OrderRepository {
       totals: totalsRes.data,
       promo: cart.promo,
       tipAmount: checkout.tipAmount,
-      loyaltyPointsRedeemed: checkout.loyaltyPointsToRedeem,
+      // D31–D33: redemption withdrew from the customer app. Even if a legacy
+      // persisted choice is still in storage (or the screen is deep-linked
+      // without the cart), the order payload carries zero points.
+      loyaltyPointsRedeemed: 0,
       address: addressSnapshot,
       deliveryAddress: addressSnapshot,
       notes: checkout.orderNotes,
