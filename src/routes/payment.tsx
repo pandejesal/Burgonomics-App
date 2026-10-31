@@ -57,6 +57,8 @@ import {
   RazorpayModalHandler,
 } from "@/features/payments";
 import type { PaymentResult } from "@/features/payments/models";
+import type { PaymentPreflight } from "@/features/payments/models";
+import type { ApiResult } from "@/core/network/http";
 import { describePaymentFailure } from "@/features/payments/utils/paymentFailure";
 import {
   describePaymentRecovery,
@@ -290,7 +292,24 @@ function PaymentPage() {
     setAbandonmentOpen(false);
 
     // 1. Validate common checkout requirements
-    const preflight = await paymentRepository.validateForPayment();
+    // CUS-07: this await used to sit outside every try/catch. A preflight that
+    // REJECTED (repository/store read throwing) escaped startPayment with the
+    // synchronous `payInFlight` guard still held and the status stuck on
+    // "preparing" — the spinner spun forever and every later tap returned
+    // silently at the guard. Release the guard and surface a retryable failure:
+    // no gateway has opened at this point, so nothing can have been charged.
+    let preflight: ApiResult<PaymentPreflight>;
+    try {
+      preflight = await paymentRepository.validateForPayment();
+    } catch (err) {
+      console.error("[payment] preflight failed:", err);
+      payInFlight.current = false;
+      setStatus("failed");
+      const message = "We couldn't check your order. Please try again.";
+      setFailure({ code: "PREFLIGHT_ERROR", message, retryable: true });
+      toast.error("Couldn't start payment", { description: message });
+      return;
+    }
     if (!preflight.success || !preflight.data.valid) {
       payInFlight.current = false;
       setStatus("idle");
@@ -564,6 +583,11 @@ function PaymentPage() {
   };
 
   const retry = async () => {
+    // CUS-07: never flip to a busy status while a payment is genuinely in
+    // flight — startPayment would return at the re-entry guard and the screen
+    // would stay on "retrying" forever. If nothing is in flight, startPayment
+    // itself moves to "preparing", so the retry stays visibly busy.
+    if (payInFlight.current) return;
     setStatus("retrying");
     await startPayment();
   };

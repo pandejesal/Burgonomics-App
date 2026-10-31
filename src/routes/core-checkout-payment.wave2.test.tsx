@@ -382,3 +382,72 @@ describe("M5 — raw gateway failure text never reaches the customer", () => {
     );
   });
 });
+
+/**
+ * CUS-07 — after CUS-06 the persist failure is gone, but the investigator's
+ * unproven hypothesis was that the Pay button then wedges: `payInFlight` is
+ * set synchronously before the preflight, and it was only released by a
+ * TERMINAL payment status. A preflight that REJECTS (instead of returning a
+ * typed failure) therefore left status "preparing" + guard held forever, and
+ * every later tap returned silently at the guard.
+ */
+describe("CUS-07 — a failing preflight never wedges the Pay button", () => {
+  it("releases the re-entry guard when validateForPayment rejects, so the customer can retry", async () => {
+    const preflightLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(199));
+    // A genuine rejection (not a typed ApiResult failure): repository/store
+    // read threw. This is the documented wedge window.
+    fixture.validateForPayment.mockRejectedValue(new Error("preflight blew up"));
+
+    await mount(PaymentPage);
+    const pay = buttonWithText("Pay Online");
+    expect(pay?.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    // The screen must leave the busy state and offer the retry affordance …
+    expect(usePaymentStore.getState().status).toBe("failed");
+    const retryButton = buttonWithText("Retry checkout");
+    expect(retryButton).toBeDefined();
+    expect(retryButton?.disabled).toBe(false);
+
+    // … and the next tap must actually re-run the preflight (guard released),
+    // instead of returning silently at `if (payInFlight.current) return`.
+    await act(async () => retryButton!.click());
+    await act(async () => {});
+    expect(fixture.validateForPayment).toHaveBeenCalledTimes(2);
+    expect(preflightLog).toHaveBeenCalled();
+  });
+
+  it("still blocks a second tap while a payment is genuinely in flight", async () => {
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(199));
+    fixture.validateForPayment.mockResolvedValue({
+      success: true,
+      data: { valid: true, issues: [] },
+    });
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fixture.createPaymentOrder.mockReturnValue(
+      gate.then(() => ({
+        success: false as const,
+        error: { code: "TEST_STOP", message: "stop here" },
+      })),
+    );
+
+    await mount(PaymentPage);
+    const pay = buttonWithText("Pay Online");
+    expect(pay?.disabled).toBe(false);
+    // Two taps in the same tick: React has not re-rendered the busy button yet,
+    // so the DOM still delivers the second click to startPayment.
+    await act(async () => {
+      pay!.click();
+      pay!.click();
+    });
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+
+    release?.();
+    await act(async () => {});
+  });
+});
