@@ -82,9 +82,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
         const schemeOk = url.protocol === "burgonomics:";
         const hostOk =
           url.protocol === "https:" &&
-          ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
-            url.hostname.toLowerCase(),
-          );
+          ["burgonomics.com", "www.burgonomics.com"].includes(url.hostname.toLowerCase());
         if (!schemeOk && !hostOk) return;
         const path = url.pathname + url.search + url.hash;
         const safe = sanitizeRedirectUrl(path, "");
