@@ -28,6 +28,11 @@ import type {
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useCartStore } from "@/features/cart/state/cartStore";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
+import {
+  DEFAULT_DELIVERY_RADIUS_KM,
+  getDeliveryDistanceKm,
+  isStoreInDeliveryArea,
+} from "@/features/stores/utils/serviceArea";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 
@@ -88,6 +93,33 @@ export class PaymentRepository {
         code: "no_address",
         message: "Add a delivery address to continue.",
       });
+    }
+    // CUS-02: delivery geofence. checkout.tsx has always blocked out-of-range
+    // pins before placing an order, but the payment preflight (reachable by
+    // deep-link / browser history straight to /payment) only checked that an
+    // address EXISTED, so a pin hundreds of km away could be paid for and
+    // dispatched. Same validator as checkout: per-store `deliveryRadiusKm`,
+    // falling back to DEFAULT_DELIVERY_RADIUS_KM. Unknown coordinates stay
+    // fail-open (documented isStoreInDeliveryArea semantics) — the existing
+    // missing-pin gate on checkout is what blocks those.
+    if (sel.fulfillment === "delivery" && address && sel.activeStore) {
+      const lat = Number(address.lat);
+      const lng = Number(address.lng);
+      const storeLat = Number(sel.activeStore.lat);
+      const storeLng = Number(sel.activeStore.lng);
+      if (
+        [lat, lng, storeLat, storeLng].every(Number.isFinite) &&
+        !isStoreInDeliveryArea(sel.activeStore, lat, lng)
+      ) {
+        const radiusKm = sel.activeStore.deliveryRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM;
+        const distanceKm = getDeliveryDistanceKm(sel.activeStore, lat, lng);
+        issues.push({
+          code: "out_of_range",
+          message:
+            `This address is ${distanceKm.toFixed(1)} km from the store — outside our ` +
+            `${radiusKm} km delivery area. Switch to Takeaway or pick a nearer store.`,
+        });
+      }
     }
     if (!selectIsAuthenticated(auth)) {
       issues.push({

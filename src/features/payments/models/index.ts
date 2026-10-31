@@ -79,6 +79,7 @@ export interface PaymentPreflight {
       | "no_store"
       | "no_fulfillment"
       | "no_address"
+      | "out_of_range"
       | "not_authenticated"
       | "min_order"
       | "closed_store"
