@@ -1,4 +1,4 @@
-import * as React from "react";
+﻿import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { MapPin, ShoppingBag, Trash2, Timer, Sparkles, ArrowRight, Plus, Minus, ShieldCheck, Heart } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedB
 import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
 import { toUserMessage } from "@/core/errors/userMessages";
-import { PACKAGING_FEE_BY_FULFILLMENT, asPricingFulfillment } from "@/shared/pricing/pricingEngine";
+import { PACKAGING_FEE_BY_FULFILLMENT, asPricingFulfillment, includedGst } from "@/shared/pricing/pricingEngine";
 
 import {
   cartRepository,
@@ -40,7 +40,7 @@ import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 export const Route = createFileRoute("/cart")({
   head: () => ({
     meta: [
-      { title: "Your Cart — Burgonomics (100% Pure Vegetarian)" },
+      { title: "Your Cart â€” Burgonomics (100% Pure Vegetarian)" },
       { name: "description", content: "Review your 100% Pure Veg Burgonomics cart and order breakdown." },
     ],
   }),
@@ -106,13 +106,13 @@ function CartPage() {
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
   // Seeded from the persisted checkout store (the same object the order and
   // payment payloads read). Starting these at 0 on every mount made a
-  // cart → checkout → cart round trip drop a tip/points the gateway still
+  // cart â†’ checkout â†’ cart round trip drop a tip/points the gateway still
   // charged, so the two screens quoted different To Pay for one basket.
   const persistedTip = useCheckoutStore((s) => s.tipAmount);
   const persistedPoints = useCheckoutStore((s) => s.loyaltyPointsToRedeem);
   const [tipAmount, setTipAmount] = React.useState(persistedTip);
   const [coinsRedeemed, setCoinsRedeemed] = React.useState(persistedPoints);
-  // Kitchen-hours gate — re-checked on a 30s tick and on tab focus, so a cart
+  // Kitchen-hours gate â€” re-checked on a 30s tick and on tab focus, so a cart
   // left open overnight locks itself at 23:00 IST.
   const kitchen = useKitchenHours();
 
@@ -168,7 +168,7 @@ function CartPage() {
       <AppShell title="Your cart" backTo="/menu" showTabs showTopBar>
         <div className="mx-auto max-w-[520px] px-4 py-12 text-center space-y-4">
           <div className="w-20 h-20 mx-auto rounded-3xl bg-[#0E4825]/10 border border-[#0E4825]/20 flex items-center justify-center text-4xl shadow-inner">
-            📦
+            ðŸ“¦
           </div>
           <div className="space-y-1">
             <h2 className="text-xl font-black text-text">
@@ -223,7 +223,7 @@ function CartPage() {
   };
 
   const onCheckout = async () => {
-    // Ordering is gated outside 11:00–23:00 IST — the banner explains why.
+    // Ordering is gated outside 11:00â€“23:00 IST â€” the banner explains why.
     if (!kitchen.isOpen) {
       toast.error(KITCHEN_CLOSED_MESSAGE);
       return;
@@ -245,7 +245,7 @@ function CartPage() {
     const prep = await cartRepository.prepareCheckout();
     setCheckoutBusy(false);
     if (!prep.success) {
-      // Curated repo copy (EMPTY_CART) — no raw text on this path.
+      // Curated repo copy (EMPTY_CART) â€” no raw text on this path.
       toast.error(prep.error.message);
       return;
     }
@@ -254,25 +254,21 @@ function CartPage() {
 
   const subtotal = totals?.subtotal ?? lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const discountAmount = promo?.discount ? Math.abs(promo.discount) : (totals?.promoDiscount ?? 0);
-  // Fallback schedule (only when the pricing engine hasn't produced totals):
-  // matches the client pricing engine (free delivery over ₹499, ₹40 fee) so
-  // the preview never shows a third schedule. The old fallback (free over
-  // ₹349, ₹35 fee, integer GST on the PRE-discount subtotal) disagreed with
-  // both the engine and the server. Server re-prices authoritatively at
-  // checkout — previews are estimates, never the charge.
+  // R8: the cart cannot know the courier fare, so it never prints one. The
+  // delivery fee line reads "Calculated at checkout"; packaging is an ESTIMATE
+  // (the server's `packagingFee` is what checkout charges). GST is the
+  // inclusive share of the discounted food value (R1) â€” never added.
+  const deliveryFee = 0;
   const taxableFallback = Math.max(0, subtotal - discountAmount);
-  const deliveryFee =
-    totals?.deliveryFee ??
-    (fulfillment === "delivery" ? (subtotal > 499 ? 0 : subtotal > 0 ? 40 : 0) : 0);
   const packagingFee =
     totals?.packingFee ??
     (fulfillment === "dinein" || lines.length === 0
       ? 0
       : PACKAGING_FEE_BY_FULFILLMENT[asPricingFulfillment(fulfillment)]);
-  const gst = totals?.taxes ?? totals?.tax ?? Math.round(taxableFallback * 0.05 * 100) / 100;
+  const gst = totals?.taxes ?? totals?.tax ?? includedGst(taxableFallback);
   // Redemption cap shared by GrillCoinsRedemption and the checkout screen
-  // (1 pt = ₹1, max 20% of subtotal). A persisted choice from a larger
-  // basket must not bill more than the cap the server enforces — otherwise
+  // (1 pt = â‚¹1, max 20% of subtotal). A persisted choice from a larger
+  // basket must not bill more than the cap the server enforces â€” otherwise
   // this preview and checkout's To Pay disagree for the same basket.
   const maxRedeemableCoins = Math.min(
     Number.isFinite(loyaltyBalance) ? Math.max(0, Math.floor(loyaltyBalance)) : 0,
@@ -281,12 +277,11 @@ function CartPage() {
   const appliedCoins = Math.min(Math.max(0, coinsRedeemed), maxRedeemableCoins);
   // MT-09 / BillBreakdown contract: menu prices are GST-INCLUSIVE, so `gst` is
   // display-only. The sticky total used to add it on top, showing a Grand Total
-  // ₹X higher than the Bill Details "To Pay" right underneath it.
+  // â‚¹X higher than the Bill Details "To Pay" right underneath it.
   const finalToPay = Math.max(
     0,
     subtotal - discountAmount - appliedCoins + packagingFee + deliveryFee + tipAmount,
   );
-  const freeDeliveryDelta = Math.max(0, 499 - subtotal);
 
   return (
     <AppShell
@@ -309,10 +304,11 @@ function CartPage() {
         <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom,0px))] z-30 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
           <div className="mx-auto flex max-w-[520px] items-center justify-between gap-4">
             <div>
-              <p className="text-[10px] uppercase font-bold text-text-secondary">Grand Total</p>
+              <p className="text-[10px] uppercase font-bold text-text-secondary">Estimated Total</p>
               <p className="font-mono text-xl font-black text-text">
                 {formatINR(finalToPay)}
               </p>
+              <p className="text-[10px] font-semibold text-text-secondary">Delivery fee calculated at checkout</p>
             </div>
             <button
               type="button"
@@ -332,10 +328,10 @@ function CartPage() {
         {/* Kitchen closed: menu browsing stays open, checkout is gated. */}
         <KitchenClosedBanner />
 
-        {/* Offline pending-sync notice — cart persists locally either way */}
+        {/* Offline pending-sync notice â€” cart persists locally either way */}
         {syncPending && (
           <div role="status" className="rounded-2xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-xs font-semibold text-text-secondary">
-            Offline changes saved on this device — will sync when back online.
+            Offline changes saved on this device â€” will sync when back online.
           </div>
         )}
         {/* 10-Minute Price Lock Timer Banner */}
@@ -345,7 +341,7 @@ function CartPage() {
               <Timer className="h-4 w-4 text-amber-600 dark:text-amber-400 animate-pulse" />
               <span>
                 {remainingLockSeconds === 0
-                  ? "Price lock expired — latest prices apply at checkout"
+                  ? "Price lock expired â€” latest prices apply at checkout"
                   : "Prices locked for this order"}
               </span>
             </div>
@@ -364,12 +360,12 @@ function CartPage() {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#0E4825] dark:text-[#4ADE80]">
-                  {fulfillment === "delivery" ? "🛵 Delivery" : fulfillment === "takeaway" ? "🛍️ Takeaway" : "🍽️ Dine-In"}
+                  {fulfillment === "delivery" ? "ðŸ›µ Delivery" : fulfillment === "takeaway" ? "ðŸ›ï¸ Takeaway" : "ðŸ½ï¸ Dine-In"}
                 </span>
               </div>
               <p className="text-xs font-bold text-text truncate">
                 {fulfillment === "delivery"
-                  ? selectedAddress ? `${selectedAddress.customLabel || selectedAddress.label.toUpperCase()} • ${selectedAddress.line1}` : "Select Delivery Address"
+                  ? selectedAddress ? `${selectedAddress.customLabel || selectedAddress.label.toUpperCase()} â€¢ ${selectedAddress.line1}` : "Select Delivery Address"
                   : activeStore ? activeStore.name : "Select Branch"}
               </p>
             </div>
@@ -383,33 +379,13 @@ function CartPage() {
           </button>
         </div>
 
-        {/* Free Delivery Threshold Progress (Delivery Mode Only) */}
-        {fulfillment === "delivery" && (
-          <div className="rounded-2xl border border-divider bg-surface p-3.5 shadow-xs space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-text-secondary">
-                {freeDeliveryDelta === 0
-                  ? "🎉 You've unlocked FREE Delivery!"
-                  : `Add ${formatINR(freeDeliveryDelta)} more for FREE delivery`}
-              </span>
-              <span className="font-mono font-bold text-text">{Math.min(100, Math.round((subtotal / 499) * 100))}%</span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-bg-secondary overflow-hidden">
-              <div
-                className="h-full bg-[#0E4825] transition-all duration-500 rounded-full"
-                style={{ width: `${Math.min(100, (subtotal / 499) * 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Cart Line Items */}
         <section aria-labelledby="items-heading" className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 id="items-heading" className="text-xs font-bold uppercase tracking-wider text-text-secondary">
               Items in Box ({itemCount})
             </h2>
-            {computing && <span className="text-xs text-text-secondary">Recalculating…</span>}
+            {computing && <span className="text-xs text-text-secondary">Recalculatingâ€¦</span>}
           </div>
           <div className="space-y-2.5">
             {lines.map((line) => (
@@ -448,7 +424,7 @@ function CartPage() {
                       : "bg-surface text-text-secondary border-divider hover:border-primary/40"
                   }`}
                 >
-                  {selected ? `✓ ${chip}` : `+ ${chip}`}
+                  {selected ? `âœ“ ${chip}` : `+ ${chip}`}
                 </button>
               );
             })}
@@ -463,7 +439,7 @@ function CartPage() {
           <PromoInput applied={promo} onChanged={() => void recompute()} />
         </section>
 
-        {/* Loyalty Points redemption — live balance, 1 pt = Rs.1, max 20% */}
+        {/* Loyalty Points redemption â€” live balance, 1 pt = Rs.1, max 20% */}
         <GrillCoinsRedemption
           availableCoins={loyaltyBalance}
           subtotal={subtotal}
@@ -490,12 +466,15 @@ function CartPage() {
           />
         )}
 
-        {/* Transparent Financial Bill Breakdown */}
+        {/* Transparent Financial Bill Breakdown — packaging is an estimate,
+            the delivery fee is only known at checkout (R8). */}
         <BillBreakdown
           subtotal={subtotal}
           discountAmount={discountAmount}
           coinsRedeemed={appliedCoins}
           deliveryFee={deliveryFee}
+          deliveryFeeKnown={false}
+          packagingEstimated
           packagingFee={packagingFee}
           gstAmount={gst}
           tipAmount={tipAmount}

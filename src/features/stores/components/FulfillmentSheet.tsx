@@ -5,7 +5,6 @@ import { BottomSheet } from "@/shared/components/common/BottomSheet";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { AppBadge } from "@/shared/components/common/AppBadge";
 import { Text } from "@/shared/components/common/Text";
-import { formatINR } from "@/core/utils/format";
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
 import { storeSupportsFulfillment } from "@/features/stores/state/storeStore";
 import { MAX_PICKUP_DISTANCE_KM } from "@/features/stores/utils/serviceArea";
@@ -76,7 +75,9 @@ export function FulfillmentSheet({
               {s?.etaMinutes ?? "—"} min ETA
             </AppBadge>
             {typeof s?.deliveryFee === "number" && (
-              <AppBadge tone="neutral">Fee {formatINR(s.deliveryFee)}</AppBadge>
+              // R8: the courier fare is quoted per order at checkout; showing
+              // the store doc's static fee here would be a number we never charge.
+              <AppBadge tone="neutral">Fee calculated at checkout</AppBadge>
             )}
             {s?.supports.delivery && (
               <Text variant="caption" tone="secondary">

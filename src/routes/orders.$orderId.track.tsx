@@ -279,7 +279,7 @@ function TrackOrderPage() {
 
                 <div className="border-t border-divider pt-2 space-y-1 text-[11px] text-text-secondary">
                   <div className="flex justify-between">
-                    <span>GST & Taxes</span>
+                    <span>Incl. GST (5%)</span>
                     <span>{formatINR(order.totals?.taxes ?? 0)}</span>
                   </div>
                   {packingFee != null && (
@@ -290,7 +290,7 @@ function TrackOrderPage() {
                   )}
                   <div className="flex justify-between">
                     <span>Delivery Fee</span>
-                    <span>{order.totals?.deliveryFee === 0 ? "FREE" : formatINR(order.totals?.deliveryFee ?? 0)}</span>
+                    <span>{formatINR(order.totals?.deliveryFee ?? 0)}</span>
                   </div>
                   <div className="border-t border-divider pt-2 flex justify-between font-sans text-xs font-black text-text">
                     <span>Total Paid ({order.payment?.method?.toUpperCase() ?? "PAID"})</span>

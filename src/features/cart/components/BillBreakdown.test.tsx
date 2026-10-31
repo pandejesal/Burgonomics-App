@@ -29,9 +29,27 @@ describe("MT-09: Tax-Inclusive Pricing Display Suite", () => {
       );
 
       expect(html).toContain("Inclusive of all taxes (5% GST)");
-      expect(html).toContain("Govt. GST (5% included)");
+      // R8: "Incl. GST" wherever tax appears.
+      expect(html).toContain("Incl. GST (5%)");
       // The informational GST figure is still shown for transparency.
       expect(html).toContain(formatINR(17));
+    });
+
+    it("never prints a static delivery fee when the fare is only known at checkout", () => {
+      const html = renderToStaticMarkup(
+        <BillBreakdown
+          subtotal={349}
+          gstAmount={17}
+          deliveryFeeKnown={false}
+          fulfillment="delivery"
+        />,
+      );
+
+      expect(html).toContain("Calculated at checkout");
+      expect(html).not.toContain("FREE");
+      expect(html).not.toMatch(/₹\s*(35|40)\b/);
+      // The unknown fare is not added to the payable.
+      expect(toPayAmount(html)).toBe(formatINR(349));
     });
   });
 

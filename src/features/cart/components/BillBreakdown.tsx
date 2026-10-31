@@ -9,6 +9,13 @@ export interface BillBreakdownProps {
   discountAmount?: number;
   coinsRedeemed?: number;
   deliveryFee?: number;
+  /**
+   * False on the cart: the courier fare is only known at checkout, so the row
+   * reads "Calculated at checkout" instead of inventing ₹40 / FREE (R8).
+   */
+  deliveryFeeKnown?: boolean;
+  /** Marks the packaging figure as a cart estimate (server value wins). */
+  packagingEstimated?: boolean;
   packagingFee?: number;
   gstAmount?: number;
   tipAmount?: number;
@@ -21,14 +28,16 @@ export interface BillBreakdownProps {
  * caller passes (which come from the canonical pricing engine via
  * cartRepository.calculateTotals). It never recomputes delivery fees,
  * GST, or thresholds itself: a second schedule here once showed FREE
- * over ₹349 while the footer charged ₹40. Single source of truth is
- * DEFAULT_PRICING_CONFIG (free delivery over ₹499, ₹40 flat fee).
+ * over ₹349 while the footer charged ₹40. There is no static delivery fee
+ * anywhere (R8) — when `deliveryFeeKnown` is false the row says so.
  */
 export function BillBreakdown({
   subtotal,
   discountAmount = 0,
   coinsRedeemed = 0,
   deliveryFee = 0,
+  deliveryFeeKnown = true,
+  packagingEstimated = false,
   packagingFee = 0,
   gstAmount = 0,
   tipAmount = 0,
@@ -39,13 +48,14 @@ export function BillBreakdown({
   const isDineIn = fulfillment === "dinein";
 
   // Display-only mirroring of caller-provided values: dine-in never shows
-  // packaging, non-delivery never shows a delivery fee.
+  // packaging, non-delivery never shows a delivery fee. An unknown fare adds
+  // nothing to the total and never prints FREE.
   const actualPackagingFee = isDineIn ? 0 : packagingFee;
-  const actualDeliveryFee = isDelivery ? deliveryFee : 0;
+  const actualDeliveryFee = isDelivery && deliveryFeeKnown ? deliveryFee : 0;
 
   // GST is passed post-discount from the engine — never recompute here.
-  // MT-09: display-only. The bill shows the tax component that already sits
-  // inside the GST-inclusive item total; it is never added to the payable.
+  // MT-09/R1: display-only. The bill shows the inclusive share of the tax that
+  // already sits inside the GST-inclusive item total; it is never added.
   const calculatedGST = gstAmount;
   const cgst = (calculatedGST / 2).toFixed(1);
   const sgst = (calculatedGST / 2).toFixed(1);
@@ -108,7 +118,7 @@ export function BillBreakdown({
             className="cursor-help flex items-center gap-1 hover:text-text"
             title={`2.5% CGST (₹${cgst}) + 2.5% SGST (₹${sgst}) — already part of Item Total`}
           >
-            <span>Govt. GST (5% included)</span>
+            <span>Incl. GST (5%)</span>
             <Info className="w-3 h-3 opacity-60" />
           </span>
           <span className="font-mono font-bold">{formatINR(calculatedGST)}</span>
@@ -117,23 +127,17 @@ export function BillBreakdown({
         {/* Restaurant Packaging Fee */}
         {actualPackagingFee > 0 && (
           <div className="flex items-center justify-between text-text-secondary">
-            <span>Restaurant Packaging</span>
+            <span>Restaurant Packaging{packagingEstimated ? " (est.)" : ""}</span>
             <span className="font-mono font-bold">{formatINR(actualPackagingFee)}</span>
           </div>
         )}
 
-        {/* Delivery Fee */}
+        {/* Delivery Fee — R8: unknown until the server quotes it. */}
         {isDelivery && (
           <div className="flex items-center justify-between text-text-secondary">
             <span>Delivery Fee</span>
             <span className="font-mono font-bold">
-              {actualDeliveryFee === 0 ? (
-                <span className="text-[#4ADE80] uppercase text-[10px] font-black">
-                  FREE
-                </span>
-              ) : (
-                formatINR(actualDeliveryFee)
-              )}
+              {deliveryFeeKnown ? formatINR(actualDeliveryFee) : <span className="text-[10px] font-black uppercase">Calculated at checkout</span>}
             </span>
           </div>
         )}

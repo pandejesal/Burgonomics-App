@@ -24,7 +24,7 @@ export function OrderPriceSummary({ totals, promo }: Props) {
       )}
       {totals.packingFee > 0 && <Row label="Packing" value={totals.packingFee} />}
       {totals.deliveryFee > 0 && <Row label="Delivery" value={totals.deliveryFee} />}
-      <Row label="Taxes" value={totals.taxes} />
+      <Row label="Incl. GST (5%)" value={totals.taxes} />
       <div className="mt-2 flex items-center justify-between border-t border-divider pt-2">
         <Text variant="titleLarge">Grand total</Text>
         <Text variant="titleLarge" className="tabular-nums">

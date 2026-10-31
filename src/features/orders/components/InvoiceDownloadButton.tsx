@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Download, FileText, CheckCircle2, Printer } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
+import { includedGst } from "@/shared/pricing/pricingEngine";
 import { APP } from "@/core/constants/app";
 import type { Order } from "../models";
 
@@ -62,11 +63,15 @@ export function InvoiceDownloadButton({
     // "Paid" is a claim about money — only the payment state may make it.
     const isPaid = order.payment?.status === "paid";
     // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
-    // component backs OUT of the total (total - total/1.05), never 5% on top.
-    // The old fallback charged an extra ~5% phantom tax whenever server
-    // taxes were absent.
-    const taxes =
-      order.totals?.taxes ?? Math.round((grandTotal - grandTotal / 1.05) * 100) / 100;
+    // component backs OUT of the food value, never 5% on top. R1: the inclusive
+    // share is `netFood * 0.05 / 1.05` and fees are outside the GST base.
+    const netFood = Math.max(
+      0,
+      (order.totals?.subtotal ?? grandTotal) -
+        (order.totals?.itemDiscount ?? 0) -
+        (order.totals?.promoDiscount ?? 0),
+    );
+    const taxes = order.totals?.taxes ?? includedGst(netFood);
     const packing = order.totals?.packingFee || 0;
     const delivery = order.totals?.deliveryFee || 0;
 
@@ -132,7 +137,7 @@ export function InvoiceDownloadButton({
 
         <div class="totals">
           <div class="totals-row">
-            <span>GST & Service Taxes (5%):</span>
+            <span>Incl. GST (5%):</span>
             <span>${formatINR(taxes)}</span>
           </div>
           ${
