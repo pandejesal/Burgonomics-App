@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { useEffect, useRef } from "react";
-import { LayoutGrid, List as ListIcon, Search } from "lucide-react";
+import { LayoutGrid, List as ListIcon, Search, Store as StoreIcon } from "lucide-react";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
 import { toUserMessage } from "@/core/errors/userMessages";
@@ -290,7 +290,35 @@ function MenuPage() {
     [store, navigate],
   );
 
-  if (!store) return null;
+  // UX-01: /menu is a deep-link target (App Links include /menu/*) and can be
+  // opened with no persisted store. Returning null here produced a blank
+  // document with no error and no way out, so the deep link appeared broken.
+  // Wait for persistence behind a skeleton (never blank), then either the
+  // redirect above fires or this honest empty state takes over.
+  if (!isHydrated) {
+    return (
+      <AppShell title="Menu" showTabs showTopBar>
+        <MenuSkeleton />
+      </AppShell>
+    );
+  }
+
+  if (!store) {
+    return (
+      <AppShell title="Menu" showTabs showTopBar>
+        <div className="mx-auto max-w-[720px] px-4 py-6">
+          <EmptyState
+            hideMascot
+            icon={<StoreIcon className="h-9 w-9" aria-hidden />}
+            title="Choose a store to see the menu"
+            description="We need to know which Burgonomics kitchen is cooking for you before showing live prices and availability."
+            actionLabel="Choose a store"
+            onAction={() => void navigate({ to: "/stores" })}
+          />
+        </div>
+      </AppShell>
+    );
+  }
 
   const bucket = activeCategoryId ? buckets[activeCategoryId] : undefined;
   const activeCategory = categories.find((c) => c.id === activeCategoryId);
