@@ -19,10 +19,12 @@ import {
   type CheckoutFeesState,
 } from "../../src/features/checkout/state/checkoutFeesTypes";
 import {
+  checkoutFeesUrl,
   parseCheckoutFees,
   requestCheckoutFees,
   type CheckoutFeesTransport,
 } from "../../src/features/checkout/services/deliveryQuoteService";
+import { defaultFunctionsBase } from "../../src/core/config/functionsBase";
 import { quoteCheckoutFees } from "../../src/features/checkout/services/checkoutQuote";
 import { deliveryQuoteView } from "../../src/features/checkout/utils/deliveryQuoteView";
 import { mapTransportError } from "../../src/core/network/httpClient";
@@ -52,19 +54,37 @@ const deliveryResponse = (fee: number, quoteId: string, expiresInMs = 120_000) =
 
 function transportReturning(data: unknown): {
   transport: CheckoutFeesTransport;
-  calls: Array<{ url: string; body: Record<string, unknown> }>;
+  calls: Array<{
+    url: string;
+    body: Record<string, unknown>;
+    headers?: Record<string, string>;
+  }>;
 } {
-  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const calls: Array<{
+    url: string;
+    body: Record<string, unknown>;
+    headers?: Record<string, string>;
+  }> = [];
   return {
     calls,
     transport: {
-      post: async (url, body) => {
-        calls.push({ url, body: body as Record<string, unknown> });
+      post: async (url, body, init) => {
+        calls.push({
+          url,
+          body: body as Record<string, unknown>,
+          headers: init?.headers,
+        });
         return { data };
       },
     },
   };
 }
+
+/** Deterministic auth: no Firebase import in these tests. */
+const NO_TOKENS = {
+  idToken: async () => null,
+  appCheckToken: async () => null,
+};
 
 beforeEach(() => {
   useCheckoutStore.setState({
@@ -104,10 +124,10 @@ describe("POST /checkout/fees request", () => {
         dropLat: 23.03,
         dropLng: 72.58,
       }),
-      { transport },
+      { transport, ...NO_TOKENS },
     );
 
-    expect(calls[0].url).toBe("/checkout/fees");
+    expect(calls[0].url).toBe(checkoutFeesUrl());
     expect(calls[0].body).toEqual({
       orderType: "delivery",
       storeId: "demo",
@@ -130,7 +150,7 @@ describe("POST /checkout/fees request", () => {
     });
     const res = await requestCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "takeaway", dropLat: 23.03, dropLng: 72.58 }),
-      { transport },
+      { transport, ...NO_TOKENS },
     );
 
     // No pins are sent, so the server cannot fan out to a carrier.
@@ -145,14 +165,14 @@ describe("POST /checkout/fees request", () => {
   });
 
   it("fails closed when a delivery quote has no id or expiry", async () => {
-    const { transport } = transportReturning({
+    const { transport, ...NO_TOKENS } = transportReturning({
       serviceable: true,
       packagingFee: 15,
       deliveryFee: 57,
     });
     const res = await requestCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
-      { transport },
+      { transport, ...NO_TOKENS },
     );
     expect(res.success).toBe(false);
   });
@@ -174,7 +194,7 @@ describe("POST /checkout/fees request", () => {
     };
     const res = await requestCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
-      { transport },
+      { transport, ...NO_TOKENS },
     );
 
     expect(res.success).toBe(false);
@@ -192,12 +212,55 @@ describe("POST /checkout/fees request", () => {
     };
     const res = await requestCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
-      { transport },
+      { transport, ...NO_TOKENS },
     );
     expect(res.success).toBe(false);
     if (res.success) return;
     expect(res.error.retryable).toBe(true);
     expect(res.error.code).toBe("DELIVERY_QUOTE_FAILED");
+  });
+});
+
+describe("CUS-13 — the fee request targets the Functions API", () => {
+  const ctx = buildCheckoutFeesContext({
+    storeId: "demo",
+    orderType: "delivery",
+    dropLat: 23.03,
+    dropLng: 72.58,
+  });
+
+  it("posts to exactly the Functions base + /checkout/fees, never the .example placeholder", async () => {
+    const { transport, calls } = transportReturning(deliveryResponse(57, "q_base"));
+    await requestCheckoutFees(ctx, { transport, ...NO_TOKENS });
+
+    expect(calls[0].url).toBe(`${defaultFunctionsBase()}/checkout/fees`);
+    expect(calls[0].url).not.toContain(".example");
+    expect(calls[0].url).not.toContain("api.dev.burgonomics.example");
+    // The Functions base, not the payments base (which ends in /api/payments)
+    // and not a relative path httpClient would re-base.
+    expect(calls[0].url.endsWith("/checkout/fees")).toBe(true);
+    expect(calls[0].url).not.toContain("/api/payments/checkout/fees");
+  });
+
+  it("never resolves to a .example host in the current build", () => {
+    // The helper (shared with the Petpooja gateway) ignores
+    // appConfig.api.baseUrl and the build mode entirely, so this holds for
+    // every bundle.
+    expect(defaultFunctionsBase()).not.toContain(".example");
+    expect(checkoutFeesUrl()).not.toContain(".example");
+    expect(checkoutFeesUrl()).toBe(`${defaultFunctionsBase()}/checkout/fees`);
+  });
+
+  it("carries the Firebase ID token and the App Check header", async () => {
+    const { transport, calls } = transportReturning(deliveryResponse(57, "q_auth"));
+    await requestCheckoutFees(ctx, {
+      transport,
+      idToken: async () => "firebase-id-token",
+      appCheckToken: async () => "app-check-token",
+    });
+
+    expect(calls[0].headers?.Authorization).toBe("Bearer firebase-id-token");
+    expect(calls[0].headers?.["X-Firebase-AppCheck"]).toBe("app-check-token");
   });
 });
 
@@ -247,8 +310,8 @@ describe("delivery quote state machine", () => {
       dropLng: 72.6,
     });
 
-    const oldQuote = quoteCheckoutFees(oldCtx, { request: (c) => requestCheckoutFees(c, { transport }) });
-    const newQuote = quoteCheckoutFees(newCtx, { request: (c) => requestCheckoutFees(c, { transport }) });
+    const oldQuote = quoteCheckoutFees(oldCtx, { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) });
+    const newQuote = quoteCheckoutFees(newCtx, { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) });
     await newQuote;
     expect(useCheckoutStore.getState().checkoutFees).toMatchObject({
       status: "ready",
@@ -269,7 +332,7 @@ describe("delivery quote state machine", () => {
   });
 
   it("marks an unserviceable address and keeps takeaway selectable", async () => {
-    const { transport } = transportReturning({
+    const { transport, ...NO_TOKENS } = transportReturning({
       serviceable: false,
       packagingFee: 15,
       reason: "not_serviced",
@@ -277,7 +340,7 @@ describe("delivery quote state machine", () => {
     });
     const state = await quoteCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
-      { request: (c) => requestCheckoutFees(c, { transport }) },
+      { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
     expect(state).toMatchObject({ status: "unserviceable", packagingFee: 15 });
@@ -296,7 +359,7 @@ describe("delivery quote state machine", () => {
     };
     const state = await quoteCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
-      { request: (c) => requestCheckoutFees(c, { transport }) },
+      { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
     expect(state.status).toBe("error");
@@ -326,7 +389,7 @@ describe("delivery quote state machine", () => {
     };
     const state = await quoteCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
-      { request: (c) => requestCheckoutFees(c, { transport }) },
+      { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
     expect(state).toMatchObject({ status: "error", code: "STORE_NOT_LINKED" });
@@ -341,10 +404,10 @@ describe("delivery quote state machine", () => {
   });
 
   it("uses the quoted fee and packaging in the bill once ready", async () => {
-    const { transport } = transportReturning(deliveryResponse(57, "q_ready"));
+    const { transport, ...NO_TOKENS } = transportReturning(deliveryResponse(57, "q_ready"));
     await quoteCheckoutFees(
       buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
-      { request: (c) => requestCheckoutFees(c, { transport }) },
+      { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
     const totals = await cartRepository.calculateTotals();

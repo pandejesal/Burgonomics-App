@@ -14,6 +14,7 @@
  */
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { httpClient } from "@/core/network/httpClient";
+import { defaultFunctionsBase } from "@/core/config/functionsBase";
 import { logger } from "@/core/logging/logger";
 import { STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
 import type {
@@ -22,6 +23,16 @@ import type {
 } from "@/features/checkout/state/checkoutFeesTypes";
 
 export const CHECKOUT_FEES_PATH = "/checkout/fees";
+
+/**
+ * Absolute Functions URL for the fee quote. CUS-13: passing a relative path to
+ * `httpClient` resolved against `appConfig.api.baseUrl`, whose fallback is
+ * `https://api.dev.burgonomics.example` — CSP-blocked and not the API. The
+ * Cloud Functions base is the only valid origin for this route.
+ */
+export function checkoutFeesUrl(): string {
+  return `${defaultFunctionsBase()}${CHECKOUT_FEES_PATH}`;
+}
 
 /** Same honest sentence the payment screen uses for an unlinked outlet. */
 export const STORE_NOT_LINKED_MESSAGE = "This outlet isn't taking online orders yet.";
@@ -66,21 +77,54 @@ export interface CheckoutFeesTransport {
 }
 
 const defaultTransport: CheckoutFeesTransport = {
+  // Absolute URL: httpClient resolves absolute URLs verbatim and only prepends
+  // the placeholder `appConfig.api.baseUrl` to relative ones.
   post: (url, body, init) => httpClient.post(url, body, init),
 };
 
-/** Best-effort App Check attestation — the endpoint is in the protected list. */
-async function attestationHeaders(): Promise<Record<string, string>> {
+/** Injectable so tests can assert the exact headers without Firebase. */
+export interface CheckoutFeesAuth {
+  idToken?: () => Promise<string | null>;
+  appCheckToken?: () => Promise<string | null>;
+}
+
+async function firebaseAuthTokens(): Promise<{
+  idToken: () => Promise<string | null>;
+  appCheckToken: () => Promise<string | null>;
+}> {
+  const { auth, getAppCheckToken } = await import("@/core/config/firebase");
+  return {
+    idToken: async () => (await auth.currentUser?.getIdToken()) ?? null,
+    appCheckToken: async () => (await getAppCheckToken()) ?? null,
+  };
+}
+
+/**
+ * Bearer Firebase ID token (the `requireAuth` route needs it) plus the App
+ * Check attestation header, mirroring `paymentsService` (X-Firebase-AppCheck).
+ * Both are best-effort: a missing token is a 401/attestation answer from the
+ * server, never a reason to invent one.
+ */
+export async function buildCheckoutFeesHeaders(
+  deps: CheckoutFeesAuth = {},
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
   try {
-    const { getAppCheckToken } = await import("@/core/config/firebase");
-    const token = await getAppCheckToken();
-    return token ? { "X-Firebase-AppCheck": token } : {};
+    let tokens: Awaited<ReturnType<typeof firebaseAuthTokens>> | null = null;
+    const resolveTokens = async () => {
+      tokens ??= await firebaseAuthTokens();
+      return tokens;
+    };
+    const idToken = await (deps.idToken ?? (await resolveTokens()).idToken)();
+    if (idToken) headers.Authorization = `Bearer ${idToken}`;
+    const appCheckToken = await (deps.appCheckToken ?? (await resolveTokens()).appCheckToken)();
+    if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
   } catch (err) {
-    logger.warn("checkout.fees_appcheck_unavailable", {
+    logger.warn("checkout.fees_auth_unavailable", {
       message: err instanceof Error ? err.message : String(err),
     });
-    return {};
   }
+  return headers;
 }
 
 function finiteFee(value: unknown): number | null {
@@ -182,19 +226,19 @@ export function checkoutFeesRequestBody(ctx: CheckoutFeesContext): CheckoutFeesR
 
 export async function requestCheckoutFees(
   ctx: CheckoutFeesContext,
-  deps: { transport?: CheckoutFeesTransport } = {},
+  deps: { transport?: CheckoutFeesTransport } & CheckoutFeesAuth = {},
 ): Promise<ApiResult<CheckoutFees>> {
   const transport = deps.transport ?? defaultTransport;
   try {
-    const res = await transport.post(CHECKOUT_FEES_PATH, checkoutFeesRequestBody(ctx), {
-      headers: await attestationHeaders(),
+    const res = await transport.post(checkoutFeesUrl(), checkoutFeesRequestBody(ctx), {
+      headers: await buildCheckoutFeesHeaders(deps),
     });
     const parsed = parseCheckoutFees(res.data, ctx.orderType);
     if (!parsed) {
       logger.warn("checkout.fees_invalid_response", { orderType: ctx.orderType });
       return fail(
         "DELIVERY_QUOTE_INVALID",
-        "We couldn't get a delivery price. Please try again.",
+        "We couldn't load your order price. Please try again.",
         true,
       );
     }
@@ -223,7 +267,7 @@ export async function requestCheckoutFees(
     });
     return fail(
       "DELIVERY_QUOTE_FAILED",
-      "We couldn't get a delivery price. Please try again.",
+      "We couldn't load your order price. Please try again.",
       true,
     );
   }

@@ -1,4 +1,5 @@
 import { auth, db } from "@/core/config/firebase";
+import { defaultFunctionsBase } from "@/core/config/functionsBase";
 import {
   collection,
   addDoc,
@@ -108,14 +109,6 @@ function createKeyValueStore() {
       memory.set(key, value);
     },
   };
-}
-
-function defaultFunctionsBase(): string {
-  const env = import.meta.env as Record<string, string | undefined>;
-  if (env.VITE_PETPOOJA_PROXY_URL) return env.VITE_PETPOOJA_PROXY_URL.replace(/\/$/, "");
-  if (env.VITE_FUNCTIONS_API_URL) return env.VITE_FUNCTIONS_API_URL.replace(/\/$/, "");
-  const projectId = env.VITE_FIREBASE_PROJECT_ID || "burgonomics-7faa8";
-  return `https://asia-south1-${projectId}.cloudfunctions.net/api`;
 }
 
 export class HttpPetpoojaGateway implements PetpoojaGateway {
