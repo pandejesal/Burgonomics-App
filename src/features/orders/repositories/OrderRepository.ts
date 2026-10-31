@@ -185,6 +185,14 @@ export class OrderRepository {
       notes: checkout.orderNotes,
       fulfillmentInstructions,
       tableNumber: sel.fulfillment === "dinein" ? checkout.tableNumber : undefined,
+      // R8: cash delivery never calls createPaymentOrder, so the order doc is
+      // the only place the courier quote is recorded. Delivery-only: a stale
+      // quote id on a takeaway/dine-in order would be meaningless (and the
+      // service refuses to write one off-delivery anyway).
+      deliveryQuoteId:
+        sel.fulfillment === "delivery" && checkout.checkoutFees.status === "ready"
+          ? (checkout.checkoutFees.deliveryQuoteId ?? undefined)
+          : undefined,
       payment,
       confirmedOrderId: opts.confirmedOrderId,
     };

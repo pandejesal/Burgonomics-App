@@ -406,6 +406,16 @@ export const ordersService = {
       notes: input.notes,
       fulfillmentInstructions: input.fulfillmentInstructions,
       tableNumber: input.tableNumber,
+      // R8: persist the server courier quote on delivery orders only. Cash
+      // orders never reach createPaymentOrder, so without this the only store
+      // of the quoted fee would be `totals`; the quote id binds the order to
+      // the server record (R7 verification reads that stored fee). Key omitted
+      // entirely when there is no quote — never written as undefined.
+      ...(input.fulfillment === "delivery" &&
+      typeof input.deliveryQuoteId === "string" &&
+      input.deliveryQuoteId.length > 0
+        ? { deliveryQuoteId: input.deliveryQuoteId }
+        : {}),
       whatsappOptIn: input.whatsappOptIn ?? true,
       payment: input.payment,
       petpoojaStatus: "Pending",

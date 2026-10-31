@@ -303,6 +303,44 @@ describe("ordersService.createOrder — persistence honesty (P1-2, finding 16)",
     expect(payload.customerId).toBe("cust_contract_1");
   });
 
+  // R8: a cash delivery order never calls createPaymentOrder, so the courier
+  // quote must be recorded on the order doc itself.
+  it("records the delivery quote on a cash delivery order", async () => {
+    const res = await ordersService.createOrder(
+      orderInput({
+        fulfillment: "delivery",
+        payment: { method: "cash", label: "Cash on Delivery", status: "CASH_PENDING" },
+        deliveryQuoteId: "q_cash_delivery_1",
+      }),
+    );
+    expect(res.success).toBe(true);
+
+    const payload = mockSetDoc.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.deliveryQuoteId).toBe("q_cash_delivery_1");
+  });
+
+  it("never writes a delivery quote id on a takeaway order", async () => {
+    const res = await ordersService.createOrder(
+      orderInput({
+        fulfillment: "takeaway",
+        deliveryQuoteId: "q_must_not_leak",
+        payment: { method: "cash", label: "Pay at Pickup Counter", status: "PAY_AT_STORE" },
+      }),
+    );
+    expect(res.success).toBe(true);
+
+    const payload = mockSetDoc.mock.calls[0][1] as Record<string, unknown>;
+    expect("deliveryQuoteId" in payload).toBe(false);
+  });
+
+  it("omits the key entirely when no quote was supplied", async () => {
+    const res = await ordersService.createOrder(orderInput({ fulfillment: "delivery" }));
+    expect(res.success).toBe(true);
+
+    const payload = mockSetDoc.mock.calls[0][1] as Record<string, unknown>;
+    expect("deliveryQuoteId" in payload).toBe(false);
+  });
+
   it("observes pending server truth without fabricating a payment failure or writing it", async () => {
     const created = await ordersService.createOrder(orderInput());
     expect(created.success).toBe(true);

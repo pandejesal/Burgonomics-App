@@ -144,6 +144,12 @@ export interface Order {
   notes?: string;
   fulfillmentInstructions?: string;
   tableNumber?: string;
+  /**
+   * R8: server courier quote id this delivery order was priced from. Written
+   * by the client at create (rules allow it), delivery-only; read back by
+   * partner/dispatch. Absent off-delivery.
+   */
+  deliveryQuoteId?: string;
   /** WhatsApp order-alert opt-in, persisted on the order doc (P0-3). */
   whatsappOptIn?: boolean;
 
@@ -247,6 +253,13 @@ export interface CreateOrderInput {
   notes?: string;
   fulfillmentInstructions?: string;
   tableNumber?: string;
+  /**
+   * R8: the server courier quote this delivery order was priced from, written
+   * at create for cash and online alike so partner/dispatch/verification read
+   * the same quote the customer paid. Delivery only — never written as
+   * undefined, and never on takeaway/dine-in.
+   */
+  deliveryQuoteId?: string;
   /** WhatsApp order-alert opt-in at placement time (defaults true). */
   whatsappOptIn?: boolean;
   payment: OrderPaymentInfo;
