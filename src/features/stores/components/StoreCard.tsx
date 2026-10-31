@@ -275,8 +275,7 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                 void HapticService.impact("light");
                 onSelect?.(store);
               }}
-              aria-hidden="true"
-              tabIndex={-1}
+              aria-label={`Select ${store.name}`}
               aria-disabled={isDeliveryDisabled}
               className={cn(
                 "flex h-8 w-8 items-center justify-center text-text-secondary/50 cursor-pointer",
