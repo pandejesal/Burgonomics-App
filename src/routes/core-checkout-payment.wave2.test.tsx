@@ -33,15 +33,42 @@ const fixture = vi.hoisted(() => {
     tipAmount: 0,
     loyaltyPointsToRedeem: 0,
     tableNumber: "",
+    // R8: a ready server quote so these CUS-06/07/08/09 flows are not gated by
+    // the quote state machine (which has its own suite).
+    checkoutFees: {
+      status: "ready" as const,
+      orderType: "delivery" as const,
+      packagingFee: 20,
+      deliveryFee: 0,
+      deliveryQuoteId: "q_wave2",
+      provider: "borzo",
+      expiresAt: 9_999_999_999_999,
+    },
     setOrderNotes: vi.fn(),
     setTableNumber: vi.fn(),
     setLoyaltyPointsToRedeem: vi.fn(),
   };
   const noop = vi.fn();
+  const quote = {
+    status: "ready" as string,
+    payEnabled: true,
+    showDeliveryFee: true,
+    showTotal: true,
+    deliveryFee: 0,
+    packagingFee: 20,
+    deliveryQuoteId: "q_wave2",
+    expiresAt: 9_999_999_999_999,
+    message: null as string | null,
+    canRetry: false,
+    takeawaySelectable: true,
+  };
   return {
     lines,
     cartState,
     checkoutState,
+    quote,
+    refreshQuote: vi.fn(async () => checkoutState.checkoutFees),
+    createFromCurrentContext: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     cart: {
       calculateTotals: vi.fn(),
       validateCart: vi.fn(async () => ({
@@ -147,17 +174,29 @@ vi.mock("@/features/cart", () => ({
     </button>
   ),
 }));
-vi.mock("@/features/checkout", () => ({
-  useCheckoutStore: Object.assign(
-    (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
-    { getState: () => fixture.checkoutState },
-  ),
-  AddressSelector: () => null,
-  FulfillmentDetailsCard: () => null,
-  PaymentMethodSelector: () => null,
-  ReviewItemsList: () => null,
-  calculateHaversineKm: () => 0,
-}));
+vi.mock("@/features/checkout", () => {
+  return {
+    useCheckoutStore: Object.assign(
+      (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
+      { getState: () => fixture.checkoutState },
+    ),
+    // R8: these flows run against a live server quote; its own state machine is
+    // covered by tests/checkout/delivery-quote.test.ts.
+    useCheckoutFees: () => ({
+      state: fixture.checkoutState.checkoutFees,
+      view: fixture.quote,
+      refresh: fixture.refreshQuote,
+    }),
+    deliveryQuoteView: () => fixture.quote,
+    isDeliveryQuoteRefusal: (code: string | null | undefined) =>
+      code === "DELIVERY_QUOTE_EXPIRED" || code === "DELIVERY_QUOTE_REQUIRED",
+    AddressSelector: () => null,
+    FulfillmentDetailsCard: () => null,
+    PaymentMethodSelector: () => null,
+    ReviewItemsList: () => null,
+    calculateHaversineKm: () => 0,
+  };
+});
 vi.mock("@/features/checkout/components/QuickAuthSheet", () => ({ QuickAuthSheet: () => null }));
 vi.mock("@/features/stores/state/storeStore", () => ({
   useStoreSelection: (select: (s: unknown) => unknown) =>
@@ -207,7 +246,7 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
+    createFromCurrentContext: fixture.createFromCurrentContext,
     finalizePaidOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     markPaymentFailed: vi.fn(async () => ({ success: true })),
   },
@@ -271,6 +310,18 @@ beforeEach(() => {
   fixture.openCheckout.mockReset();
   fixture.validateForPayment.mockReset();
   fixture.createPaymentOrder.mockReset();
+  fixture.refreshQuote.mockClear();
+  fixture.createFromCurrentContext.mockClear();
+  // R8: every test starts from a live, ready quote unless it overrides it.
+  fixture.quote.status = "ready";
+  fixture.quote.payEnabled = true;
+  fixture.quote.showDeliveryFee = true;
+  fixture.quote.showTotal = true;
+  fixture.quote.deliveryFee = 0;
+  fixture.quote.packagingFee = 20;
+  fixture.quote.message = null;
+  fixture.quote.canRetry = false;
+  fixture.quote.takeawaySelectable = true;
   usePaymentStore.getState().reset();
   sessionStorage.clear();
   container = document.createElement("div");
@@ -775,3 +826,145 @@ describe("CUS-11 — accepted server amount replaces the stale To Pay bar", () =
     expect(checkoutBar()?.textContent).not.toContain("30.00");
   });
 });
+
+/**
+ * R8 — payment is gated on a LIVE server delivery quote. The quote state
+ * machine itself is unit-tested in tests/checkout/delivery-quote.test.ts; this
+ * block proves the route wiring: no payment starts on a stale quote, a 409
+ * re-quotes and surfaces the new figure, and cash follows the same gate.
+ */
+describe("R8 — payment is gated on a live delivery quote", () => {
+  const serverOrder = {
+    orderId: "order_rzp_r8",
+    razorpayOrderId: "order_rzp_r8",
+    amount: 30,
+    currency: "INR" as const,
+    receipt: "rcpt_r8",
+    keyId: "rzp_test_r8",
+  };
+
+  beforeEach(() => {
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(30));
+    fixture.validateForPayment.mockResolvedValue({
+      success: true,
+      data: { valid: true, issues: [] },
+    });
+    fixture.createPaymentOrder.mockResolvedValue({ success: true, data: serverOrder });
+    fixture.openCheckout.mockResolvedValue(undefined);
+  });
+
+  it("does not start a payment when the quote expired while the screen sat open", async () => {
+    await mount(PaymentPage);
+    expect(buttonWithText("Pay Online")?.disabled).toBe(false);
+
+    // The quote lapses before the tap. The handler must read the CURRENT state,
+    // not the one rendered a minute ago.
+    fixture.quote.status = "loading";
+    fixture.quote.payEnabled = false;
+    fixture.quote.message = "Getting delivery price";
+
+    await act(async () => buttonWithText("Pay Online")!.click());
+    await act(async () => {});
+
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Getting delivery price");
+    expect(fixture.refreshQuote).toHaveBeenCalled();
+  });
+
+  it("re-quotes after 409 DELIVERY_QUOTE_EXPIRED and shows the updated price dialog", async () => {
+    fixture.cart.calculateTotals
+      .mockResolvedValueOnce(okTotals(30))
+      .mockResolvedValue(okTotals(36));
+    fixture.createPaymentOrder.mockResolvedValue({
+      success: false,
+      error: {
+        code: "DELIVERY_QUOTE_EXPIRED",
+        message: "Delivery quote expired.",
+        retryable: true,
+      },
+    });
+
+    await mount(PaymentPage);
+    await act(async () => buttonWithText("Pay Online")!.click());
+    await act(async () => {});
+
+    // Re-quoted once, nothing opened on the stale amount, new total surfaced.
+    expect(fixture.refreshQuote).toHaveBeenCalledTimes(1);
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Continue with the updated amount?");
+    expect(document.body.textContent).toContain("36.00");
+    expect(usePaymentStore.getState().status).toBe("idle");
+
+    // Accepting the re-quoted figure starts ONE create against the new quote
+    // and opens the gateway on the server's amount.
+    fixture.createPaymentOrder.mockResolvedValue({
+      success: true,
+      data: { ...serverOrder, amount: 36 },
+    });
+    const cont = Array.from(document.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Continue"),
+    );
+    expect(cont).toBeDefined();
+    await act(async () => cont!.click());
+    await act(async () => {});
+
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(2);
+    expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
+    const init = (fixture.initializeRazorpay.mock.calls as unknown[][])[0]?.[0] as {
+      order: { amount: number };
+    };
+    expect(init.order.amount).toBe(36);
+  });
+
+  it("cash on delivery is gated by the same quote states", async () => {
+    await mount(PaymentPage);
+    await act(async () => usePaymentStore.getState().setMethod("cash"));
+
+    fixture.quote.status = "error";
+    fixture.quote.payEnabled = false;
+    fixture.quote.message = "Delivery isn't available to this address";
+
+    await act(async () => buttonWithText("Place COD Order")!.click());
+    await act(async () => {});
+
+    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Delivery isn't available to this address");
+  });
+
+  it("cash on delivery proceeds once the quote is ready", async () => {
+    await mount(PaymentPage);
+    await act(async () => usePaymentStore.getState().setMethod("cash"));
+    await act(async () => buttonWithText("Place COD Order")!.click());
+    await act(async () => {});
+
+    expect(fixture.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+  });
+
+  it("checkout re-quotes on 409 DELIVERY_QUOTE_REQUIRED and shows the new figure", async () => {
+    fixture.cart.calculateTotals
+      .mockResolvedValueOnce(okTotals(30))
+      .mockResolvedValue(okTotals(36));
+    fixture.createPaymentOrder.mockResolvedValue({
+      success: false,
+      error: {
+        code: "DELIVERY_QUOTE_REQUIRED",
+        message: "A delivery quote is required.",
+        retryable: true,
+      },
+    });
+
+    await mount(CheckoutPage);
+    await act(async () => buttonWithText("PAY")!.click());
+    await act(async () => {});
+
+    expect(fixture.refreshQuote).toHaveBeenCalledTimes(1);
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Continue with the updated amount?");
+    expect(document.body.textContent).toContain("36.00");
+  });
+});
+

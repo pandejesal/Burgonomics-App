@@ -18,6 +18,7 @@ import {
 } from "@/features/checkout/state/checkoutFeesTypes";
 
 export const GETTING_DELIVERY_PRICE = "Getting delivery price";
+export const GETTING_ORDER_PRICE = "Getting your order price";
 export const DELIVERY_UNAVAILABLE_COPY = "Delivery isn't available to this address";
 export const DELIVERY_ADDRESS_REQUIRED_COPY = "Add a delivery address to see the delivery fee";
 export const FEES_UNAVAILABLE_COPY = "We couldn't get your order price. Please try again.";
@@ -78,7 +79,7 @@ export function deliveryQuoteView(input: {
         packagingFee: null,
         deliveryQuoteId: null,
         expiresAt: null,
-        message: GETTING_DELIVERY_PRICE,
+        message: GETTING_ORDER_PRICE,
         canRetry: false,
         takeawaySelectable: false,
       };

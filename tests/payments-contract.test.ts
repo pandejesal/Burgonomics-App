@@ -166,6 +166,42 @@ describe("paymentsService.createOrder — PAYMENTS_CONTRACT_SPEC §1", () => {
     });
     expect(res.success).toBe(false);
   });
+
+  // R8: the server binds the payment to the courier quote it priced. A delivery
+  // create must carry that id, or the server refuses with
+  // DELIVERY_QUOTE_REQUIRED instead of charging a guessed fee.
+  it("carries deliveryQuoteId for a delivery order", async () => {
+    const fetchMock = stubFetch({
+      razorpayOrderId: "order_rzp_quote0001",
+      amountPaise: 37200,
+    });
+    await paymentsService.createOrder({
+      amount: 372,
+      currency: "INR",
+      receipt: "rcpt_quote",
+      storeId: "str_1",
+      fulfillment: "delivery",
+      orderType: "delivery",
+      orderId: "ord_internal_quote",
+      deliveryQuoteId: "q_del_1",
+    });
+    expect(lastBody(fetchMock).deliveryQuoteId).toBe("q_del_1");
+  });
+
+  it("never sends a deliveryQuoteId off-delivery", async () => {
+    const fetchMock = stubFetch({ razorpayOrderId: "order_rzp_quote0002", amountPaise: 25000 });
+    await paymentsService.createOrder({
+      amount: 250,
+      currency: "INR",
+      receipt: "rcpt_quote2",
+      storeId: "str_1",
+      fulfillment: "takeaway",
+      orderType: "takeaway",
+      orderId: "ord_internal_quote2",
+      deliveryQuoteId: "q_should_not_leak",
+    });
+    expect(lastBody(fetchMock).deliveryQuoteId).toBeUndefined();
+  });
 });
 
 // -- 2. verifyPayment wire ----------------------------------------------

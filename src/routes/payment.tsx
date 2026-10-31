@@ -43,7 +43,7 @@ import { useAppConfig } from "@/core/state/appConfigStore";
 import { appConfig } from "@/core/config/env";
 
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
-import { ReviewItemsList, useCheckoutStore } from "@/features/checkout";
+import { ReviewItemsList, useCheckoutStore, useCheckoutFees, deliveryQuoteView, isDeliveryQuoteRefusal } from "@/features/checkout";
 import type { CartTotals } from "@/features/cart/models";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
@@ -148,6 +148,10 @@ function PaymentPage() {
   const pickupInstructions = useCheckoutStore((s) => s.pickupInstructions);
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
 
+  // R8: the payment screen re-quotes on entry/address change/expiry and gates
+  // PAY on a live server quote (cash included).
+  const { state: feesState, view: quoteView, refresh: refreshQuote } = useCheckoutFees();
+
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   // Authoritative-quote acceptance, same rule as checkout.tsx: the gateway
   // opens on the SERVER's validated amount, so a differing displayed total
@@ -170,6 +174,9 @@ function PaymentPage() {
   // was denied "Missing or insufficient permissions", the customer saw
   // PERSIST_FAILED and Razorpay never opened (live run 3).
   const pendingGatewayOrder = React.useRef<PaymentOrder | null>(null);
+  // R8: true when the visible price dialog came from a 409 delivery-quote
+  // refusal (no gateway order yet), so Continue must re-create instead of open.
+  const quoteRepricePrompt = React.useRef(false);
   // M4 fail-closed: when the totals computation fails there is no honest
   // amount to charge, so PAY must say why and offer a retry instead of
   // disabling silently behind a fabricated ₹0.
@@ -260,7 +267,7 @@ function PaymentPage() {
   React.useEffect(() => {
     if (!hydrated) return;
     void loadTotals();
-  }, [hydrated, lines, fulfillment, loadTotals]);
+  }, [hydrated, lines, fulfillment, loadTotals, feesState]);
 
   if (!hydrated || !isBootstrapped) return <PaymentSkeleton />;
   if (!isAuthenticated) return <PaymentSkeleton />;
@@ -361,6 +368,25 @@ function PaymentPage() {
     }
     setPreflightIssue(null);
     setFailure(null);
+
+    // R8: never start a payment without a live quote for this order type. The
+    // screen may have sat open until the quote expired, so read it fresh.
+    const quoteNow = deliveryQuoteView({
+      state: useCheckoutStore.getState().checkoutFees,
+      fulfillment,
+      hasAddress:
+        Number.isFinite(selectedAddress?.lat) && Number.isFinite(selectedAddress?.lng),
+    });
+    if (!quoteNow.payEnabled) {
+      payInFlight.current = false;
+      setStatus("idle");
+      setPreflightIssue(quoteNow.message ?? "Getting delivery price");
+      if (quoteNow.canRetry || quoteNow.status === "idle" || quoteNow.status === "loading") {
+        void refreshQuote();
+      }
+      return;
+    }
+
     setStatus("preparing");
     setAbandonmentOpen(false);
 
@@ -379,6 +405,7 @@ function PaymentPage() {
         // sync re-entry guard held behind a dialog (CUS-07).
         payInFlight.current = false;
         setStatus("idle");
+        quoteRepricePrompt.current = false;
         setRepricePrompt({
           displayed: totals?.grandTotal as number,
           authoritative: heldAuthoritative as number,
@@ -476,8 +503,45 @@ function PaymentPage() {
     try {
       // Creates the internal payment-pending order FIRST (contract §3) and
       // binds the gateway order to it — the id lives in the payment store.
-      const orderRes = await paymentRepository.createPaymentOrder();
+      const quoteForPayment = useCheckoutStore.getState().checkoutFees;
+      const orderRes = await paymentRepository.createPaymentOrder({
+        // R8/R6: the server binds the charge to this courier quote.
+        deliveryQuoteId:
+          isDelivery && quoteForPayment.status === "ready"
+            ? (quoteForPayment.deliveryQuoteId ?? undefined)
+            : undefined,
+      });
       if (!orderRes.success) {
+        // Stale/missing quote: re-quote, then show the updated figure through
+        // the existing price dialog. No gateway opened, nothing was charged.
+        if (isDelivery && isDeliveryQuoteRefusal(orderRes.error.code)) {
+          payInFlight.current = false;
+          setStatus("idle");
+          setFailure(null);
+          const displayed = totals?.grandTotal ?? null;
+          const next = await refreshQuote();
+          const recalculated = await cartRepository.calculateTotals();
+          if (next.status !== "ready" || !recalculated.success) {
+            const message =
+              next.status === "unserviceable"
+                ? "Delivery isn't available to this address"
+                : "We couldn't get an updated delivery price. Please try again.";
+            setPreflightIssue(message);
+            toast.error("Delivery price unavailable", { description: message });
+            return;
+          }
+          setTotals(recalculated.data);
+          setTotalsFailed(false);
+          setAcceptedServerTotal(null);
+          acceptedServerAmount.current = null;
+          if (displayed !== null && recalculated.data.grandTotal !== displayed) {
+            quoteRepricePrompt.current = true;
+            setRepricePrompt({ displayed, authoritative: recalculated.data.grandTotal });
+            return;
+          }
+          await startPayment();
+          return;
+        }
         setStatus("failed");
         const message = orderFailureMessage(orderRes.error);
         setFailure({
@@ -512,6 +576,7 @@ function PaymentPage() {
         // sync guard so declining can never wedge the Pay button (CUS-07).
         payInFlight.current = false;
         setStatus("idle");
+        quoteRepricePrompt.current = false;
         setRepricePrompt({
           // The gate only returns true when both are finite numbers.
           displayed: displayedTotal as number,
@@ -702,7 +767,7 @@ function PaymentPage() {
                 To Pay
               </span>
               <span className="type-title-large font-black text-text tabular-nums">
-                {totals ? formatINR(grandTotal) : "—"}
+                {totals && quoteView.showTotal ? formatINR(grandTotal) : "—"}
               </span>
             </div>
             <AppButton
@@ -710,31 +775,39 @@ function PaymentPage() {
               className="flex-1 max-w-[280px] h-12 rounded-xl text-base font-bold shadow-md shadow-primary/20 active:scale-[0.98] transition-transform"
               onClick={() => void startPayment()}
               loading={busy && !payBlocked}
-              disabled={grandTotal <= 0 || !isOnline || payBlocked}
+              disabled={grandTotal <= 0 || !isOnline || payBlocked || !quoteView.payEnabled}
               title={
-                storeNotLinked
-                  ? failure?.message
-                  : payBlocked
-                    ? "We are confirming your payment — please do not pay again"
-                    : !isOnline
-                      ? "Back online to place your order"
-                      : totalsFailed
-                        ? "Couldn't compute your bill — retry above"
-                        : undefined
+                !quoteView.payEnabled
+                  ? (quoteView.message ?? "Getting delivery price")
+                  : storeNotLinked
+                    ? failure?.message
+                    : payBlocked
+                      ? "We are confirming your payment — please do not pay again"
+                      : !isOnline
+                        ? "Back online to place your order"
+                        : totalsFailed
+                          ? "Couldn't compute your bill — retry above"
+                          : undefined
               }
               iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
             >
-              {storeNotLinked
-                ? "Ordering unavailable"
-                : payBlocked
-                  ? "Payment under review"
-                  : status === "failed" || status === "cancelled"
-                    ? "Retry checkout"
-                    : method === "online"
-                      ? "Pay Online"
-                      : isDelivery
-                        ? "Place COD Order"
-                        : "Place Order"}
+              {!quoteView.payEnabled
+                ? quoteView.status === "idle" || quoteView.status === "loading"
+                  ? isDelivery
+                    ? "Getting delivery price"
+                    : "Getting your order price"
+                  : "Delivery unavailable"
+                : storeNotLinked
+                  ? "Ordering unavailable"
+                  : payBlocked
+                    ? "Payment under review"
+                    : status === "failed" || status === "cancelled"
+                      ? "Retry checkout"
+                      : method === "online"
+                        ? "Pay Online"
+                        : isDelivery
+                          ? "Place COD Order"
+                          : "Place Order"}
             </AppButton>
           </div>
         </div>
@@ -760,6 +833,36 @@ function PaymentPage() {
 
         {/* Secure badge */}
         <SecurePaymentBadge />
+
+        {/* R8: live quote state. PAY is disabled until the server quotes this
+            order; an unavailable address offers takeaway instead. */}
+        {quoteView.message && !quoteView.payEnabled && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4"
+          >
+            <Text variant="bodyMedium" className="font-bold">
+              {quoteView.message}
+            </Text>
+            <span className="flex items-center gap-2">
+              {quoteView.canRetry && (
+                <AppButton size="sm" onClick={() => void refreshQuote()}>
+                  Retry
+                </AppButton>
+              )}
+              {isDelivery && quoteView.takeawaySelectable && (
+                <AppButton
+                  size="sm"
+                  variant="outlined"
+                  onClick={() => void navigate({ to: "/checkout" })}
+                >
+                  Switch to Takeaway
+                </AppButton>
+              )}
+            </span>
+          </div>
+        )}
 
         {/* Step 2: Checkout Summary Card with High Visual Hierarchy */}
         <section
@@ -920,7 +1023,7 @@ function PaymentPage() {
                   {totals.packingFee > 0 && (
                     <SummaryRow label="Store Packing Charges" value={totals.packingFee} />
                   )}
-                  <SummaryRow label="Taxes & Surcharges" value={totals.taxes} />
+                  <SummaryRow label="Incl. GST (5%)" value={totals.taxes} />
 
                   <div className="mt-3 flex items-center justify-between border-t border-divider pt-3">
                     <Text variant="titleLarge" className="font-extrabold text-text">
@@ -1063,7 +1166,10 @@ function PaymentPage() {
       <ConfirmDialog
         open={repricePrompt !== null}
         onOpenChange={(open) => {
-          if (!open) setRepricePrompt(null);
+          if (!open) {
+            quoteRepricePrompt.current = false;
+            setRepricePrompt(null);
+          }
         }}
         title="Your total has been updated"
         description={
@@ -1076,11 +1182,28 @@ function PaymentPage() {
         onConfirm={() => {
           if (!repricePrompt) return;
           const serverOrder = pendingGatewayOrder.current;
+          if (!serverOrder) {
+            // Only a quote-refusal prompt may re-create. A normal reprice
+            // prompt whose order was already consumed must do nothing (CUS-07:
+            // a second tap can never open a second checkout).
+            if (!quoteRepricePrompt.current) {
+              setRepricePrompt(null);
+              return;
+            }
+            // R8 409 recovery: no gateway order exists yet. Accept the
+            // re-quoted total and start a fresh create against the new quote
+            // (the repository reuses the same internal order id).
+            quoteRepricePrompt.current = false;
+            acceptedServerAmount.current = repricePrompt.authoritative;
+            setAcceptedServerTotal(repricePrompt.authoritative);
+            setRepricePrompt(null);
+            payInFlight.current = false;
+            setStatus("idle");
+            void startPayment();
+            return;
+          }
           // Nothing created ⇒ nothing to open: never charge an amount the
           // server never quoted.
-          if (!serverOrder) return;
-          // A second tap on Continue must not open a second checkout (CUS-07
-          // double-charge guarantee).
           if (payInFlight.current) return;
           // Accept this exact server total, then CONTINUE with the order that
           // already exists (CUS-09): the internal `orders/{id}` document and

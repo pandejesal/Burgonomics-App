@@ -55,6 +55,13 @@ export interface CreateOrderInput {
   loyaltyPointsToRedeem?: number;
   /** Delivery-partner tip (₹) — a server-repriced input, like loyalty. */
   tipAmount?: number;
+  /**
+   * R8/R6: the server-side courier quote (`delivery_fee_quotes/{id}`) this
+   * delivery order was priced from. The server refuses a delivery payment
+   * without a usable quote, so this is never fabricated and never sent
+   * off-delivery.
+   */
+  deliveryQuoteId?: string;
   /** Stable per checkout: retries reuse the open gateway order, no double charge. */
   idempotencyKey?: string;
   checkoutToken?: string;
@@ -184,10 +191,17 @@ export const paymentsService = {
     }
 
     try {
+      // R8: a delivery quote id is only meaningful for a delivery order. It is
+      // stripped off-delivery so a stale value can never leak onto a takeaway
+      // or dine-in payment (the server would refuse or mis-bill).
+      const { deliveryQuoteId, ...rest } = input;
+      const isDeliveryOrder = (input.orderType ?? input.fulfillment) === "delivery";
+      const payload =
+        isDeliveryOrder && deliveryQuoteId ? { ...rest, deliveryQuoteId } : rest;
       // PAYMENTS_CONTRACT_SPEC §1: the server answers with canonical names
       // (`razorpayOrderId`, `amountPaise`) plus legacy aliases (`orderId`,
       // `amount` in rupees). Read canonical first, fall back to legacy.
-      const raw = await backendPost<Record<string, unknown>>("/createPaymentOrder", input);
+      const raw = await backendPost<Record<string, unknown>>("/createPaymentOrder", payload);
       const razorpayOrderId = String(raw.razorpayOrderId ?? raw.orderId ?? "");
       const amountPaise =
         typeof raw.amountPaise === "number" && Number.isFinite(raw.amountPaise)

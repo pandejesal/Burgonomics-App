@@ -193,6 +193,12 @@ export class PaymentRepository {
   async createPaymentOrder(opts?: {
     loyaltyPointsToRedeem?: number;
     internalOrderId?: string;
+    /**
+     * R8: the server courier quote this checkout was priced from. Callers pass
+     * the live quote; when omitted the repository reads the current ready quote
+     * (delivery only) so a screen cannot accidentally send a payment without it.
+     */
+    deliveryQuoteId?: string;
   }): Promise<ApiResult<PaymentOrder>> {
     const uid = useAuthStore.getState().user?.id ?? null;
     const pendingRecon = loadPaymentReconciliation(uid);
@@ -323,6 +329,15 @@ export class PaymentRepository {
     }
     usePaymentStore.getState().setInternalOrderId(internalOrderId);
 
+    // R8: the delivery fee is server-quoted; the payment create binds to that
+    // exact quote. Off-delivery there is no quote id at all.
+    const fees = useCheckoutStore.getState().checkoutFees;
+    const deliveryQuoteId =
+      sel.fulfillment === "delivery"
+        ? opts?.deliveryQuoteId ??
+          (fees.status === "ready" ? (fees.deliveryQuoteId ?? undefined) : undefined)
+        : undefined;
+
     const orderRes = await this.service.createOrder({
       amount: totalsRes.data.grandTotal,
       currency: "INR",
@@ -350,6 +365,7 @@ export class PaymentRepository {
       couponCode: cart.promo?.code,
       loyaltyPointsToRedeem,
       tipAmount,
+      deliveryQuoteId,
       idempotencyKey: this.idempotencyKeyFor(fingerprint),
       checkoutToken,
       checkoutSnapshot,

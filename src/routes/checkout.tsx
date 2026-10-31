@@ -53,6 +53,9 @@ import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authS
 import { DEFAULT_DELIVERY_RADIUS_KM } from "@/features/stores/utils/serviceArea";
 import {
   useCheckoutStore,
+  useCheckoutFees,
+  deliveryQuoteView,
+  isDeliveryQuoteRefusal,
   AddressSelector,
   FulfillmentDetailsCard,
   PaymentMethodSelector,
@@ -154,6 +157,10 @@ export function CheckoutPage() {
   const addresses = useAddressStore(selectAddresses);
   const selectedAddress = useAddressStore(selectSelectedAddress);
   const selectAddress = useAddressStore((s) => s.select);
+
+  // R8: live server quote for delivery + packaging. Quotes on entry and on any
+  // change of address/store/fulfillment; stale answers are dropped in the store.
+  const { state: feesState, view: quoteView, refresh: refreshQuote } = useCheckoutFees();
 
   const paymentMethod = usePaymentStore((s) => s.method);
   const reconciliationPending = usePaymentStore((s) => s.reconciliationPending);
@@ -304,7 +311,7 @@ export function CheckoutPage() {
   React.useEffect(() => {
     if (!hydrated) return;
     void recompute();
-  }, [hydrated, lines, fulfillment, promo, recompute]);
+  }, [hydrated, lines, fulfillment, promo, recompute, feesState]);
 
   if (!hydrated) {
     return (
@@ -342,6 +349,34 @@ export function CheckoutPage() {
   // otherwise checkout quotes less than the gateway collects.
   const finalPayable =
     acceptedServerTotal ?? Math.max(0, rawGrandTotal + persistedTip - pointsDiscount);
+
+  // R8: the server refused the payment because the courier quote was missing or
+  // had expired. Re-quote the CURRENT address, then surface the updated figure
+  // through the existing price dialog — never open Razorpay on the stale one.
+  async function recoverFromQuoteRefusal() {
+    const displayed = totals?.grandTotal ?? null;
+    const next = await refreshQuote();
+    const recomputed = await cartRepository.calculateTotals();
+    if (next.status !== "ready" || !recomputed.success) {
+      const message =
+        next.status === "unserviceable"
+          ? "Delivery isn't available to this address"
+          : "We couldn't get an updated delivery price. Please try again.";
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+    setTotals(recomputed.data);
+    setTotalsFailed(false);
+    setAcceptedServerTotal(null);
+    // A new quote invalidates any earlier acceptance.
+    acceptedServerAmount.current = null;
+    if (displayed !== null && recomputed.data.grandTotal !== displayed) {
+      setRepricePrompt({ displayed, authoritative: recomputed.data.grandTotal });
+      return;
+    }
+    void handlePlaceOrderRef.current();
+  }
 
   // Hoisted so the ref-sync effect also runs safely on the initial skeleton
   // render, which returns before the checkout body is initialized.
@@ -420,6 +455,28 @@ export function CheckoutPage() {
         toast.error("Address is outside delivery range.");
         return;
       }
+    }
+
+    // R8: PAY is gated on a live server quote for THIS order type — cash
+    // included, because the courier fee is part of what the customer owes.
+    // Read fresh from the store: the screen may have sat open past expiry.
+    const quoteNow = deliveryQuoteView({
+      state: useCheckoutStore.getState().checkoutFees,
+      fulfillment,
+      hasAddress:
+        Number.isFinite(Number(selectedAddress?.lat)) &&
+        Number.isFinite(Number(selectedAddress?.lng)) &&
+        selectedAddress?.lat != null &&
+        selectedAddress?.lng != null,
+    });
+    if (!quoteNow.payEnabled) {
+      const message = quoteNow.message ?? "Getting delivery price";
+      setValidationError(message);
+      toast.error(message);
+      if (quoteNow.canRetry || quoteNow.status === "idle" || quoteNow.status === "loading") {
+        void refreshQuote();
+      }
+      return;
     }
 
     // Sync re-entry guard (see declaration): a second tap before re-render
@@ -539,10 +596,27 @@ export function CheckoutPage() {
     try {
       setPaymentStatus("preparing");
       setPaymentFailure(null);
+      const quoteForPayment = useCheckoutStore.getState().checkoutFees;
       const orderRes = await paymentRepository.createPaymentOrder({
         loyaltyPointsToRedeem: redeemPoints ? pointsDiscount : 0,
+        // R8/R6: the server binds the charge to this courier quote.
+        deliveryQuoteId:
+          isDelivery && quoteForPayment.status === "ready"
+            ? (quoteForPayment.deliveryQuoteId ?? undefined)
+            : undefined,
       });
       if (!orderRes.success) {
+        // A stale/missing quote is recoverable: re-quote, then show the updated
+        // price through the existing dialog before retrying. No gateway has
+        // opened, so nothing can have been charged.
+        if (isDelivery && isDeliveryQuoteRefusal(orderRes.error.code)) {
+          setBusy(false);
+          placeOrderInFlight.current = false;
+          setPaymentStatus("idle");
+          setPaymentFailure(null);
+          await recoverFromQuoteRefusal();
+          return;
+        }
         setBusy(false);
       placeOrderInFlight.current = false;
         setPaymentStatus("failed");
@@ -810,48 +884,74 @@ export function CheckoutPage() {
             <div>
               <p className="text-[10px] uppercase font-bold text-text-secondary">To Pay</p>
               <p className="font-mono text-xl font-black text-text">
-                {totals ? formatINR(finalPayable) : "—"}
+                {totals && quoteView.showTotal ? formatINR(finalPayable) : "—"}
               </p>
             </div>
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || orderingUnavailable || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
-              aria-disabled={busy || !isOnline || orderingUnavailable || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
+              disabled={
+                busy ||
+                !isOnline ||
+                orderingUnavailable ||
+                totals === null ||
+                totalsFailed ||
+                !kitchen.isOpen ||
+                reconciliationPending ||
+                !quoteView.payEnabled
+              }
+              aria-disabled={
+                busy ||
+                !isOnline ||
+                orderingUnavailable ||
+                totals === null ||
+                totalsFailed ||
+                !kitchen.isOpen ||
+                reconciliationPending ||
+                !quoteView.payEnabled
+              }
               title={
-                orderingUnavailable
-                  ? "This outlet isn't taking online orders yet."
-                  : reconciliationPending
-                    ? "We are confirming your payment — please do not pay again"
-                    : !kitchen.isOpen
-                      ? KITCHEN_CLOSED_MESSAGE
-                      : !isOnline
-                        ? "Back online to place your order"
-                        : totalsFailed
-                          ? "Couldn't compute your bill — retry above"
-                          : totals === null
-                            ? "Bill is still being computed"
-                            : undefined
+                !quoteView.payEnabled
+                  ? (quoteView.message ?? "Getting delivery price")
+                  : orderingUnavailable
+                    ? "This outlet isn't taking online orders yet."
+                    : reconciliationPending
+                      ? "We are confirming your payment — please do not pay again"
+                      : !kitchen.isOpen
+                        ? KITCHEN_CLOSED_MESSAGE
+                        : !isOnline
+                          ? "Back online to place your order"
+                          : totalsFailed
+                            ? "Couldn't compute your bill — retry above"
+                            : totals === null
+                              ? "Bill is still being computed"
+                              : undefined
               }
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
               <span>
-                {orderingUnavailable
-                  ? "ONLINE ORDERING UNAVAILABLE"
-                  : reconciliationPending
-                    ? "PAYMENT UNDER REVIEW"
-                    : busy
-                      ? "Processing Order..."
-                      : !kitchen.isOpen
-                        ? "KITCHEN CLOSED"
-                        : !isOnline
-                          ? "OFFLINE — RECONNECT TO PAY"
-                          : totalsFailed
-                            ? "PAY — BILL UNAVAILABLE"
-                            : totals === null
-                              ? "PAY — CHECKING BILL"
-                            : `PAY ${formatINR(finalPayable)} SECURELY`}
+                {!quoteView.payEnabled
+                  ? quoteView.status === "idle" || quoteView.status === "loading"
+                    ? isDelivery
+                      ? "PAY — GETTING DELIVERY PRICE"
+                      : "PAY — GETTING ORDER PRICE"
+                    : "PAY — DELIVERY UNAVAILABLE"
+                  : orderingUnavailable
+                    ? "ONLINE ORDERING UNAVAILABLE"
+                    : reconciliationPending
+                      ? "PAYMENT UNDER REVIEW"
+                      : busy
+                        ? "Processing Order..."
+                        : !kitchen.isOpen
+                          ? "KITCHEN CLOSED"
+                          : !isOnline
+                            ? "OFFLINE — RECONNECT TO PAY"
+                            : totalsFailed
+                              ? "PAY — BILL UNAVAILABLE"
+                              : totals === null
+                                ? "PAY — CHECKING BILL"
+                                : `PAY ${formatINR(finalPayable)} SECURELY`}
               </span>
             </button>
           </div>
@@ -916,6 +1016,39 @@ export function CheckoutPage() {
             >
               Retry
             </button>
+          </div>
+        )}
+
+        {/* R8: delivery/order price state. PAY is disabled while the server is
+            still quoting, when the address is unserviceable, or on an outage —
+            with an honest retry and, for delivery, takeaway as the escape. */}
+        {quoteView.message && !quoteView.payEnabled && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs font-bold text-amber-800 dark:text-amber-300 shadow-xs flex flex-wrap items-center justify-between gap-3"
+          >
+            <span>{quoteView.message}</span>
+            <span className="flex items-center gap-2">
+              {quoteView.canRetry && (
+                <button
+                  type="button"
+                  onClick={() => void refreshQuote()}
+                  className="shrink-0 px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 transition-colors cursor-pointer"
+                >
+                  Retry
+                </button>
+              )}
+              {isDelivery && quoteView.takeawaySelectable && (
+                <button
+                  type="button"
+                  onClick={() => setFulfillment("takeaway")}
+                  className="shrink-0 px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 transition-colors cursor-pointer"
+                >
+                  Switch to Takeaway
+                </button>
+              )}
+            </span>
           </div>
         )}
 
@@ -1065,26 +1198,36 @@ export function CheckoutPage() {
               <span className="font-mono font-bold text-text">{totals ? formatINR(totals.subtotal) : <span className="text-warning-text">unavailable</span>}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
-              <span>Govt. GST (5% included)</span>
+              <span>Incl. GST (5%)</span>
               <span className="font-mono font-bold text-text">{totals ? formatINR(totals.taxes) : <span className="text-warning-text">unavailable</span>}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="font-mono font-bold text-text">
-                {isDineIn ? <span className="text-[#0E4825] dark:text-[#4ADE80] font-black uppercase">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning-text">unavailable</span>}
+                {totals && quoteView.packagingFee !== null ? (
+                  isDineIn && quoteView.packagingFee === 0 ? (
+                    <span className="text-[#0E4825] dark:text-[#4ADE80] font-black uppercase">FREE</span>
+                  ) : (
+                    formatINR(quoteView.packagingFee)
+                  )
+                ) : (
+                  <span className="text-warning-text">Getting price…</span>
+                )}
               </span>
             </div>
-            {/* Delivery Fee — same rule as BillBreakdown: only delivery shows it. */}
+            {/* Delivery Fee — server courier quote only (R8). No static fare. */}
             {isDelivery && (
               <div className="flex justify-between text-text-secondary">
                 <span>Delivery Fee</span>
                 <span className="font-mono font-bold text-text">
-                  {totals?.deliveryFee === 0 ? (
-                    <span className="font-bold text-[#0E4825] dark:text-[#4ADE80] uppercase text-[10px]">FREE</span>
-                  ) : totals ? (
-                    formatINR(totals.deliveryFee)
+                  {totals && quoteView.showDeliveryFee && quoteView.deliveryFee !== null ? (
+                    formatINR(quoteView.deliveryFee)
                   ) : (
-                    <span className="text-warning-text">unavailable</span>
+                    <span className="text-warning-text">
+                      {quoteView.status === "unserviceable" || quoteView.status === "error"
+                        ? "Unavailable"
+                        : "Getting price…"}
+                    </span>
                   )}
                 </span>
               </div>
@@ -1114,7 +1257,7 @@ export function CheckoutPage() {
 
             <div className="border-t border-divider pt-2.5 flex justify-between text-sm sm:text-base font-black text-text">
               <span>To Pay</span>
-              <span className="font-mono text-[#FF6600] font-black text-lg">{totals ? formatINR(finalPayable) : "—"}</span>
+              <span className="font-mono text-[#FF6600] font-black text-lg">{totals && quoteView.showTotal ? formatINR(finalPayable) : "—"}</span>
             </div>
           </div>
         </section>

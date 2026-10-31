@@ -1,6 +1,9 @@
 export * from "./repositories/CheckoutRepository";
 export * from "./services/checkoutService";
 export * from "./state/checkoutStore";
+export * from "./state/checkoutFeesTypes";
+export { useCheckoutFees } from "./hooks/useCheckoutFees";
+export { deliveryQuoteView } from "./utils/deliveryQuoteView";
 export { ReviewItemsList } from "./components/ReviewItemsList";
 export { AddressSelector, calculateHaversineKm } from "./components/AddressSelector";
 export { FulfillmentDetailsCard } from "./components/FulfillmentDetailsCard";
