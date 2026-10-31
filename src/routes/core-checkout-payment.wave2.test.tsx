@@ -451,3 +451,139 @@ describe("CUS-07 — a failing preflight never wedges the Pay button", () => {
     await act(async () => {});
   });
 });
+
+/**
+ * CUS-09 — the last link before Razorpay.
+ *
+ * Live run 3: the order was created and createPaymentOrder returned a Razorpay
+ * order for 26 against a displayed 30. The customer accepted the new total and
+ * the acceptance path re-ran the place-order flow, which wrote the SAME
+ * `orders/{id}` again — an update, denied by firestore.rules — so the client
+ * reported PERSIST_FAILED and Razorpay never opened.
+ *
+ * Acceptance must CONTINUE from the order that already exists: one
+ * createPaymentOrder (one internal doc, one gateway order), one openCheckout,
+ * on the SERVER's amount.
+ */
+describe("CUS-09 — accepting a reprice continues with the already-created order", () => {
+  const serverOrder = {
+    orderId: "order_rzp_created",
+    razorpayOrderId: "order_rzp_created",
+    amount: 26,
+    currency: "INR" as const,
+    receipt: "rcpt_cus09",
+    keyId: "rzp_test_cus09",
+  };
+
+  beforeEach(() => {
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(30));
+    fixture.validateForPayment.mockResolvedValue({
+      success: true,
+      data: { valid: true, issues: [] },
+    });
+    fixture.createPaymentOrder.mockResolvedValue({ success: true, data: serverOrder });
+    fixture.openCheckout.mockResolvedValue(undefined);
+  });
+
+  function dialogButton(text: string): HTMLButtonElement | undefined {
+    return Array.from(document.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes(text),
+    );
+  }
+
+  async function raiseRepricePrompt() {
+    await mount(PaymentPage);
+    const pay = buttonWithText("Pay Online");
+    expect(pay?.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+    expect(document.body.textContent).toContain("Continue with the updated amount?");
+  }
+
+  it("does not re-run the create path: one createPaymentOrder, one openCheckout on the server amount", async () => {
+    await raiseRepricePrompt();
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+
+    const cont = dialogButton("Continue");
+    expect(cont).toBeDefined();
+    await act(async () => cont!.click());
+    await act(async () => {});
+
+    // No second place-order (no second orders/{id} write) and no second
+    // Razorpay order.
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
+    // Opened on the EXISTING gateway order and the SERVER's amount (26), never
+    // the stale displayed total (30).
+    const init = (fixture.initializeRazorpay.mock.calls as unknown[][])[0]?.[0] as {
+      order: { orderId: string; amount: number };
+    };
+    expect(init.order.orderId).toBe("order_rzp_created");
+    expect(init.order.amount).toBe(26);
+    expect(usePaymentStore.getState().status).toBe("waiting");
+  });
+
+  it("declining leaves the customer able to retry, and retrying re-prompts without a second order", async () => {
+    await raiseRepricePrompt();
+
+    const cancel = dialogButton("Cancel");
+    expect(cancel).toBeDefined();
+    await act(async () => cancel!.click());
+    await act(async () => {});
+
+    // No stuck guard: the prompt is closed, nothing opened, Pay is usable.
+    expect(document.body.textContent).not.toContain("Continue with the updated amount?");
+    expect(usePaymentStore.getState().status).toBe("idle");
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    const payAgain = buttonWithText("Pay Online");
+    expect(payAgain?.disabled).toBe(false);
+
+    // Tapping Pay again must NOT create a second order/gateway order — it
+    // re-offers the same server total.
+    await act(async () => payAgain!.click());
+    await act(async () => {});
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain("Continue with the updated amount?");
+
+    // Accepting now opens the one existing order exactly once.
+    await act(async () => dialogButton("Continue")!.click());
+    await act(async () => {});
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
+  });
+
+  it("a second tap on Continue does not open a second checkout", async () => {
+    await raiseRepricePrompt();
+
+    const cont = dialogButton("Continue")!;
+    await act(async () => {
+      cont.click();
+      cont.click();
+    });
+    await act(async () => {});
+
+    expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("a genuine first-attempt persist failure still surfaces PERSIST_FAILED", async () => {
+    const message =
+      "We couldn't save your order, so the kitchen never received it. " +
+      "Please try again — no duplicate order will be created.";
+    fixture.createPaymentOrder.mockResolvedValue({
+      success: false,
+      error: { code: "PERSIST_FAILED", message, retryable: true },
+    });
+
+    await mount(PaymentPage);
+    await act(async () => buttonWithText("Pay Online")!.click());
+    await act(async () => {});
+
+    expect(usePaymentStore.getState().status).toBe("failed");
+    expect(usePaymentStore.getState().failure?.code).toBe("PERSIST_FAILED");
+    expect(container.textContent).toContain("We couldn't save your order");
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain("Continue with the updated amount?");
+  });
+});

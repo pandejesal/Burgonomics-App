@@ -50,6 +50,30 @@ export class PaymentRepository {
   private lastIdempotencyKey: string | null = null;
 
   /**
+   * CUS-09: the checkout this repository has ALREADY created — the internal
+   * `orders/{id}` document plus the Razorpay order bound to it.
+   *
+   * `firestore.rules` only allows CREATE on `orders/{id}` (never a client
+   * update), so re-running the create path for the same checkout is not a
+   * harmless retry: `setDoc` is denied with "Missing or insufficient
+   * permissions", the order surfaces as PERSIST_FAILED and the gateway never
+   * opens. That is exactly what happened when a reprice acceptance (or a
+   * retry after a dismissed modal / a gateway 500) re-entered
+   * `createPaymentOrder`.
+   *
+   * This is the explicit "already persisted" signal: a second call for the
+   * SAME fingerprint and the SAME internal order id reuses this record instead
+   * of writing the document again. It is only ever set AFTER a successful
+   * create — a genuine first-attempt persist failure still returns
+   * PERSIST_FAILED and records nothing.
+   */
+  private createdCheckout: {
+    fingerprint: string;
+    internalOrderId: string;
+    gatewayOrder: PaymentOrder | null;
+  } | null = null;
+
+  /**
    * Stable idempotency key per cart contents: retries of the same checkout
    * reuse the open gateway order instead of minting a second payable order.
    */
@@ -233,6 +257,41 @@ export class PaymentRepository {
       loyaltyPointsToRedeem,
     };
 
+    // Checkout fingerprint: identifies "this attempt" — same store, same cart
+    // lines/prices, same promo/loyalty/tip. Computed BEFORE anything is created
+    // so a re-entry can recognise the checkout it already persisted (CUS-09).
+    // Server reprices authoritatively from items + store pricing; the client
+    // amount below is display-only.
+    const fingerprint = JSON.stringify([
+      sel.activeStore.id,
+      cart.lines.map((l) => [l.productId, l.quantity, l.unitPrice]),
+      cart.promo?.code || null,
+      loyaltyPointsToRedeem || 0,
+      tipAmount || 0,
+    ]);
+
+    const requestedInternalId =
+      opts?.internalOrderId ?? usePaymentStore.getState().internalOrderId ?? null;
+    const recorded =
+      this.createdCheckout &&
+      this.createdCheckout.fingerprint === fingerprint &&
+      requestedInternalId === this.createdCheckout.internalOrderId
+        ? this.createdCheckout
+        : null;
+
+    // A gateway order already minted for this exact checkout is reused as-is:
+    // exactly ONE Razorpay order per attempt, on the server's own amount, and
+    // no second order write or network round-trip.
+    if (recorded?.gatewayOrder) {
+      usePaymentStore.getState().setInternalOrderId(recorded.internalOrderId);
+      usePaymentStore
+        .getState()
+        .setGatewayOrderId(
+          recorded.gatewayOrder.razorpayOrderId ?? recorded.gatewayOrder.orderId ?? null,
+        );
+      return ok(recorded.gatewayOrder);
+    }
+
     // The checkout token would normally come from the cart-prepare step
     // and be signed by the backend. Mock: request one.
     const prep = await cartRepository.prepareCheckout();
@@ -244,27 +303,26 @@ export class PaymentRepository {
     // (rather than per screen) means no caller can open Razorpay without that
     // binding. The id lives in the payment store so retries re-create the
     // SAME doc instead of a second order for one checkout.
-    const pending = await orderRepository.createFromCurrentContext({
-      confirmedOrderId:
-        opts?.internalOrderId ?? usePaymentStore.getState().internalOrderId ?? undefined,
-      paymentMethod: "online",
-      paymentStatus: "pending",
-      paymentLabel: "Pay Online",
-    });
-    if (!pending.success) return pending;
-    usePaymentStore.getState().setInternalOrderId(pending.data.id);
+    //
+    // CUS-09: when THIS checkout's document was already created successfully,
+    // reuse it — never write it again (the second write is an UPDATE, which
+    // firestore.rules deny, and it surfaced as PERSIST_FAILED).
+    let internalOrderId: string;
+    if (recorded) {
+      internalOrderId = recorded.internalOrderId;
+    } else {
+      const pending = await orderRepository.createFromCurrentContext({
+        confirmedOrderId: requestedInternalId ?? undefined,
+        paymentMethod: "online",
+        paymentStatus: "pending",
+        paymentLabel: "Pay Online",
+      });
+      if (!pending.success) return pending;
+      internalOrderId = pending.data.id;
+      this.createdCheckout = { fingerprint, internalOrderId, gatewayOrder: null };
+    }
+    usePaymentStore.getState().setInternalOrderId(internalOrderId);
 
-    // Server reprices authoritatively from items + store pricing; the client
-    // amount below is display-only. Loyalty/coupon/tip/branch are sent as
-    // inputs (resolved above from opts with fallback to persisted checkout
-    // state). Stable per checkout: retries reuse the open gateway order.
-    const fingerprint = JSON.stringify([
-      sel.activeStore.id,
-      cart.lines.map((l) => [l.productId, l.quantity, l.unitPrice]),
-      cart.promo?.code || null,
-      loyaltyPointsToRedeem || 0,
-      tipAmount || 0,
-    ]);
     const orderRes = await this.service.createOrder({
       amount: totalsRes.data.grandTotal,
       currency: "INR",
@@ -277,7 +335,7 @@ export class PaymentRepository {
       fulfillment: sel.fulfillment,
       // PAYMENTS_CONTRACT_SPEC §1/§3: the internal order id above, so the
       // server can refuse to charge for an already-paid or foreign order.
-      orderId: pending.data.id,
+      orderId: internalOrderId,
       branchId: sel.activeStore.partnerBranchId ?? undefined,
       items: cart.lines.map((l) => ({
         id: l.productId,
@@ -302,6 +360,9 @@ export class PaymentRepository {
       usePaymentStore
         .getState()
         .setGatewayOrderId(orderRes.data.razorpayOrderId ?? orderRes.data.orderId ?? null);
+      // Record the gateway order against the checkout that already owns the
+      // internal document, so a retry reuses this SAME payable order (CUS-09).
+      this.createdCheckout = { fingerprint, internalOrderId, gatewayOrder: orderRes.data };
     } else {
       // Flip the pending internal order to failed ONLY when the failure is
       // provably pre-gateway: `INVALID_AMOUNT` is refused by the transport
@@ -316,11 +377,11 @@ export class PaymentRepository {
         orderRes.error.code === "INVALID_AMOUNT" &&
         !usePaymentStore.getState().gatewayOrderId;
       if (provenPreflight) {
-        await orderRepository.markPaymentFailed(pending.data.id).catch(() => undefined);
+        await orderRepository.markPaymentFailed(internalOrderId).catch(() => undefined);
       } else {
         logger.warn("payments.create_order_failed_unproven_noncapture", {
           code: orderRes.error.code,
-          internalOrderId: pending.data.id,
+          internalOrderId,
         });
       }
     }

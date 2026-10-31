@@ -57,7 +57,7 @@ import {
   RazorpayModalHandler,
 } from "@/features/payments";
 import type { PaymentResult } from "@/features/payments/models";
-import type { PaymentPreflight } from "@/features/payments/models";
+import type { PaymentOrder, PaymentPreflight } from "@/features/payments/models";
 import type { ApiResult } from "@/core/network/http";
 import { describePaymentFailure } from "@/features/payments/utils/paymentFailure";
 import {
@@ -160,9 +160,13 @@ function PaymentPage() {
   // The exact server total already accepted, so the structural display/charge
   // divergence does not prompt again on re-entry.
   const acceptedServerAmount = React.useRef<number | null>(null);
-  // Latest launch closure for the acceptance dialog: re-enter the SAME flow
-  // after acceptance instead of re-running a different code path.
-  const startPaymentRef = React.useRef<() => Promise<void>>(async () => {});
+  // CUS-09: the internal `orders/{id}` document AND the Razorpay order minted
+  // by the attempt that raised the reprice prompt. Accepting the new total must
+  // CONTINUE from this exact pair. Re-running the place-order path wrote the
+  // same `orders/{id}` again — firestore.rules allow create only, so the SDK
+  // was denied "Missing or insufficient permissions", the customer saw
+  // PERSIST_FAILED and Razorpay never opened (live run 3).
+  const pendingGatewayOrder = React.useRef<PaymentOrder | null>(null);
   // M4 fail-closed: when the totals computation fails there is no honest
   // amount to charge, so PAY must say why and offer a retry instead of
   // disabling silently behind a fabricated ₹0.
@@ -271,6 +275,72 @@ function PaymentPage() {
     );
   }
 
+  /**
+   * CUS-09: opens Razorpay for an order that ALREADY exists (the internal
+   * `orders/{id}` doc and the gateway order were both created by
+   * `createPaymentOrder`). Both the first attempt and the reprice-acceptance
+   * path go through here, so exactly ONE gateway order is opened, always on the
+   * server's amount (`serverOrder.amount`) — never the stale displayed total.
+   */
+  const openGatewayForOrder = async (serverOrder: PaymentOrder) => {
+    setOrder(serverOrder);
+    setStatus("waiting");
+    try {
+      await razorpayAdapter.initialize({
+        order: serverOrder,
+        prefill: {
+          name: user?.name,
+          email: (user as { email?: string } | null)?.email,
+          contact: user?.phone,
+        },
+        theme: {
+          color: "#0E4825",
+        },
+      });
+
+      await razorpayAdapter.openCheckout(
+        {
+          onSuccess: (result: PaymentResult) => void handleSuccess(result),
+          onFailure: (err) => {
+            setStatus("failed");
+            // P1-8: a gateway description is provider text, not customer copy
+            // (BAD_REQUEST_ERROR / bank decline strings) — log it raw and give
+            // the customer the curated mapper output instead.
+            console.error("[payment] gateway onFailure:", err);
+            const message = toUserMessage(err);
+            setFailure({ code: err.code, message, retryable: true });
+            toast.error("Payment failed", { description: message });
+          },
+          onCancel: () => {
+            // Razorpay fires `modal.ondismiss` even after `payment.failed`,
+            // so a real failure must never be relabelled as "user cancelled":
+            // that would hide the failure reason and re-offer a retry that
+            // cannot succeed. Keep the harder failure state.
+            if (usePaymentStore.getState().status === "failed") return;
+            setStatus("cancelled");
+            setFailure({
+              code: "USER_CANCELLED",
+              message: "Payment modal was dismissed.",
+              retryable: true,
+            });
+            setAbandonmentOpen(true);
+          },
+          onExternalWallet: (walletName) => {
+            logger.info("payment.externalWallet", { walletName });
+          },
+        },
+        method,
+      );
+    } catch (err) {
+      setStatus("failed");
+      // Raw exception text never reaches the failure panel/toast (P1-8).
+      console.error("[payment] payment initiation exception:", err);
+      const message = "We couldn't start the payment. Please try again.";
+      setFailure({ code: "PAYMENT_INIT_ERROR", message, retryable: true });
+      toast.error("Payment Error", { description: message });
+    }
+  };
+
   const startPayment = async () => {
     // Sync re-entry guard: a second tap before status flips must not start
     // a second payment. (Terminal statuses reset the ref, see effect below.)
@@ -290,6 +360,32 @@ function PaymentPage() {
     setFailure(null);
     setStatus("preparing");
     setAbandonmentOpen(false);
+
+    // CUS-09: a previous tap already created the internal order AND the
+    // Razorpay order and is only waiting for the customer to accept the
+    // server's total (they just declined the prompt, or tapped Pay again).
+    // Re-run NOTHING here: no second `orders/{id}` write (denied as an update
+    // by firestore.rules), no second gateway order. Re-offer the same figure
+    // and, once accepted, open the SAME gateway order.
+    const heldOrder = pendingGatewayOrder.current;
+    if (heldOrder) {
+      const heldAuthoritative =
+        typeof heldOrder.amount === "number" ? heldOrder.amount : undefined;
+      if (needsRepriceAcceptance(totals?.grandTotal, heldAuthoritative, acceptedServerAmount.current)) {
+        // Nothing is in flight while the customer decides — never leave the
+        // sync re-entry guard held behind a dialog (CUS-07).
+        payInFlight.current = false;
+        setStatus("idle");
+        setRepricePrompt({
+          displayed: totals?.grandTotal as number,
+          authoritative: heldAuthoritative as number,
+        });
+        return;
+      }
+      pendingGatewayOrder.current = null;
+      await openGatewayForOrder(heldOrder);
+      return;
+    }
 
     // 1. Validate common checkout requirements
     // CUS-07: this await used to sit outside every try/catch. A preflight that
@@ -403,6 +499,14 @@ function PaymentPage() {
       if (
         needsRepriceAcceptance(displayedTotal, authoritativeTotal, acceptedServerAmount.current)
       ) {
+        // CUS-09: the internal order is already persisted and the Razorpay
+        // order already exists. Hold that exact pair so acceptance CONTINUES
+        // from it — re-running the place-order path rewrote `orders/{id}`
+        // (an update, denied by firestore.rules) and Razorpay never opened.
+        pendingGatewayOrder.current = orderRes.data;
+        // Nothing is in flight while the customer reads the dialog: release the
+        // sync guard so declining can never wedge the Pay button (CUS-07).
+        payInFlight.current = false;
         setStatus("idle");
         setRepricePrompt({
           // The gate only returns true when both are finite numbers.
@@ -412,54 +516,7 @@ function PaymentPage() {
         return;
       }
 
-      setOrder(orderRes.data);
-      setStatus("waiting");
-
-      await razorpayAdapter.initialize({
-        order: orderRes.data,
-        prefill: {
-          name: user?.name,
-          email: (user as { email?: string } | null)?.email,
-          contact: user?.phone,
-        },
-        theme: {
-          color: "#0E4825",
-        },
-      });
-
-      await razorpayAdapter.openCheckout(
-        {
-          onSuccess: (result: PaymentResult) => void handleSuccess(result),
-          onFailure: (err) => {
-            setStatus("failed");
-            // P1-8: a gateway description is provider text, not customer copy
-            // (BAD_REQUEST_ERROR / bank decline strings) — log it raw and give
-            // the customer the curated mapper output instead.
-            console.error("[payment] gateway onFailure:", err);
-            const message = toUserMessage(err);
-            setFailure({ code: err.code, message, retryable: true });
-            toast.error("Payment failed", { description: message });
-          },
-          onCancel: () => {
-            // Razorpay fires `modal.ondismiss` even after `payment.failed`,
-            // so a real failure must never be relabelled as "user cancelled":
-            // that would hide the failure reason and re-offer a retry that
-            // cannot succeed. Keep the harder failure state.
-            if (usePaymentStore.getState().status === "failed") return;
-            setStatus("cancelled");
-            setFailure({
-              code: "USER_CANCELLED",
-              message: "Payment modal was dismissed.",
-              retryable: true,
-            });
-            setAbandonmentOpen(true);
-          },
-          onExternalWallet: (walletName) => {
-            logger.info("payment.externalWallet", { walletName });
-          },
-        },
-        method,
-      );
+      await openGatewayForOrder(orderRes.data);
     } catch (err) {
       setStatus("failed");
       // Raw exception text never reaches the failure panel/toast (P1-8).
@@ -469,10 +526,6 @@ function PaymentPage() {
       toast.error("Payment Error", { description: message });
     }
   };
-
-  React.useEffect(() => {
-    startPaymentRef.current = startPayment;
-  });
 
   const handleSuccess = async (result: PaymentResult) => {
     // Contract §3: verification binds the gateway payment to the internal
@@ -1010,11 +1063,23 @@ function PaymentPage() {
         cancelLabel="Cancel"
         onConfirm={() => {
           if (!repricePrompt) return;
-          // Accept this exact server total, then re-enter the same flow; the
-          // remembered acceptance prevents an identical prompt on the retry.
+          const serverOrder = pendingGatewayOrder.current;
+          // Nothing created ⇒ nothing to open: never charge an amount the
+          // server never quoted.
+          if (!serverOrder) return;
+          // A second tap on Continue must not open a second checkout (CUS-07
+          // double-charge guarantee).
+          if (payInFlight.current) return;
+          // Accept this exact server total, then CONTINUE with the order that
+          // already exists (CUS-09): the internal `orders/{id}` document and
+          // this Razorpay order. No place-order re-run, no second write.
           acceptedServerAmount.current = repricePrompt.authoritative;
+          pendingGatewayOrder.current = null; // consumed: one open per order
           setRepricePrompt(null);
-          void startPaymentRef.current();
+          payInFlight.current = true;
+          setPreflightIssue(null);
+          setFailure(null);
+          void openGatewayForOrder(serverOrder);
         }}
       />
     </AppShell>
