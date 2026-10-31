@@ -15,6 +15,7 @@ import {
 import { formatINR } from "@/core/utils/format";
 import { InvoiceDownloadButton } from "./InvoiceDownloadButton";
 import { useReorderItems } from "../hooks/useReorderItems";
+import { courierDisplayName } from "../utils/courierName";
 import type { Order } from "../models";
 
 interface OrderHistoryCardProps {
@@ -206,7 +207,9 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
                 on dine-in/takeaway (O-09). The track screen gates its rider
                 pin the same way, on real backend GPS. */}
             <span>
-              {order.fulfillment === "delivery" ? "Live Porter GPS" : "View Order Status"}
+              {order.fulfillment === "delivery"
+                ? `${courierDisplayName(order)} live tracking`
+                : "View Order Status"}
             </span>
           </button>
         ) : (

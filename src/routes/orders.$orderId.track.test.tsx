@@ -117,10 +117,26 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
 
       const state = getTrackingStateFromOrder(order);
       expect(state.currentStage).toBe(3);
-      expect(state.stageName).toBe("Out for Delivery with Porter");
+      // No courier named on the order: neutral copy, never a provider brand.
+      expect(state.stageName).toBe("Out for Delivery");
+      expect(state.partnerName).toBe("Delivery partner");
       expect(state.riderName).toBe("Vikram Rathore");
       expect(state.riderPhone).toBe("+91 98250 88991");
       expect(state.riderVehicleNumber).toBe("GJ-01-AB-1234");
+    });
+
+    it("names the courier the order actually carries", () => {
+      const order = {
+        id: "ord_103b",
+        status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+        fulfillment: "delivery",
+        deliveryPartner: { name: "Borzo" },
+      } as unknown as Order;
+
+      const state = getTrackingStateFromOrder(order);
+      expect(state.stageName).toBe("Out for Delivery with Borzo");
+      expect(state.stageDescription).toContain("Borzo");
+      expect(state.partnerName).toBe("Borzo");
     });
 
     it("maps DELIVERED status code to Stage 4 Complete", () => {
@@ -267,7 +283,19 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
 
       const html = renderToStaticMarkup(<LiveOrderMap tracking={withGps} />);
       expect(html).toContain("rider-pin");
-      expect(html).toContain("Live Porter Courier GPS");
+      expect(html).toContain("Delivery partner live tracking");
+    });
+
+    it("labels the GPS chip with the order's real courier name", () => {
+      const state = getTrackingStateFromOrder({
+        ...(withCoordsOrder as unknown as Record<string, unknown>),
+        deliveryPartner: { name: "Shadowfax" },
+      } as unknown as Order);
+      const html = renderToStaticMarkup(
+        <LiveOrderMap tracking={{ ...state, riderLocation: { lat: 23.02, lng: 72.515 } }} />,
+      );
+      expect(html).toContain("Shadowfax live tracking");
+      expect(html).not.toContain("Porter");
     });
 
     it("keeps the takeaway map when the outlet coordinates are real", () => {

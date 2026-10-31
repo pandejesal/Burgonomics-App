@@ -84,7 +84,7 @@ describe("tracking state truth — FAILED / refund claims / pickup reference", (
       }),
     );
     expect(s.currentStage).toBe(3);
-    expect(s.stageName).toBe("Out for Delivery with Porter");
+    expect(s.stageName).toBe("Out for Delivery");
     expect(s.isCancelled).toBe(false);
   });
 });

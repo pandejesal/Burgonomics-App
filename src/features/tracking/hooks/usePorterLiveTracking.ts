@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Order } from "@/features/orders";
+import {
+  DEFAULT_COURIER_NAME,
+  courierDisplayName,
+} from "@/features/orders/utils/courierName";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 
 export interface GeoCoordinates {
@@ -85,6 +89,10 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
   // never invent one.
   const orderReference =
     (order as (Order & { orderNumber?: string }) | null)?.orderNumber ?? order?.shortCode ?? null;
+  // The real courier the order carries, or the neutral fallback. Customer copy
+  // never asserts a provider brand the order does not name.
+  const partnerName = courierDisplayName(order);
+  const hasNamedCourier = partnerName !== DEFAULT_COURIER_NAME;
   // Refund claims are only made when the SERVER wrote a refunded payment
   // marker — the client initiates no refund anywhere.
   const serverRefunded = order?.payment?.status === "refunded";
@@ -112,7 +120,7 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
       storeLocation,
       dropLocation,
       riderLocation: null,
-      partnerName: "Porter Express",
+      partnerName,
       isTakeawayOrDineIn: isTakeaway,
       isDelivered: false,
       isCancelled: true,
@@ -132,7 +140,7 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
       storeLocation,
       dropLocation,
       riderLocation: null,
-      partnerName: "Porter Express",
+      partnerName,
       isTakeawayOrDineIn: isTakeaway,
       isDelivered: false,
       isCancelled: true,
@@ -146,12 +154,16 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     stageDescription = "Chefs are assembling your fresh artisanal smash burgers.";
   } else if (statusCode.includes("DELIVERY") || statusCode.includes("DISPATCH") || statusCode.includes("TRANSIT") || statusCode.includes("READY")) {
     stage = 3;
-    stageName = isTakeaway ? "Packed & Ready for Counter Pickup" : "Out for Delivery with Porter";
+    stageName = isTakeaway
+      ? "Packed & Ready for Counter Pickup"
+      : hasNamedCourier
+        ? `Out for Delivery with ${partnerName}`
+        : "Out for Delivery";
     stageDescription = isTakeaway
       ? orderReference
         ? `Your food is packed warm. Show order reference #${orderReference} at the counter.`
         : "Your food is packed warm. Show this screen's order reference at the counter."
-      : "Porter 2-wheeler courier is en-route with your insulated food pack.";
+      : `${partnerName} is en-route with your insulated food pack.`;
   } else if (statusCode.includes("DELIVER") || statusCode.includes("COMPLETE") || statusCode.includes("PICKED_UP")) {
     stage = 4;
     stageName = isTakeaway ? "Collected at Counter" : "Delivered at Doorstep";
@@ -189,7 +201,7 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     riderName: deliveryObj?.name || deliveryObj?.riderName || (order as any)?.riderName || undefined,
     riderPhone: deliveryObj?.phone || deliveryObj?.riderPhone || (order as any)?.riderPhone || undefined,
     riderVehicleNumber: deliveryObj?.vehicleNumber || deliveryObj?.riderVehicleNumber || undefined,
-    partnerName: isSelfDelivery ? "Burgonomics In-House Fleet" : "Porter Express 2-Wheeler",
+    partnerName: isSelfDelivery ? "Burgonomics In-House Fleet" : partnerName,
     // Tracking URL only when the real backend provides one — never a
     // fabricated porter.in link derived from the order id.
     trackingUrl: (order as any)?.delivery?.trackingUrl || undefined,

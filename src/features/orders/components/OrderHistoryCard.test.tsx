@@ -41,27 +41,27 @@ const makeOrder = (fulfillment: string, terminal = false): Order =>
   }) as unknown as Order;
 
 describe("O-09: courier tracking promise is delivery-only", () => {
-  it("offers Live Porter GPS for an active delivery order", () => {
+  it("offers courier tracking for an active delivery order", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("delivery")} />);
-    expect(html).toContain("Live Porter GPS");
+    expect(html).toContain("Delivery partner live tracking");
   });
 
   it("never promises courier GPS on an active dine-in order", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("dinein")} />);
-    expect(html).not.toContain("Live Porter GPS");
+    expect(html).not.toContain("live tracking");
     // Honest replacement action instead of a dead courier promise.
     expect(html).toContain("View Order Status");
   });
 
   it("never promises courier GPS on an active takeaway order", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("takeaway")} />);
-    expect(html).not.toContain("Live Porter GPS");
+    expect(html).not.toContain("live tracking");
     expect(html).toContain("View Order Status");
   });
 
   it("offers Reorder instead of tracking for a terminal order", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("delivery", true)} />);
-    expect(html).not.toContain("Live Porter GPS");
+    expect(html).not.toContain("live tracking");
     expect(html).toContain("1-Tap Reorder");
   });
 });

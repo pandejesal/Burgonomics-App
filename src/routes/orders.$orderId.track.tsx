@@ -109,7 +109,7 @@ function TrackOrderPage() {
     const statusSequence = [
       { code: "ORDER_PLACED", label: "Order Placed & Confirmed" },
       { code: "KITCHEN_PREPARING", label: "Grilling in Kitchen" },
-      { code: "OUT_FOR_DELIVERY", label: "Out for Delivery with Porter" },
+      { code: "OUT_FOR_DELIVERY", label: "Out for Delivery" },
       { code: "DELIVERED", label: "Delivered & Enjoyed" },
     ];
     const currentIndex = statusSequence.findIndex((s) => s.code === order.status.code);

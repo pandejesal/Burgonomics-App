@@ -219,7 +219,7 @@ export function LiveOrderMap({
           )}
           <span>
             {hasRiderGps
-              ? "Live Porter Courier GPS"
+              ? `${tracking.partnerName} live tracking`
               : isTakeawayOrDineIn
                 ? "Outlet Directions Map"
                 : "Route overview"}
@@ -309,7 +309,7 @@ export function LiveOrderMap({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-bold text-accent hover:text-accent-hover transition-colors"
           >
-            <span>Porter Live Radar</span>
+            <span>{tracking.partnerName} live radar</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
