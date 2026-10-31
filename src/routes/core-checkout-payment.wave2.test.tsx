@@ -44,7 +44,10 @@ const fixture = vi.hoisted(() => {
     checkoutState,
     cart: {
       calculateTotals: vi.fn(),
-      validateCart: vi.fn(),
+      validateCart: vi.fn(async () => ({
+        success: true,
+        data: { valid: true, issues: [] },
+      })),
       clear: vi.fn(async () => ({ success: true })),
     },
     navigate: vi.fn(),
@@ -176,11 +179,27 @@ vi.mock("@/features/auth/state/authStore", () => {
     selectIsAuthenticated: (s: { user: unknown }) => !!s.user,
   };
 });
-vi.mock("@/features/addresses", () => ({
-  useAddressStore: (select: (s: unknown) => unknown) => select({ items: [], selectedId: null }),
-  selectAddresses: () => [],
-  selectSelectedAddress: () => null,
-}));
+vi.mock("@/features/addresses", () => {
+  const address = {
+    id: "addr_1",
+    label: "Home",
+    line1: "1 Test Road",
+    line2: "",
+    city: "Surat",
+    state: "Gujarat",
+    pincode: "395007",
+    lat: 21.15,
+    lng: 72.77,
+    contactName: "Test Customer",
+    contactPhone: "+910000000000",
+  };
+  return {
+    useAddressStore: (select: (s: unknown) => unknown) =>
+      select({ items: [address], selectedId: address.id }),
+    selectAddresses: () => [address],
+    selectSelectedAddress: () => address,
+  };
+});
 vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
   useLoyaltyStore: Object.assign((select: (s: { balance: number }) => unknown) => select({ balance: 0 }), {
     getState: () => ({ refreshFromServer: vi.fn() }),
@@ -585,5 +604,63 @@ describe("CUS-09 — accepting a reprice continues with the already-created orde
     expect(container.textContent).toContain("We couldn't save your order");
     expect(fixture.openCheckout).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain("Continue with the updated amount?");
+  });
+});
+
+/**
+ * D-01 — the server refuses to open a gateway order for an outlet that is not
+ * linked to a partner branch (HTTP 409, code STORE_NOT_LINKED). The customer
+ * must see the server's own sentence and must NOT be invited to keep retrying
+ * payment, and the failure must not be dressed up as "payment received".
+ */
+describe("D-01 — STORE_NOT_LINKED is shown honestly and is not retryable", () => {
+  const serverMessage = "This outlet isn't taking online orders yet.";
+
+  beforeEach(() => {
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(199));
+    fixture.validateForPayment.mockResolvedValue({
+      success: true,
+      data: { valid: true, issues: [] },
+    });
+    fixture.createPaymentOrder.mockResolvedValue({
+      success: false,
+      error: { code: "STORE_NOT_LINKED", message: serverMessage, retryable: false },
+    });
+  });
+
+  it("payment screen: server copy, no Retry, pay button stays disabled", async () => {
+    await mount(PaymentPage);
+    const pay = buttonWithText("Pay Online");
+    expect(pay?.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    expect(container.textContent).toContain(serverMessage);
+    expect(container.textContent).not.toContain(
+      "The payment couldn't be started. Please try again.",
+    );
+    // Never claim money was received: nothing was charged and no gateway order
+    // exists for a refused create.
+    expect(container.textContent).not.toContain("Payment received");
+    const retry = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Retry",
+    );
+    expect(retry, "a retryable CTA must not be offered").toBeUndefined();
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    const unavailable = buttonWithText("Ordering unavailable");
+    expect(unavailable?.disabled).toBe(true);
+  });
+
+  it("checkout screen: server copy, PAY disabled, no retry invite", async () => {
+    await mount(CheckoutPage);
+    const pay = buttonWithText("PAY");
+    expect(pay?.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    expect(container.textContent).toContain(serverMessage);
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    const after = buttonWithText("ONLINE ORDERING UNAVAILABLE");
+    expect(after?.disabled).toBe(true);
   });
 });

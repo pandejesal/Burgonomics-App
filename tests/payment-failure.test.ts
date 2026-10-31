@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 // REAL decision helper: a wrong branch either invites a double charge (Retry
 // on paid money) or strands a payer (no support path).
 
-import { describePaymentFailure } from "../src/features/payments/utils/paymentFailure";
+import { describePaymentFailure, isNonRetryableOrderFailure, STORE_NOT_LINKED } from "../src/features/payments/utils/paymentFailure";
 
 describe("Payment FailurePanel branches (real decision logic)", () => {
   it("paid-but-no-order hides Retry, shows support, never claims no charge", () => {
@@ -59,5 +59,30 @@ describe("Payment FailurePanel branches (real decision logic)", () => {
       expect(c.body).not.toMatch(/refund/i);
       expect(c.body).not.toContain("no money has been charged");
     }
+  });
+});
+
+describe("D-01 — STORE_NOT_LINKED is a static refusal, not a payment failure", () => {
+  it("is classified non-retryable alongside the reconciliation block", () => {
+    expect(isNonRetryableOrderFailure(STORE_NOT_LINKED)).toBe(true);
+    expect(isNonRetryableOrderFailure("PAYMENT_RECONCILIATION_PENDING")).toBe(true);
+    expect(isNonRetryableOrderFailure("GATEWAY_ERROR")).toBe(false);
+    expect(isNonRetryableOrderFailure(undefined)).toBe(false);
+  });
+
+  it("shows the server's sentence, no Retry, and never claims payment was received", () => {
+    const message = "This outlet isn't taking online orders yet.";
+    const c = describePaymentFailure({
+      status: "failed",
+      message,
+      retryable: false,
+      code: STORE_NOT_LINKED,
+    });
+    expect(c.title).toBe("Online ordering unavailable");
+    expect(c.body).toBe(message);
+    expect(c.showRetry).toBe(false);
+    expect(c.showContactSupport).toBe(true);
+    expect(c.body).not.toContain("Do not pay again");
+    expect(c.body).not.toContain("Payment received");
   });
 });

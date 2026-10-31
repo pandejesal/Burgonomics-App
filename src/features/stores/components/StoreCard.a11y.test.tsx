@@ -95,4 +95,23 @@ describe("A11Y-L2 — store card icon buttons have accessible names", () => {
       ).not.toBeNull();
     }
   });
+
+  it("states an unlinked outlet's online-ordering status without hiding it", async () => {
+    const linked = makeStore("Linked Kitchen", "store_linked");
+    const unlinked = { ...makeStore("Unlinked Kitchen", "store_unlinked"), partnerBranchId: null };
+    await act(async () =>
+      root.render(
+        <>
+          <StoreCard store={linked} fulfillment="delivery" onSelect={() => {}} />
+          <StoreCard store={unlinked} fulfillment="delivery" onSelect={() => {}} />
+        </>,
+      ),
+    );
+
+    // Both outlets are still listed/selectable; only the honest state differs.
+    expect(container.textContent).toContain("Linked Kitchen");
+    expect(container.textContent).toContain("Unlinked Kitchen");
+    expect(container.textContent).toContain("Online ordering unavailable");
+    expect(container.textContent?.match(/Online ordering unavailable/g)).toHaveLength(1);
+  });
 });

@@ -51,6 +51,10 @@ const CODE_MESSAGES: Record<string, string> = {
   SERVER_ERROR: "Something went wrong on our end. Please try again.",
   NOT_FOUND: "We couldn't find what you were looking for.",
   STORE_MISMATCH: "Clear your cart before adding items from a different store.",
+  // The outlet exists but ops has not linked it to a partner branch yet, so
+  // the server refuses to mint a gateway order (HTTP 409). Static refusal, not
+  // a transient failure: never tell the customer to retry.
+  STORE_NOT_LINKED: "This outlet isn't taking online orders yet.",
   // payments
   GATEWAY_ERROR: "The payment couldn't be started. Please try again.",
   VERIFY_GATEWAY_ERROR: "We couldn't verify your payment. Please try again.",

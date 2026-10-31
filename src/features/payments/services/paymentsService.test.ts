@@ -89,6 +89,42 @@ describe("paymentsService.createOrder - structured server refusals survive trans
     }
   });
 
+  it("surfaces a 409 STORE_NOT_LINKED verbatim, non-retryable, for either envelope shape", async () => {
+    // Flat envelope (code beside the message).
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(409, {
+        code: "STORE_NOT_LINKED",
+        error: "This outlet isn't taking online orders yet.",
+      }),
+    );
+    const flat = await paymentsService.createOrder(VALID_INPUT);
+    expect(flat.success).toBe(false);
+    if (!flat.success) {
+      expect(flat.error.code).toBe("STORE_NOT_LINKED");
+      expect(flat.error.message).toContain("isn't taking online orders");
+      expect(flat.error.retryable).toBe(false);
+    }
+
+    // Nested envelope (the transport must not lose `error.code` and collapse
+    // the refusal into a retryable GATEWAY_ERROR).
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(409, {
+        success: false,
+        error: {
+          code: "STORE_NOT_LINKED",
+          message: "This outlet isn't taking online orders yet.",
+        },
+      }),
+    );
+    const nested = await paymentsService.createOrder(VALID_INPUT);
+    expect(nested.success).toBe(false);
+    if (!nested.success) {
+      expect(nested.error.code).toBe("STORE_NOT_LINKED");
+      expect(nested.error.message).toContain("isn't taking online orders");
+      expect(nested.error.retryable).toBe(false);
+    }
+  });
+
   it("still parses a successful gateway order (create contract unchanged)", async () => {
     fetchMock.mockResolvedValueOnce(
       makeResponse(200, { razorpayOrderId: "order_rzp_ok", amountPaise: 19900, keyId: "rzp_test" })

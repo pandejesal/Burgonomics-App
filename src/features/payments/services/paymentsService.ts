@@ -146,12 +146,28 @@ async function backendPost<T>(path: string, body: unknown): Promise<T> {
 
   if (!res.ok) {
     const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+    // Structured refusals arrive either flat (`{ code, error: "…" }`) or as a
+    // nested failure envelope (`{ success:false, error:{ code, message } }`).
+    // Reading only the flat shape silently dropped the code, and every refusal
+    // (e.g. 409 STORE_NOT_LINKED) collapsed into a retryable GATEWAY_ERROR.
+    const nested =
+      p.error && typeof p.error === "object" ? (p.error as Record<string, unknown>) : null;
     const serverMsg =
       typeof p.error === "string" && p.error.trim()
         ? p.error
-        : `HTTP ${res.status} ${res.statusText} ${text}`.trim();
+        : typeof nested?.message === "string" && nested.message.trim()
+          ? nested.message
+          : typeof nested?.error === "string" && nested.error.trim()
+            ? nested.error
+            : `HTTP ${res.status} ${res.statusText} ${text}`.trim();
+    const serverCode =
+      typeof p.code === "string" && p.code.trim()
+        ? p.code
+        : typeof nested?.code === "string" && nested.code.trim()
+          ? nested.code
+          : "";
     const err: any = new Error(serverMsg);
-    if (typeof p.code === "string" && p.code.trim()) err.code = p.code;
+    if (serverCode) err.code = serverCode;
     err.statusCode = res.status;
     throw err;
   }

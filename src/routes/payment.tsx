@@ -59,7 +59,7 @@ import {
 import type { PaymentResult } from "@/features/payments/models";
 import type { PaymentOrder, PaymentPreflight } from "@/features/payments/models";
 import type { ApiResult } from "@/core/network/http";
-import { describePaymentFailure } from "@/features/payments/utils/paymentFailure";
+import { describePaymentFailure, isNonRetryableOrderFailure, STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
 import {
   describePaymentRecovery,
   isRecoveryReason,
@@ -480,10 +480,11 @@ function PaymentPage() {
         setFailure({
           code: orderRes.error.code,
           message,
-          // A reconciliation block is not a retryable failure: offering
-          // "Retry checkout" there would start a second payment for money
-          // the server already has (A08 B9).
-          retryable: orderRes.error.code !== "PAYMENT_RECONCILIATION_PENDING",
+          // A reconciliation block and a store that is not taking online
+          // orders are not retryable: offering "Retry checkout" there would
+          // start a second payment for money the server already has (A08 B9),
+          // or invite a retry that can never succeed.
+          retryable: !isNonRetryableOrderFailure(orderRes.error.code),
         });
         toast.error("Couldn't start payment", { description: message });
         // Stay on this screen: the FailurePanel below is the honest surface
@@ -664,6 +665,9 @@ function PaymentPage() {
   // pending (persisted per user) or the last failure was not retryable.
   const payBlocked =
     reconciliationPending || (failure != null && !failure.retryable && status !== "success");
+  // D-01: a store that is not linked to a partner branch can never pay, so the
+  // button says so instead of the reconciliation "under review" copy.
+  const storeNotLinked = status !== "success" && failure?.code === STORE_NOT_LINKED;
   const eta =
     fulfillment === "delivery"
       ? activeStore?.etaMinutes
@@ -705,25 +709,29 @@ function PaymentPage() {
               loading={busy && !payBlocked}
               disabled={grandTotal <= 0 || !isOnline || payBlocked}
               title={
-                payBlocked
-                  ? "We are confirming your payment — please do not pay again"
-                  : !isOnline
-                    ? "Back online to place your order"
-                    : totalsFailed
-                      ? "Couldn't compute your bill — retry above"
-                      : undefined
+                storeNotLinked
+                  ? failure?.message
+                  : payBlocked
+                    ? "We are confirming your payment — please do not pay again"
+                    : !isOnline
+                      ? "Back online to place your order"
+                      : totalsFailed
+                        ? "Couldn't compute your bill — retry above"
+                        : undefined
               }
               iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
             >
-              {payBlocked
-                ? "Payment under review"
-                : status === "failed" || status === "cancelled"
-                ? "Retry checkout"
-                : method === "online"
-                  ? "Pay Online"
-                  : isDelivery
-                    ? "Place COD Order"
-                    : "Place Order"}
+              {storeNotLinked
+                ? "Ordering unavailable"
+                : payBlocked
+                  ? "Payment under review"
+                  : status === "failed" || status === "cancelled"
+                    ? "Retry checkout"
+                    : method === "online"
+                      ? "Pay Online"
+                      : isDelivery
+                        ? "Place COD Order"
+                        : "Place Order"}
             </AppButton>
           </div>
         </div>
@@ -975,6 +983,7 @@ function PaymentPage() {
                 status={status}
                 message={failure?.message ?? "Something went wrong."}
                 retryable={failure?.retryable ?? true}
+                code={failure?.code}
                 paymentId={failure?.paymentId}
                 onRetry={() => void retry()}
                 onBackToCheckout={() => void navigate({ to: "/checkout" })}
@@ -1106,6 +1115,7 @@ function FailurePanel({
   status,
   message,
   retryable,
+  code,
   paymentId,
   onRetry,
   onBackToCheckout,
@@ -1115,6 +1125,7 @@ function FailurePanel({
   status: string;
   message: string;
   retryable: boolean;
+  code?: string;
   paymentId?: string;
   onRetry: () => void;
   onBackToCheckout: () => void;
@@ -1124,7 +1135,7 @@ function FailurePanel({
   // Copy/CTA decisions come from describePaymentFailure (unit-tested): the
   // paid-but-no-order branch must NEVER say "no money has been charged" or
   // offer Retry (double-charge). It shows the payment id + support.
-  const content = describePaymentFailure({ status, message, retryable });
+  const content = describePaymentFailure({ status, message, retryable, code });
   return (
     <div role="alert" className="rounded-xl border border-error/40 bg-error/5 p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -1135,7 +1146,7 @@ function FailurePanel({
           </Text>
           <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-normal">
             {content.body}{" "}
-            {!retryable && (
+            {!retryable && paymentId && (
               <>
                 Payment ID{" "}
                 <span className="font-mono font-bold text-text-primary">{paymentId}</span>

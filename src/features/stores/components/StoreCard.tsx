@@ -228,6 +228,14 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                       ? "Closed"
                       : "Hours unavailable"}
                 </AppBadge>
+                {store.partnerBranchId == null && (
+                  <AppBadge
+                    tone="neutral"
+                    className="text-[10px] px-1.5 py-0 shrink-0 font-semibold"
+                  >
+                    Online ordering unavailable
+                  </AppBadge>
+                )}
                 {selected && (
                   <span className="inline-flex items-center gap-0.5 rounded-full bg-accent/15 border border-accent/30 px-1.5 py-0 text-[10px] font-bold text-accent shrink-0">
                     <Check className="h-3 w-3" /> Selected
@@ -296,6 +304,15 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
         description={store.area}
       >
         <div className="space-y-4 pt-1 pb-4">
+          {store.partnerBranchId == null && (
+            <div
+              role="note"
+              className="rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 text-xs font-medium text-text-primary"
+            >
+              This outlet isn't taking online orders yet. You can still browse the menu, but
+              checkout will be unavailable until ops links it to a partner branch.
+            </div>
+          )}
           {/* Address info */}
           <div className="rounded-[var(--radius-medium)] bg-bg-secondary p-3.5 flex items-start gap-3">
             <MapPin className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden />

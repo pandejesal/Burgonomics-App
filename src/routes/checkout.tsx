@@ -31,6 +31,10 @@ import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAcceptance";
+import {
+  isNonRetryableOrderFailure,
+  STORE_NOT_LINKED,
+} from "@/features/payments/utils/paymentFailure";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { HapticService } from "@/core/services/haptics";
 import { AudioService } from "@/core/services/audio";
@@ -216,6 +220,10 @@ export function CheckoutPage() {
   // it. Tapping PAY offline used to fire Razorpay into a generic failure.
   const isOnline = useAppConfig((s) => s.isOnline);
   const [validationError, setValidationError] = React.useState<string | null>(null);
+  // D-01: the store is not linked to a partner branch, so the server will
+  // always refuse to create a gateway order. Keep PAY disabled instead of
+  // inviting a retry that cannot succeed.
+  const [orderingUnavailable, setOrderingUnavailable] = React.useState(false);
   const [authSheetOpen, setAuthSheetOpen] = React.useState(false);
   // Kitchen-hours gate: PAY must lock itself at 23:00 IST even if this screen
   // has been sitting open since noon (the hook re-checks on tick + focus).
@@ -324,6 +332,7 @@ export function CheckoutPage() {
   // render, which returns before the checkout body is initialized.
   async function handlePlaceOrder() {
     setValidationError(null);
+    setOrderingUnavailable(false);
 
     const uid = useAuthStore.getState().user?.id ?? null;
     const pendingRecon = usePaymentStore.getState().reconciliationPending || !!loadPaymentReconciliation(uid);
@@ -526,11 +535,14 @@ export function CheckoutPage() {
         setPaymentFailure({
           code: orderRes.error.code,
           message,
-          // A reconciliation block is not retryable: retrying there would
-          // start a second payment for money the server already has.
-          retryable: orderRes.error.code !== "PAYMENT_RECONCILIATION_PENDING",
+          // A reconciliation block and a store that is not taking online
+          // orders are not retryable: "Retry checkout" would start a second
+          // payment for money the server already has, or invite a retry that
+          // can never succeed.
+          retryable: !isNonRetryableOrderFailure(orderRes.error.code),
         });
         setValidationError(message);
+        if (orderRes.error.code === STORE_NOT_LINKED) setOrderingUnavailable(true);
         toast.error("Couldn't initiate online payment", { description: message });
         return;
       }
@@ -789,37 +801,41 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
-              aria-disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
+              disabled={busy || !isOnline || orderingUnavailable || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
+              aria-disabled={busy || !isOnline || orderingUnavailable || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending}
               title={
-                reconciliationPending
-                  ? "We are confirming your payment — please do not pay again"
-                  : !kitchen.isOpen
-                    ? KITCHEN_CLOSED_MESSAGE
-                    : !isOnline
-                      ? "Back online to place your order"
-                      : totalsFailed
-                        ? "Couldn't compute your bill — retry above"
-                        : totals === null
-                          ? "Bill is still being computed"
-                          : undefined
+                orderingUnavailable
+                  ? "This outlet isn't taking online orders yet."
+                  : reconciliationPending
+                    ? "We are confirming your payment — please do not pay again"
+                    : !kitchen.isOpen
+                      ? KITCHEN_CLOSED_MESSAGE
+                      : !isOnline
+                        ? "Back online to place your order"
+                        : totalsFailed
+                          ? "Couldn't compute your bill — retry above"
+                          : totals === null
+                            ? "Bill is still being computed"
+                            : undefined
               }
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] py-3.5 px-6 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
               <span>
-                {reconciliationPending
-                  ? "PAYMENT UNDER REVIEW"
-                  : busy
-                    ? "Processing Order..."
-                    : !kitchen.isOpen
-                      ? "KITCHEN CLOSED"
-                      : !isOnline
-                        ? "OFFLINE — RECONNECT TO PAY"
-                        : totalsFailed
-                          ? "PAY — BILL UNAVAILABLE"
-                          : totals === null
-                            ? "PAY — CHECKING BILL"
+                {orderingUnavailable
+                  ? "ONLINE ORDERING UNAVAILABLE"
+                  : reconciliationPending
+                    ? "PAYMENT UNDER REVIEW"
+                    : busy
+                      ? "Processing Order..."
+                      : !kitchen.isOpen
+                        ? "KITCHEN CLOSED"
+                        : !isOnline
+                          ? "OFFLINE — RECONNECT TO PAY"
+                          : totalsFailed
+                            ? "PAY — BILL UNAVAILABLE"
+                            : totals === null
+                              ? "PAY — CHECKING BILL"
                             : `PAY ${formatINR(finalPayable)} SECURELY`}
               </span>
             </button>
