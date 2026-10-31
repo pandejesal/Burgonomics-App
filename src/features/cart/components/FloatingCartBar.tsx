@@ -55,10 +55,18 @@ export function FloatingCartBar({
         <Link
           to="/cart"
           onClick={() => void HapticService.selection()}
-          className={cn("pointer-events-auto flex min-h-[72px] w-full items-center justify-between gap-3 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-4 py-3 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer", compact && "min-h-14")}
+          className={cn(
+            "pointer-events-auto flex min-h-[72px] w-full items-center justify-between gap-3 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-4 py-3 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer",
+            compact && "min-h-14",
+          )}
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className={cn("relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary-foreground/15 text-primary-foreground", compact && "hidden")}>
+            <div
+              className={cn(
+                "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary-foreground/15 text-primary-foreground",
+                compact && "hidden",
+              )}
+            >
               <ShoppingBag className="h-5 w-5" aria-hidden />
               <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-sm font-semibold leading-none text-accent-foreground ring-2 ring-primary">
                 {itemCount}

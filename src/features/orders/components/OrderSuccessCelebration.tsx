@@ -138,11 +138,10 @@ export function OrderSuccessCelebration({
           <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden />
           <span>Order Placed Successfully!</span>
         </div>
-        <h1 className="type-display-medium text-text">
-          Your delicious burgers are in the works!
-        </h1>
+        <h1 className="type-display-medium text-text">Your delicious burgers are in the works!</h1>
         <p className="text-base leading-relaxed text-text-secondary">
-          Order ID: <span className="font-semibold tabular-nums text-text">{orderNumber}</span> • {petpoojaStatus === "Synced"
+          Order ID: <span className="font-semibold tabular-nums text-text">{orderNumber}</span> •{" "}
+          {petpoojaStatus === "Synced"
             ? "We've sent your ticket to the kitchen."
             : "Kitchen confirmation is pending."}
         </p>

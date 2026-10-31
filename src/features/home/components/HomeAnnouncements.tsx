@@ -82,7 +82,12 @@ export function HomeAnnouncements({
                     <p className="mt-0.5 type-caption text-primary-foreground/85">{award.issuer}</p>
                   )}
                   {award.description && (
-                    <p className="type-caption text-primary-foreground/70" style={{ lineHeight: 1.35 }}>{award.description}</p>
+                    <p
+                      className="type-caption text-primary-foreground/70"
+                      style={{ lineHeight: 1.35 }}
+                    >
+                      {award.description}
+                    </p>
                   )}
                 </div>
               </li>

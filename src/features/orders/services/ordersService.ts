@@ -171,7 +171,7 @@ function buildTimeline(
  */
 export function isOrderVisibleTo(
   data: Record<string, any>,
-  myUid: string | null | undefined
+  myUid: string | null | undefined,
 ): boolean {
   const ownerId = data.userId ?? data.customerId;
   if (ownerId && myUid && ownerId !== myUid) return false;
@@ -339,12 +339,7 @@ function seedProgression(id: string, order: Order, server?: Record<string, unkno
   const code = order.status?.code;
   const changedAt = asIso(server?.statusChangedAt ?? server?.updatedAt);
   const placedMs = placedAt ? +new Date(placedAt) : 0;
-  if (
-    code &&
-    code !== "PLACED" &&
-    changedAt &&
-    (!placedMs || +new Date(changedAt) >= placedMs)
-  ) {
+  if (code && code !== "PLACED" && changedAt && (!placedMs || +new Date(changedAt) >= placedMs)) {
     times[code] = changedAt;
   }
   progression.set(id, times);
@@ -384,12 +379,12 @@ export const ordersService = {
         : `ord_${Date.now()}_${generateSecureId(6)}`);
     const nowIso = new Date().toISOString();
     const status = resolveStatus("PLACED");
-    const etaMinutes = input.fulfillment === "delivery"
-      ? input.store.etaMinutes
-      : input.store.pickupEtaMinutes;
-    const estimatedAt = typeof etaMinutes === "number" && Number.isFinite(etaMinutes) && etaMinutes > 0
-      ? new Date(Date.now() + etaMinutes * 60_000).toISOString()
-      : undefined;
+    const etaMinutes =
+      input.fulfillment === "delivery" ? input.store.etaMinutes : input.store.pickupEtaMinutes;
+    const estimatedAt =
+      typeof etaMinutes === "number" && Number.isFinite(etaMinutes) && etaMinutes > 0
+        ? new Date(Date.now() + etaMinutes * 60_000).toISOString()
+        : undefined;
     const order: Order = {
       id,
       shortCode: shortCode(id),
@@ -864,6 +859,7 @@ export const ordersService = {
   },
 
   async listOrders(query: OrderListQuery = {}): Promise<ApiResult<OrderListResult>> {
+    // eslint-disable-next-line no-useless-assignment -- initial value is a fallback only
     let all: Order[] = [];
 
     try {
@@ -975,8 +971,7 @@ export const ordersService = {
     filtered.sort((a, b) => {
       if (sort === "recent") return +new Date(b.placedAt) - +new Date(a.placedAt);
       if (sort === "oldest") return +new Date(a.placedAt) - +new Date(b.placedAt);
-      if (sort === "amount_high")
-        return (b.totals?.grandTotal ?? 0) - (a.totals?.grandTotal ?? 0);
+      if (sort === "amount_high") return (b.totals?.grandTotal ?? 0) - (a.totals?.grandTotal ?? 0);
       return (a.totals?.grandTotal ?? 0) - (b.totals?.grandTotal ?? 0);
     });
 
@@ -1474,7 +1469,7 @@ export const ordersService = {
           status: cancelled.status,
           completedAt: cancelled.completedAt,
         },
-        { merge: true }
+        { merge: true },
       );
     } catch (err) {
       const { logger } = await import("@/core/logging/logger");

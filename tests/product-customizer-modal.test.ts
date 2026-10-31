@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { CustomizationGroup, CustomizationOption, ProductDetails } from "../src/features/menu/models";
+import type {
+  CustomizationGroup,
+  CustomizationOption,
+  ProductDetails,
+} from "../src/features/menu/models";
 
 describe("Prompt 12: Product Customization Modal & Modifiers Suite", () => {
   const sampleCustomizationGroups: CustomizationGroup[] = [
@@ -76,7 +80,7 @@ describe("Prompt 12: Product Customization Modal & Modifiers Suite", () => {
   describe("3. Multi-Select Max Selection Constraints", () => {
     it("enforces maxSelect limit on multi-select topping groups", () => {
       const group = sampleCustomizationGroups[1]; // maxSelect: 2
-      let currentSelected = ["opt_cheddar", "opt_jalapenos"];
+      const currentSelected = ["opt_cheddar", "opt_jalapenos"];
       const newOption = "opt_mushrooms";
 
       const handleAddMulti = (current: string[], nextOpt: string, max?: number) => {

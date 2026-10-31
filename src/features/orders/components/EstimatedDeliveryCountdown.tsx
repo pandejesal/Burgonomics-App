@@ -27,8 +27,12 @@ export function EstimatedDeliveryCountdown({
   // P1-3: no fabricated default — an unknown estimate renders as
   // "Estimate unavailable" instead of a confident ticking countdown.
   const hasEstimate =
-    typeof estimatedMinutes === "number" && Number.isFinite(estimatedMinutes) && estimatedMinutes >= 0;
-  const [remainingSeconds, setRemainingSeconds] = React.useState(hasEstimate ? (estimatedMinutes as number) * 60 : 0);
+    typeof estimatedMinutes === "number" &&
+    Number.isFinite(estimatedMinutes) &&
+    estimatedMinutes >= 0;
+  const [remainingSeconds, setRemainingSeconds] = React.useState(
+    hasEstimate ? (estimatedMinutes as number) * 60 : 0,
+  );
 
   React.useEffect(() => {
     setRemainingSeconds(hasEstimate ? (estimatedMinutes as number) * 60 : 0);
@@ -53,12 +57,18 @@ export function EstimatedDeliveryCountdown({
   else if (statusKind === "completed") activeIndex = 3;
   else if (status.code === "CONFIRMED" || status.code === "PLACED") activeIndex = 1;
   else if (status.code === "PREPARING") activeIndex = 2;
-  else if (status.code === "OUT_FOR_DELIVERY" || status.code === "READY_FOR_PICKUP") activeIndex = 3;
+  else if (status.code === "OUT_FOR_DELIVERY" || status.code === "READY_FOR_PICKUP")
+    activeIndex = 3;
 
   const isDelivery = fulfillment === "delivery";
 
   return (
-    <div className={cn("space-y-5 rounded-2xl border border-divider bg-surface p-5 shadow-xs", className)}>
+    <div
+      className={cn(
+        "space-y-5 rounded-2xl border border-divider bg-surface p-5 shadow-xs",
+        className,
+      )}
+    >
       {/* Header with Countdown */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -86,9 +96,7 @@ export function EstimatedDeliveryCountdown({
               </span>
             </>
           ) : (
-            <span className="text-sm font-semibold text-text-secondary">
-              Estimate unavailable
-            </span>
+            <span className="text-sm font-semibold text-text-secondary">Estimate unavailable</span>
           )}
         </div>
       </div>
@@ -118,7 +126,7 @@ export function EstimatedDeliveryCountdown({
                     isCompleted
                       ? "border-primary bg-primary text-primary-foreground shadow-xs"
                       : "border-divider text-text-secondary",
-                    isCurrent && "ring-4 ring-primary/20 animate-pulse"
+                    isCurrent && "ring-4 ring-primary/20 animate-pulse",
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden />
@@ -128,7 +136,7 @@ export function EstimatedDeliveryCountdown({
                 <span
                   className={cn(
                     "max-w-[65px] text-center text-xs leading-tight",
-                    isCompleted ? "font-medium text-text" : "font-medium text-text-secondary"
+                    isCompleted ? "font-medium text-text" : "font-medium text-text-secondary",
                   )}
                 >
                   {stage.key === "dispatched"

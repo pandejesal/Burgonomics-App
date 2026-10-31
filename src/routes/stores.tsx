@@ -48,10 +48,7 @@ function roundKm(km: number): number | undefined {
  * customer currently has. A `distanceKm` left over from an earlier read (or a
  * previous address) must never decide what the card claims.
  */
-function withCurrentDistance(
-  list: Store[],
-  coords: { lat: number; lng: number } | null,
-): Store[] {
+function withCurrentDistance(list: Store[], coords: { lat: number; lng: number } | null): Store[] {
   if (!coords) return list;
   return list.map((s) => ({
     ...s,
@@ -100,7 +97,7 @@ function StoreSelectionPage() {
   } = useStoreSelection();
 
   const permission = useLocationPermission();
-  
+
   // Get selected delivery address for coordinate precedence
   const selectedAddress = useAddressStore(selectSelectedAddress);
   // Only offer the saved-address shortcut when one actually exists.
@@ -113,7 +110,10 @@ function StoreSelectionPage() {
   const [nearestSheet, setNearestSheet] = useState<Store | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<Store | null>(null);
   const [fulfillmentFor, setFulfillmentFor] = useState<Store | null>(null);
-  const [farStoreWarning, setFarStoreWarning] = useState<{ store: Store; distanceKm: number } | null>(null);
+  const [farStoreWarning, setFarStoreWarning] = useState<{
+    store: Store;
+    distanceKm: number;
+  } | null>(null);
 
   const hasCartItems = useCartStore(selectHasItems);
   const cartStoreId = useCartStore((s) => s.storeId);
@@ -154,8 +154,7 @@ function StoreSelectionPage() {
     // read (or a previous address) must never decide the badge or the claim.
     const distanceKm = roundKm(getDeliveryDistanceKm(s, uc.lat, uc.lng));
     const store = distanceKm !== undefined ? { ...s, distanceKm } : s;
-    const outOfArea =
-      fulfillment === "delivery" && !isStoreInDeliveryArea(s, uc.lat, uc.lng);
+    const outOfArea = fulfillment === "delivery" && !isStoreInDeliveryArea(s, uc.lat, uc.lng);
     return { store, outOfArea };
   };
 
@@ -765,7 +764,9 @@ function StoreSelectionPage() {
                 />
               ) : hasDirectoryRows ? (
                 <EmptyState
-                  title={deliveryMode ? "No stores deliver here yet" : "No stores nearby for pickup"}
+                  title={
+                    deliveryMode ? "No stores deliver here yet" : "No stores nearby for pickup"
+                  }
                   description={
                     fulfillment === "takeaway" || fulfillment === "dinein"
                       ? `Every kitchen is beyond the ${MAX_PICKUP_DISTANCE_KM} km pickup range for this location. Choose a closer address or switch to delivery.`

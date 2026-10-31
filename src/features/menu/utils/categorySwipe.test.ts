@@ -93,5 +93,4 @@ describe("category swipes", () => {
     dispose();
     el.remove();
   });
-
-  });
+});

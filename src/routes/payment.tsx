@@ -270,6 +270,10 @@ function PaymentPage() {
   }
 
   const startPayment = async () => {
+    // The retry handler (line ~995) reads this ref. Assigning here keeps every
+    // hook call unconditional: the old sync effect sat after the hydration/
+    // auth early returns, so the hook count could change between renders.
+    startPaymentRef.current = startPayment;
     // Sync re-entry guard: a second tap before status flips must not start
     // a second payment. (Terminal statuses reset the ref, see effect below.)
     if (payInFlight.current) return;
@@ -332,9 +336,9 @@ function PaymentPage() {
         }
 
         const reconUid = useAuthStore.getState().user?.id ?? null;
-      clearPaymentReconciliation(reconUid);
-      usePaymentStore.getState().clearReconciliation();
-      setStatus("success");
+        clearPaymentReconciliation(reconUid);
+        usePaymentStore.getState().clearReconciliation();
+        setStatus("success");
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
@@ -450,10 +454,6 @@ function PaymentPage() {
       toast.error("Payment Error", { description: message });
     }
   };
-
-  React.useEffect(() => {
-    startPaymentRef.current = startPayment;
-  });
 
   const handleSuccess = async (result: PaymentResult) => {
     // Contract §3: verification binds the gateway payment to the internal
@@ -636,17 +636,19 @@ function PaymentPage() {
                       ? "Couldn't compute your bill — retry above"
                       : undefined
               }
-              iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
+              iconLeft={
+                method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined
+              }
             >
               {payBlocked
                 ? "Payment under review"
                 : status === "failed" || status === "cancelled"
-                ? "Retry checkout"
-                : method === "online"
-                  ? "Pay Online"
-                  : isDelivery
-                    ? "Place COD Order"
-                    : "Place Order"}
+                  ? "Retry checkout"
+                  : method === "online"
+                    ? "Pay Online"
+                    : isDelivery
+                      ? "Place COD Order"
+                      : "Place Order"}
             </AppButton>
           </div>
         </div>
@@ -880,8 +882,8 @@ function PaymentPage() {
         {method === "online" && !hasLiveRazorpayKey && isDevBuild && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
             <Text variant="bodyMedium" className="font-bold">
-              Demo payments: no live Razorpay key is configured, so online payment will simulate
-              and then fail verification — no money moves. Use cash, or configure keys.
+              Demo payments: no live Razorpay key is configured, so online payment will simulate and
+              then fail verification — no money moves. Use cash, or configure keys.
             </Text>
           </div>
         )}

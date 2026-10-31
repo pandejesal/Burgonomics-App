@@ -1,13 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Loop 11/120: the outlet directory reads must stay bounded (same class as
 // the Loop 3 partner fix) and prod must never fall back to mock stores.
 
-vi.mock('../src/core/config/firebase', () => ({ db: {} }));
+vi.mock("../src/core/config/firebase", () => ({ db: {} }));
 
 const seen = vi.hoisted(() => ({ limits: [] as unknown[] }));
 
-vi.mock('firebase/firestore', async (importOriginal) => {
+vi.mock("firebase/firestore", async (importOriginal) => {
   const actual: any = await importOriginal();
   return {
     ...actual,
@@ -26,7 +26,7 @@ vi.mock('firebase/firestore', async (importOriginal) => {
   };
 });
 
-import { storesService } from '../src/features/stores/services/storesService';
+import { storesService } from "../src/features/stores/services/storesService";
 
 // Local mock store data for testing (replaces deleted MOCK_STORES)
 const LOCAL_MOCK_STORES = [
@@ -35,18 +35,18 @@ const LOCAL_MOCK_STORES = [
   { id: "branch_vadodara_01", name: "Vadodara West", city: "Vadodara" },
 ];
 
-describe('storesService directory bounds (Loop 11/120)', () => {
+describe("storesService directory bounds (Loop 11/120)", () => {
   beforeEach(() => {
     seen.limits = [];
   });
 
-  it('bounds both directory reads at 100', async () => {
+  it("bounds both directory reads at 100", async () => {
     const res = await storesService.list();
     expect(res.success).toBe(true);
     expect(seen.limits).toEqual([100, 100]);
   });
 
-  it('returns empty array when Firestore has no stores (no mock fallback in prod or DEV)', async () => {
+  it("returns empty array when Firestore has no stores (no mock fallback in prod or DEV)", async () => {
     const res = await storesService.list();
     expect(res.success).toBe(true);
     // No mock fallback in any environment — honest empty state

@@ -51,7 +51,9 @@ export function TrustSection({ className }: TrustSectionProps) {
               alt="Burgonomics Mascot"
               className="h-5 w-5 object-contain"
             />
-            <span className="text-[10px] font-extrabold text-primary uppercase">Mascot Approved</span>
+            <span className="text-[10px] font-extrabold text-primary uppercase">
+              Mascot Approved
+            </span>
           </div>
         </div>
 
@@ -65,12 +67,8 @@ export function TrustSection({ className }: TrustSectionProps) {
                 <Icon className="h-4 w-4" />
               </div>
               <div>
-                <h4 className="font-sans text-xs font-bold text-text-primary">
-                  {title}
-                </h4>
-                <p className="text-[11px] text-text-secondary leading-snug mt-0.5">
-                  {description}
-                </p>
+                <h4 className="font-sans text-xs font-bold text-text-primary">{title}</h4>
+                <p className="text-[11px] text-text-secondary leading-snug mt-0.5">{description}</p>
               </div>
             </div>
           ))}

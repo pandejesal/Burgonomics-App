@@ -207,12 +207,15 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     }
   }, [reverseGeocode]);
 
-  const handleMapClick = useCallback((lat: number, lng: number) => {
-    autoLocatedRef.current = true;
-    setMapCenter({ lat, lng });
-    setPinPlaced(true);
-    void reverseGeocode(lat, lng);
-  }, [reverseGeocode]);
+  const handleMapClick = useCallback(
+    (lat: number, lng: number) => {
+      autoLocatedRef.current = true;
+      setMapCenter({ lat, lng });
+      setPinPlaced(true);
+      void reverseGeocode(lat, lng);
+    },
+    [reverseGeocode],
+  );
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     e.target.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -330,7 +333,12 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         style={{ height: "260px", zIndex: 0 }}
       >
         <div role="img" aria-label="Delivery location map" className="h-full w-full">
-          <MapContainer center={mapCenter} zoom={16} zoomControl={false} style={{ height: "100%", width: "100%" }}>
+          <MapContainer
+            center={mapCenter}
+            zoom={16}
+            zoomControl={false}
+            style={{ height: "100%", width: "100%" }}
+          >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -370,9 +378,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
           className="absolute bottom-0 w-full bg-primary/95 p-3 text-center text-primary-foreground backdrop-blur-sm"
           style={{ zIndex: 1000 }}
         >
-          <span className="type-caption">
-            Double check your pin drop!
-          </span>
+          <span className="type-caption">Double check your pin drop!</span>
         </div>
       </div>
 
@@ -380,8 +386,8 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         locationStatus === "blocked" ||
         locationStatus === "unavailable") && (
         <p role="status" className="type-caption text-text-secondary text-center">
-          Location unavailable — drag the pin manually, or enable location in your
-          browser settings and tap Locate Me.
+          Location unavailable — drag the pin manually, or enable location in your browser settings
+          and tap Locate Me.
         </p>
       )}
 
@@ -394,9 +400,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         className="space-y-5 bg-surface rounded-[var(--radius-large)] p-1"
       >
         <fieldset>
-          <legend className="type-label-large mb-3 text-text-secondary">
-            Save as
-          </legend>
+          <legend className="type-label-large mb-3 text-text-secondary">Save as</legend>
           <div className="flex gap-3">
             {LABELS.map((opt) => {
               const active = label === opt.value;
@@ -533,28 +537,32 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       </form>
 
       {/* Sticky Save Bar pinned to bottom sitting above keyboard */}
-      {typeof document !== "undefined" && createPortal(<div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
-        <div className="mx-auto flex max-w-[560px] items-center gap-3">
-          <AppButton
-            type="button"
-            variant="outlined"
-            onClick={onCancel}
-            className="shrink-0 border-2 border-divider px-5 font-semibold text-text-secondary"
-          >
-            Cancel
-          </AppButton>
-          <AppButton
-            type="submit"
-            form="address-entry-form"
-            fullWidth
-            loading={busy}
-            variant="primary"
-            className="font-semibold shadow-brand"
-          >
-            {initial ? "Save changes" : "Save address"}
-          </AppButton>
-        </div>
-      </div>, document.body)}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
+            <div className="mx-auto flex max-w-[560px] items-center gap-3">
+              <AppButton
+                type="button"
+                variant="outlined"
+                onClick={onCancel}
+                className="shrink-0 border-2 border-divider px-5 font-semibold text-text-secondary"
+              >
+                Cancel
+              </AppButton>
+              <AppButton
+                type="submit"
+                form="address-entry-form"
+                fullWidth
+                loading={busy}
+                variant="primary"
+                className="font-semibold shadow-brand"
+              >
+                {initial ? "Save changes" : "Save address"}
+              </AppButton>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

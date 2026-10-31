@@ -206,9 +206,7 @@ describe("OrderDetailsPage — hook order (P1-1)", () => {
       } as any);
       const { container, unmount } = await mount();
       expect(container.textContent).toContain("BG-HOOK1");
-      expect(
-        container.querySelector('[data-recovery-reason="ORDER_TERMINAL"]')
-      ).not.toBeNull();
+      expect(container.querySelector('[data-recovery-reason="ORDER_TERMINAL"]')).not.toBeNull();
       // Copy control: the attribute alone would still pass if the panel rendered
       // the sync-pending body behind the terminal reason.
       expect(container.textContent).toContain("can no longer be confirmed");
@@ -247,7 +245,7 @@ describe("OrderDetailsPage — hook order (P1-1)", () => {
       const unknownCase = await mount();
       expect(unknownCase.container.textContent).toContain("BG-HOOK1");
       expect(
-        unknownCase.container.querySelector('[data-recovery-reason="PAYMENT_SYNC_PENDING"]')
+        unknownCase.container.querySelector('[data-recovery-reason="PAYMENT_SYNC_PENDING"]'),
       ).not.toBeNull();
       expect(unknownCase.container.textContent).not.toContain("confirm_something_new");
       await unknownCase.unmount();

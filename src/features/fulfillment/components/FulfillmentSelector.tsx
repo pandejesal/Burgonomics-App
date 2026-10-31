@@ -10,10 +10,7 @@ interface FulfillmentSelectorProps {
   onOpenStorePicker?: () => void;
 }
 
-export function FulfillmentSelector({
-  className,
-  onOpenStorePicker,
-}: FulfillmentSelectorProps) {
+export function FulfillmentSelector({ className, onOpenStorePicker }: FulfillmentSelectorProps) {
   const fulfillment = useStoreSelection((s) => s.fulfillment) || "delivery";
   const setFulfillment = useStoreSelection((s) => s.setFulfillment);
   const activeStore = useStoreSelection((s) => s.activeStore);
@@ -45,7 +42,7 @@ export function FulfillmentSelector({
     <div
       className={cn(
         "sticky top-0 z-30 w-full bg-surface/95 backdrop-blur-md border-b border-divider py-2 px-4 shadow-xs",
-        className
+        className,
       )}
     >
       <div className="mx-auto max-w-[520px] flex items-center justify-between gap-2">
@@ -62,7 +59,7 @@ export function FulfillmentSelector({
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
                   isSelected
                     ? "bg-primary text-white shadow-xs"
-                    : "text-text-secondary hover:text-text"
+                    : "text-text-secondary hover:text-text",
                 )}
               >
                 {opt.icon}

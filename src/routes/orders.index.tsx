@@ -86,10 +86,7 @@ function OrderHistoryPage() {
   }, []);
 
   const applyListResult = React.useCallback(
-    (
-      res: Awaited<ReturnType<typeof orderRepository.listOrders>>,
-      origin: "list" | "refresh",
-    ) => {
+    (res: Awaited<ReturnType<typeof orderRepository.listOrders>>, origin: "list" | "refresh") => {
       if (res.success) {
         setOrders(res.data.items);
         setHasMore(res.data.hasMore);
@@ -243,7 +240,10 @@ function OrderHistoryPage() {
 
           {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" aria-hidden />
+            <Search
+              className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
+              aria-hidden
+            />
             <input
               type="text"
               value={searchInput}

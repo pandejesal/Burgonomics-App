@@ -39,7 +39,13 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/shared/layouts/AppShell", () => ({
-  AppShell: ({ children, rightSlot }: { children: React.ReactNode; rightSlot?: React.ReactNode }) => (
+  AppShell: ({
+    children,
+    rightSlot,
+  }: {
+    children: React.ReactNode;
+    rightSlot?: React.ReactNode;
+  }) => (
     <main>
       {rightSlot}
       {children}
@@ -68,7 +74,9 @@ vi.mock("@/features/stores/state/storeStore", () => {
 
 vi.mock("@/features/cart", () => ({
   cartRepository: { addItem: fixture.addItem },
-  FloatingCartBar: ({ compact }: { compact?: boolean }) => <aside data-testid="menu-cart-summary" data-compact={String(!!compact)} />,
+  FloatingCartBar: ({ compact }: { compact?: boolean }) => (
+    <aside data-testid="menu-cart-summary" data-compact={String(!!compact)} />
+  ),
 }));
 
 vi.mock("@/features/menu/repositories/MenuRepository", () => ({
@@ -125,7 +133,8 @@ import { toast } from "sonner";
 import { useMenuStore } from "@/features/menu/state/menuStore";
 import { Route } from "./menu.index";
 
-const Page = (Route as unknown as { options: { component: React.ComponentType } }).options.component;
+const Page = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 class FakeIntersectionObserver {
   static instances: FakeIntersectionObserver[] = [];
@@ -146,7 +155,9 @@ class FakeIntersectionObserver {
   }
   trigger(isIntersecting = true) {
     this.callback(
-      this.elements.map((target) => ({ isIntersecting, target }) as unknown as IntersectionObserverEntry),
+      this.elements.map(
+        (target) => ({ isIntersecting, target }) as unknown as IntersectionObserverEntry,
+      ),
       this as unknown as IntersectionObserver,
     );
   }
@@ -182,7 +193,9 @@ function pageFor(categoryId: string, page: number, total: number) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => { resolve = res; });
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
   return { promise, resolve };
 }
 
@@ -264,14 +277,26 @@ beforeEach(() => {
   fixture.addItem.mockResolvedValue({ success: true, data: {} });
   fixture.listProducts.mockImplementation(
     async (_storeId: string, categoryId: string, page: number) =>
-      pageFor(categoryId, page, categories.find((category) => category.id === categoryId)!.itemCount),
+      pageFor(
+        categoryId,
+        page,
+        categories.find((category) => category.id === categoryId)!.itemCount,
+      ),
   );
   fixture.getProduct.mockResolvedValue({
     success: true,
     data: {
       ...product("cat_a-p1", "cat_a", { name: "Custom Burger", customizable: true }),
       customizations: [
-        { id: "g1", name: "Bun", selection: "single", required: true, minSelect: 1, maxSelect: 1, options: [] },
+        {
+          id: "g1",
+          name: "Bun",
+          selection: "single",
+          required: true,
+          minSelect: 1,
+          maxSelect: 1,
+          options: [],
+        },
         { id: "g2", name: "Extras", selection: "multi", options: [] },
       ],
     },
@@ -302,7 +327,9 @@ describe("continuous all-category menu", () => {
       "cat_d",
       "cat_e",
     ]);
-    const headings = Array.from(container.querySelectorAll("h2")).map((heading) => heading.textContent);
+    const headings = Array.from(container.querySelectorAll("h2")).map(
+      (heading) => heading.textContent,
+    );
     expect(headings).toEqual(["Burgers", "Wraps", "Sides", "Drinks", "Desserts"]);
 
     // Visible + adjacent sections are primed; nothing else is fetched or painted.
@@ -313,9 +340,7 @@ describe("continuous all-category menu", () => {
 
     // A 45-item category does not paint 45 cards on first render.
     expect(cardCount("cat_a")).toBe(20);
-    expect(
-      container.querySelectorAll('[data-testid="product-card"]').length,
-    ).toBeLessThan(60);
+    expect(container.querySelectorAll('[data-testid="product-card"]').length).toBeLessThan(60);
   });
 
   it("loads a section's first page when it scrolls into view", async () => {
@@ -452,12 +477,28 @@ describe("continuous all-category menu", () => {
   it("uses the compact floating Cart only in grid view to leave room for two product rows", async () => {
     fixture.search = { view: "list" };
     await renderPage();
-    expect(container.querySelector<HTMLElement>('[data-testid="menu-cart-summary"]')!.dataset.compact).toBe("false");
-    expect(container.querySelector('[aria-label="View mode"]')!.parentElement!.classList.contains("py-2")).toBe(true);
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="menu-cart-summary"]')!.dataset.compact,
+    ).toBe("false");
+    expect(
+      container
+        .querySelector('[aria-label="View mode"]')!
+        .parentElement!.classList.contains("py-2"),
+    ).toBe(true);
     await applySearch({ view: "grid" });
-    expect(container.querySelector<HTMLElement>('[data-testid="menu-cart-summary"]')!.dataset.compact).toBe("true");
-    expect(container.querySelector('[aria-label="View mode"]')!.parentElement!.classList.contains("py-1")).toBe(true);
-    expect(container.querySelector('[aria-label="View mode"]')!.parentElement!.parentElement!.classList.contains("flex")).toBe(true);
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="menu-cart-summary"]')!.dataset.compact,
+    ).toBe("true");
+    expect(
+      container
+        .querySelector('[aria-label="View mode"]')!
+        .parentElement!.classList.contains("py-1"),
+    ).toBe(true);
+    expect(
+      container
+        .querySelector('[aria-label="View mode"]')!
+        .parentElement!.parentElement!.classList.contains("flex"),
+    ).toBe(true);
     expect(fixture.addItem).not.toHaveBeenCalled();
   });
 
@@ -468,14 +509,16 @@ describe("continuous all-category menu", () => {
     fixture.listCategories.mockImplementation(async (storeId: string) => ({
       success: true,
       data:
-        storeId === "store-2"
-          ? [{ id: "cat_z", name: "Zed", order: 1, itemCount: 1 }]
-          : categories,
+        storeId === "store-2" ? [{ id: "cat_z", name: "Zed", order: 1, itemCount: 1 }] : categories,
     }));
-    fixture.listProducts.mockImplementation(async (_storeId: string, categoryId: string, page: number) =>
-      categoryId === "cat_z"
-        ? { success: true as const, data: { items: [product("z1", "cat_z")], page, pageSize: 20, total: 1 } }
-        : pageFor(categoryId, page, 45),
+    fixture.listProducts.mockImplementation(
+      async (_storeId: string, categoryId: string, page: number) =>
+        categoryId === "cat_z"
+          ? {
+              success: true as const,
+              data: { items: [product("z1", "cat_z")], page, pageSize: 20, total: 1 },
+            }
+          : pageFor(categoryId, page, 45),
     );
 
     fixture.activeStoreId = "store-2";
@@ -493,18 +536,21 @@ describe("continuous all-category menu", () => {
   });
 
   it("opens the customizer only with real ProductDetails and customization groups", async () => {
-    fixture.listProducts.mockImplementation(async (_storeId: string, categoryId: string, page: number) =>
-      categoryId === "cat_a"
-        ? {
-            success: true,
-            data: {
-              items: [product("custom-1", "cat_a", { name: "Custom Burger", customizable: true })],
-              page,
-              pageSize: 20,
-              total: 1,
-            },
-          }
-        : pageFor(categoryId, page, 1),
+    fixture.listProducts.mockImplementation(
+      async (_storeId: string, categoryId: string, page: number) =>
+        categoryId === "cat_a"
+          ? {
+              success: true,
+              data: {
+                items: [
+                  product("custom-1", "cat_a", { name: "Custom Burger", customizable: true }),
+                ],
+                page,
+                pageSize: 20,
+                total: 1,
+              },
+            }
+          : pageFor(categoryId, page, 1),
     );
 
     await renderPage();
@@ -528,18 +574,19 @@ describe("continuous all-category menu", () => {
   });
 
   it("does not open the customizer when the store-scoped read fails", async () => {
-    fixture.listProducts.mockImplementation(async (_storeId: string, categoryId: string, page: number) =>
-      categoryId === "cat_a"
-        ? {
-            success: true,
-            data: {
-              items: [product("x1", "cat_a", { name: "Custom Burger", customizable: true })],
-              page,
-              pageSize: 20,
-              total: 1,
-            },
-          }
-        : pageFor(categoryId, page, 1),
+    fixture.listProducts.mockImplementation(
+      async (_storeId: string, categoryId: string, page: number) =>
+        categoryId === "cat_a"
+          ? {
+              success: true,
+              data: {
+                items: [product("x1", "cat_a", { name: "Custom Burger", customizable: true })],
+                page,
+                pageSize: 20,
+                total: 1,
+              },
+            }
+          : pageFor(categoryId, page, 1),
     );
     fixture.getProduct.mockResolvedValue({
       success: false,
@@ -560,10 +607,17 @@ describe("continuous all-category menu", () => {
   });
 
   it("discards a customizer response from the previously selected outlet", async () => {
-    fixture.listProducts.mockImplementation(async (_store: string, category: string, page: number) => ({
-      success: true,
-      data: { items: [product("custom-1", category, { customizable: true })], page, pageSize: 20, total: 1 },
-    }));
+    fixture.listProducts.mockImplementation(
+      async (_store: string, category: string, page: number) => ({
+        success: true,
+        data: {
+          items: [product("custom-1", category, { customizable: true })],
+          page,
+          pageSize: 20,
+          total: 1,
+        },
+      }),
+    );
     const details = deferred<unknown>();
     fixture.getProduct.mockReturnValueOnce(details.promise);
     await renderPage();
@@ -571,10 +625,15 @@ describe("continuous all-category menu", () => {
 
     fixture.activeStoreId = "store-2";
     await renderPage();
-    await act(async () => details.resolve({
-      success: true,
-      data: { ...product("custom-1", "cat_a", { name: "OLD OUTLET PRODUCT" }), customizations: [] },
-    }));
+    await act(async () =>
+      details.resolve({
+        success: true,
+        data: {
+          ...product("custom-1", "cat_a", { name: "OLD OUTLET PRODUCT" }),
+          customizations: [],
+        },
+      }),
+    );
     await act(flush);
     expect(container.querySelector('[data-testid="customizer"]')).toBeNull();
     expect(container.textContent).not.toContain("OLD OUTLET PRODUCT");
@@ -582,10 +641,17 @@ describe("continuous all-category menu", () => {
   });
 
   it("closes an already open customizer as soon as the outlet changes", async () => {
-    fixture.listProducts.mockImplementation(async (_store: string, category: string, page: number) => ({
-      success: true,
-      data: { items: [product("custom-1", category, { customizable: true })], page, pageSize: 20, total: 1 },
-    }));
+    fixture.listProducts.mockImplementation(
+      async (_store: string, category: string, page: number) => ({
+        success: true,
+        data: {
+          items: [product("custom-1", category, { customizable: true })],
+          page,
+          pageSize: 20,
+          total: 1,
+        },
+      }),
+    );
     await renderPage();
     await act(async () => sectionFor("cat_a").querySelector("button")!.click());
     expect(container.querySelector('[data-testid="customizer"]')).not.toBeNull();
@@ -595,22 +661,39 @@ describe("continuous all-category menu", () => {
   });
 
   it("keeps the last tapped customizer intent when reads finish out of order", async () => {
-    fixture.listProducts.mockImplementation(async (_store: string, category: string, page: number) => ({
-      success: true,
-      data: {
-        items: [product("first", category, { customizable: true }), product("second", category, { customizable: true })],
-        page, pageSize: 20, total: 2,
-      },
-    }));
+    fixture.listProducts.mockImplementation(
+      async (_store: string, category: string, page: number) => ({
+        success: true,
+        data: {
+          items: [
+            product("first", category, { customizable: true }),
+            product("second", category, { customizable: true }),
+          ],
+          page,
+          pageSize: 20,
+          total: 2,
+        },
+      }),
+    );
     const first = deferred<unknown>();
     const second = deferred<unknown>();
     fixture.getProduct.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     await renderPage();
     const buttons = sectionFor("cat_a").querySelectorAll("button");
-    await act(async () => { buttons[0].click(); buttons[1].click(); });
-    await act(async () => second.resolve({ success: true, data: { ...product("second", "cat_a"), customizations: [] } }));
+    await act(async () => {
+      buttons[0].click();
+      buttons[1].click();
+    });
+    await act(async () =>
+      second.resolve({
+        success: true,
+        data: { ...product("second", "cat_a"), customizations: [] },
+      }),
+    );
     expect(container.querySelector('[data-testid="customizer"]')?.textContent).toBe("second");
-    await act(async () => first.resolve({ success: true, data: { ...product("first", "cat_a"), customizations: [] } }));
+    await act(async () =>
+      first.resolve({ success: true, data: { ...product("first", "cat_a"), customizations: [] } }),
+    );
     expect(container.querySelector('[data-testid="customizer"]')?.textContent).toBe("second");
   });
 });

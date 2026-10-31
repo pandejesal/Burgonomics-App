@@ -61,28 +61,51 @@ function TermsPage() {
               <Clock className="h-4 w-4 text-primary" /> 2. Pricing, Taxes & Delivery (India)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup: <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is <strong>FREE above ₹499</strong>, otherwise a flat delivery fee (as shown at checkout) applies. No international shipping — India only.
+              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory{" "}
+              <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup:{" "}
+              <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is{" "}
+              <strong>FREE above ₹499</strong>, otherwise a flat delivery fee (as shown at checkout)
+              applies. No international shipping — India only.
             </Text>
           </section>
 
           <section className="space-y-2 pt-3 border-t border-divider">
             <Text variant="titleMedium" className="font-bold flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" /> 2b. Seller Disclosure (Consumer Protection E-Commerce Rules, 2020)
+              <FileText className="h-4 w-4 text-primary" /> 2b. Seller Disclosure (Consumer
+              Protection E-Commerce Rules, 2020)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Seller:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.<br />
+              <strong>Seller:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad,
+              Gujarat – 380015, India.
+              <br />
               {/* P1-7: registration IDs render only once real values replace the
                   X-masked placeholders — never print filler. */}
               {HAS_REG_IDS && (
                 <>
-                  {CIN && <><strong>CIN:</strong> {CIN} · </>}
-                  {GSTIN && <><strong>GSTIN:</strong> {GSTIN} · </>}
-                  {FSSAI && <><strong>FSSAI Lic. No.:</strong> {FSSAI} (per store, displayed on menu &amp; checkout).</>}
+                  {CIN && (
+                    <>
+                      <strong>CIN:</strong> {CIN} ·{" "}
+                    </>
+                  )}
+                  {GSTIN && (
+                    <>
+                      <strong>GSTIN:</strong> {GSTIN} ·{" "}
+                    </>
+                  )}
+                  {FSSAI && (
+                    <>
+                      <strong>FSSAI Lic. No.:</strong> {FSSAI} (per store, displayed on menu &amp;
+                      checkout).
+                    </>
+                  )}
                   <br />
                 </>
               )}
-              <strong>Helpline:</strong> {APP.supportEmail} · via the in-app Help &amp; Support channel.<br />
-              <strong>100% Pure Veg:</strong> All items are strictly vegetarian; FSSAI-licensed kitchens with zero cross-contamination.
+              <strong>Helpline:</strong> {APP.supportEmail} · via the in-app Help &amp; Support
+              channel.
+              <br />
+              <strong>100% Pure Veg:</strong> All items are strictly vegetarian; FSSAI-licensed
+              kitchens with zero cross-contamination.
             </Text>
           </section>
 

@@ -3,7 +3,10 @@ import type { MenuCategory } from "@/features/menu/services/menuService";
 import { resolveHomeMenuShortcuts } from "./menuShortcuts";
 
 const category = (id: string, name: string, order = 1): MenuCategory => ({
-  id, name, order, itemCount: 3,
+  id,
+  name,
+  order,
+  itemCount: 3,
 });
 
 describe("Home presentation shortcuts", () => {
@@ -21,7 +24,10 @@ describe("Home presentation shortcuts", () => {
       category("sides", "Sides"),
     ]);
     expect(shortcuts.map(({ label }) => label)).toEqual([
-      "Burgers", "Wraps", "Sides", "Shakes & Drinks",
+      "Burgers",
+      "Wraps",
+      "Sides",
+      "Shakes & Drinks",
     ]);
     expect(shortcuts[2].members.map(({ id }) => id)).toEqual(["sides"]);
   });
@@ -53,8 +59,13 @@ describe("Home presentation shortcuts", () => {
     ["coolers", "Coolers", "drinks"],
     ["cold-coffee", "Cold Coffee", "drinks"],
   ])("recognizes the explicit %s ID or its name without replacing the ID", (id, name, key) => {
-    for (const loadedCategory of [category(id, "Unnamed"), category("opaque-pos-id", ` ${name} `)]) {
-      const group = resolveHomeMenuShortcuts([loadedCategory]).find((shortcut) => shortcut.key === key);
+    for (const loadedCategory of [
+      category(id, "Unnamed"),
+      category("opaque-pos-id", ` ${name} `),
+    ]) {
+      const group = resolveHomeMenuShortcuts([loadedCategory]).find(
+        (shortcut) => shortcut.key === key,
+      );
       expect(group?.members).toEqual([loadedCategory]);
     }
   });
@@ -69,7 +80,9 @@ describe("Home presentation shortcuts", () => {
       category("extras", "Sides and Pizza"),
       category("new-drinks", "New Drinks"),
     ]);
-    expect(shortcuts.every(({ members, imageUrl }) => members.length === 0 && imageUrl === null)).toBe(true);
+    expect(
+      shortcuts.every(({ members, imageUrl }) => members.length === 0 && imageUrl === null),
+    ).toBe(true);
   });
 
   it("requires a loaded Wraps name, not an assumed Wraps ID, and never supplies a photo", () => {

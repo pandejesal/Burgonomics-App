@@ -36,12 +36,7 @@ import { AudioService } from "@/core/services/audio";
 import { toUserMessage } from "@/core/errors/userMessages";
 import { cn } from "@/lib/utils";
 
-import {
-  cartRepository,
-  useCartStore,
-  selectItemCount,
-  PromoInput,
-} from "@/features/cart";
+import { cartRepository, useCartStore, selectItemCount, PromoInput } from "@/features/cart";
 import type { CartTotals } from "@/features/cart/models";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
@@ -54,11 +49,7 @@ import {
   calculateHaversineKm,
 } from "@/features/checkout";
 import { useAddressStore, selectAddresses, selectSelectedAddress } from "@/features/addresses";
-import {
-  usePaymentStore,
-  paymentRepository,
-  razorpayAdapter,
-} from "@/features/payments";
+import { usePaymentStore, paymentRepository, razorpayAdapter } from "@/features/payments";
 import type { PaymentMethod, PaymentResult } from "@/features/payments/models";
 import {
   describePaymentRecovery,
@@ -118,7 +109,11 @@ export const Route = createFileRoute("/checkout")({
   head: () => ({
     meta: [
       { title: "Checkout — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "Review fulfillment, delivery address, and complete your Burgonomics order securely." },
+      {
+        name: "description",
+        content:
+          "Review fulfillment, delivery address, and complete your Burgonomics order securely.",
+      },
     ],
   }),
   component: CheckoutPage,
@@ -144,7 +139,7 @@ export function CheckoutPage() {
   const legacyOrderNotes = useCheckoutStore((s) => s.legacyOrderNotes);
   const tableNumber = useCheckoutStore((s) => s.tableNumber ?? "");
   const setTableNumber = useCheckoutStore((s) => s.setTableNumber ?? (() => {}));
-  
+
   const addresses = useAddressStore(selectAddresses);
   const selectedAddress = useAddressStore(selectSelectedAddress);
   const selectAddress = useAddressStore((s) => s.select);
@@ -326,7 +321,8 @@ export function CheckoutPage() {
     setValidationError(null);
 
     const uid = useAuthStore.getState().user?.id ?? null;
-    const pendingRecon = usePaymentStore.getState().reconciliationPending || !!loadPaymentReconciliation(uid);
+    const pendingRecon =
+      usePaymentStore.getState().reconciliationPending || !!loadPaymentReconciliation(uid);
     if (pendingRecon) {
       setBusy(false);
       placeOrderInFlight.current = false;
@@ -393,7 +389,9 @@ export function CheckoutPage() {
       const storeLat = Number(activeStore.lat);
       const storeLng = Number(activeStore.lng);
       if (![userLat, userLng, storeLat, storeLng].every(Number.isFinite)) {
-        setValidationError("This address has no verified location. Open Manage Addresses above, edit this address, and drag the pin on the map to verify it.");
+        setValidationError(
+          "This address has no verified location. Open Manage Addresses above, edit this address, and drag the pin on the map to verify it.",
+        );
         toast.error("Address location is missing. Re-pin it on the map from Manage Addresses.");
         return;
       }
@@ -401,7 +399,7 @@ export function CheckoutPage() {
       const docRadiusKm = activeStore.deliveryRadiusKm;
       if (dist > (docRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM)) {
         setValidationError(
-          `This address is ${dist} km away, which exceeds ${docRadiusKm != null ? `our ${docRadiusKm} km delivery zone` : "our delivery zone"}. Please switch to Takeaway.`
+          `This address is ${dist} km away, which exceeds ${docRadiusKm != null ? `our ${docRadiusKm} km delivery zone` : "our delivery zone"}. Please switch to Takeaway.`,
         );
         toast.error("Address is outside delivery range.");
         return;
@@ -431,7 +429,8 @@ export function CheckoutPage() {
       placeOrderInFlight.current = false;
       // Curated cart-issue copy passes through; the failure branch is typed
       // raw-capable (CartRepository), so it is logged + mapped, never shown.
-      if (!validation.success) console.error("[checkout] cart validation failed:", validation.error);
+      if (!validation.success)
+        console.error("[checkout] cart validation failed:", validation.error);
       const msg = validation.success
         ? (validation.data.issues[0]?.message ?? "Some items in your cart are no longer available.")
         : toUserMessage(validation.error);
@@ -452,7 +451,11 @@ export function CheckoutPage() {
     if (paymentMethod === "cash") {
       try {
         const orderStatus: PaymentDisplayStatus = isDelivery ? "CASH_PENDING" : "PAY_AT_STORE";
-        const paymentLabel = isDelivery ? "Cash on Delivery" : isTakeaway ? "Pay at Pickup Counter" : "Pay at Dine-In Counter";
+        const paymentLabel = isDelivery
+          ? "Cash on Delivery"
+          : isTakeaway
+            ? "Pay at Pickup Counter"
+            : "Pay at Dine-In Counter";
 
         const created = await orderRepository.createFromCurrentContext({
           paymentMethod: "cash",
@@ -461,7 +464,7 @@ export function CheckoutPage() {
         });
 
         setBusy(false);
-      placeOrderInFlight.current = false;
+        placeOrderInFlight.current = false;
         if (!created.success) {
           const message = orderFailureMessage(created.error);
           setValidationError(message);
@@ -482,7 +485,7 @@ export function CheckoutPage() {
         });
       } catch (err) {
         setBusy(false);
-      placeOrderInFlight.current = false;
+        placeOrderInFlight.current = false;
         // Raw exception text never reaches the red alert box (P1-8).
         console.error("[checkout] cash order exception:", err);
         const msg = "We couldn't place your order. Please try again.";
@@ -539,7 +542,7 @@ export function CheckoutPage() {
       });
       if (!orderRes.success) {
         setBusy(false);
-      placeOrderInFlight.current = false;
+        placeOrderInFlight.current = false;
         setPaymentStatus("failed");
         const message = orderFailureMessage(orderRes.error);
         setPaymentFailure({
@@ -562,11 +565,7 @@ export function CheckoutPage() {
       const authoritativeTotal =
         typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
       if (
-        needsRepriceAcceptance(
-          displayedTotal,
-          authoritativeTotal,
-          acceptedServerAmount.current
-        )
+        needsRepriceAcceptance(displayedTotal, authoritativeTotal, acceptedServerAmount.current)
       ) {
         setBusy(false);
         placeOrderInFlight.current = false;
@@ -591,10 +590,23 @@ export function CheckoutPage() {
                 // proceed to order finalization below
               } else if (!verify.success && verify.error.code === "TRANSFER_IN_PROGRESS") {
                 setBusy(false);
-      placeOrderInFlight.current = false;
+                placeOrderInFlight.current = false;
                 const reconUid = useAuthStore.getState().user?.id ?? null;
-                usePaymentStore.getState().setReconciliation(true, "TRANSFER_IN_PROGRESS", usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null);
-                persistPaymentReconciliation(reconUid, { internalOrderId: usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, gatewayOrderId: usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null, reason: "TRANSFER_IN_PROGRESS" });
+                usePaymentStore
+                  .getState()
+                  .setReconciliation(
+                    true,
+                    "TRANSFER_IN_PROGRESS",
+                    usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null,
+                    usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null,
+                  );
+                persistPaymentReconciliation(reconUid, {
+                  internalOrderId:
+                    usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null,
+                  gatewayOrderId:
+                    usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null,
+                  reason: "TRANSFER_IN_PROGRESS",
+                });
                 setPaymentStatus("waiting");
                 const transferCopy = describePaymentRecovery("TRANSFER_IN_PROGRESS");
                 setPaymentFailure({
@@ -609,10 +621,23 @@ export function CheckoutPage() {
                 return;
               } else if (!verify.success && verify.error.code === "ORDER_TERMINAL") {
                 setBusy(false);
-      placeOrderInFlight.current = false;
+                placeOrderInFlight.current = false;
                 const reconUid = useAuthStore.getState().user?.id ?? null;
-                usePaymentStore.getState().setReconciliation(true, "ORDER_TERMINAL", usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null);
-                persistPaymentReconciliation(reconUid, { internalOrderId: usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null, gatewayOrderId: usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null, reason: "ORDER_TERMINAL" });
+                usePaymentStore
+                  .getState()
+                  .setReconciliation(
+                    true,
+                    "ORDER_TERMINAL",
+                    usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null,
+                    usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null,
+                  );
+                persistPaymentReconciliation(reconUid, {
+                  internalOrderId:
+                    usePaymentStore.getState().internalOrderId ?? result.internalOrderId ?? null,
+                  gatewayOrderId:
+                    usePaymentStore.getState().gatewayOrderId ?? result.orderId ?? null,
+                  reason: "ORDER_TERMINAL",
+                });
                 setPaymentStatus("waiting");
                 const terminalCopy = describePaymentRecovery("ORDER_TERMINAL");
                 setPaymentFailure({
@@ -649,7 +674,9 @@ export function CheckoutPage() {
                     paymentId: result.paymentId,
                   });
                   toast.error("Payment verification failed", { description: outcome.message });
-                  void orderRepository.markPaymentFailed(outcome.internalOrderId).catch(() => undefined);
+                  void orderRepository
+                    .markPaymentFailed(outcome.internalOrderId)
+                    .catch(() => undefined);
                   return;
                 }
                 // "verified" was handled by the branch above; anything else is
@@ -661,7 +688,12 @@ export function CheckoutPage() {
                 const reconUid = useAuthStore.getState().user?.id ?? null;
                 usePaymentStore
                   .getState()
-                  .setReconciliation(true, outcome.reason, outcome.internalOrderId, outcome.gatewayOrderId);
+                  .setReconciliation(
+                    true,
+                    outcome.reason,
+                    outcome.internalOrderId,
+                    outcome.gatewayOrderId,
+                  );
                 persistPaymentReconciliation(reconUid, {
                   internalOrderId: outcome.internalOrderId,
                   gatewayOrderId: outcome.gatewayOrderId,
@@ -694,8 +726,19 @@ export function CheckoutPage() {
               // failure with the gateway payment id for support recovery.
               if (!created.success) {
                 const reconUid = useAuthStore.getState().user?.id ?? null;
-                usePaymentStore.getState().setReconciliation(true, "PAYMENT_SYNC_PENDING", verify.data.confirmedOrderId ?? null, result.orderId ?? null);
-                persistPaymentReconciliation(reconUid, { internalOrderId: verify.data.confirmedOrderId ?? null, gatewayOrderId: result.orderId ?? null, reason: "PAYMENT_SYNC_PENDING" });
+                usePaymentStore
+                  .getState()
+                  .setReconciliation(
+                    true,
+                    "PAYMENT_SYNC_PENDING",
+                    verify.data.confirmedOrderId ?? null,
+                    result.orderId ?? null,
+                  );
+                persistPaymentReconciliation(reconUid, {
+                  internalOrderId: verify.data.confirmedOrderId ?? null,
+                  gatewayOrderId: result.orderId ?? null,
+                  reason: "PAYMENT_SYNC_PENDING",
+                });
                 setPaymentStatus("waiting");
                 setPaymentFailure({
                   code: "PAYMENT_SYNC_PENDING",
@@ -757,15 +800,17 @@ export function CheckoutPage() {
           },
           onFailure: (err) => {
             setBusy(false);
-      placeOrderInFlight.current = false;
+            placeOrderInFlight.current = false;
             setPaymentStatus("failed");
             // P1-8: gateway description text is not customer copy — log raw.
             console.error("[checkout] gateway onFailure:", err);
-            toast.error("Payment not completed", { description: "Please try again or choose another payment method." });
+            toast.error("Payment not completed", {
+              description: "Please try again or choose another payment method.",
+            });
           },
           onCancel: () => {
             setBusy(false);
-      placeOrderInFlight.current = false;
+            placeOrderInFlight.current = false;
             setPaymentStatus("cancelled");
             toast.info("Payment cancelled. You can retry when ready.");
           },
@@ -780,7 +825,7 @@ export function CheckoutPage() {
       // customers get an honest recovery path instead.
       console.error("[checkout] payment initiation failed:", payErr);
       setValidationError(
-        "Payment couldn't be completed. Please try again — if your amount was debited, contact support before retrying."
+        "Payment couldn't be completed. Please try again — if your amount was debited, contact support before retrying.",
       );
     }
   }
@@ -803,8 +848,24 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={handlePlaceOrder}
-              disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending || legacyNotesPending}
-              aria-disabled={busy || !isOnline || totals === null || totalsFailed || !kitchen.isOpen || reconciliationPending || legacyNotesPending}
+              disabled={
+                busy ||
+                !isOnline ||
+                totals === null ||
+                totalsFailed ||
+                !kitchen.isOpen ||
+                reconciliationPending ||
+                legacyNotesPending
+              }
+              aria-disabled={
+                busy ||
+                !isOnline ||
+                totals === null ||
+                totalsFailed ||
+                !kitchen.isOpen ||
+                reconciliationPending ||
+                legacyNotesPending
+              }
               title={
                 reconciliationPending
                   ? "We are confirming your payment — please do not pay again"
@@ -858,12 +919,18 @@ export function CheckoutPage() {
                   : "Checkout price locked"}
               </span>
             </div>
-            <span className="type-price shrink-0 text-sm">{formatCountdown(remainingLockSeconds)}</span>
+            <span className="type-price shrink-0 text-sm">
+              {formatCountdown(remainingLockSeconds)}
+            </span>
           </div>
         )}
 
         {validationError && (
-          <div role="alert" aria-live="assertive" className="rounded-[var(--radius-large)] border border-error/30 bg-error/10 p-4 type-body-medium text-error">
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="rounded-[var(--radius-large)] border border-error/30 bg-error/10 p-4 type-body-medium text-error"
+          >
             {validationError}
           </div>
         )}
@@ -892,7 +959,11 @@ export function CheckoutPage() {
         {/* Bill unavailable: totals computation failed (e.g. no store pricing).
             PAY stays disabled until recompute succeeds — never charge ₹0. */}
         {totalsFailed && (
-          <div role="alert" aria-live="assertive" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-error/30 bg-error/10 p-4 type-body-medium text-error">
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-error/30 bg-error/10 p-4 type-body-medium text-error"
+          >
             <span>Couldn&apos;t compute your bill. Check your connection and retry.</span>
             <button
               type="button"
@@ -931,7 +1002,11 @@ export function CheckoutPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="type-body font-semibold text-text-primary">Standard Delivery</p>
-                  <p className="type-caption text-text-secondary">{activeStore?.etaMinutes != null ? `Delivered hot in ~${activeStore.etaMinutes} mins • No scheduling needed` : "Delivered hot • No scheduling needed"}</p>
+                  <p className="type-caption text-text-secondary">
+                    {activeStore?.etaMinutes != null
+                      ? `Delivered hot in ~${activeStore.etaMinutes} mins • No scheduling needed`
+                      : "Delivered hot • No scheduling needed"}
+                  </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 type-caption font-semibold text-primary-text">
                   ASAP
@@ -952,20 +1027,27 @@ export function CheckoutPage() {
                 2. Order Review ({itemCount} {itemCount === 1 ? "Item" : "Items"})
               </h2>
             </div>
-            <Link to="/cart" className="-mr-2 inline-flex min-h-11 items-center px-2 type-caption font-semibold text-primary-text hover:underline">
+            <Link
+              to="/cart"
+              className="-mr-2 inline-flex min-h-11 items-center px-2 type-caption font-semibold text-primary-text hover:underline"
+            >
               Edit Cart
             </Link>
           </div>
 
           <div className="space-y-2 divide-y divide-divider/50">
             {lines.map((line) => (
-              <div key={line.lineId} className="flex items-start justify-between gap-3 pt-3 first:pt-0 select-none">
+              <div
+                key={line.lineId}
+                className="flex items-start justify-between gap-3 pt-3 first:pt-0 select-none"
+              >
                 <div className="flex min-w-0 flex-1 items-start gap-2">
                   <span className="mt-1 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border border-success p-[1px]">
                     <span className="h-1.5 w-1.5 rounded-full bg-success" />
                   </span>
                   <p className="type-body break-words font-medium text-text-primary">
-                    <span className="mr-1 font-semibold text-primary-text">{line.quantity}x</span> {line.name}
+                    <span className="mr-1 font-semibold text-primary-text">{line.quantity}x</span>{" "}
+                    {line.name}
                   </p>
                 </div>
                 <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
@@ -978,31 +1060,40 @@ export function CheckoutPage() {
           <div className="space-y-2 border-t border-divider pt-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-text">Cooking instructions</p>
-              <Link to="/cart" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-text hover:underline">
+              <Link
+                to="/cart"
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-text hover:underline"
+              >
                 Edit in Cart
               </Link>
             </div>
             {legacyDraftPending ? (
-              <div role="alert" className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3">
+              <div
+                role="alert"
+                className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3"
+              >
                 <p className="text-sm font-medium text-text">
                   Your saved note needs review before payment
                 </p>
                 <p className="text-sm text-text-secondary">
-                  It was saved by an older version and is longer than the 240-character limit.
-                  It is not attached to this order. Review it in the cart.
+                  It was saved by an older version and is longer than the 240-character limit. It is
+                  not attached to this order. Review it in the cart.
                 </p>
                 <p className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-sm text-text">
                   {legacyOrderNotes}
                 </p>
               </div>
             ) : lineNotesPending ? (
-              <div role="alert" className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3">
+              <div
+                role="alert"
+                className="space-y-1 rounded-xl border border-warning/40 bg-warning/10 p-3"
+              >
                 <p className="text-sm font-medium text-text">
                   Item notes need review before payment
                 </p>
                 <p className="text-sm text-text-secondary">
-                  Some items still carry a note from an older cart. Move it into the order
-                  note or remove it in the cart — it is not attached to this order.
+                  Some items still carry a note from an older cart. Move it into the order note or
+                  remove it in the cart — it is not attached to this order.
                 </p>
               </div>
             ) : orderNotes.trim().length > 0 ? (
@@ -1021,9 +1112,7 @@ export function CheckoutPage() {
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-accent/10 text-accent-text">
               <Sparkles className="h-4 w-4" />
             </div>
-            <h2 className="type-title-medium text-text-primary">
-              3. Coupons
-            </h2>
+            <h2 className="type-title-medium text-text-primary">3. Coupons</h2>
           </div>
 
           <PromoInput applied={promo} onChanged={() => void recompute()} />
@@ -1036,24 +1125,40 @@ export function CheckoutPage() {
         {/* 4. Bill Summary */}
         <section className="space-y-4 rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
           <div className="flex items-center gap-2 border-b border-divider pb-3">
-            <h2 className="type-title-medium text-text-primary">
-              4. Bill Breakdown
-            </h2>
+            <h2 className="type-title-medium text-text-primary">4. Bill Breakdown</h2>
           </div>
 
           <div className="space-y-2.5 type-caption">
             <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Item Total</span>
-              <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">{totals ? formatINR(totals.subtotal) : <span className="text-warning">unavailable</span>}</span>
+              <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
+                {totals ? (
+                  formatINR(totals.subtotal)
+                ) : (
+                  <span className="text-warning">unavailable</span>
+                )}
+              </span>
             </div>
             <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Govt. GST (5% included)</span>
-              <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">{totals ? formatINR(totals.taxes) : <span className="text-warning">unavailable</span>}</span>
+              <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
+                {totals ? (
+                  formatINR(totals.taxes)
+                ) : (
+                  <span className="text-warning">unavailable</span>
+                )}
+              </span>
             </div>
             <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
-                {isDineIn ? <span className="font-semibold text-success">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning">unavailable</span>}
+                {isDineIn ? (
+                  <span className="font-semibold text-success">FREE</span>
+                ) : totals ? (
+                  formatINR(totals.packingFee)
+                ) : (
+                  <span className="text-warning">unavailable</span>
+                )}
               </span>
             </div>
             {/* Delivery Fee — same rule as BillBreakdown: only delivery shows it. */}
@@ -1076,20 +1181,26 @@ export function CheckoutPage() {
             {persistedTip > 0 && (
               <div className="flex items-start justify-between gap-3 text-text-secondary">
                 <span>Delivery Partner Tip</span>
-                <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">{formatINR(persistedTip)}</span>
+                <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
+                  {formatINR(persistedTip)}
+                </span>
               </div>
             )}
 
             {totals?.promoDiscount ? (
               <div className="flex items-start justify-between gap-3 font-medium text-success">
                 <span>Coupon Discount ({promo?.code ?? "PROMO"})</span>
-                <span className="type-price shrink-0 whitespace-nowrap text-right">-{formatINR(totals.promoDiscount)}</span>
+                <span className="type-price shrink-0 whitespace-nowrap text-right">
+                  -{formatINR(totals.promoDiscount)}
+                </span>
               </div>
             ) : null}
 
             <div className="flex items-start justify-between gap-3 border-t border-divider pt-3 type-title-medium text-text-primary">
               <span>To Pay</span>
-              <span className="type-price shrink-0 whitespace-nowrap text-right text-lg text-text-primary">{totals ? formatINR(finalPayable) : "—"}</span>
+              <span className="type-price shrink-0 whitespace-nowrap text-right text-lg text-text-primary">
+                {totals ? formatINR(finalPayable) : "—"}
+              </span>
             </div>
           </div>
         </section>

@@ -129,10 +129,9 @@ async function backendPost<T>(path: string, body: unknown): Promise<T> {
     const err: any = new Error(
       typeof p.error === "string" && p.error.trim()
         ? p.error
-        : "Transfer in progress — retry payment verification shortly."
+        : "Transfer in progress — retry payment verification shortly.",
     );
-    err.code =
-      typeof p.code === "string" && p.code.trim() ? p.code : "TRANSFER_IN_PROGRESS";
+    err.code = typeof p.code === "string" && p.code.trim() ? p.code : "TRANSFER_IN_PROGRESS";
     err.statusCode = 202;
     const retryHeader = res.headers?.get?.("Retry-After");
     if (retryHeader && Number.isFinite(Number(retryHeader))) {
@@ -156,7 +155,7 @@ async function backendPost<T>(path: string, body: unknown): Promise<T> {
     throw err;
   }
 
-  return ((payload && typeof payload === "object" ? payload : {}) as unknown as T);
+  return (payload && typeof payload === "object" ? payload : {}) as unknown as T;
 }
 
 export const paymentsService = {
@@ -213,10 +212,7 @@ export const paymentsService = {
           : "GATEWAY_ERROR";
       const statusCode = (err as any)?.statusCode;
       const retryable =
-        statusCode === 502 ||
-        statusCode === 503 ||
-        statusCode === 429 ||
-        statusCode === undefined;
+        statusCode === 502 || statusCode === 503 || statusCode === 429 || statusCode === undefined;
       return fail(serverCode, message, retryable);
     }
   },
@@ -242,11 +238,9 @@ export const paymentsService = {
     const gatewayMatches =
       !pendingStore.gatewayOrderId || pendingStore.gatewayOrderId === result.orderId;
     const internalOrderId = gatewayMatches
-      ? explicitInternal ?? pendingStore.internalOrderId ?? undefined
+      ? (explicitInternal ?? pendingStore.internalOrderId ?? undefined)
       : undefined;
-    const enrichedResult: PaymentResult = internalOrderId
-      ? { ...result, internalOrderId }
-      : result;
+    const enrichedResult: PaymentResult = internalOrderId ? { ...result, internalOrderId } : result;
 
     const request = () =>
       backendPost<Record<string, unknown>>("/verifyPayment", {
@@ -272,8 +266,7 @@ export const paymentsService = {
         // Preserve a structured server false result delivered as HTTP 200
         // (legacy envelope), e.g. ORDER_TERMINAL from R06. Do not collapse it
         // into a malformed/verified-false success.
-        const serverCode =
-          typeof raw.code === "string" && raw.code.trim() ? raw.code : "";
+        const serverCode = typeof raw.code === "string" && raw.code.trim() ? raw.code : "";
         if (raw.success !== true && serverCode) {
           const message =
             typeof raw.error === "string" && raw.error.trim()
@@ -295,19 +288,17 @@ export const paymentsService = {
           typeof raw.paymentId === "string"
             ? raw.paymentId
             : typeof raw.razorpayPaymentId === "string"
-            ? raw.razorpayPaymentId
-            : undefined;
+              ? raw.razorpayPaymentId
+              : undefined;
         const razorpayOrderId =
           typeof raw.razorpayOrderId === "string" ? raw.razorpayOrderId : undefined;
-        const deliveryOtp =
-          typeof raw.deliveryOtp === "string" ? raw.deliveryOtp : undefined;
+        const deliveryOtp = typeof raw.deliveryOtp === "string" ? raw.deliveryOtp : undefined;
 
         const requestedInternal = internalOrderId ?? enrichedResult.orderId;
         const backendSuccess = raw.success === true;
         const confirmedMatches =
           confirmedOrderId.length > 0 && confirmedOrderId === requestedInternal;
-        const paymentMatches =
-          !backendPaymentId || backendPaymentId === enrichedResult.paymentId;
+        const paymentMatches = !backendPaymentId || backendPaymentId === enrichedResult.paymentId;
         const verified = backendSuccess && confirmedMatches && paymentMatches;
 
         const normalized: PaymentVerification = {
@@ -322,11 +313,9 @@ export const paymentsService = {
       } catch (err) {
         const code = (err as any)?.code;
         const statusCode = (err as any)?.statusCode;
-        const message =
-          err instanceof Error ? err.message : "Payment verification failed";
+        const message = err instanceof Error ? err.message : "Payment verification failed";
 
-        const isTransferInProgress =
-          code === "TRANSFER_IN_PROGRESS" || statusCode === 202;
+        const isTransferInProgress = code === "TRANSFER_IN_PROGRESS" || statusCode === 202;
 
         if (isTransferInProgress) {
           transferAttempt += 1;
@@ -354,8 +343,7 @@ export const paymentsService = {
 
         // Preserve structured server codes (A2): 401/409/etc. stay
         // non-retryable and keep their code; only transient statuses retry.
-        const serverCode =
-          typeof code === "string" && code.trim() ? code : "VERIFY_GATEWAY_ERROR";
+        const serverCode = typeof code === "string" && code.trim() ? code : "VERIFY_GATEWAY_ERROR";
         const retryable =
           statusCode === 502 ||
           statusCode === 503 ||

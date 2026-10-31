@@ -48,11 +48,7 @@ export function mapStoreDoc(data: any, id: string): Store | null {
     // doc's own CLOSED status, may be reported. A doc that says nothing is
     // never rendered as "Open now".
     isOpen:
-      typeof data.isOpen === "boolean"
-        ? data.isOpen
-        : data.status === "CLOSED"
-          ? false
-          : undefined,
+      typeof data.isOpen === "boolean" ? data.isOpen : data.status === "CLOSED" ? false : undefined,
     isBusy: Boolean(data.isBusy),
     isRecentlyOpened: Boolean(data.isRecentlyOpened),
     // Deny by default: a fulfillment mode is offered only when the doc grants

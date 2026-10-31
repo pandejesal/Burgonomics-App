@@ -172,7 +172,9 @@ export const CartItemRow = React.memo(function CartItemRow({
                 <Plus className="h-4 w-4" aria-hidden />
               </button>
             </div>
-            <Text variant="titleMedium" className="whitespace-nowrap">{formatINR(lineTotal)}</Text>
+            <Text variant="titleMedium" className="whitespace-nowrap">
+              {formatINR(lineTotal)}
+            </Text>
           </div>
         </div>
       </div>

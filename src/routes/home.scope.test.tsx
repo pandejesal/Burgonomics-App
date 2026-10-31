@@ -31,10 +31,13 @@ vi.mock("@/shared/layouts/AppShell", () => ({
 }));
 vi.mock("@/shared/hooks/useOnlineStatus", () => ({ useOnlineStatus: vi.fn() }));
 vi.mock("@/core/state/appConfigStore", () => ({
-  useAppConfig: (selector: (state: { isOnline: boolean }) => unknown) => selector({ isOnline: true }),
+  useAppConfig: (selector: (state: { isOnline: boolean }) => unknown) =>
+    selector({ isOnline: true }),
 }));
 vi.mock("@/features/stores/state/storeStore", () => ({
-  useStoreSelection: (selector: (state: { activeStore: { id: string } | null; isHydrated: boolean }) => unknown) => {
+  useStoreSelection: (
+    selector: (state: { activeStore: { id: string } | null; isHydrated: boolean }) => unknown,
+  ) => {
     // Zustand returns a stable store object; identity churn here would retrigger load effects.
     if (fixture.activeStoreId !== fixture.storeId) {
       fixture.activeStoreId = fixture.storeId;
@@ -81,7 +84,10 @@ vi.mock("@/features/home/components/SectionHeader", () => ({ SectionHeader: () =
 vi.mock("@/features/home/components/BestSellerCard", () => ({ BestSellerCard: () => null }));
 vi.mock("@/features/home/components/ComboCard", () => ({ ComboCard: () => null }));
 vi.mock("@/features/home/components/FavoritesRail", () => ({
-  FavoritesRail: () => fixture.favoriteName ? <section aria-label="Your favourites">{fixture.favoriteName}</section> : null,
+  FavoritesRail: () =>
+    fixture.favoriteName ? (
+      <section aria-label="Your favourites">{fixture.favoriteName}</section>
+    ) : null,
 }));
 vi.mock("@/features/home/components/QuickReorderRail", () => ({ QuickReorderRail: () => null }));
 vi.mock("@/features/home/components/HomeSkeleton", () => ({
@@ -107,9 +113,11 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 import { useHomeStore } from "@/features/home/state/homeStore";
 import { Route } from "./home";
 
-const HomePage = (Route as unknown as {
-  options: { component: React.ComponentType };
-}).options.component;
+const HomePage = (
+  Route as unknown as {
+    options: { component: React.ComponentType };
+  }
+).options.component;
 
 function bundle(categoryId: string, categoryName: string): HomeBundle {
   return {
@@ -177,8 +185,11 @@ describe("Home route scope guard", () => {
   it("includes the conditional favourites surface inside the ready Home body", async () => {
     fixture.favoriteName = "An existing saved favourite";
     useHomeStore.setState({
-      status: "ready", bundle: bundle("store-B-category", "Store B Burgers"),
-      lastLoadedStoreId: "store-B", lastLoadedUserId: null, error: null,
+      status: "ready",
+      bundle: bundle("store-B-category", "Store B Burgers"),
+      lastLoadedStoreId: "store-B",
+      lastLoadedUserId: null,
+      error: null,
     });
     const firstCommit = await mountFirstCommit();
     expect(firstCommit).toContain("An existing saved favourite");
@@ -217,14 +228,16 @@ describe("Home route scope guard", () => {
       status: "ready",
       bundle: {
         ...bundle("store-A-category", "Store A Burgers"),
-        quickReorder: [{
-          id: "user-a-order",
-          orderId: "order-a",
-          title: "A's previous order",
-          subtitle: "Private to A",
-          total: 300,
-          placedAt: "2026-10-29T00:00:00.000Z",
-        }],
+        quickReorder: [
+          {
+            id: "user-a-order",
+            orderId: "order-a",
+            title: "A's previous order",
+            subtitle: "Private to A",
+            total: 300,
+            placedAt: "2026-10-29T00:00:00.000Z",
+          },
+        ],
       },
       lastLoadedStoreId: "store-A",
       lastLoadedUserId: "user-a",

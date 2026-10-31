@@ -37,15 +37,15 @@ interface AlignedGeometry {
   scrollWidth: number;
 }
 
-  /**
-   * CategoryNavRail â€” sticky horizontal category navigation.
-   *
-   * This is a nav of in-page jumps over ONE continuous menu, not a tab set:
-   * every category section stays mounted in natural vertical flow and the chip
-   * only decides where the viewport lands. `role="tablist"`/`tab` used to
-   * promise mutually exclusive panels that no longer exist (and would still be
-   * wrong for a page where all sections are visible at once).
-   */
+/**
+ * CategoryNavRail â€” sticky horizontal category navigation.
+ *
+ * This is a nav of in-page jumps over ONE continuous menu, not a tab set:
+ * every category section stays mounted in natural vertical flow and the chip
+ * only decides where the viewport lands. `role="tablist"`/`tab` used to
+ * promise mutually exclusive panels that no longer exist (and would still be
+ * wrong for a page where all sections are visible at once).
+ */
 export function CategoryNavRail({
   categories,
   activeCategoryId,
@@ -100,9 +100,15 @@ export function CategoryNavRail({
     container.style.paddingRight = `${Math.max(0, (container.clientWidth - (chips.at(-1)?.offsetWidth ?? 0)) / 2)}px`;
     const chip = findChip(container, activeCategoryId);
     const aligned = alignedRef.current;
-    if (chip && aligned?.id === activeCategoryId &&
-        aligned.offsetLeft === chip.offsetLeft && aligned.offsetWidth === chip.offsetWidth &&
-        aligned.clientWidth === container.clientWidth && aligned.scrollWidth === container.scrollWidth) return;
+    if (
+      chip &&
+      aligned?.id === activeCategoryId &&
+      aligned.offsetLeft === chip.offsetLeft &&
+      aligned.offsetWidth === chip.offsetWidth &&
+      aligned.clientWidth === container.clientWidth &&
+      aligned.scrollWidth === container.scrollWidth
+    )
+      return;
     centerOn(activeCategoryId, alignedRef.current ? "smooth" : "instant");
   }, [activeCategoryId, categories, centerOn]);
 
@@ -149,7 +155,7 @@ export function CategoryNavRail({
     <div
       className={cn(
         "sticky top-0 z-20 w-full bg-surface/95 backdrop-blur-md border-b border-divider py-2 px-3 sm:px-4 shadow-xs",
-        className
+        className,
       )}
     >
       <nav
@@ -161,7 +167,9 @@ export function CategoryNavRail({
         {categories.map((cat) => {
           const isSelected = activeCategoryId === cat.id;
           const countLabel =
-            typeof cat.itemCount === "number" && cat.itemCount > 0 ? `, ${cat.itemCount} items` : "";
+            typeof cat.itemCount === "number" && cat.itemCount > 0
+              ? `, ${cat.itemCount} items`
+              : "";
           return (
             <button
               key={cat.id}
@@ -174,7 +182,7 @@ export function CategoryNavRail({
                 "group relative flex-none shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85 cursor-pointer min-h-[44px] border",
                 isSelected
                   ? "bg-primary text-primary-foreground border-primary shadow-sm font-extrabold"
-                  : "bg-surface text-text-secondary border-divider hover:text-text hover:border-primary/40"
+                  : "bg-surface text-text-secondary border-divider hover:text-text hover:border-primary/40",
               )}
             >
               {/* Veg Indicator dot for 100% Pure Veg menu */}
@@ -183,14 +191,14 @@ export function CategoryNavRail({
                   "w-3.5 h-3.5 rounded-[3px] border flex items-center justify-center shrink-0",
                   isSelected
                     ? "border-primary-foreground/70 bg-primary-foreground/15"
-                    : "border-primary/50 bg-primary/5"
+                    : "border-primary/50 bg-primary/5",
                 )}
                 aria-hidden
               >
                 <span
                   className={cn(
                     "w-1.5 h-1.5 rounded-full",
-                    isSelected ? "bg-primary-foreground" : "bg-primary-text"
+                    isSelected ? "bg-primary-foreground" : "bg-primary-text",
                   )}
                 />
               </span>
@@ -203,7 +211,7 @@ export function CategoryNavRail({
                     "text-[11px] px-2 py-0.5 rounded-full font-mono font-bold leading-none",
                     isSelected
                       ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-bg-secondary text-text-secondary group-hover:text-text"
+                      : "bg-bg-secondary text-text-secondary group-hover:text-text",
                   )}
                 >
                   {cat.itemCount}

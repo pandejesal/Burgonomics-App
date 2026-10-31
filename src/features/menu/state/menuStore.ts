@@ -349,7 +349,14 @@ export const useMenuStore = create<MenuState>()((set, get) => {
           ? state.activeCategoryId
           : categories[0].id;
 
-      set({ categories, activeCategoryId, status: "ready", error: undefined, stale: false, buckets });
+      set({
+        categories,
+        activeCategoryId,
+        status: "ready",
+        error: undefined,
+        stale: false,
+        buckets,
+      });
 
       // Prime only the first screen's sections (visible + adjacent), never the
       // whole catalog: 2 reads at mount, both through the 2-slot scheduler.

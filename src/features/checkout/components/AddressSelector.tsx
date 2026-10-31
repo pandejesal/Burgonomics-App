@@ -82,7 +82,7 @@ export function AddressSelector({
             to="/addresses/create"
             search={{ returnTo: "/checkout" }}
             className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full bg-primary px-4 type-button-sm text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover cursor-pointer"
-        >
+          >
             <Plus className="h-4 w-4" aria-hidden />
             <span>Add Delivery Address</span>
           </Link>

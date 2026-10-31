@@ -16,10 +16,16 @@ beforeEach(() => {
   vi.useFakeTimers();
   Object.defineProperty(document, "hidden", { value: false, configurable: true });
   motion = Object.assign(new EventTarget(), {
-    matches: false, media: "(prefers-reduced-motion: reduce)", onchange: null,
-    addListener: vi.fn(), removeListener: vi.fn(),
+    matches: false,
+    media: "(prefers-reduced-motion: reduce)",
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
   }) as MediaQueryList;
-  vi.stubGlobal("matchMedia", vi.fn(() => motion));
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => motion),
+  );
   vi.stubGlobal("IntersectionObserver", undefined);
 });
 afterEach(async () => {
@@ -35,14 +41,27 @@ async function mount(single = false) {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root!.render(<HomeAnnouncements content={{
-    awards: [], upcomingStores: single ? approvedHomeContent.upcomingStores.slice(0, 1) : approvedHomeContent.upcomingStores,
-  }} />));
+  await act(async () =>
+    root!.render(
+      <HomeAnnouncements
+        content={{
+          awards: [],
+          upcomingStores: single
+            ? approvedHomeContent.upcomingStores.slice(0, 1)
+            : approvedHomeContent.upcomingStores,
+        }}
+      />,
+    ),
+  );
 }
 const selected = () => host.querySelector('li[data-active="true"]')?.textContent;
-async function tick(ms = 6000) { await act(async () => vi.advanceTimersByTime(ms)); }
+async function tick(ms = 6000) {
+  await act(async () => vi.advanceTimersByTime(ms));
+}
 async function arrow(key: "ArrowLeft" | "ArrowRight") {
-  await act(async () => host.querySelector("ul")!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+  await act(async () =>
+    host.querySelector("ul")!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })),
+  );
 }
 function pointerEvent(type: string, pointerType: string) {
   return Object.assign(new Event(type, { bubbles: true }), { pointerType });
@@ -83,7 +102,9 @@ describe("Upcoming Branches horizontal rotation", () => {
 
   it("keeps touch-to-pause and keyboard browsing without a visible control strip", async () => {
     await mount();
-    await act(async () => host.querySelector("ul")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () =>
+      host.querySelector("ul")!.dispatchEvent(new Event("pointerdown", { bubbles: true })),
+    );
     await tick(18000);
     expect(selected()).toContain("Gor Dhod Road");
     await arrow("ArrowLeft");
@@ -101,7 +122,9 @@ describe("Upcoming Branches horizontal rotation", () => {
     await act(async () => list.focus());
     await tick();
     expect(selected()).toContain("Gor Dhod Road");
-    await act(async () => list.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    await act(async () =>
+      list.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })),
+    );
     expect(selected()).toContain("Vallabh Vidhyanagar");
     await tick();
     expect(selected()).toContain("Vallabh Vidhyanagar");
@@ -117,12 +140,18 @@ describe("Upcoming Branches horizontal rotation", () => {
     await tick();
     expect(selected()).toContain("Gor Dhod Road");
     await act(async () => {
-      section.dispatchEvent(Object.assign(pointerEvent("pointerout", "mouse"), { relatedTarget: document.body }));
-      section.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+      section.dispatchEvent(
+        Object.assign(pointerEvent("pointerout", "mouse"), { relatedTarget: document.body }),
+      );
+      section.dispatchEvent(
+        new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }),
+      );
     });
     await tick();
     expect(selected()).toContain("Vallabh Vidhyanagar");
-    await act(async () => host.querySelector("ul")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () =>
+      host.querySelector("ul")!.dispatchEvent(new Event("pointerdown", { bubbles: true })),
+    );
     await tick();
     expect(selected()).toContain("Vallabh Vidhyanagar");
     expect(vi.getTimerCount()).toBe(0);
@@ -153,16 +182,25 @@ describe("Upcoming Branches horizontal rotation", () => {
   it("does not rotate offscreen and disconnects its visibility observer", async () => {
     let notify: IntersectionObserverCallback;
     const disconnect = vi.fn();
-    vi.stubGlobal("IntersectionObserver", class {
-      constructor(callback: IntersectionObserverCallback) { notify = callback; }
-      observe() {}
-      disconnect = disconnect;
-    });
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          notify = callback;
+        }
+        observe() {}
+        disconnect = disconnect;
+      },
+    );
     await mount();
-    await act(async () => notify([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver));
+    await act(async () =>
+      notify([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver),
+    );
     await tick();
     expect(selected()).toContain("Gor Dhod Road");
-    await act(async () => notify([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+    await act(async () =>
+      notify([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver),
+    );
     await tick();
     expect(selected()).toContain("Vallabh Vidhyanagar");
     await act(async () => root!.unmount());

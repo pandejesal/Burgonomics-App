@@ -100,10 +100,7 @@ export const appConfig: AppConfig = {
     // keyId (split-string to dodge scanners) silently booted dev/staging on a
     // shared test key. Empty key = explicit simulation mode in the adapter.
     // Accept both VITE_RAZORPAY_KEY_ID (canonical) and VITE_RAZORPAY_KEY (alias).
-    razorpayKeyId: readEnv(
-      "VITE_RAZORPAY_KEY_ID",
-      readEnv("VITE_RAZORPAY_KEY", ""),
-    ),
+    razorpayKeyId: readEnv("VITE_RAZORPAY_KEY_ID", readEnv("VITE_RAZORPAY_KEY", "")),
     paymentsApiBaseUrl: readEnv("VITE_PAYMENTS_API_BASE_URL", ""),
     petpoojaEnabled: readEnv("VITE_PETPOOJA_ENABLED", "false") === "true",
     // Accept both VITE_MAPS_API_KEY (canonical) and VITE_MAPS_KEY (alias).

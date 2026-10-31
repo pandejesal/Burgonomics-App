@@ -1,12 +1,5 @@
 import React, { useMemo, useEffect, useState } from "react";
-import {
-  MapPin,
-  Bike,
-  Store,
-  Navigation,
-  ExternalLink,
-  WifiOff,
-} from "lucide-react";
+import { MapPin, Bike, Store, Navigation, ExternalLink, WifiOff } from "lucide-react";
 import type { PorterTrackingState } from "../hooks/usePorterLiveTracking";
 import { isSafeTrackingUrl } from "@/shared/utils/urlSafety";
 import { getDirectionsUrl } from "@/features/stores/utils/navigation";
@@ -143,13 +136,11 @@ export function LiveOrderMap({
     setIsClient(true);
   }, []);
 
-  const safeTrackingUrl =
-    trackingUrl && isSafeTrackingUrl(trackingUrl) ? trackingUrl : undefined;
+  const safeTrackingUrl = trackingUrl && isSafeTrackingUrl(trackingUrl) ? trackingUrl : undefined;
 
   const hasRouteCoords = hasCoords(storeLocation) && hasCoords(dropLocation);
   const hasCourierDetails = Boolean(riderName || riderPhone || riderVehicleNumber);
-  const courierUnconfirmed =
-    currentStage === 3 && !isTakeawayOrDineIn && !hasCourierDetails;
+  const courierUnconfirmed = currentStage === 3 && !isTakeawayOrDineIn && !hasCourierDetails;
   const hasRiderGps = riderLocation != null && hasCoords(riderLocation) && !isTakeawayOrDineIn;
 
   // Memoized geometry: recomputed only when the underlying location data
@@ -266,9 +257,7 @@ export function LiveOrderMap({
             )}
 
             {/* Courier Pin (if live GPS) */}
-            {riderLatLng && (
-              <Marker position={riderLatLng} icon={riderIcon} />
-            )}
+            {riderLatLng && <Marker position={riderLatLng} icon={riderIcon} />}
 
             <MapBoundsAdjuster points={mapPoints} />
           </MapContainer>

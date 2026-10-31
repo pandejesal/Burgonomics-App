@@ -13,9 +13,19 @@ interface Props {
 
 export function SectionHeader({ id, title, subtitle, actionLabel, actionTo, className }: Props) {
   return (
-    <header className={cn("mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4", className)}>
+    <header
+      className={cn(
+        "mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4",
+        className,
+      )}
+    >
       <div className="min-w-0 flex-1 basis-40">
-        <h2 id={id} className="type-brand-heading text-xl leading-snug text-text-primary break-words">{title}</h2>
+        <h2
+          id={id}
+          className="type-brand-heading text-xl leading-snug text-text-primary break-words"
+        >
+          {title}
+        </h2>
         {subtitle && <p className="mt-1 text-sm leading-relaxed text-text-secondary">{subtitle}</p>}
       </div>
       {actionLabel && actionTo && (

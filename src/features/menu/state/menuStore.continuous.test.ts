@@ -46,7 +46,12 @@ function product(id: string, categoryId: string, overrides: Partial<Product> = {
   };
 }
 
-function categoryPage(categoryId: string, pageNumber: number, total: number, take = MENU_PAGE_SIZE) {
+function categoryPage(
+  categoryId: string,
+  pageNumber: number,
+  total: number,
+  take = MENU_PAGE_SIZE,
+) {
   const start = (pageNumber - 1) * MENU_PAGE_SIZE;
   const count = Math.max(0, Math.min(take, total - start));
   const items = Array.from({ length: count }, (_, index) =>
@@ -145,7 +150,12 @@ describe("continuous menu sections", () => {
     expect(repository.listProducts).toHaveBeenCalledTimes(1);
 
     let settled = false;
-    const duplicate = useMenuStore.getState().loadMore("cat_a").then(() => { settled = true; });
+    const duplicate = useMenuStore
+      .getState()
+      .loadMore("cat_a")
+      .then(() => {
+        settled = true;
+      });
     await flush();
     // Same category already in flight: no duplicate page-1 read.
     expect(repository.listProducts).toHaveBeenCalledTimes(1);
@@ -257,10 +267,12 @@ describe("live menu snapshots", () => {
   it("updates item 41's availability in place and keeps every loaded page", async () => {
     await loadThreePages();
     let liveCallback: ((result: unknown) => void) | undefined;
-    repository.subscribeStoreProducts.mockImplementation((_storeId: string, callback: (result: unknown) => void) => {
-      liveCallback = callback;
-      return () => {};
-    });
+    repository.subscribeStoreProducts.mockImplementation(
+      (_storeId: string, callback: (result: unknown) => void) => {
+        liveCallback = callback;
+        return () => {};
+      },
+    );
 
     useMenuStore.getState().subscribeToLiveMenu("store-1");
     const before = useMenuStore.getState().buckets.cat_a.items;
@@ -289,10 +301,12 @@ describe("live menu snapshots", () => {
   it("does not infer deletion from a product's absence in a limited snapshot", async () => {
     await loadThreePages();
     let liveCallback: ((result: unknown) => void) | undefined;
-    repository.subscribeStoreProducts.mockImplementation((_storeId: string, callback: (result: unknown) => void) => {
-      liveCallback = callback;
-      return () => {};
-    });
+    repository.subscribeStoreProducts.mockImplementation(
+      (_storeId: string, callback: (result: unknown) => void) => {
+        liveCallback = callback;
+        return () => {};
+      },
+    );
     useMenuStore.getState().subscribeToLiveMenu("store-1");
 
     const firstPageOnly = useMenuStore
@@ -328,10 +342,12 @@ describe("live menu snapshots", () => {
     );
 
     let liveA: ((result: unknown) => void) | undefined;
-    repository.subscribeStoreProducts.mockImplementation((_storeId: string, callback: (result: unknown) => void) => {
-      liveA = callback;
-      return () => {};
-    });
+    repository.subscribeStoreProducts.mockImplementation(
+      (_storeId: string, callback: (result: unknown) => void) => {
+        liveA = callback;
+        return () => {};
+      },
+    );
 
     await useMenuStore.getState().load("store-a");
     const unsubscribe = useMenuStore.getState().subscribeToLiveMenu("store-a");

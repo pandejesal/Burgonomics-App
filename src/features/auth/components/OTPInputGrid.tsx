@@ -124,7 +124,9 @@ export function OTPInputGrid({
         .get({ otp: { transport: ["sms"] }, signal: abortController.signal })
         .then((content: any) => {
           if (!mountedRef.current || disabledRef.current) return;
-          const code = String(content?.code ?? "").replace(/\D/g, "").slice(0, length);
+          const code = String(content?.code ?? "")
+            .replace(/\D/g, "")
+            .slice(0, length);
           if (code.length !== length) return;
           const next = Array.from({ length }, (_, index) => code[index]);
           emit(next);
@@ -199,10 +201,10 @@ export function OTPInputGrid({
         const borderClass = error
           ? "border-error focus:border-error ring-1 ring-error/20"
           : success
-          ? "border-success focus:border-success ring-1 ring-success/20"
-          : isFilled
-          ? "border-primary focus:border-primary"
-          : "border-divider focus:border-primary";
+            ? "border-success focus:border-success ring-1 ring-success/20"
+            : isFilled
+              ? "border-primary focus:border-primary"
+              : "border-divider focus:border-primary";
 
         return (
           <input
@@ -226,7 +228,7 @@ export function OTPInputGrid({
               "h-14 w-12 sm:w-14 rounded-[var(--radius-medium)] border-[1.5px] bg-surface text-center shadow-low float-interactive transition-colors",
               "type-display-medium font-semibold text-text-primary outline-none",
               borderClass,
-              disabled && "opacity-60 cursor-not-allowed"
+              disabled && "opacity-60 cursor-not-allowed",
             )}
           />
         );

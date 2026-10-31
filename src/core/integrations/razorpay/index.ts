@@ -31,10 +31,8 @@ export interface RazorpayAdapter {
     fulfillment?: string;
   }): Promise<RazorpayOrderIntent>;
   openCheckout(
-    intentOrHandlers:
-      | RazorpayOrderIntent
-      | Parameters<typeof featureAdapter.openCheckout>[0],
-    method?: Parameters<typeof featureAdapter.openCheckout>[1]
+    intentOrHandlers: RazorpayOrderIntent | Parameters<typeof featureAdapter.openCheckout>[0],
+    method?: Parameters<typeof featureAdapter.openCheckout>[1],
   ): Promise<RazorpayPaymentResult | void>;
   verifySignature(result: RazorpayPaymentResult): Promise<{ valid: boolean }>;
 }
@@ -102,7 +100,7 @@ export const razorpayAdapter: RazorpayAdapter = {
                 onFailure: (err) => reject(new Error(err.description || err.code)),
                 onCancel: () => reject(new Error("Payment cancelled by user")),
               },
-              method
+              method,
             );
           })
           .catch(reject);
@@ -133,4 +131,3 @@ function toOrderType(fulfillment?: string): "delivery" | "takeaway" | "dinein" {
   if (fulfillment === "dinein" || fulfillment === "dine-in") return "dinein";
   return "delivery";
 }
-

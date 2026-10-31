@@ -124,7 +124,7 @@ function Body() {
                   "min-h-11 flex-1 rounded-full py-2 text-sm font-semibold transition-colors cursor-pointer",
                   active
                     ? "bg-primary text-primary-foreground shadow-xs"
-                    : "text-text-secondary hover:text-text"
+                    : "text-text-secondary hover:text-text",
                 )}
               >
                 {t.label}

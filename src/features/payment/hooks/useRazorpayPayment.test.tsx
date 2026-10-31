@@ -19,7 +19,10 @@ const mocks = vi.hoisted(() => ({
   initialize: vi.fn(async () => {}),
   openCheckout: vi.fn(),
   markPaymentFailed: vi.fn(async () => ({ success: true, data: { id: "ord" } })),
-  finalizePaidOrder: vi.fn(async (): Promise<ApiResult<{ id: string }>> => ({ success: true, data: { id: "ord_final" } })),
+  finalizePaidOrder: vi.fn(async (): Promise<ApiResult<{ id: string }>> => ({
+    success: true,
+    data: { id: "ord_final" },
+  })),
   cartClear: vi.fn(async () => ({ success: true })),
   navigate: vi.fn(),
 }));
@@ -34,7 +37,11 @@ vi.mock("@/core/services/audio", () => ({
   AudioService: { playSuccess: vi.fn(), playClick: vi.fn() },
 }));
 vi.mock("@/core/services/haptics", () => ({
-  HapticService: { notification: vi.fn(async () => {}), impact: vi.fn(async () => {}), selection: vi.fn() },
+  HapticService: {
+    notification: vi.fn(async () => {}),
+    impact: vi.fn(async () => {}),
+    selection: vi.fn(),
+  },
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
@@ -115,11 +122,11 @@ async function mountHook() {
 async function runCheckout(verifyResult: unknown) {
   mocks.createPaymentOrder.mockResolvedValue(ok(GATEWAY_ORDER));
   mocks.verifyPayment.mockResolvedValue(verifyResult);
-  mocks.openCheckout.mockImplementation(async (handlers: {
-    onSuccess: (r: typeof CALLBACK_RESULT) => Promise<void> | void;
-  }) => {
-    await handlers.onSuccess(CALLBACK_RESULT);
-  });
+  mocks.openCheckout.mockImplementation(
+    async (handlers: { onSuccess: (r: typeof CALLBACK_RESULT) => Promise<void> | void }) => {
+      await handlers.onSuccess(CALLBACK_RESULT);
+    },
+  );
   await act(async () => {
     await hook!.initiatePayment("online");
   });
@@ -191,7 +198,9 @@ describe("useRazorpayPayment - post-gateway recovery call sites (C01 / A08 B1+B9
   });
 
   it("finalize returning failure (paid-but-no-order): reconciliation, no navigation", async () => {
-    mocks.finalizePaidOrder.mockResolvedValueOnce(fail("SERVER_DOC_SHAPE_INVALID", "bad doc", false));
+    mocks.finalizePaidOrder.mockResolvedValueOnce(
+      fail("SERVER_DOC_SHAPE_INVALID", "bad doc", false),
+    );
     await mountHook();
     await runCheckout(
       ok({ verified: true, confirmedOrderId: "ord_hook", paymentId: "pay_hook_1" }),
@@ -247,14 +256,13 @@ async function runGatewayFailure(
   thenDismiss = false,
 ) {
   mocks.createPaymentOrder.mockResolvedValue(ok(GATEWAY_ORDER));
-  mocks.openCheckout.mockImplementation(async (handlers: {
-    onFailure: (e: typeof err) => void;
-    onCancel: () => void;
-  }) => {
-    handlers.onFailure(err);
-    // Razorpay fires `modal.ondismiss` even after `payment.failed`.
-    if (thenDismiss) handlers.onCancel();
-  });
+  mocks.openCheckout.mockImplementation(
+    async (handlers: { onFailure: (e: typeof err) => void; onCancel: () => void }) => {
+      handlers.onFailure(err);
+      // Razorpay fires `modal.ondismiss` even after `payment.failed`.
+      if (thenDismiss) handlers.onCancel();
+    },
+  );
   await act(async () => {
     await hook!.initiatePayment("online");
   });
@@ -286,10 +294,7 @@ describe("useRazorpayPayment - gateway-reported failure truth (D1)", () => {
 
   it("keeps a hard gateway failure when Razorpay dismisses the modal afterwards", async () => {
     await mountHook();
-    await runGatewayFailure(
-      { code: "BAD_REQUEST_ERROR", description: RAW_GATEWAY_TRACE },
-      true,
-    );
+    await runGatewayFailure({ code: "BAD_REQUEST_ERROR", description: RAW_GATEWAY_TRACE }, true);
 
     const state = usePaymentStore.getState();
     expect(state.status).toBe("failed");
@@ -304,13 +309,15 @@ describe("useRazorpayPayment - gateway-reported failure truth (D1)", () => {
     // reconciliation latch or replace the do-not-pay-again copy.
     mocks.createPaymentOrder.mockResolvedValue(ok(GATEWAY_ORDER));
     mocks.verifyPayment.mockResolvedValue(fail("SERVICE_UNAVAILABLE", "backend unavailable", true));
-    mocks.openCheckout.mockImplementation(async (handlers: {
-      onSuccess: (r: typeof CALLBACK_RESULT) => Promise<void> | void;
-      onCancel: () => void;
-    }) => {
-      await handlers.onSuccess(CALLBACK_RESULT);
-      handlers.onCancel();
-    });
+    mocks.openCheckout.mockImplementation(
+      async (handlers: {
+        onSuccess: (r: typeof CALLBACK_RESULT) => Promise<void> | void;
+        onCancel: () => void;
+      }) => {
+        await handlers.onSuccess(CALLBACK_RESULT);
+        handlers.onCancel();
+      },
+    );
     await mountHook();
     await act(async () => {
       await hook!.initiatePayment("online");
@@ -331,13 +338,15 @@ describe("useRazorpayPayment - gateway-reported failure truth (D1)", () => {
     mocks.verifyPayment.mockResolvedValue(
       ok({ verified: true, confirmedOrderId: "ord_hook", paymentId: "pay_hook_1" }),
     );
-    mocks.openCheckout.mockImplementation(async (handlers: {
-      onSuccess: (r: typeof CALLBACK_RESULT) => Promise<void> | void;
-      onCancel: () => void;
-    }) => {
-      await handlers.onSuccess(CALLBACK_RESULT);
-      handlers.onCancel();
-    });
+    mocks.openCheckout.mockImplementation(
+      async (handlers: {
+        onSuccess: (r: typeof CALLBACK_RESULT) => Promise<void> | void;
+        onCancel: () => void;
+      }) => {
+        await handlers.onSuccess(CALLBACK_RESULT);
+        handlers.onCancel();
+      },
+    );
     await mountHook();
     await act(async () => {
       await hook!.initiatePayment("online");

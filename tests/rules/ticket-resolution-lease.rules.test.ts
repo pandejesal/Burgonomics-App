@@ -304,7 +304,9 @@ describe("Firestore Security Rules — ticket audit state (lease + terminal lock
     }
     // The lease stays absent — the refused write must not materialise it.
     if ("resolutionClaim" in check.stored) {
-      throw new Error(`resolutionClaim leaked into the doc: ${JSON.stringify(check.stored.resolutionClaim)}`);
+      throw new Error(
+        `resolutionClaim leaked into the doc: ${JSON.stringify(check.stored.resolutionClaim)}`,
+      );
     }
   });
 
@@ -324,9 +326,7 @@ describe("Firestore Security Rules — ticket audit state (lease + terminal lock
               : key === "status"
                 ? "in_progress"
                 : "mask check";
-      await assertSucceeds(
-        updateDoc(doc(brandDb, "support_tickets", TICKET_ID), { [key]: value }),
-      );
+      await assertSucceeds(updateDoc(doc(brandDb, "support_tickets", TICKET_ID), { [key]: value }));
     }
   });
 
@@ -375,7 +375,9 @@ describe("Firestore Security Rules — ticket audit state (lease + terminal lock
       throw new Error(`resolution was mutated by denied writes: ${check.stored.resolution}`);
     }
     if (check.stored.timeline?.length !== 1) {
-      throw new Error(`timeline was mutated by denied writes: ${JSON.stringify(check.stored.timeline)}`);
+      throw new Error(
+        `timeline was mutated by denied writes: ${JSON.stringify(check.stored.timeline)}`,
+      );
     }
   });
 
@@ -466,9 +468,7 @@ describe("Firestore Security Rules — ticket audit state (lease + terminal lock
         seeded: true,
       });
     });
-    await assertSucceeds(
-      getDoc(doc(dualDb, "payment_audits", "probe_dual")),
-    );
+    await assertSucceeds(getDoc(doc(dualDb, "payment_audits", "probe_dual")));
   });
 
   it("15. [LEASE-ASSIGNEDTO-SHAPE-DENY] only a well-formed single-tier map passes", async (context) => {
@@ -491,9 +491,7 @@ describe("Firestore Security Rules — ticket audit state (lease + terminal lock
     await assertFails(
       updateDoc(doc(brandDb, "support_tickets", TICKET_ID), { assignedTo: { tier: "root" } }),
     );
-    await assertFails(
-      updateDoc(doc(brandDb, "support_tickets", TICKET_ID), { assignedTo: {} }),
-    );
+    await assertFails(updateDoc(doc(brandDb, "support_tickets", TICKET_ID), { assignedTo: {} }));
   });
 
   // ---------------------------------------------------------------------------
@@ -658,53 +656,56 @@ describe("Firestore Security Rules — ticket audit state (lease + terminal lock
     );
   });
 
-  it.each(["resolved", "in_progress"])("23. [MONEY-MAP-OVERWRITE-DENY] a seeded ADMIN money map survives a string overwrite at status %s", async (status, context) => {
-    if (!emulatorAvailable) return context.skip();
-    const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
+  it.each(["resolved", "in_progress"])(
+    "23. [MONEY-MAP-OVERWRITE-DENY] a seeded ADMIN money map survives a string overwrite at status %s",
+    async (status, context) => {
+      if (!emulatorAvailable) return context.skip();
+      const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
 
-    // The exact ADMIN money-audit map (tickets.service.ts 586-610), couponCode
-    // included. The nonterminal case also isolates the source-side map guard
-    // from the terminal lock: even an inconsistent legacy document must keep
-    // its audit map rather than permit a plain-text replacement.
-    const MONEY_MAP = {
-      action: "full_refund",
-      amount: 349,
-      couponCode: "WELCOME10",
-      refundResult: { refundId: "rfnd_x", success: true },
-      resolvedBy: "branch_owner_1",
-      resolvedByName: "Branch Owner",
-      notes: "cash refund issued",
-      resolvedAt: Timestamp.now(),
-    };
-    await testEnv!.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "support_tickets", TICKET_ID), {
-        ticketNumber: "TKT-LOCK-1",
-        subject: "Refund not received",
-        category: "payment_refund",
-        branchId: "branch_01",
-        customerId: "cust_100",
-        status,
-        resolution: MONEY_MAP,
-        timeline: [],
-        updatedAt: Timestamp.now(),
+      // The exact ADMIN money-audit map (tickets.service.ts 586-610), couponCode
+      // included. The nonterminal case also isolates the source-side map guard
+      // from the terminal lock: even an inconsistent legacy document must keep
+      // its audit map rather than permit a plain-text replacement.
+      const MONEY_MAP = {
+        action: "full_refund",
+        amount: 349,
+        couponCode: "WELCOME10",
+        refundResult: { refundId: "rfnd_x", success: true },
+        resolvedBy: "branch_owner_1",
+        resolvedByName: "Branch Owner",
+        notes: "cash refund issued",
+        resolvedAt: Timestamp.now(),
+      };
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), "support_tickets", TICKET_ID), {
+          ticketNumber: "TKT-LOCK-1",
+          subject: "Refund not received",
+          category: "payment_refund",
+          branchId: "branch_01",
+          customerId: "cust_100",
+          status,
+          resolution: MONEY_MAP,
+          timeline: [],
+          updatedAt: Timestamp.now(),
+        });
       });
-    });
 
-    // String conjunct on BOTH sides denies it even before the terminal lock
-    // (the stored resolution is a map, so `resource.data.resolution is string`
-    // fails) — this defence shipped untested before; writing a plain string
-    // over the map would erase the audit trail while leaving status resolved.
-    await assertFails(
-      updateDoc(doc(branchDb, "support_tickets", TICKET_ID), {
-        resolution: "plain-text replacement of the money map",
-        updatedAt: Timestamp.now(),
-      }),
-    );
+      // String conjunct on BOTH sides denies it even before the terminal lock
+      // (the stored resolution is a map, so `resource.data.resolution is string`
+      // fails) — this defence shipped untested before; writing a plain string
+      // over the map would erase the audit trail while leaving status resolved.
+      await assertFails(
+        updateDoc(doc(branchDb, "support_tickets", TICKET_ID), {
+          resolution: "plain-text replacement of the money map",
+          updatedAt: Timestamp.now(),
+        }),
+      );
 
-    // Every stored audit field survives, including nested refund data and timestamps.
-    const stored = await readStored("support_tickets", TICKET_ID);
-    expect(stored.resolution).toEqual(MONEY_MAP);
-  });
+      // Every stored audit field survives, including nested refund data and timestamps.
+      const stored = await readStored("support_tickets", TICKET_ID);
+      expect(stored.resolution).toEqual(MONEY_MAP);
+    },
+  );
 
   it("24. [ADMIN-RESOLUTION-STILL-GOVERNABLE] Admin SDK ownership is untouched by the lock", async (context) => {
     if (!emulatorAvailable) return context.skip();

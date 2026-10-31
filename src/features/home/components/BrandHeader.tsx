@@ -54,11 +54,7 @@ export function BrandHeader({ className }: BrandHeaderProps) {
           onClick={() => void HapticService.selection()}
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface p-0.5">
-            <img
-              src="/burgonomics-logo.png"
-              alt=""
-              className="h-full w-full object-contain"
-            />
+            <img src="/burgonomics-logo.png" alt="" className="h-full w-full object-contain" />
           </div>
           <span className="type-brand-heading min-w-0 break-words text-2xl text-primary-text">
             BURGONOMICS
@@ -73,7 +69,10 @@ export function BrandHeader({ className }: BrandHeaderProps) {
           >
             <Bell className="h-5 w-5" aria-hidden="true" />
             {unreadCount > 0 && (
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
+              <span
+                className="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent"
+                aria-hidden="true"
+              />
             )}
           </Link>
         </div>
@@ -94,7 +93,10 @@ export function BrandHeader({ className }: BrandHeaderProps) {
             <span className="type-subheading min-w-0 break-words text-base leading-snug text-text-primary">
               {outletDisplay}
             </span>
-            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" aria-hidden="true" />
+            <ChevronDown
+              className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary"
+              aria-hidden="true"
+            />
           </span>
         </span>
       </Link>

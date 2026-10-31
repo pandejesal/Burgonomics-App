@@ -73,7 +73,10 @@ describe("selectVisibleStores fails closed without a position", () => {
 
 describe("selectVisibleStores ? DELIVERY radius", () => {
   it("keeps a store inside its own configured radius and drops the one outside", () => {
-    const stores = [outlet("inside", 1, { deliveryRadiusKm: 3 }), outlet("outside", 5, { deliveryRadiusKm: 3 })];
+    const stores = [
+      outlet("inside", 1, { deliveryRadiusKm: 3 }),
+      outlet("outside", 5, { deliveryRadiusKm: 3 }),
+    ];
 
     expect(selectVisibleStores(stores, ORIGIN, "delivery").map((s) => s.id)).toEqual(["inside"]);
   });
@@ -89,9 +92,11 @@ describe("selectVisibleStores ? DELIVERY radius", () => {
 
   it("treats a null radius exactly like an absent one", () => {
     expect(
-      selectVisibleStores([outlet("null-radius", 4, { deliveryRadiusKm: null })], ORIGIN, "delivery").map(
-        (s) => s.id,
-      ),
+      selectVisibleStores(
+        [outlet("null-radius", 4, { deliveryRadiusKm: null })],
+        ORIGIN,
+        "delivery",
+      ).map((s) => s.id),
     ).toEqual(["null-radius"]);
   });
 

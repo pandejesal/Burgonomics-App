@@ -40,9 +40,9 @@ const dark = tokenBlock(".dark");
 
 describe("theme foundation contract", () => {
   it("keeps white/black canvases and forest green as the primary action colour", () => {
-    expect(token(light, "background")).toBe("#FFFFFF");
-    expect(token(dark, "background")).toBe("#000000");
-    expect(token(light, "primary")).toBe("#0E4825");
+    expect(token(light, "background").toUpperCase()).toBe("#FFFFFF");
+    expect(token(dark, "background").toUpperCase()).toBe("#000000");
+    expect(token(light, "primary").toUpperCase()).toBe("#0E4825");
     expect(token(dark, "brand")).toBe("#1B6B3A");
     expect(css).not.toContain("#F5F5F5");
   });
@@ -89,7 +89,13 @@ describe("theme foundation contract", () => {
     expect(css).not.toContain("fonts.googleapis");
     expect(css).toContain(".type-brand-heading");
     expect(css).toMatch(/\.type-brand-heading \{[\s\S]*?font-family: var\(--font-brand\)/);
-    for (const role of ["type-body", "type-caption", "type-button", "type-price", "type-label-large"]) {
+    for (const role of [
+      "type-body",
+      "type-caption",
+      "type-button",
+      "type-price",
+      "type-label-large",
+    ]) {
       expect(css).toMatch(new RegExp(`\\.${role} \\{[\\s\\S]*?font-family: var\\(--font-sans\\)`));
     }
     for (const role of ["type-title", "type-title-large", "type-title-medium", "type-subheading"]) {
@@ -101,8 +107,9 @@ describe("theme foundation contract", () => {
     }
     const montserrat = readFileSync("public/fonts/MontserratVariable.woff2");
     expect(montserrat.subarray(0, 4).toString()).toBe("wOF2");
-    expect(readFileSync("public/fonts/Montserrat-OFL.txt", "utf8"))
-      .toContain("SIL OPEN FONT LICENSE Version 1.1");
+    expect(readFileSync("public/fonts/Montserrat-OFL.txt", "utf8")).toContain(
+      "SIL OPEN FONT LICENSE Version 1.1",
+    );
   });
 
   it("preserves the existing Inter asset and licence bytes", () => {

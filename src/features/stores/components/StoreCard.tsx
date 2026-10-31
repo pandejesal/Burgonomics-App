@@ -41,7 +41,14 @@ interface StoreCardProps {
   fulfillment?: "delivery" | "takeaway" | "dinein" | null;
 }
 
-export function StoreCard({ store, selected, onSelect, className, outOfArea, fulfillment }: StoreCardProps) {
+export function StoreCard({
+  store,
+  selected,
+  onSelect,
+  className,
+  outOfArea,
+  fulfillment,
+}: StoreCardProps) {
   const [showDetail, setShowDetail] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const closingSoon = store.isOpen && store.hours != null && closesSoon(store.hours.close);
@@ -320,7 +327,9 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                 <span>Operating Hours</span>
               </div>
               <p className="mt-1 text-sm font-semibold text-text-primary">
-                {store.hours ? `${store.hours.open} – ${store.hours.close}` : "Opening hours unavailable"}
+                {store.hours
+                  ? `${store.hours.open} – ${store.hours.close}`
+                  : "Opening hours unavailable"}
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">
                 {store.isOpen === true

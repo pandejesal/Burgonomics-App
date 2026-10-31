@@ -338,7 +338,10 @@ export class CartRepository {
     // Renewing would stamp a fresh lock on stale, unverified prices and the
     // checkout banner would promise a lock that was never verified. Leave
     // expired (banner hides — honest) and say so.
-    return ok({ revalidated: false, messages: ["Could not reverify menu prices — showing last known prices."] });
+    return ok({
+      revalidated: false,
+      messages: ["Could not reverify menu prices — showing last known prices."],
+    });
   }
 
   async prepareCheckout(): Promise<ApiResult<{ checkoutToken: string }>> {

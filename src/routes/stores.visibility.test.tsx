@@ -49,7 +49,8 @@ const fixture = vi.hoisted(() => {
     error: null,
     isLoading: false,
     // Mirrors the real hook: the outcome reflects the current permission state.
-    request: () => Promise.resolve({ status: permission.status, coords: permission.coords ?? undefined }),
+    request: () =>
+      Promise.resolve({ status: permission.status, coords: permission.coords ?? undefined }),
   };
   const cart = { clear: () => Promise.resolve() };
   return {

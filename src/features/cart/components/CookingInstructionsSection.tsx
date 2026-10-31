@@ -48,10 +48,7 @@ interface CapturedDraft {
   scope: NotesScopeSnapshot | null;
 }
 
-function sameScope(
-  left: NotesScopeSnapshot | null,
-  right: NotesScopeSnapshot | null,
-): boolean {
+function sameScope(left: NotesScopeSnapshot | null, right: NotesScopeSnapshot | null): boolean {
   if (left === null || right === null) return left === right;
   return left.uid === right.uid && left.storeId === right.storeId;
 }
@@ -335,11 +332,11 @@ export function CookingInstructionsSection() {
   };
 
   return (
-    <section aria-labelledby="cooking-notes-heading" className="space-y-2 border-y border-divider py-4">
-      <h2
-        id="cooking-notes-heading"
-        className="sr-only"
-      >
+    <section
+      aria-labelledby="cooking-notes-heading"
+      className="space-y-2 border-y border-divider py-4"
+    >
+      <h2 id="cooking-notes-heading" className="sr-only">
         Kitchen instructions
       </h2>
 
@@ -457,7 +454,10 @@ export function CookingInstructionsSection() {
             choice is yours.
           </p>
           {lineNoteError && (
-            <p role="alert" className="rounded-xl border border-error/40 bg-error/10 p-2.5 text-sm font-medium text-error">
+            <p
+              role="alert"
+              className="rounded-xl border border-error/40 bg-error/10 p-2.5 text-sm font-medium text-error"
+            >
               {lineNoteError}
             </p>
           )}

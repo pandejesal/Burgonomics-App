@@ -53,7 +53,9 @@ describe("selected-store shortcut provenance", () => {
     );
     await useHomeStore.getState().load("selected-store");
     expect(useHomeStore.getState()).toMatchObject({
-      status: "error", error: "Could not load menu categories.", bundle: null,
+      status: "error",
+      error: "Could not load menu categories.",
+      bundle: null,
     });
   });
 
@@ -62,7 +64,9 @@ describe("selected-store shortcut provenance", () => {
       { id: "pp-coffee", name: "Cold Coffee", order: 7, itemCount: 2 },
       { id: "pp-classic", name: "Classic Burgers", order: 3, itemCount: 4 },
     ];
-    vi.mocked(menuService.listHomeCatalog).mockResolvedValue(ok({ products: [], categories: loadedCategories }));
+    vi.mocked(menuService.listHomeCatalog).mockResolvedValue(
+      ok({ products: [], categories: loadedCategories }),
+    );
     const result = await homeService.getHome("selected-store");
     expect(result.success).toBe(true);
     if (!result.success) throw new Error(result.error.message);
@@ -79,10 +83,17 @@ describe("selected-store shortcut provenance", () => {
 
   it("keeps valid selected-store categories when optional image metadata fails", async () => {
     const loadedCategory: MenuCategory = {
-      id: "pp-sides", name: "Sides", itemCount: 2, imageUrl: "/product-derived.jpg",
+      id: "pp-sides",
+      name: "Sides",
+      itemCount: 2,
+      imageUrl: "/product-derived.jpg",
     };
-    vi.mocked(menuService.listHomeCatalog).mockResolvedValue(ok({ products: [], categories: [loadedCategory] }));
-    vi.mocked(homeService.getCategories).mockResolvedValue(fail("HOME_UPSTREAM", "Metadata unavailable"));
+    vi.mocked(menuService.listHomeCatalog).mockResolvedValue(
+      ok({ products: [], categories: [loadedCategory] }),
+    );
+    vi.mocked(homeService.getCategories).mockResolvedValue(
+      fail("HOME_UPSTREAM", "Metadata unavailable"),
+    );
     const result = await homeService.getHome("selected-store");
     expect(result).toMatchObject({ success: true, data: { categories: [loadedCategory] } });
   });

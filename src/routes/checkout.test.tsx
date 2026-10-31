@@ -31,7 +31,7 @@ describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", (
     it("calculates accurate distance between Surat coordinates", () => {
       // Surat Vesu flagship: 21.1518, 72.7758
       // Near Customer (Vesu): 21.1620, 72.7850 (~1.5 km)
-      const dist = calculateHaversineKm(21.1518, 72.7758, 21.1620, 72.7850);
+      const dist = calculateHaversineKm(21.1518, 72.7758, 21.162, 72.785);
       expect(dist).toBeGreaterThan(0.5);
       expect(dist).toBeLessThan(3.0);
     });
@@ -39,7 +39,7 @@ describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", (
     it("identifies out-of-range customer addresses beyond branch delivery radius", () => {
       const branchRadiusKm = 8.0;
       // Far customer in Northern Surat: 21.2700, 72.8600 (~15 km away)
-      const farDist = calculateHaversineKm(21.1518, 72.7758, 21.2700, 72.8600);
+      const farDist = calculateHaversineKm(21.1518, 72.7758, 21.27, 72.86);
       expect(farDist).toBeGreaterThan(branchRadiusKm);
 
       const isDeliverable = farDist <= branchRadiusKm;

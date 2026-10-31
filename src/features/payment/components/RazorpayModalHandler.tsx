@@ -30,7 +30,7 @@ export function RazorpayModalHandler({
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className={cn(
               "w-full max-w-md bg-surface border-t sm:border border-divider rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4",
-              className
+              className,
             )}
           >
             <div className="flex items-center justify-between">
@@ -57,7 +57,8 @@ export function RazorpayModalHandler({
             <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 space-y-1">
               <p className="font-bold">Don't miss out on your fresh hot burgers!</p>
               <p className="text-[11px] opacity-90">
-                No amount was charged to your account. Your cart items and discounts have been preserved.
+                No amount was charged to your account. Your cart items and discounts have been
+                preserved.
               </p>
             </div>
 

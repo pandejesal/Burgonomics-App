@@ -63,12 +63,7 @@ export function BillBreakdown({
   );
 
   return (
-    <div
-      className={cn(
-        "space-y-4 border-t border-divider py-5",
-        className,
-      )}
-    >
+    <div className={cn("space-y-4 border-t border-divider py-5", className)}>
       <div className="flex flex-col gap-1 border-b border-divider pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Receipt className="h-5 w-5 shrink-0 text-primary dark:text-primary-text" aria-hidden />

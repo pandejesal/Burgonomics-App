@@ -268,7 +268,7 @@ export async function initWebPush(): Promise<string | null> {
       handleForegroundPush(
         payload.notification?.title || "Burgonomics",
         payload.notification?.body || "",
-        (payload.data as Record<string, any>) || {}
+        (payload.data as Record<string, any>) || {},
       );
     });
     return token;
@@ -316,7 +316,7 @@ export async function requestPushPermissions(): Promise<boolean> {
         handleForegroundPush(
           payload.notification?.title || "Burgonomics",
           payload.notification?.body || "",
-          (payload.data as Record<string, any>) || {}
+          (payload.data as Record<string, any>) || {},
         );
       });
       return true;

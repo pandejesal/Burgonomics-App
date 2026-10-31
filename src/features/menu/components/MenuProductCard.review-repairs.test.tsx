@@ -20,11 +20,7 @@ vi.mock("@tanstack/react-router", () => ({
     "aria-label"?: string;
     "data-testid"?: string;
   }) => (
-    <a
-      href={props.to}
-      aria-label={props["aria-label"]}
-      data-testid={props["data-testid"]}
-    >
+    <a href={props.to} aria-label={props["aria-label"]} data-testid={props["data-testid"]}>
       {props.children}
     </a>
   ),

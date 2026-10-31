@@ -73,7 +73,10 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
     setBusy(true);
     void HapticService.impact("light");
     try {
-      const result = await cartRepository.updateQuantity(line.lineId, Math.min(99, line.quantity + 1));
+      const result = await cartRepository.updateQuantity(
+        line.lineId,
+        Math.min(99, line.quantity + 1),
+      );
       if (!result.success) toast.error("Couldn't update your cart. Please try again.");
     } catch {
       toast.error("Couldn't update your cart. Please try again.");
@@ -91,9 +94,10 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
     setBusy(true);
     void HapticService.impact("light");
     try {
-      const result = line.quantity <= 1
-        ? await cartRepository.removeItem(line.lineId)
-        : await cartRepository.updateQuantity(line.lineId, line.quantity - 1);
+      const result =
+        line.quantity <= 1
+          ? await cartRepository.removeItem(line.lineId)
+          : await cartRepository.updateQuantity(line.lineId, line.quantity - 1);
       if (!result.success) toast.error("Couldn't update your cart. Please try again.");
     } catch {
       toast.error("Couldn't update your cart. Please try again.");
@@ -102,7 +106,9 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
     }
   };
 
-  const hasBestsellerTag = product.badges?.some((b) => b.label.toLowerCase().includes("bestseller")) || product.tags?.includes("popular");
+  const hasBestsellerTag =
+    product.badges?.some((b) => b.label.toLowerCase().includes("bestseller")) ||
+    product.tags?.includes("popular");
 
   return (
     <div
@@ -174,9 +180,7 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
               {product.name}
             </h3>
           </Link>
-          <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-            {product.description}
-          </p>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">{product.description}</p>
         </div>
 
         {/* Price & Action Row */}
@@ -189,44 +193,55 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
 
           {/* 1-Tap Quick Add / Quantity Stepper */}
           <div className="shrink-0">
-              {qty === 0 ? (
+            {qty === 0 ? (
+              <button
+                type="button"
+                onClick={handleQuickAdd}
+                disabled={busy || isOutOfStock}
+                aria-label={
+                  isOutOfStock
+                    ? `${product.name} is sold out`
+                    : product.customizable
+                      ? `Choose options for ${product.name}`
+                      : `Add ${product.name} to cart`
+                }
+                className="inline-flex min-h-11 min-w-20 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>{isOutOfStock ? "Sold out" : product.customizable ? "Add +" : "Add"}</span>
+              </button>
+            ) : (
+              <div
+                role="group"
+                aria-label={`Quantity of ${product.name}`}
+                className="flex shrink-0 items-center rounded-lg bg-primary text-primary-foreground"
+              >
                 <button
                   type="button"
-                  onClick={handleQuickAdd}
-                  disabled={busy || isOutOfStock}
-                    aria-label={isOutOfStock ? `${product.name} is sold out` : product.customizable ? `Choose options for ${product.name}` : `Add ${product.name} to cart`}
-                    className="inline-flex min-h-11 min-w-20 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+                  onClick={handleDecrement}
+                  disabled={busy}
+                  aria-label={`Remove one ${product.name}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+                >
+                  <Minus className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <span
+                  className="min-w-6 shrink-0 text-center text-sm font-semibold tabular-nums"
+                  aria-live="polite"
+                >
+                  {qty}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleIncrement}
+                  disabled={busy || isOutOfStock || qty >= 99}
+                  aria-label={`Add one ${product.name}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
-                  <span>{isOutOfStock ? "Sold out" : product.customizable ? "Add +" : "Add"}</span>
                 </button>
-              ) : (
-                <div
-                  role="group"
-                  aria-label={`Quantity of ${product.name}`}
-                  className="flex shrink-0 items-center rounded-lg bg-primary text-primary-foreground"
-                >
-                  <button
-                    type="button"
-                    onClick={handleDecrement}
-                    disabled={busy}
-                    aria-label={`Remove one ${product.name}`}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
-                  >
-                    <Minus className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                  <span className="min-w-6 shrink-0 text-center text-sm font-semibold tabular-nums" aria-live="polite">{qty}</span>
-                  <button
-                    type="button"
-                    onClick={handleIncrement}
-                    disabled={busy || isOutOfStock || qty >= 99}
-                    aria-label={`Add one ${product.name}`}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-              )}
+              </div>
+            )}
           </div>
         </div>
       </div>

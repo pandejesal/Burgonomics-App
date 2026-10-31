@@ -39,10 +39,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 import { CookingInstructionsSection } from "./CookingInstructionsSection";
 
 function setTextareaValue(element: HTMLTextAreaElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLTextAreaElement.prototype,
-    "value",
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
   setter?.call(element, value);
   element.dispatchEvent(new Event("input", { bubbles: true }));
 }

@@ -41,7 +41,9 @@ const mountForm = (
 };
 
 // Case 1 — submit button inside the form (the common consumer shape).
-mountForm("mount-inside", "inside", (
+mountForm(
+  "mount-inside",
+  "inside",
   <AppButton
     type="submit"
     onClick={() => {
@@ -49,8 +51,8 @@ mountForm("mount-inside", "inside", (
     }}
   >
     Place order
-  </AppButton>
-));
+  </AppButton>,
+);
 
 // Case 2 — footer association: button in its own root, form="…" outside it.
 createRoot(document.getElementById("mount-footer") as HTMLElement).render(
@@ -66,7 +68,9 @@ createRoot(document.getElementById("mount-footer") as HTMLElement).render(
 );
 
 // Case 3 — onClick calls preventDefault: native submission must not happen.
-mountForm("mount-prevented", "prevented", (
+mountForm(
+  "mount-prevented",
+  "prevented",
   <AppButton
     type="submit"
     onClick={(e) => {
@@ -75,11 +79,13 @@ mountForm("mount-prevented", "prevented", (
     }}
   >
     Intercept
-  </AppButton>
-));
+  </AppButton>,
+);
 
 // Case 4 — loading lock: nothing may fire at all.
-mountForm("mount-loading", "loading", (
+mountForm(
+  "mount-loading",
+  "loading",
   <AppButton
     type="submit"
     loading
@@ -88,19 +94,21 @@ mountForm("mount-loading", "loading", (
     }}
   >
     Processing
-  </AppButton>
-));
+  </AppButton>,
+);
 
 // Case 5 — default type=button must not submit the surrounding form.
-mountForm("mount-normal", "normal", (
+mountForm(
+  "mount-normal",
+  "normal",
   <AppButton
     onClick={() => {
       (bag().normal as Counts).clicks += 1;
     }}
   >
     Add to cart
-  </AppButton>
-));
+  </AppButton>,
+);
 
 // Case 6 — keyboard: native Enter activation on a real submit button.
 mountForm("mount-keyboard", "keyboard", <AppButton type="submit">Pay</AppButton>);

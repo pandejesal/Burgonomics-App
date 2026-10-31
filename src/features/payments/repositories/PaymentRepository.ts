@@ -144,7 +144,7 @@ export class PaymentRepository {
       return fail(
         "PAYMENT_RECONCILIATION_PENDING",
         "Payment already received — order sync pending. Do not pay again.",
-        false
+        false,
       );
     }
     const totalsRes = await cartRepository.calculateTotals();
@@ -284,8 +284,7 @@ export class PaymentRepository {
       // so those stay untouched and honest (`paymentStatus: pending`) for the
       // server-owned `payment.failed` webhook to resolve.
       const provenPreflight =
-        orderRes.error.code === "INVALID_AMOUNT" &&
-        !usePaymentStore.getState().gatewayOrderId;
+        orderRes.error.code === "INVALID_AMOUNT" && !usePaymentStore.getState().gatewayOrderId;
       if (provenPreflight) {
         await orderRepository.markPaymentFailed(pending.data.id).catch(() => undefined);
       } else {
@@ -304,10 +303,9 @@ export class PaymentRepository {
     // store) so verification always binds to the internal order instead of
     // the gateway id. Do not require every screen to remember this.
     const store = usePaymentStore.getState();
-    const gatewayBound =
-      !store.gatewayOrderId || store.gatewayOrderId === result.orderId;
+    const gatewayBound = !store.gatewayOrderId || store.gatewayOrderId === result.orderId;
     const pendingInternal =
-      result.internalOrderId || !gatewayBound ? undefined : store.internalOrderId ?? undefined;
+      result.internalOrderId || !gatewayBound ? undefined : (store.internalOrderId ?? undefined);
     const enriched: PaymentResult =
       result.internalOrderId || !pendingInternal
         ? result

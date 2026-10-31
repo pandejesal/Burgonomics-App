@@ -147,10 +147,7 @@ function isTestRuntime(): boolean {
   const env = (import.meta as { env?: Record<string, unknown> }).env;
   if (!env) return false;
   return (
-    env.VITEST === true ||
-    env.VITEST === "true" ||
-    env.MODE === "test" ||
-    env.NODE_ENV === "test"
+    env.VITEST === true || env.VITEST === "true" || env.MODE === "test" || env.NODE_ENV === "test"
   );
 }
 
@@ -167,7 +164,6 @@ export function __setAuthRepositoryForTests(next: AuthRepository | null): void {
 function repo(): AuthRepository {
   return authRepositoryOverride ?? authRepository;
 }
-
 
 type RequestOtpResult = Awaited<ReturnType<AuthRepository["requestOtp"]>>;
 type VerifyOtpResult = Awaited<ReturnType<AuthRepository["verifyOtp"]>>;
@@ -220,14 +216,16 @@ async function discardFencedSession(sessionRef: AuthSessionRef | undefined): Pro
 }
 
 /** Single owner for a send, so a double tap cannot burn two SMS. */
-let requestInFlight: { phone: string; promise: Promise<{ ok: boolean; error?: string }> } | null = null;
+let requestInFlight: { phone: string; promise: Promise<{ ok: boolean; error?: string }> } | null =
+  null;
 /**
  * Single owner for a confirm, keyed by the epoch it started in. An abandoned
  * (fenced) verify must not block a new code for the rest of the session: its
  * ownership is dropped on cancel/logout/changePhone, and the transport keeps
  * its own generation guard so the orphaned confirm still cannot adopt.
  */
-let verifyInFlight: { epoch: number; promise: Promise<{ ok: boolean; error?: string }> } | null = null;
+let verifyInFlight: { epoch: number; promise: Promise<{ ok: boolean; error?: string }> } | null =
+  null;
 /** Single owner for bootstrap, so guards/deep links share one session probe. */
 let bootstrapInFlight: Promise<void> | null = null;
 
@@ -276,7 +274,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // or `{id:"other"}` used to cast cleanly and either crash downstream or
         // orphan orders under an empty contact. Mismatch clears the session.
         const user =
-          parsed && typeof parsed === "object" && typeof (parsed as any).id === "string" && typeof (parsed as any).phone === "string"
+          parsed &&
+          typeof parsed === "object" &&
+          typeof (parsed as any).id === "string" &&
+          typeof (parsed as any).phone === "string"
             ? (parsed as AuthUser)
             : null;
         if (!user) {
@@ -299,8 +300,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           // A logout that landed during the probe must win over this restore.
           if (stale()) return;
           useProfileStore.getState().hydrateFromAuth(user);
-          profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
-          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
+          profileRepository.refresh().catch((e: unknown) =>
+            logger.warn("auth.profile_refresh_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) =>
+            logger.warn("auth.device_link_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
           set({
             status: "authenticated",
             user,
@@ -321,10 +330,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             return;
           }
           useProfileStore.getState().hydrateFromAuth(user);
-          profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
+          profileRepository.refresh().catch((e: unknown) =>
+            logger.warn("auth.profile_refresh_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
           // Same linking as fresh login — otherwise refreshed sessions silently
           // stop receiving order status pushes.
-          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
+          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) =>
+            logger.warn("auth.device_link_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
           set({
             status: "authenticated",
             user,
@@ -361,7 +378,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const inFlight = requestInFlight;
     if (inFlight) {
       if (inFlight.phone === phone) return inFlight.promise;
-      return { ok: false, error: "A verification code is already being requested for another number." };
+      return {
+        ok: false,
+        error: "A verification code is already being requested for another number.",
+      };
     }
 
     const epoch = nextChallengeEpoch();
@@ -475,8 +495,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       identityEpoch += 1;
       useProfileStore.getState().hydrateFromAuth(res.data.user);
-      profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
-      void notificationsService.linkUserToDeviceToken(res.data.user.id).catch((e: unknown) => logger.warn("auth.device_link_failed", { message: e instanceof Error ? e.message : String(e) }));
+      profileRepository.refresh().catch((e: unknown) =>
+        logger.warn("auth.profile_refresh_failed", {
+          message: e instanceof Error ? e.message : String(e),
+        }),
+      );
+      void notificationsService.linkUserToDeviceToken(res.data.user.id).catch((e: unknown) =>
+        logger.warn("auth.device_link_failed", {
+          message: e instanceof Error ? e.message : String(e),
+        }),
+      );
       set({
         status: "authenticated",
         user: res.data.user,
@@ -533,7 +561,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     verifyInFlight = null;
     repo().cancelChallenge();
     const { refreshToken, user: currentUser } = get();
-    void notificationsService.unlinkUserFromDeviceToken(currentUser?.id).catch((e: unknown) => logger.warn("auth.device_unlink_failed", { message: e instanceof Error ? e.message : String(e) }));
+    void notificationsService.unlinkUserFromDeviceToken(currentUser?.id).catch((e: unknown) =>
+      logger.warn("auth.device_unlink_failed", {
+        message: e instanceof Error ? e.message : String(e),
+      }),
+    );
     await repo().logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();
@@ -575,4 +607,3 @@ configureAuthUidSource({
 if (typeof window !== "undefined" && isDev()) {
   (window as any).useAuthStore = useAuthStore;
 }
-

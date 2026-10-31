@@ -17,17 +17,50 @@ describe("pickActiveSection", () => {
   });
 
   it("activates the last heading that has crossed the sticky chrome", () => {
-    expect(pickActiveSection([{ id: "a", top: -400 }, { id: "b", top: 70 }, { id: "c", top: 300 }], 72)).toBe("b");
+    expect(
+      pickActiveSection(
+        [
+          { id: "a", top: -400 },
+          { id: "b", top: 70 },
+          { id: "c", top: 300 },
+        ],
+        72,
+      ),
+    ).toBe("b");
   });
 
   it("stays on a tall section while the reader scrolls through it", () => {
-    expect(pickActiveSection([{ id: "a", top: -2000 }, { id: "b", top: 900 }], 72)).toBe("a");
+    expect(
+      pickActiveSection(
+        [
+          { id: "a", top: -2000 },
+          { id: "b", top: 900 },
+        ],
+        72,
+      ),
+    ).toBe("a");
   });
 
   it("keeps the previous section until the next heading really reaches the line", () => {
     // 80 is 8px below the chrome line: not active yet (tolerance 1px).
-    expect(pickActiveSection([{ id: "a", top: -100 }, { id: "b", top: 80 }], 72)).toBe("a");
-    expect(pickActiveSection([{ id: "a", top: -100 }, { id: "b", top: 73 }], 72)).toBe("b");
+    expect(
+      pickActiveSection(
+        [
+          { id: "a", top: -100 },
+          { id: "b", top: 80 },
+        ],
+        72,
+      ),
+    ).toBe("a");
+    expect(
+      pickActiveSection(
+        [
+          { id: "a", top: -100 },
+          { id: "b", top: 73 },
+        ],
+        72,
+      ),
+    ).toBe("b");
   });
 });
 

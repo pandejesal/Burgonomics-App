@@ -92,7 +92,12 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("maps KITCHEN_PREPARING status code to Stage 2 with Grilling status", () => {
       const order = {
         id: "ord_102",
-        status: { code: "KITCHEN_PREPARING", label: "Grilling", kind: "in_progress", terminal: false },
+        status: {
+          code: "KITCHEN_PREPARING",
+          label: "Grilling",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
       } as unknown as Order;
 
@@ -106,7 +111,12 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("maps OUT_FOR_DELIVERY status code to Stage 3 with active Porter rider", () => {
       const order = {
         id: "ord_103",
-        status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+        status: {
+          code: "OUT_FOR_DELIVERY",
+          label: "Out for Delivery",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
         delivery: {
           riderName: "Vikram Rathore",
@@ -168,7 +178,12 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("keeps real outlet and address coordinates when the order provides them", () => {
       const order = {
         id: "ord_302",
-        status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+        status: {
+          code: "OUT_FOR_DELIVERY",
+          label: "Out for Delivery",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
         store: { id: "s1", name: "Burgonomics CG Road", lat: 23.0131, lng: 72.5085 },
         address: { label: "Home", line1: "5 River Side", lat: 23.0338, lng: 72.5262 },
@@ -185,14 +200,24 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
   describe("4. Honest map rendering (P1-2)", () => {
     const noCoordsOrder = {
       id: "ord_401",
-      status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+      status: {
+        code: "OUT_FOR_DELIVERY",
+        label: "Out for Delivery",
+        kind: "in_progress",
+        terminal: false,
+      },
       fulfillment: "delivery",
       store: { id: "s1", name: "Burgonomics CG Road" },
     } as unknown as Order;
 
     const withCoordsOrder = {
       id: "ord_402",
-      status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+      status: {
+        code: "OUT_FOR_DELIVERY",
+        label: "Out for Delivery",
+        kind: "in_progress",
+        terminal: false,
+      },
       fulfillment: "delivery",
       store: { id: "s1", name: "Burgonomics CG Road", lat: 23.0131, lng: 72.5085 },
       address: { label: "Home", line1: "5 River Side", lat: 23.0338, lng: 72.5262 },
@@ -294,7 +319,12 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("returns null when the order carries no estimatedAt", () => {
       const order = {
         id: "ord_501",
-        status: { code: "KITCHEN_PREPARING", label: "Grilling", kind: "in_progress", terminal: false },
+        status: {
+          code: "KITCHEN_PREPARING",
+          label: "Grilling",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
       } as unknown as Order;
 
@@ -304,7 +334,12 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("derives minutes remaining from the real estimatedAt timestamp", () => {
       const order = {
         id: "ord_502",
-        status: { code: "KITCHEN_PREPARING", label: "Grilling", kind: "in_progress", terminal: false },
+        status: {
+          code: "KITCHEN_PREPARING",
+          label: "Grilling",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
         estimatedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
       } as unknown as Order;
@@ -319,11 +354,18 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("shows 'Estimate unavailable' instead of a countdown when ETA is null", () => {
       const order = {
         id: "ord_601",
-        status: { code: "KITCHEN_PREPARING", label: "Grilling", kind: "in_progress", terminal: false },
+        status: {
+          code: "KITCHEN_PREPARING",
+          label: "Grilling",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
       } as unknown as Order;
 
-      const html = renderToStaticMarkup(<DeliveryStepTracker tracking={getTrackingStateFromOrder(order)} />);
+      const html = renderToStaticMarkup(
+        <DeliveryStepTracker tracking={getTrackingStateFromOrder(order)} />,
+      );
       expect(html).toContain("Estimate unavailable");
       expect(html).not.toContain("mins");
     });
@@ -331,11 +373,18 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("does not assert a courier exists at stage 3 before dispatch assigns one", () => {
       const order = {
         id: "ord_602",
-        status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+        status: {
+          code: "OUT_FOR_DELIVERY",
+          label: "Out for Delivery",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
       } as unknown as Order;
 
-      const html = renderToStaticMarkup(<DeliveryStepTracker tracking={getTrackingStateFromOrder(order)} />);
+      const html = renderToStaticMarkup(
+        <DeliveryStepTracker tracking={getTrackingStateFromOrder(order)} />,
+      );
       expect(html).toContain("courier details appear after dispatch");
       expect(html).not.toContain("With Courier");
       expect(html).not.toContain("Porter 2-wheeler courier is en-route");
@@ -344,12 +393,19 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("keeps courier copy when the order actually names a rider", () => {
       const order = {
         id: "ord_603",
-        status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+        status: {
+          code: "OUT_FOR_DELIVERY",
+          label: "Out for Delivery",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
         delivery: { riderName: "Vikram Rathore", riderPhone: "+91 98250 88991" },
       } as unknown as Order;
 
-      const html = renderToStaticMarkup(<DeliveryStepTracker tracking={getTrackingStateFromOrder(order)} />);
+      const html = renderToStaticMarkup(
+        <DeliveryStepTracker tracking={getTrackingStateFromOrder(order)} />,
+      );
       expect(html).toContain("With Courier");
       expect(html).not.toContain("courier details appear after dispatch");
     });
@@ -465,9 +521,7 @@ describe("7. 60-Second Cancellation Grace Flow", () => {
     container.querySelector<HTMLButtonElement>('[data-testid="cancel-order-button"]')!.click();
     await act(async () => {});
 
-    expect(toast.success).toHaveBeenCalledWith(
-      "Order cancelled. Your refund has been initiated.",
-    );
+    expect(toast.success).toHaveBeenCalledWith("Order cancelled. Your refund has been initiated.");
     await unmount();
   });
 
@@ -515,9 +569,7 @@ describe("7. 60-Second Cancellation Grace Flow", () => {
     const ticket = container.querySelector('[data-testid="raise-ticket-link"]');
     expect(ticket?.textContent).toContain("Raise Support Ticket");
     // Deep link carries the order context so the ticket can be traced at once.
-    expect(ticket?.getAttribute("href")).toBe(
-      "/support?topic=order&orderId=ord_grace_1",
-    );
+    expect(ticket?.getAttribute("href")).toBe("/support?topic=order&orderId=ord_grace_1");
     // Both gateways are reachable at the same time — neither replaces the other.
     expect(container.querySelector('[data-testid="whatsapp-support-link"]')).toBeTruthy();
     await unmount();

@@ -73,9 +73,9 @@ describe("order note ceiling (240 UTF-16 units)", () => {
     expect(hasUnreviewedLegacyNotes("   ", [{ notes: "  " }])).toBe(false);
     expect(hasUnreviewedLegacyNotes("saved draft", [])).toBe(true);
     expect(hasUnreviewedLegacyNotes("", [{ notes: "no onions" }])).toBe(true);
-    expect(
-      hasUnreviewedLegacyNotes("", [{ notes: undefined }, { notes: "extra spicy" }]),
-    ).toBe(true);
+    expect(hasUnreviewedLegacyNotes("", [{ notes: undefined }, { notes: "extra spicy" }])).toBe(
+      true,
+    );
   });
 
   it("does not split literal pipes — the note is opaque text", () => {

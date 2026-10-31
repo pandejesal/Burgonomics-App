@@ -176,8 +176,7 @@ function lookupByName(name: string): string | undefined {
  * product thumbnail — the very thing the banner check rejects).
  */
 export function resolveItemImage(name: string, rawImageUrl?: string): string {
-  const explicitPhoto =
-    rawImageUrl && !isFallbackImageUrl(rawImageUrl) ? rawImageUrl : undefined;
+  const explicitPhoto = rawImageUrl && !isFallbackImageUrl(rawImageUrl) ? rawImageUrl : undefined;
 
   if (explicitPhoto) return explicitPhoto;
 

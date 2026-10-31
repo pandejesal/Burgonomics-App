@@ -99,8 +99,16 @@ describe("Prompt 09: Customer Home & Landing Experience Suite", () => {
       // The display face never replaces body, price or control text.
       expect(css).toContain(".type-brand-heading");
       expect(css).toMatch(/\.type-brand-heading \{[\s\S]*?font-family: var\(--font-brand\)/);
-      for (const role of ["type-body", "type-caption", "type-button", "type-price", "type-label-large"]) {
-        expect(css).toMatch(new RegExp(`\\.${role} \\{[\\s\\S]*?font-family: var\\(--font-sans\\)`));
+      for (const role of [
+        "type-body",
+        "type-caption",
+        "type-button",
+        "type-price",
+        "type-label-large",
+      ]) {
+        expect(css).toMatch(
+          new RegExp(`\\.${role} \\{[\\s\\S]*?font-family: var\\(--font-sans\\)`),
+        );
       }
     });
 

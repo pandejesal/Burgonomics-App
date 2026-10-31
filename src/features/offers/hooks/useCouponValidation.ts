@@ -21,7 +21,7 @@ export interface CouponValidationResult {
 export function validateAndCalculateCoupon(
   offer: Offer,
   cartSubtotal: number,
-  cartLines: CartLine[] = []
+  cartLines: CartLine[] = [],
 ): CouponValidationResult {
   const minOrder = offer.eligibility?.minOrderValue || 0;
 
@@ -106,7 +106,7 @@ export function useCouponValidation() {
     (offer: Offer): CouponValidationResult => {
       return validateAndCalculateCoupon(offer, subtotal, lines);
     },
-    [subtotal, lines]
+    [subtotal, lines],
   );
 
   return {

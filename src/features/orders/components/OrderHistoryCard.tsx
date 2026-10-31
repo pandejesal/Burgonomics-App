@@ -54,7 +54,8 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
   const [ratingSubmitted, setRatingSubmitted] = useState(savedRating !== null);
 
   const shortCode = order.shortCode || order.id.slice(-6).toUpperCase();
-  const isTerminal = order.status.terminal || order.status.kind === "completed" || order.status.kind === "cancelled";
+  const isTerminal =
+    order.status.terminal || order.status.kind === "completed" || order.status.kind === "cancelled";
   const isCancelled = order.status.kind === "cancelled" || order.status.code.includes("CANCEL");
 
   const dateFormatted = new Date(order.placedAt || Date.now()).toLocaleDateString("en-IN", {
@@ -70,7 +71,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
 
   const handleToggleTag = (tag: string) => {
     setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
     );
   };
 
@@ -96,8 +97,8 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
                 isCancelled
                   ? "border-error/30 bg-error/10 text-error"
                   : isTerminal
-                  ? "border-success/30 bg-success/10 text-success"
-                  : "border-warning/30 bg-warning/10 text-warning"
+                    ? "border-success/30 bg-success/10 text-success"
+                    : "border-warning/30 bg-warning/10 text-warning"
               }`}
             >
               {order.status.label || order.status.code}
@@ -217,9 +218,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
             {/* A courier only exists for delivery orders — never promise GPS
                 on dine-in/takeaway (O-09). The track screen gates its rider
                 pin the same way, on real backend GPS. */}
-            <span>
-              {order.fulfillment === "delivery" ? "Track delivery" : "View Order Status"}
-            </span>
+            <span>{order.fulfillment === "delivery" ? "Track delivery" : "View Order Status"}</span>
           </button>
         ) : (
           <button

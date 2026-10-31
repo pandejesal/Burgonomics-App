@@ -109,10 +109,7 @@ export function OrderCancellationGrace({ order, onCancelled }: OrderCancellation
             <div className="min-w-0">
               <span className="block text-sm font-semibold text-text">
                 Free cancellation for{" "}
-                <span className="tabular-nums">
-                  0:{String(remaining).padStart(2, "0")}
-                </span>{" "}
-                more
+                <span className="tabular-nums">0:{String(remaining).padStart(2, "0")}</span> more
               </span>
               <span className="block text-sm leading-relaxed text-text-secondary">
                 Cancel now for an instant refund — no questions asked.

@@ -168,9 +168,7 @@ export class AddressRepository {
     const isDirty = (id: string) =>
       inFlightIds.has(id) || (mutatedAt.get(id) ?? 0) > startedRevision;
 
-    const serverRows = res.data.filter(
-      (a) => Boolean(a?.id) && !tombstoned?.has(a.id),
-    );
+    const serverRows = res.data.filter((a) => Boolean(a?.id) && !tombstoned?.has(a.id));
     const serverIds = new Set(serverRows.map((a) => a.id));
     // Snapshot the store AFTER the await: any write that landed meanwhile is
     // already visible here and will win through `isDirty`.
@@ -182,9 +180,7 @@ export class AddressRepository {
     });
     // Preserve rows the server does not know yet (unsynced create / guest
     // handoff) and never resurrect a locally deleted id.
-    const localOnly = local.filter(
-      (a) => !serverIds.has(a.id) && !tombstoned?.has(a.id),
-    );
+    const localOnly = local.filter((a) => !serverIds.has(a.id) && !tombstoned?.has(a.id));
     const merged = [...mergedServer, ...localOnly];
     const mergedIds = new Set(merged.map((a) => a.id));
 
@@ -290,9 +286,7 @@ export class AddressRepository {
     // The store auto-promotes on remove; drop that local claim while the
     // mirror is unconfirmed. It is restored only after the server confirms.
     useAddressStore.setState((s) => ({
-      addresses: s.addresses.map((a) =>
-        a.id === promoted.id ? { ...a, isDefault: false } : a,
-      ),
+      addresses: s.addresses.map((a) => (a.id === promoted.id ? { ...a, isDefault: false } : a)),
     }));
 
     inFlightIds.add(promoted.id);

@@ -44,7 +44,9 @@ describe("OTPInputGrid slot integrity", () => {
 
   it("keeps later digits in place when a middle box is cleared", async () => {
     const onChange = vi.fn();
-    await act(async () => root.render(<OTPInputGrid value="129456" onChange={onChange} length={6} />));
+    await act(async () =>
+      root.render(<OTPInputGrid value="129456" onChange={onChange} length={6} />),
+    );
 
     await act(async () => setInput(boxes()[2], ""));
 
@@ -53,7 +55,11 @@ describe("OTPInputGrid slot integrity", () => {
 
     await act(async () => setInput(boxes()[2], "9"));
 
-    expect(boxes().map((b) => b.value).join("")).toBe("129456");
+    expect(
+      boxes()
+        .map((b) => b.value)
+        .join(""),
+    ).toBe("129456");
     expect(onChange).toHaveBeenLastCalledWith("129456");
   });
 
@@ -77,7 +83,9 @@ describe("OTPInputGrid slot integrity", () => {
     const onChange = vi.fn();
     const onComplete = vi.fn();
     await act(async () =>
-      root.render(<OTPInputGrid value="12 456" onChange={onChange} onComplete={onComplete} length={6} />),
+      root.render(
+        <OTPInputGrid value="12 456" onChange={onChange} onComplete={onComplete} length={6} />,
+      ),
     );
 
     expect(boxes().map((b) => b.value)).toEqual(["1", "2", "", "4", "5", "6"]);
@@ -87,7 +95,15 @@ describe("OTPInputGrid slot integrity", () => {
   it("does not complete while disabled", async () => {
     const onComplete = vi.fn();
     await act(async () =>
-      root.render(<OTPInputGrid value="123456" onChange={vi.fn()} onComplete={onComplete} disabled length={6} />),
+      root.render(
+        <OTPInputGrid
+          value="123456"
+          onChange={vi.fn()}
+          onComplete={onComplete}
+          disabled
+          length={6}
+        />,
+      ),
     );
     expect(onComplete).not.toHaveBeenCalled();
   });
@@ -95,18 +111,30 @@ describe("OTPInputGrid slot integrity", () => {
   it("completes once for a full code and not again on an identical rerender", async () => {
     const onComplete = vi.fn();
     const onChange = vi.fn();
-    await act(async () => root.render(<OTPInputGrid value="123456" onChange={onChange} onComplete={onComplete} length={6} />));
+    await act(async () =>
+      root.render(
+        <OTPInputGrid value="123456" onChange={onChange} onComplete={onComplete} length={6} />,
+      ),
+    );
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith("123456");
 
-    await act(async () => root.render(<OTPInputGrid value="123456" onChange={onChange} onComplete={onComplete} length={6} />));
+    await act(async () =>
+      root.render(
+        <OTPInputGrid value="123456" onChange={onChange} onComplete={onComplete} length={6} />,
+      ),
+    );
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
   it("re-completes after a cleared slot is retyped", async () => {
     const onComplete = vi.fn();
     const onChange = vi.fn();
-    await act(async () => root.render(<OTPInputGrid value="129456" onChange={onChange} onComplete={onComplete} length={6} />));
+    await act(async () =>
+      root.render(
+        <OTPInputGrid value="129456" onChange={onChange} onComplete={onComplete} length={6} />,
+      ),
+    );
     expect(onComplete).toHaveBeenCalledTimes(1);
 
     await act(async () => setInput(boxes()[2], ""));
@@ -117,4 +145,3 @@ describe("OTPInputGrid slot integrity", () => {
     expect(onComplete).toHaveBeenLastCalledWith("129456");
   });
 });
-

@@ -7,14 +7,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Product } from "@/features/menu/models";
 import type { CartLine } from "@/features/cart/models";
 
-const fixtures = vi.hoisted(() => ({ lines: [] as CartLine[], addItem: vi.fn().mockResolvedValue(undefined) }));
+const fixtures = vi.hoisted(() => ({
+  lines: [] as CartLine[],
+  addItem: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/features/cart/state/cartStore", () => ({
   useCartStore: (selector: (state: { lines: CartLine[] }) => unknown) => selector(fixtures),
 }));
 vi.mock("@/features/stores/state/storeStore", () => ({
-  useStoreSelection: (selector: (state: { activeStore: { id: string } }) => unknown) => selector({ activeStore: { id: "store" } }),
+  useStoreSelection: (selector: (state: { activeStore: { id: string } }) => unknown) =>
+    selector({ activeStore: { id: "store" } }),
 }));
-vi.mock("@/features/cart/repositories/CartRepository", () => ({ cartRepository: { addItem: fixtures.addItem } }));
+vi.mock("@/features/cart/repositories/CartRepository", () => ({
+  cartRepository: { addItem: fixtures.addItem },
+}));
 vi.mock("@/core/services/haptics", () => ({ HapticService: { impact: vi.fn() } }));
 vi.mock("@/core/services/audio", () => ({ AudioService: { playClick: vi.fn() } }));
 vi.mock("@tanstack/react-router", () => ({
@@ -28,11 +34,31 @@ import { CartItemRow } from "@/features/cart/components/CartItemRow";
 import { CartItemList } from "@/features/cart/components/CartItemList";
 import { GuestProfilePrompt } from "@/features/profile/components/GuestProfilePrompt";
 
-const product: Product = { id: "product", categoryId: "burgers", name: "Burger", price: 100, veg: false, inStock: true };
+const product: Product = {
+  id: "product",
+  categoryId: "burgers",
+  name: "Burger",
+  price: 100,
+  veg: false,
+  inStock: true,
+};
 function makeLine(veg: boolean | undefined): CartLine {
-  return { lineId: "line", productId: "product", storeId: "store", name: "Burger", unitPrice: 100, quantity: 1, modifiers: [], availability: "available", veg };
+  return {
+    lineId: "line",
+    productId: "product",
+    storeId: "store",
+    name: "Burger",
+    unitPrice: 100,
+    quantity: 1,
+    modifiers: [],
+    availability: "available",
+    veg,
+  };
 }
-afterEach(() => { fixtures.lines = []; fixtures.addItem.mockClear(); });
+afterEach(() => {
+  fixtures.lines = [];
+  fixtures.addItem.mockClear();
+});
 
 describe("dietary indicators reflect explicit data only", () => {
   for (const veg of [true, false, undefined]) {
@@ -50,16 +76,22 @@ describe("dietary indicators reflect explicit data only", () => {
         };
         const container = document.createElement("div");
         container.innerHTML = renderToStaticMarkup(elements[component]);
-        const labels = [...container.querySelectorAll('[role="img"]')].map((node) => node.getAttribute("aria-label"));
+        const labels = [...container.querySelectorAll('[role="img"]')].map((node) =>
+          node.getAttribute("aria-label"),
+        );
         expect(container.querySelector('[aria-label="100% Pure Vegetarian"]')).toBeNull();
         if (veg === undefined) expect(labels).toEqual([]);
         else {
           expect(labels.length).toBeGreaterThan(0);
-          expect(labels.every((label) => label === (veg ? "Vegetarian" : "Non-vegetarian"))).toBe(true);
+          expect(labels.every((label) => label === (veg ? "Vegetarian" : "Non-vegetarian"))).toBe(
+            true,
+          );
         }
         if (veg !== true) {
           expect(container.textContent).not.toMatch(/Pure Veg|100% vegetarian/i);
-          expect([...container.querySelectorAll("span")].some((node) => node.textContent === "VEG")).toBe(false);
+          expect(
+            [...container.querySelectorAll("span")].some((node) => node.textContent === "VEG"),
+          ).toBe(false);
         }
       });
     }
@@ -69,8 +101,18 @@ describe("dietary indicators reflect explicit data only", () => {
     const container = document.createElement("div");
     const root = createRoot(container);
     try {
-      await act(async () => root.render(<ProductCustomizerModal product={{ ...product, veg } as Product} isOpen onClose={() => {}} />));
-      const button = [...container.querySelectorAll("button")].find((node) => node.textContent?.includes("Add to Cart"));
+      await act(async () =>
+        root.render(
+          <ProductCustomizerModal
+            product={{ ...product, veg } as Product}
+            isOpen
+            onClose={() => {}}
+          />,
+        ),
+      );
+      const button = [...container.querySelectorAll("button")].find((node) =>
+        node.textContent?.includes("Add to Cart"),
+      );
       expect(button).toBeDefined();
       await act(async () => button!.click());
       expect(fixtures.addItem).toHaveBeenCalledWith(expect.objectContaining({ veg }));

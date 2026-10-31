@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 
 export const MENU_SECTION_PREFIX = "menu-section-";
 export const sectionDomId = (categoryId: string) => `${MENU_SECTION_PREFIX}${categoryId}`;
-export const sectionHeadingId = (categoryId: string) => `${MENU_SECTION_PREFIX}heading-${categoryId}`;
+export const sectionHeadingId = (categoryId: string) =>
+  `${MENU_SECTION_PREFIX}heading-${categoryId}`;
 
 /**
  * Eager pagination stops after this many pages (6 × 20 = 120 items) per
@@ -164,9 +165,14 @@ export function MenuCategorySection({
           className={layoutClass}
           // Two columns at ordinary phone text sizes; a rem-based minimum lets
           // enlarged text reflow to one column without squeezing tap controls.
-          style={viewMode === "grid" ? {
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, max(8rem, calc(50% - 0.25rem))), 1fr))",
-          } : undefined}
+          style={
+            viewMode === "grid"
+              ? {
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(min(100%, max(8rem, calc(50% - 0.25rem))), 1fr))",
+                }
+              : undefined
+          }
         >
           {items.map((product) => (
             <MenuProductCard
@@ -188,7 +194,10 @@ export function MenuCategorySection({
       {loading && items.length > 0 && <MenuSkeleton rows={2} />}
 
       {error && items.length > 0 && (
-        <div role="status" className="mt-3 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
+        <div
+          role="status"
+          className="mt-3 flex flex-wrap items-center gap-3 text-sm text-text-secondary"
+        >
           <span>Some items in {category.name} couldn't refresh.</span>
           <button
             type="button"

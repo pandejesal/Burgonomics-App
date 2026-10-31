@@ -9,7 +9,12 @@ if (!source) throw new Error("Missing pre-paint appearance bootstrap");
 function boot(raw: string | null, dark: boolean, blocked = false) {
   document.head.innerHTML = '<meta name="theme-color" content="#FFFFFF">';
   const win = {
-    localStorage: { getItem: () => { if (blocked) throw new Error("Storage blocked"); return raw; } },
+    localStorage: {
+      getItem: () => {
+        if (blocked) throw new Error("Storage blocked");
+        return raw;
+      },
+    },
     matchMedia: () => ({ matches: dark }),
   };
   new Function("window", "document", source!)(win, document);
@@ -36,7 +41,9 @@ describe("Delivery first-paint appearance", () => {
     expect(document.documentElement.style.colorScheme).toBe(expected);
     const canvas = expected === "dark" ? "#000000" : "#FFFFFF";
     expect(document.documentElement.style.getPropertyValue("--boot-canvas")).toBe(canvas);
-    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe(canvas);
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe(
+      canvas,
+    );
   });
 
   it("follows the OS when storage access throws", () => {

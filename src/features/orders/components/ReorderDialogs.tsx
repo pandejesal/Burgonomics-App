@@ -2,10 +2,7 @@ import * as React from "react";
 import { AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 
 import { formatINR } from "@/core/utils/format";
-import type {
-  ReorderConfirmation,
-  ReorderOutOfStockState,
-} from "../hooks/useReorderItems";
+import type { ReorderConfirmation, ReorderOutOfStockState } from "../hooks/useReorderItems";
 
 interface ReorderDialogsProps {
   outOfStockModal: ReorderOutOfStockState;
@@ -62,9 +59,7 @@ export function ReorderDialogs({
               ))}
             </ul>
 
-            <p className="text-sm text-text-secondary">
-              Nothing has been added to your cart yet.
-            </p>
+            <p className="text-sm text-text-secondary">Nothing has been added to your cart yet.</p>
 
             <div className="flex items-center justify-end gap-2 border-t border-divider pt-3">
               <button
@@ -106,9 +101,9 @@ export function ReorderDialogs({
 
             {pendingConfirmation.replacesCart && (
               <p className="text-sm text-text-secondary">
-                Your cart already has items from another outlet. Reordering replaces them with
-                the items from {pendingConfirmation.storeName}. Your current items will be
-                removed only if you continue.
+                Your cart already has items from another outlet. Reordering replaces them with the
+                items from {pendingConfirmation.storeName}. Your current items will be removed only
+                if you continue.
               </p>
             )}
 

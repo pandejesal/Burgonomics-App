@@ -66,7 +66,13 @@ export function getDistinctiveOverlayBadge(product: Product): {
   if (product.badges && product.badges.length > 0) {
     const b = product.badges[0];
     const tone =
-      b.tone === "primary" ? "orange" : b.tone === "success" ? "emerald" : b.tone === "warning" ? "amber" : "orange";
+      b.tone === "primary"
+        ? "orange"
+        : b.tone === "success"
+          ? "emerald"
+          : b.tone === "warning"
+            ? "amber"
+            : "orange";
     return { label: b.label, tone };
   }
   const lowerName = (product.name || "").toLowerCase();
@@ -121,7 +127,9 @@ export const MenuProductCard = React.memo(function MenuProductCard({
 
   // Reactive subscription to quantity in cart for this specific item (non-customizable)
   const quantity = useCartStore((s) => {
-    const line = s.lines.find((l) => l.productId === id && (!l.modifiers || l.modifiers.length === 0));
+    const line = s.lines.find(
+      (l) => l.productId === id && (!l.modifiers || l.modifiers.length === 0),
+    );
     return line ? line.quantity : 0;
   });
 
@@ -238,9 +246,11 @@ export const MenuProductCard = React.memo(function MenuProductCard({
               : "absolute bottom-1.5 left-1.5",
             distinctiveBadge.tone === "orange" &&
               "bg-accent dark:bg-[var(--accent-hover)] text-accent-foreground border-accent/40",
-            distinctiveBadge.tone === "emerald" && "bg-primary/90 text-primary-foreground border-primary/40",
+            distinctiveBadge.tone === "emerald" &&
+              "bg-primary/90 text-primary-foreground border-primary/40",
             distinctiveBadge.tone === "amber" && "bg-amber-600/90 text-white border-amber-500/40",
-            distinctiveBadge.tone === "neutral" && "bg-neutral-900/90 text-neutral-200 border-neutral-700/60",
+            distinctiveBadge.tone === "neutral" &&
+              "bg-neutral-900/90 text-neutral-200 border-neutral-700/60",
           )}
         >
           {distinctiveBadge.label}
@@ -330,9 +340,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
               key={quantity}
               initial={{ scale: 0.7, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className={cn(
-                "min-w-5 px-0.5 text-center text-sm font-semibold tabular-nums",
-              )}
+              className={cn("min-w-5 px-0.5 text-center text-sm font-semibold tabular-nums")}
             >
               {quantity}
             </motion.span>
@@ -361,7 +369,9 @@ export const MenuProductCard = React.memo(function MenuProductCard({
               "rounded-xl bg-primary font-semibold text-primary-foreground",
               // Grid ADD raised 32 -> 44px touch floor; the 4px of body
               // padding comes back out so the card keeps its compact height.
-              layout === "grid" ? "min-h-[44px] min-w-[50px] px-2.5 text-sm" : "min-h-[44px] min-w-[72px] px-4 type-label-large",
+              layout === "grid"
+                ? "min-h-[44px] min-w-[50px] px-2.5 text-sm"
+                : "min-h-[44px] min-w-[72px] px-4 type-label-large",
               "hover:bg-primary-hover active:scale-[0.95] transition duration-150 disabled:opacity-40 whitespace-nowrap shrink-0 cursor-pointer",
             )}
             initial={{ opacity: 0, scale: 0.9 }}
@@ -448,9 +458,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
               </div>
               {/* The full description stays in the DOM for browse mode; the
                   compact grid spends its height on image, title and action. */}
-              {description && (
-                <p className="sr-only">{highlightText(description, searchQuery)}</p>
-              )}
+              {description && <p className="sr-only">{highlightText(description, searchQuery)}</p>}
               {/* Metadata and the Customisable label are announced rather
                   than painted: the compact grid spends its height on the photo,
                   title and 44px action. */}
@@ -461,13 +469,9 @@ export const MenuProductCard = React.memo(function MenuProductCard({
               )}
               {/* Customisable is already carried by the visible "Add +" action,
                   so the label is announced rather than painted here. */}
-              {customizable && (
-                <span className="sr-only">Customisable</span>
-              )}
+              {customizable && <span className="sr-only">Customisable</span>}
               {badgeRow}
-              <div className="mt-auto flex items-center justify-end pt-1">
-                {AddButton}
-              </div>
+              <div className="mt-auto flex items-center justify-end pt-1">{AddButton}</div>
             </div>
           </AppCard>
         </div>
@@ -506,12 +510,21 @@ export const MenuProductCard = React.memo(function MenuProductCard({
             <div>
               <div className="flex items-center gap-2 min-w-0">
                 <VegIndicator veg={veg ?? true} />
-                <Text as="h3" variant="titleMedium" className="min-w-0 break-words font-semibold" title={name}>
+                <Text
+                  as="h3"
+                  variant="titleMedium"
+                  className="min-w-0 break-words font-semibold"
+                  title={name}
+                >
                   {highlightText(name, searchQuery)}
                 </Text>
               </div>
               {description && (
-                <Text variant="bodyMedium" tone="secondary" className="mt-2 text-sm leading-relaxed">
+                <Text
+                  variant="bodyMedium"
+                  tone="secondary"
+                  className="mt-2 text-sm leading-relaxed"
+                >
                   {highlightText(description, searchQuery)}
                 </Text>
               )}
@@ -520,7 +533,9 @@ export const MenuProductCard = React.memo(function MenuProductCard({
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
               <div className="flex items-baseline gap-2 shrink-0">
-                <Text as="span" variant="titleLarge" className="font-semibold tabular-nums">{formatINR(price)}</Text>
+                <Text as="span" variant="titleLarge" className="font-semibold tabular-nums">
+                  {formatINR(price)}
+                </Text>
                 {compareAtPrice && compareAtPrice > price && (
                   <span className="type-caption text-text-secondary line-through font-mono">
                     {formatINR(compareAtPrice)}

@@ -51,8 +51,8 @@ export function PetpoojaSyncPlaceholder({ className, onRetry }: PetpoojaSyncPlac
       </Text>
 
       <Text variant="bodyMedium" tone="secondary" className="mt-4 max-w-[24rem]">
-        Menu items for this outlet aren't published right now. Try again, or pick
-        another outlet to see its menu.
+        Menu items for this outlet aren't published right now. Try again, or pick another outlet to
+        see its menu.
       </Text>
 
       {onRetry && (

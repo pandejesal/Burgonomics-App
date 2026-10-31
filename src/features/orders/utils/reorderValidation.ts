@@ -79,9 +79,7 @@ function resolveProductId(line: CartLine): string | undefined {
  * absent delta means "no surcharge"; anything else (NaN, Infinity, "40", null
  * from a broken doc) is invalid data and must NOT be coerced to 0.
  */
-function readMoney(
-  raw: unknown,
-): { ok: true; value: number } | { ok: false } {
+function readMoney(raw: unknown): { ok: true; value: number } | { ok: false } {
   if (raw === undefined || raw === null) return { ok: true, value: 0 };
   if (typeof raw !== "number" || !Number.isFinite(raw)) return { ok: false };
   return { ok: true, value: raw };
@@ -106,10 +104,7 @@ function readSelectionBounds(group: CustomizationGroup): {
   // A single-select group can never hold more than one option, so the live
   // declaration cannot widen it past 1 (a corrupt max="5" must not let a
   // radio group carry five options).
-  const maxSelect =
-    group.selection === "single"
-      ? Math.min(declaredMax ?? 1, 1)
-      : declaredMax;
+  const maxSelect = group.selection === "single" ? Math.min(declaredMax ?? 1, 1) : declaredMax;
 
   return { minSelect, maxSelect };
 }
@@ -227,17 +222,29 @@ export function buildReorderPlan(
     const productId = resolveProductId(line);
 
     if (!productId) {
-      rejected.push({ name, code: "product_missing", message: rejectionMessage(name, "product_missing") });
+      rejected.push({
+        name,
+        code: "product_missing",
+        message: rejectionMessage(name, "product_missing"),
+      });
       continue;
     }
 
     const product = details.get(productId) ?? null;
     if (!product) {
-      rejected.push({ name, code: "product_missing", message: rejectionMessage(name, "product_missing") });
+      rejected.push({
+        name,
+        code: "product_missing",
+        message: rejectionMessage(name, "product_missing"),
+      });
       continue;
     }
     if (product.inStock !== true) {
-      rejected.push({ name, code: "out_of_stock", message: rejectionMessage(name, "out_of_stock") });
+      rejected.push({
+        name,
+        code: "out_of_stock",
+        message: rejectionMessage(name, "out_of_stock"),
+      });
       continue;
     }
 
@@ -328,10 +335,7 @@ export const SUPPORTED_FULFILLMENTS = ["delivery", "takeaway", "dinein"] as cons
 export type SupportedFulfillment = (typeof SUPPORTED_FULFILLMENTS)[number];
 
 export function isSupportedFulfillment(value: unknown): value is SupportedFulfillment {
-  return (
-    typeof value === "string" &&
-    (SUPPORTED_FULFILLMENTS as readonly string[]).includes(value)
-  );
+  return typeof value === "string" && (SUPPORTED_FULFILLMENTS as readonly string[]).includes(value);
 }
 
 /**
@@ -362,9 +366,7 @@ export function validateReorderItems(
 
   for (const item of items) {
     const productId =
-      typeof item.productId === "string" && item.productId.length > 0
-        ? item.productId
-        : undefined;
+      typeof item.productId === "string" && item.productId.length > 0 ? item.productId : undefined;
     const name = item.name || "This item";
     const live = productId ? byId.get(productId) : undefined;
     if (!productId || !live || live.inStock !== true) {

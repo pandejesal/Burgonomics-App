@@ -40,19 +40,20 @@ export function ModeSegmentedSwitch({
       onKeyDown={(event) => {
         const currentIndex = MODES.findIndex((mode) => mode.id === current);
         let nextIndex: number;
-        if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (currentIndex + 1) % MODES.length;
-        else if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (currentIndex + MODES.length - 1) % MODES.length;
+        if (event.key === "ArrowRight" || event.key === "ArrowDown")
+          nextIndex = (currentIndex + 1) % MODES.length;
+        else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+          nextIndex = (currentIndex + MODES.length - 1) % MODES.length;
         else if (event.key === "Home") nextIndex = 0;
         else if (event.key === "End") nextIndex = MODES.length - 1;
         else return;
         event.preventDefault();
         onChange(MODES[nextIndex].id);
-        event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="radio"]')[nextIndex]?.focus();
+        event.currentTarget
+          .querySelectorAll<HTMLButtonElement>('button[role="radio"]')
+          [nextIndex]?.focus();
       }}
-      className={cn(
-        "flex w-full items-stretch gap-1 rounded-xl bg-bg-secondary p-1",
-        className,
-      )}
+      className={cn("flex w-full items-stretch gap-1 rounded-xl bg-bg-secondary p-1", className)}
     >
       {MODES.map(({ id, label }) => {
         const isSelected = current === id;

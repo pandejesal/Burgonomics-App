@@ -50,13 +50,7 @@ describe("L4 — tip targets meet the 44px minimum", () => {
     await mount(<DeliveryTipSelector selectedTip={0} onSelectTip={vi.fn()} />);
 
     const controls = tipRowButtons();
-    expect(controls.map((c) => c.textContent)).toEqual([
-      "₹10",
-      "₹20",
-      "₹30",
-      "₹50",
-      "Custom",
-    ]);
+    expect(controls.map((c) => c.textContent)).toEqual(["₹10", "₹20", "₹30", "₹50", "Custom"]);
 
     for (const control of controls) {
       expect(control.className).toContain("min-h-[44px]");

@@ -76,7 +76,13 @@ describe("buildReorderPlan — live option rules", () => {
         line({
           unitPrice: 339,
           modifiers: [
-            { groupId: "size", groupName: "Size", optionId: "large", name: "Large", priceDelta: 40 },
+            {
+              groupId: "size",
+              groupName: "Size",
+              optionId: "large",
+              name: "Large",
+              priceDelta: 40,
+            },
           ],
         }),
       ],
@@ -111,9 +117,27 @@ describe("buildReorderPlan — live option rules", () => {
         line({
           unitPrice: 364,
           modifiers: [
-            { groupId: "extras", groupName: "Extras", optionId: "cheese", name: "Cheese", priceDelta: 30 },
-            { groupId: "extras", groupName: "Extras", optionId: "jalapeno", name: "Jalapeño", priceDelta: 20 },
-            { groupId: "extras", groupName: "Extras", optionId: "sauce", name: "Sauce", priceDelta: 15 },
+            {
+              groupId: "extras",
+              groupName: "Extras",
+              optionId: "cheese",
+              name: "Cheese",
+              priceDelta: 30,
+            },
+            {
+              groupId: "extras",
+              groupName: "Extras",
+              optionId: "jalapeno",
+              name: "Jalapeño",
+              priceDelta: 20,
+            },
+            {
+              groupId: "extras",
+              groupName: "Extras",
+              optionId: "sauce",
+              name: "Sauce",
+              priceDelta: 15,
+            },
           ],
         }),
       ],
@@ -130,8 +154,20 @@ describe("buildReorderPlan — live option rules", () => {
         line({
           unitPrice: 339,
           modifiers: [
-            { groupId: "size", groupName: "Size", optionId: "regular", name: "Regular", priceDelta: 0 },
-            { groupId: "size", groupName: "Size", optionId: "large", name: "Large", priceDelta: 40 },
+            {
+              groupId: "size",
+              groupName: "Size",
+              optionId: "regular",
+              name: "Regular",
+              priceDelta: 0,
+            },
+            {
+              groupId: "size",
+              groupName: "Size",
+              optionId: "large",
+              name: "Large",
+              priceDelta: 40,
+            },
           ],
         }),
       ],
@@ -147,7 +183,13 @@ describe("buildReorderPlan — live option rules", () => {
       [
         line({
           modifiers: [
-            { groupId: "size", groupName: "Size", optionId: "family", name: "Family", priceDelta: 99 },
+            {
+              groupId: "size",
+              groupName: "Size",
+              optionId: "family",
+              name: "Family",
+              priceDelta: 99,
+            },
           ],
         }),
       ],
@@ -164,7 +206,13 @@ describe("buildReorderPlan — money", () => {
       [
         line({
           modifiers: [
-            { groupId: "extras", groupName: "Extras", optionId: "cheese", name: "Cheese", priceDelta: 30 },
+            {
+              groupId: "extras",
+              groupName: "Extras",
+              optionId: "cheese",
+              name: "Cheese",
+              priceDelta: 30,
+            },
           ],
         }),
       ],
@@ -185,10 +233,7 @@ describe("buildReorderPlan — money", () => {
     const infinite = plan([line()], product({ price: Number.POSITIVE_INFINITY }));
     expect(infinite.rejected[0].code).toBe("price_invalid");
 
-    const missing = plan(
-      [line()],
-      product({ price: undefined as unknown as number }),
-    );
+    const missing = plan([line()], product({ price: undefined as unknown as number }));
     expect(missing.rejected[0].code).toBe("price_invalid");
   });
 
@@ -198,7 +243,13 @@ describe("buildReorderPlan — money", () => {
         line({
           unitPrice: 279,
           modifiers: [
-            { groupId: "size", groupName: "Size", optionId: "small", name: "Small", priceDelta: -20 },
+            {
+              groupId: "size",
+              groupName: "Size",
+              optionId: "small",
+              name: "Small",
+              priceDelta: -20,
+            },
           ],
         }),
       ],
@@ -223,7 +274,13 @@ describe("buildReorderPlan — money", () => {
         line({
           unitPrice: -5,
           modifiers: [
-            { groupId: "size", groupName: "Size", optionId: "small", name: "Small", priceDelta: -320 },
+            {
+              groupId: "size",
+              groupName: "Size",
+              optionId: "small",
+              name: "Small",
+              priceDelta: -320,
+            },
           ],
         }),
       ],

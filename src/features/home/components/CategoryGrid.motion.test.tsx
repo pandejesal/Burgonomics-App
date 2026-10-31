@@ -36,21 +36,33 @@ beforeEach(() => {
   motionListeners = new Set();
   root = null;
   vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
-  vi.stubGlobal("matchMedia", vi.fn(() => ({
-    get matches() { return reduced; },
-    addEventListener: (_: string, listener: () => void) => motionListeners.add(listener),
-    removeEventListener: (_: string, listener: () => void) => motionListeners.delete(listener),
-  })));
-  vi.stubGlobal("IntersectionObserver", class {
-    private readonly watched: Observation[] = [];
-    constructor(private readonly callback: IntersectionObserverCallback) {}
-    observe(node: Element) {
-      const observation = { node, callback: this.callback, disconnected: false };
-      this.watched.push(observation);
-      observations.push(observation);
-    }
-    disconnect() { this.watched.forEach((observation) => { observation.disconnected = true; }); }
-  });
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      get matches() {
+        return reduced;
+      },
+      addEventListener: (_: string, listener: () => void) => motionListeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => motionListeners.delete(listener),
+    })),
+  );
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      private readonly watched: Observation[] = [];
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe(node: Element) {
+        const observation = { node, callback: this.callback, disconnected: false };
+        this.watched.push(observation);
+        observations.push(observation);
+      }
+      disconnect() {
+        this.watched.forEach((observation) => {
+          observation.disconnected = true;
+        });
+      }
+    },
+  );
 });
 
 afterEach(async () => {
@@ -68,7 +80,9 @@ async function mount(loadPhotos = true) {
   root = createRoot(host);
   await act(async () => root!.render(<CategoryGrid categories={categories} />));
   if (loadPhotos) {
-    await act(async () => host.querySelectorAll("img").forEach((image) => image.dispatchEvent(new Event("load"))));
+    await act(async () =>
+      host.querySelectorAll("img").forEach((image) => image.dispatchEvent(new Event("load"))),
+    );
   }
 }
 
@@ -79,13 +93,20 @@ function frame(label: string) {
   return button(label).querySelector<HTMLDivElement>(".home-shortcut-photo")!;
 }
 function intersect(label: string, visible: boolean) {
-  const observation = observations.find((candidate) => candidate.node === frame(label) && !candidate.disconnected);
+  const observation = observations.find(
+    (candidate) => candidate.node === frame(label) && !candidate.disconnected,
+  );
   if (!observation) throw new Error(`No active observer for ${label}`);
-  observation.callback([{
-    target: observation.node,
-    isIntersecting: visible,
-    intersectionRatio: visible ? 1 : 0,
-  } as IntersectionObserverEntry], {} as IntersectionObserver);
+  observation.callback(
+    [
+      {
+        target: observation.node,
+        isIntersecting: visible,
+        intersectionRatio: visible ? 1 : 0,
+      } as IntersectionObserverEntry,
+    ],
+    {} as IntersectionObserver,
+  );
 }
 
 describe("Home shortcut image flips", () => {
@@ -98,7 +119,10 @@ describe("Home shortcut image flips", () => {
     expect(frame("Burgers").dataset.flipped).toBe("true");
     expect(button("Burgers").querySelector("h4")!.closest(".home-shortcut-photo")).toBeNull();
     await act(async () => button("Burgers").click());
-    expect(effects.navigate).toHaveBeenCalledWith({ to: "/menu", search: { category: "real-burgers" } });
+    expect(effects.navigate).toHaveBeenCalledWith({
+      to: "/menu",
+      search: { category: "real-burgers" },
+    });
     act(() => intersect("Burgers", false));
     act(() => intersect("Burgers", true));
     act(() => vi.advanceTimersByTime(60_000));

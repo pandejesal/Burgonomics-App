@@ -34,13 +34,10 @@ vi.mock("@/features/favorites/components/FavoriteHeart", () => ({
 }));
 vi.mock("@/features/cart/state/cartStore", () => {
   const state: { lines: Array<Record<string, unknown>> } = { lines: [] };
-  const useCartStore = Object.assign(
-    (selector: (s: typeof state) => unknown) => selector(state),
-    {
-      getState: () => state,
-      setState: (patch: Partial<typeof state>) => Object.assign(state, patch),
-    },
-  );
+  const useCartStore = Object.assign((selector: (s: typeof state) => unknown) => selector(state), {
+    getState: () => state,
+    setState: (patch: Partial<typeof state>) => Object.assign(state, patch),
+  });
   return { useCartStore };
 });
 vi.mock("@/features/cart/repositories/CartRepository", () => ({

@@ -231,8 +231,7 @@ async function resolveRestId(storeId: string | undefined): Promise<string | unde
   try {
     const snap = await getDoc(doc(db, "stores", storeId));
     const restId = (snap.data() as any)?.petpoojaRestId;
-    const resolved =
-      typeof restId === "string" && restId.length > 0 ? restId : storeId;
+    const resolved = typeof restId === "string" && restId.length > 0 ? restId : storeId;
     // Outlet links change in the console, not mid-session — cache hard.
     restIdCache.set(storeId, resolved);
     return resolved;
@@ -398,7 +397,9 @@ async function loadProductScoped(
 
 export const menuService = {
   /** One full, verified outlet snapshot for Home's categories and food rails. */
-  async listHomeCatalog(storeId: string): Promise<ApiResult<{ products: Product[]; categories: MenuCategory[] }>> {
+  async listHomeCatalog(
+    storeId: string,
+  ): Promise<ApiResult<{ products: Product[]; categories: MenuCategory[] }>> {
     try {
       const restId = await resolveVerifiedRestId(storeId);
       if (!restId) {
@@ -468,7 +469,11 @@ export const menuService = {
       if (!current.success || !current.data) return ok([]);
       const restId = await resolveRestId(storeId);
       const all = await fetchStoreProductsCached(restId);
-      return ok(all.filter((p) => p.id !== productId && p.categoryId === current.data!.categoryId).slice(0, 6));
+      return ok(
+        all
+          .filter((p) => p.id !== productId && p.categoryId === current.data!.categoryId)
+          .slice(0, 6),
+      );
     } catch (e: any) {
       return ok([]);
     }
@@ -572,10 +577,7 @@ export const menuService = {
       if (candidates.length === 0) return ok([]);
 
       const rank = (p: Product): number => {
-        const signals = [
-          ...(p.badges ?? []).map((b) => b.label),
-          ...(p.tags ?? []),
-        ]
+        const signals = [...(p.badges ?? []).map((b) => b.label), ...(p.tags ?? [])]
           .join(" ")
           .toLowerCase();
         if (signals.includes("bestseller") || signals.includes("best seller")) return 0;
@@ -643,7 +645,7 @@ export const menuService = {
           (err) => {
             console.warn("menuService.subscribeCategories snapshot error:", err);
             callback(fail("MENU_SYNC_FAILED", "Failed to sync categories in real-time."));
-          }
+          },
         );
       } catch (err) {
         console.warn("menuService.subscribeCategories setup error:", err);
@@ -687,7 +689,9 @@ export const menuService = {
               all.push(mapProductDoc(d.data(), d.id));
             });
             if (categoryId) all = all.filter((p) => p.categoryId === categoryId);
-            callback(ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length }));
+            callback(
+              ok({ items: paginate(all, page, pageSize), page, pageSize, total: all.length }),
+            );
           },
           (err) => {
             console.warn("menuService.subscribeProducts snapshot error:", err);
@@ -785,4 +789,3 @@ export const menuService = {
     return unsub;
   },
 };
-

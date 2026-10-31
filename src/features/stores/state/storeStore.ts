@@ -5,10 +5,7 @@ import { storeRepository } from "@/features/stores/repositories/StoreRepository"
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
 import { readCachedCoords, type Coords } from "@/features/stores/hooks/useLocationPermission";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses/state/addressStore";
-import {
-  isStoreInDeliveryArea,
-  OUT_OF_AREA_MESSAGE,
-} from "@/features/stores/utils/serviceArea";
+import { isStoreInDeliveryArea, OUT_OF_AREA_MESSAGE } from "@/features/stores/utils/serviceArea";
 import { haversineKm } from "@/features/stores/utils/distance";
 
 export type { Store, Fulfillment } from "@/features/stores/models/Store";
@@ -287,11 +284,12 @@ export const useStoreSelection = create<StoreState>()(
           return;
         }
         // Re-hydrate fulfillmentStatus from the persisted pair.
-        const fulfillmentStatus = state.activeStore && state.fulfillment
-          ? storeSupportsFulfillment(state.activeStore, state.fulfillment)
-            ? "selected"
-            : "unsupported"
-          : "none";
+        const fulfillmentStatus =
+          state.activeStore && state.fulfillment
+            ? storeSupportsFulfillment(state.activeStore, state.fulfillment)
+              ? "selected"
+              : "unsupported"
+            : "none";
         // Persist already published its snapshot; notify subscribed route gates.
         useStoreSelection.setState({ isHydrated: true, fulfillmentStatus });
       },

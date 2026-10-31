@@ -29,11 +29,13 @@ vi.mock("@/shared/layouts/AppShell", () => ({
 }));
 vi.mock("@/shared/hooks/useOnlineStatus", () => ({ useOnlineStatus: vi.fn() }));
 vi.mock("@/core/state/appConfigStore", () => ({
-  useAppConfig: (selector: (state: { isOnline: boolean }) => unknown) => selector({ isOnline: true }),
+  useAppConfig: (selector: (state: { isOnline: boolean }) => unknown) =>
+    selector({ isOnline: true }),
 }));
 vi.mock("@/features/stores/state/storeStore", () => ({
-  useStoreSelection: (selector: (state: { activeStore: { id: string }; isHydrated: boolean }) => unknown) =>
-    selector({ activeStore: { id: "store-A" }, isHydrated: true }),
+  useStoreSelection: (
+    selector: (state: { activeStore: { id: string }; isHydrated: boolean }) => unknown,
+  ) => selector({ activeStore: { id: "store-A" }, isHydrated: true }),
 }));
 vi.mock("@/features/auth/state/authStore", () => ({
   useAuthStore: (selector: (state: { user: null }) => unknown) => selector({ user: null }),
@@ -46,7 +48,9 @@ vi.mock("@/features/home/components/BannerCarousel", () => ({
   BannerCarousel: () => <section data-testid="banner">banner</section>,
 }));
 vi.mock("@/features/home/components/CategoryGrid", () => ({
-  CategoryGrid: ({ fitInitialViewport }: { fitInitialViewport?: boolean }) => <div data-testid="category-grid" data-fit={String(!!fitInitialViewport)} />,
+  CategoryGrid: ({ fitInitialViewport }: { fitInitialViewport?: boolean }) => (
+    <div data-testid="category-grid" data-fit={String(!!fitInitialViewport)} />
+  ),
 }));
 vi.mock("@/features/home/components/SectionHeader", () => ({
   SectionHeader: ({ id, title }: { id: string; title: string }) => <h2 id={id}>{title}</h2>,
@@ -57,7 +61,9 @@ vi.mock("@/features/home/components/FavoritesRail", () => ({ FavoritesRail: () =
 vi.mock("@/features/home/components/HorizontalRail", () => ({
   HorizontalRail: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@/features/home/components/HomeSkeleton", () => ({ HomeSkeleton: () => <div>loading</div> }));
+vi.mock("@/features/home/components/HomeSkeleton", () => ({
+  HomeSkeleton: () => <div>loading</div>,
+}));
 vi.mock("@/features/home/components/HomeAnnouncements", () => ({ HomeAnnouncements: () => null }));
 vi.mock("@/shared/components/feedback/FailureState", () => ({ FailureState: () => null }));
 vi.mock("@/shared/components/feedback/PetpoojaSyncPlaceholder", () => ({
@@ -77,19 +83,22 @@ import { ModeSegmentedSwitch } from "./ModeSegmentedSwitch";
 // need the real module, so load it past the mock.
 const { CategoryGrid } = await vi.importActual<typeof import("./CategoryGrid")>("./CategoryGrid");
 
-const HomePage = (Route as unknown as { options: { component: React.ComponentType } }).options.component;
+const HomePage = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 const bundle: HomeBundle = {
-  banners: [{
-    id: "banner-1",
-    title: "An actual promo title",
-    subtitle: "An actual promo subtitle",
-    ctaLabel: "Order now",
-    ctaHref: "/menu",
-    visual: "",
-    imageUrl: "/images/menu/classic-burgers/hero-burger.jpg",
-    gradient: "bg-gradient-to-br from-[#0E4825] to-[#1B5934] text-white",
-  }],
+  banners: [
+    {
+      id: "banner-1",
+      title: "An actual promo title",
+      subtitle: "An actual promo subtitle",
+      ctaLabel: "Order now",
+      ctaHref: "/menu",
+      visual: "",
+      imageUrl: "/images/menu/classic-burgers/hero-burger.jpg",
+      gradient: "bg-gradient-to-br from-[#0E4825] to-[#1B5934] text-white",
+    },
+  ],
   categories: [
     { id: "pp-burger", name: "Classic Burgers", order: 1, itemCount: 4 },
     { id: "pp-sides", name: "Sides", order: 2, itemCount: 3 },
@@ -136,25 +145,59 @@ beforeEach(() => {
 
 describe("Home follows the observed Martinoz structure", () => {
   it("has exactly one page heading and never puts a product-style h3 before an h2", async () => {
-    useHomeStore.setState({ bundle: {
-      ...bundle,
-      bestSellers: [{ id: "actual-burger", categoryId: "pp-burger", name: "Actual burger", price: 213, veg: true, inStock: true }],
-    } });
+    useHomeStore.setState({
+      bundle: {
+        ...bundle,
+        bestSellers: [
+          {
+            id: "actual-burger",
+            categoryId: "pp-burger",
+            name: "Actual burger",
+            price: 213,
+            veg: true,
+            inStock: true,
+          },
+        ],
+      },
+    });
     await mount(<HomePage />);
     expect(host!.querySelectorAll("h1")).toHaveLength(1);
     expect(host!.querySelector("h1")!.textContent).toBe("Burgonomics Home");
-    const levels = Array.from(host!.querySelectorAll("h1,h2,h3")).map(heading => Number(heading.tagName[1]));
+    const levels = Array.from(host!.querySelectorAll("h1,h2,h3")).map((heading) =>
+      Number(heading.tagName[1]),
+    );
     const firstH2 = levels.indexOf(2);
     expect(firstH2).toBeGreaterThan(0);
-    expect(levels.slice(0, firstH2).every(level => level === 1 || level === 2)).toBe(true);
+    expect(levels.slice(0, firstH2).every((level) => level === 1 || level === 2)).toBe(true);
   });
 
   it("shows the promised product and meal rails after On the menu when the real bundle supplies them", async () => {
-    useHomeStore.setState({ bundle: {
-      ...bundle,
-      bestSellers: [{ id: "actual-burger", categoryId: "pp-burger", name: "Actual burger", price: 213, veg: true, inStock: true }],
-      popularCombos: [{ id: "actual-meal", name: "Actual meal", description: "Catalog description", price: 327, originalPrice: 327, gradient: "", visual: "" }],
-    } });
+    useHomeStore.setState({
+      bundle: {
+        ...bundle,
+        bestSellers: [
+          {
+            id: "actual-burger",
+            categoryId: "pp-burger",
+            name: "Actual burger",
+            price: 213,
+            veg: true,
+            inStock: true,
+          },
+        ],
+        popularCombos: [
+          {
+            id: "actual-meal",
+            name: "Actual meal",
+            description: "Catalog description",
+            price: 327,
+            originalPrice: 327,
+            gradient: "",
+            visual: "",
+          },
+        ],
+      },
+    });
     await mount(<HomePage />);
     const headings = Array.from(host!.querySelectorAll("h2")).map((heading) => heading.textContent);
     expect(headings).toEqual(["On the menu", "Best sellers", "Make it a meal"]);
@@ -183,7 +226,9 @@ describe("Home follows the observed Martinoz structure", () => {
     const header = host!.querySelector('[data-testid="brand-header"]')!;
     expect(header.querySelector('[aria-label="Search the menu"]')).toBeNull();
     // Owner rejected the viewport-fitting shrink. Large squares scroll naturally.
-    expect(host!.querySelector<HTMLElement>('[data-testid="category-grid"]')!.dataset.fit).toBe("false");
+    expect(host!.querySelector<HTMLElement>('[data-testid="category-grid"]')!.dataset.fit).toBe(
+      "false",
+    );
   });
 
   it("renders available full-bleed shortcut squares with a stationary label and no empty Wraps card", async () => {

@@ -140,7 +140,8 @@
 /* Brand display face (owner's deck), a single static weight. */
 @font-face {
   font-family: "MonstroSolid";
-  src: url("/fonts/MonstroSolid.woff2") format("woff2"),
+  src:
+    url("/fonts/MonstroSolid.woff2") format("woff2"),
     url("/fonts/MonstroSolid.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
@@ -151,71 +152,71 @@
   color-scheme: light;
 
   /* Light canvas is pure white; green carries brand, orange stays a highlight. */
-  --background: #FFFFFF;
+  --background: #ffffff;
   --foreground: #111311;
-  --surface: #FFFFFF;
-  --surface-elevated: #FFFFFF;
-  --bg-secondary: #F4F6F4;       /* Quiet grouping / input fill, not a grey canvas */
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --bg-secondary: #f4f6f4; /* Quiet grouping / input fill, not a grey canvas */
 
-  --primary: #0E4825;            /* Forest Green — CTAs, active navigation */
-  --primary-hover: #0A371C;
-  --primary-foreground: #FFFFFF;
-  --primary-text: #0E4825;       /* Green text on light surfaces (10.4:1) */
-  --secondary: #FFFFFF;
-  --secondary-foreground: #0E4825;
-  --accent: #C2410C;             /* Sparse orange highlight, AA on white */
-  --accent-hover: #9A3412;
-  --accent-foreground: #FFFFFF;
-  --brand: #0E4825;
-  --brand-foreground: #FFFFFF;
+  --primary: #0e4825; /* Forest Green — CTAs, active navigation */
+  --primary-hover: #0a371c;
+  --primary-foreground: #ffffff;
+  --primary-text: #0e4825; /* Green text on light surfaces (10.4:1) */
+  --secondary: #ffffff;
+  --secondary-foreground: #0e4825;
+  --accent: #c2410c; /* Sparse orange highlight, AA on white */
+  --accent-hover: #9a3412;
+  --accent-foreground: #ffffff;
+  --brand: #0e4825;
+  --brand-foreground: #ffffff;
 
-  --text-primary: #111311;       /* 18.9:1 on white */
-  --text-secondary: #4E5D53;     /* 7.1:1 on white — metadata stays readable */
-  --text-inverse: #FFFFFF;
-  --text-disabled: #8A948D;
+  --text-primary: #111311; /* 18.9:1 on white */
+  --text-secondary: #4e5d53; /* 7.1:1 on white — metadata stays readable */
+  --text-inverse: #ffffff;
+  --text-disabled: #8a948d;
 
-  --divider: #E4E8E4;
-  --border: #DDE3DD;
-  --input: #F4F6F4;
-  --ring: #0E4825;               /* 10.4:1 focus indicator against white */
+  --divider: #e4e8e4;
+  --border: #dde3dd;
+  --input: #f4f6f4;
+  --ring: #0e4825; /* 10.4:1 focus indicator against white */
 
-  --card: #FFFFFF;
+  --card: #ffffff;
   --card-foreground: #111311;
-  --popover: #FFFFFF;
+  --popover: #ffffff;
   --popover-foreground: #111311;
-  --muted: #F4F6F4;
-  --muted-foreground: #4E5D53;
+  --muted: #f4f6f4;
+  --muted-foreground: #4e5d53;
 
-  --success: #15803D;            /* 4.9:1 text on white */
-  --success-foreground: #FFFFFF;
-  --warning: #B45309;            /* 4.8:1 text on white */
-  --warning-foreground: #FFFFFF;
-  --error: #B91C1C;              /* 5.9:1 text on white */
-  --error-foreground: #FFFFFF;
-  --disabled: #E5E7EB;
+  --success: #15803d; /* 4.9:1 text on white */
+  --success-foreground: #ffffff;
+  --warning: #b45309; /* 4.8:1 text on white */
+  --warning-foreground: #ffffff;
+  --error: #b91c1c; /* 5.9:1 text on white */
+  --error-foreground: #ffffff;
+  --disabled: #e5e7eb;
 
-  --veg: #15803D;
-  --nonveg: #B91C1C;
+  --veg: #15803d;
+  --nonveg: #b91c1c;
 
-  --chart-1: #0E4825;
-  --chart-2: #C2410C;
-  --chart-3: #15803D;
-  --chart-4: #B45309;
-  --chart-5: #4E5D53;
+  --chart-1: #0e4825;
+  --chart-2: #c2410c;
+  --chart-3: #15803d;
+  --chart-4: #b45309;
+  --chart-5: #4e5d53;
 
-  --sidebar: #0E4825;
-  --sidebar-foreground: #FFFFFF;
-  --sidebar-primary: #FFFFFF;
-  --sidebar-primary-foreground: #0E4825;
-  --sidebar-accent: #175E33;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #1B5934;
-  --sidebar-ring: #7CD99B;
+  --sidebar: #0e4825;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0e4825;
+  --sidebar-accent: #175e33;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1b5934;
+  --sidebar-ring: #7cd99b;
 
   /* Awards field, from the franchise deck. White text measures ~14:1 on it. */
-  --brand-field: #0B2E1D;
+  --brand-field: #0b2e1d;
   /* Ceremony accent: rule + year marks only, never prose. */
-  --gold: #E9B949;
+  --gold: #e9b949;
 }
 
 .dark {
@@ -223,55 +224,55 @@
 
   /* Dark canvas is pure black; elevated surfaces step up in small increments. */
   --background: #000000;
-  --foreground: #F4F6F4;
+  --foreground: #f4f6f4;
   --surface: #121212;
-  --surface-elevated: #1A1A1A;
-  --bg-secondary: #0C0C0C;
+  --surface-elevated: #1a1a1a;
+  --bg-secondary: #0c0c0c;
 
-  --primary: #1B6B3A;            /* Green CTA stays legible on black */
+  --primary: #1b6b3a; /* Green CTA stays legible on black */
   --primary-hover: #145830;
-  --primary-foreground: #FFFFFF;
-  --primary-text: #7CD99B;       /* 10.5:1 on black */
+  --primary-foreground: #ffffff;
+  --primary-text: #7cd99b; /* 10.5:1 on black */
   --secondary: #121212;
-  --secondary-foreground: #F4F6F4;
+  --secondary-foreground: #f4f6f4;
 
-  --accent: #C2410C;             /* Orange badges keep AA white text */
-  --accent-hover: #9A3412;
-  --accent-foreground: #FFFFFF;
-  --brand: #1B6B3A;
-  --brand-foreground: #FFFFFF;
-  --ring: #7CD99B;               /* 10.5:1 focus indicator against black */
+  --accent: #c2410c; /* Orange badges keep AA white text */
+  --accent-hover: #9a3412;
+  --accent-foreground: #ffffff;
+  --brand: #1b6b3a;
+  --brand-foreground: #ffffff;
+  --ring: #7cd99b; /* 10.5:1 focus indicator against black */
 
-  --text-primary: #F4F6F4;
-  --text-secondary: #B9C2BB;     /* 12.6:1 on black */
+  --text-primary: #f4f6f4;
+  --text-secondary: #b9c2bb; /* 12.6:1 on black */
   --text-inverse: #000000;
-  --text-disabled: #6B746E;
+  --text-disabled: #6b746e;
 
-  --border: #2A2E2B;
+  --border: #2a2e2b;
   --divider: #232724;
-  --input: #0C0C0C;
+  --input: #0c0c0c;
 
-  --success: #4ADE80;
-  --success-foreground: #052E16;
-  --warning: #FBBF24;
-  --warning-foreground: #1A1400;
-  --error: #F87171;              /* 7.6:1 text on black */
-  --error-foreground: #1A0505;
+  --success: #4ade80;
+  --success-foreground: #052e16;
+  --warning: #fbbf24;
+  --warning-foreground: #1a1400;
+  --error: #f87171; /* 7.6:1 text on black */
+  --error-foreground: #1a0505;
   --disabled: #333333;
 
-  --veg: #4ADE80;
-  --nonveg: #F87171;
+  --veg: #4ade80;
+  --nonveg: #f87171;
 
   --card: #121212;
-  --card-foreground: #F4F6F4;
-  --popover: #1A1A1A;
-  --popover-foreground: #F4F6F4;
-  --muted: #0C0C0C;
-  --muted-foreground: #B9C2BB;
+  --card-foreground: #f4f6f4;
+  --popover: #1a1a1a;
+  --popover-foreground: #f4f6f4;
+  --muted: #0c0c0c;
+  --muted-foreground: #b9c2bb;
 
   /* Dark canvas keeps the same ceremonial field, slightly deeper. */
   --brand-field: #082415;
-  --gold: #E9B949;
+  --gold: #e9b949;
 }
 
 /*

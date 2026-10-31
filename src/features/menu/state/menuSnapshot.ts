@@ -58,7 +58,11 @@ export function parseProductPage(value: unknown): ProductPage | null {
   const candidate = value as Partial<ProductPage>;
   if (!Array.isArray(candidate.items)) return null;
   if (!isPositiveInteger(candidate.page) || !isPositiveInteger(candidate.pageSize)) return null;
-  if (typeof candidate.total !== "number" || !Number.isFinite(candidate.total) || candidate.total < 0) {
+  if (
+    typeof candidate.total !== "number" ||
+    !Number.isFinite(candidate.total) ||
+    candidate.total < 0
+  ) {
     return null;
   }
   if (candidate.items.length > candidate.pageSize) return null;
@@ -96,8 +100,7 @@ export function mergeCategoryPage(
   page: ProductPage,
   requestedPage: number,
 ): MenuCategoryBucket {
-  const items =
-    requestedPage <= 1 ? page.items.slice() : appendUnique(bucket.items, page.items);
+  const items = requestedPage <= 1 ? page.items.slice() : appendUnique(bucket.items, page.items);
   return {
     items,
     page: requestedPage,
@@ -149,8 +152,9 @@ export function mergeLiveSnapshot(
   options: LiveSnapshotOptions = {},
 ): Record<string, MenuCategoryBucket> {
   const complete = options.complete === true;
-  const fallbackPageSize =
-    isPositiveInteger(options.pageSize) ? options.pageSize : DEFAULT_PAGE_SIZE;
+  const fallbackPageSize = isPositiveInteger(options.pageSize)
+    ? options.pageSize
+    : DEFAULT_PAGE_SIZE;
 
   const byId = new Map<string, Product>();
   const byCategory = new Map<string, Product[]>();

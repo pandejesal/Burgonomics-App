@@ -61,20 +61,27 @@ beforeEach(() => {
     value,
   }));
   firestore.limit.mockImplementation((value: number) => ({ kind: "limit", value }));
-  firestore.query.mockImplementation((base: { __collection: string }, ...constraints: unknown[]) => {
-    lastQuery = { collection: base.__collection, constraints: constraints as Array<Record<string, unknown>> };
-    return { __query: base.__collection, constraints };
-  });
+  firestore.query.mockImplementation(
+    (base: { __collection: string }, ...constraints: unknown[]) => {
+      lastQuery = {
+        collection: base.__collection,
+        constraints: constraints as Array<Record<string, unknown>>,
+      };
+      return { __query: base.__collection, constraints };
+    },
+  );
 
-  firestore.getDoc.mockImplementation(async (ref: { __doc: { collectionName: string; id: string } }) => {
-    const { collectionName, id } = ref.__doc;
-    if (collectionName === "stores") {
-      const data = storeDocs.get(id);
+  firestore.getDoc.mockImplementation(
+    async (ref: { __doc: { collectionName: string; id: string } }) => {
+      const { collectionName, id } = ref.__doc;
+      if (collectionName === "stores") {
+        const data = storeDocs.get(id);
+        return data ? productDoc(id, data) : missingDoc(id);
+      }
+      const data = productDocs.get(id);
       return data ? productDoc(id, data) : missingDoc(id);
-    }
-    const data = productDocs.get(id);
-    return data ? productDoc(id, data) : missingDoc(id);
-  });
+    },
+  );
 
   firestore.getDocs.mockImplementation(async () => ({
     empty: legacyMatches.length === 0,
@@ -197,7 +204,8 @@ describe("getProduct(id, storeId) — store binding", () => {
     storeDocs.set("store_1", { petpoojaRestId: "rest_1" });
     productDocs.set("prod_burger", burgerDoc);
     firestore.getDoc.mockImplementation(async (ref: { __doc: { collectionName: string } }) => {
-      if (ref.__doc.collectionName === "stores") return productDoc("store_1", { petpoojaRestId: "rest_1" });
+      if (ref.__doc.collectionName === "stores")
+        return productDoc("store_1", { petpoojaRestId: "rest_1" });
       throw new Error("permission-denied");
     });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -220,7 +228,8 @@ describe("getProduct(id) — unscoped legacy path is preserved", () => {
     if (result.success) expect(result.data?.id).toBe("prod_burger");
     expect(
       firestore.getDoc.mock.calls.some(
-        (call) => (call[0] as { __doc?: { collectionName?: string } }).__doc?.collectionName === "stores",
+        (call) =>
+          (call[0] as { __doc?: { collectionName?: string } }).__doc?.collectionName === "stores",
       ),
     ).toBe(false);
   });
@@ -276,10 +285,12 @@ describe("real-time menu snapshots", () => {
   it("streams a restId-scoped query and reports only explicit removals", async () => {
     storeDocs.set("store_9", { petpoojaRestId: "rest_9" });
     let deliver: ((snapshot: unknown) => void) | undefined;
-    firestore.onSnapshot.mockImplementation((_query: unknown, onNext: (snapshot: unknown) => void) => {
-      deliver = onNext;
-      return () => {};
-    });
+    firestore.onSnapshot.mockImplementation(
+      (_query: unknown, onNext: (snapshot: unknown) => void) => {
+        deliver = onNext;
+        return () => {};
+      },
+    );
 
     const callback = vi.fn();
     const unsubscribe = menuService.subscribeStoreProducts("store_9", callback);

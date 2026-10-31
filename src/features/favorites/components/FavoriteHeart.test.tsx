@@ -119,7 +119,14 @@ describe("B04: FavoriteHeart 44px target with an unchanged 36px disc", () => {
       }) as ReturnType<typeof favoritesRepository.toggle>,
     );
 
-    await mount(<FavoriteHeart kind="product" refId="prod_1" name="Classic Smash Burger" priceLabel="₹299.00" />);
+    await mount(
+      <FavoriteHeart
+        kind="product"
+        refId="prod_1"
+        name="Classic Smash Burger"
+        priceLabel="₹299.00"
+      />,
+    );
     const button = host!.querySelector<HTMLButtonElement>("button")!;
 
     await act(async () => button.click());

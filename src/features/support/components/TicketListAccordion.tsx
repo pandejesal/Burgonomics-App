@@ -62,20 +62,38 @@ export const TicketListAccordion = React.memo(function TicketListAccordion({
                 <p className="text-sm font-semibold text-text break-words">
                   {t.ticketNumber} · {t.categoryLabel}
                 </p>
-                <p className="text-sm leading-relaxed text-text-secondary break-words">{t.description}</p>
+                <p className="text-sm leading-relaxed text-text-secondary break-words">
+                  {t.description}
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <AppBadge tone={t.status === "RESOLVED" ? "success" : t.status === "ESCALATED" ? "warning" : "neutral"}>
+                <AppBadge
+                  tone={
+                    t.status === "RESOLVED"
+                      ? "success"
+                      : t.status === "ESCALATED"
+                        ? "warning"
+                        : "neutral"
+                  }
+                >
                   {t.status.replace("_", " ")}
                 </AppBadge>
-                <ChevronDown className={cn("h-4 w-4 text-text-secondary transition-transform", open && "rotate-180")} aria-hidden />
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 text-text-secondary transition-transform",
+                    open && "rotate-180",
+                  )}
+                  aria-hidden
+                />
               </div>
             </button>
             {open && (
               <div className="space-y-2 border-t border-divider px-4 py-3.5 text-sm leading-relaxed text-text-secondary">
                 <p>Opened {new Date(t.createdAt).toLocaleString()}</p>
                 {t.orderShortCode && <p>Order: {t.orderShortCode}</p>}
-                {t.priority === "urgent" && <p className="font-semibold text-warning">Marked urgent</p>}
+                {t.priority === "urgent" && (
+                  <p className="font-semibold text-warning">Marked urgent</p>
+                )}
                 {t.managerResponse ? (
                   <p className="rounded-xl bg-bg-secondary p-3 text-text">{t.managerResponse}</p>
                 ) : (

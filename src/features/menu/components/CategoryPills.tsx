@@ -40,7 +40,7 @@ export function CategoryPills({
     <div
       className={cn(
         "w-full overflow-x-auto no-scrollbar py-1 flex items-center gap-2 select-none",
-        className
+        className,
       )}
     >
       {categories.map((cat) => {
@@ -58,18 +58,16 @@ export function CategoryPills({
               "flex items-center min-h-[44px] gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border",
               isSelected
                 ? "bg-primary text-white border-primary shadow-xs"
-                : "bg-surface text-text-secondary border-divider hover:text-text hover:border-primary/40"
+                : "bg-surface text-text-secondary border-divider hover:text-text hover:border-primary/40",
             )}
           >
-            {cat.isVeg && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            )}
+            {cat.isVeg && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
             <span>{cat.name}</span>
             {cat.count !== undefined && (
               <span
                 className={cn(
                   "text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold",
-                  isSelected ? "bg-white/20 text-white" : "bg-bg-secondary text-text-secondary"
+                  isSelected ? "bg-white/20 text-white" : "bg-bg-secondary text-text-secondary",
                 )}
               >
                 {cat.count}

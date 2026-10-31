@@ -119,7 +119,7 @@ interface InitialLocationState {
 function readInitialLocationState(): InitialLocationState {
   const idle: InitialLocationState = { status: "idle", coords: null, error: null };
   if (typeof window === "undefined") return idle;
-  let saved: string | null = null;
+  let saved: string | null;
   try {
     saved = window.localStorage.getItem(CACHE_KEY);
   } catch {
@@ -166,6 +166,7 @@ function readInitialLocationState(): InitialLocationState {
  */
 export function readCachedCoords(): Coords | null {
   if (typeof window === "undefined") return null;
+  // eslint-disable-next-line no-useless-assignment -- initial value is a fallback only
   let saved: string | null = null;
   try {
     saved = window.localStorage.getItem(CACHE_KEY);

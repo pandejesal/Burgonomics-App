@@ -51,9 +51,7 @@ vi.mock("@/features/stores/state/storeStore", () => ({
     fulfillment: string | null,
   ) =>
     Boolean(
-      store &&
-        fulfillment &&
-        store.supports?.[fulfillment === "dinein" ? "dineIn" : fulfillment],
+      store && fulfillment && store.supports?.[fulfillment === "dinein" ? "dineIn" : fulfillment],
     ),
   useStoreSelection: {
     getState: () => ({
@@ -220,7 +218,11 @@ describe("useReorderItems — live validation before mutation", () => {
   });
 
   it("requires confirmation before replacing another outlet's basket, and cancel preserves it", async () => {
-    useCartStore.setState({ lines: [line({ storeId: "store-B" })], storeId: "store-B", status: "ready" });
+    useCartStore.setState({
+      lines: [line({ storeId: "store-B" })],
+      storeId: "store-B",
+      status: "ready",
+    });
     fixture.getProduct.mockResolvedValue(ok(product()));
 
     const { sinks, cleanup } = mountHooks();
@@ -244,8 +246,7 @@ describe("useReorderItems — live validation before mutation", () => {
   });
 
   it("shows price changes before adding and applies the live price on confirm", async () => {
-    fixture.getProduct
-      .mockResolvedValue(ok(product({ price: 329 })));
+    fixture.getProduct.mockResolvedValue(ok(product({ price: 329 })));
 
     const { sinks, cleanup } = mountHooks();
 
@@ -389,7 +390,13 @@ describe("useReorderItems — live validation before mutation", () => {
           items: [
             line({
               modifiers: [
-                { groupId: "size", groupName: "Size", optionId: "regular", name: "Regular", priceDelta: 0 },
+                {
+                  groupId: "size",
+                  groupName: "Size",
+                  optionId: "regular",
+                  name: "Regular",
+                  priceDelta: 0,
+                },
               ],
             }),
           ],
@@ -623,10 +630,9 @@ describe("useReorderItems — live validation before mutation", () => {
     });
 
     expect(result).toMatchObject({ reason: "requires_confirmation" });
-    expect(sinks[0].current!.pendingConfirmation?.priceChanges.map((change) => change.name)).toEqual([
-      "Big Bang Burger",
-      "Loaded Fries",
-    ]);
+    expect(
+      sinks[0].current!.pendingConfirmation?.priceChanges.map((change) => change.name),
+    ).toEqual(["Big Bang Burger", "Loaded Fries"]);
     expect(useCartStore.getState().lines).toHaveLength(0);
     act(() => sinks[0].current!.cancelPendingReorder());
     cleanup();
@@ -755,7 +761,11 @@ describe("useReorderItems — the CURRENT outlet decides", () => {
   });
 
   it("cancels a cross-outlet basket replacement when the customer changes outlet mid-dialog", async () => {
-    useCartStore.setState({ lines: [line({ storeId: "store-B" })], storeId: "store-B", status: "ready" });
+    useCartStore.setState({
+      lines: [line({ storeId: "store-B" })],
+      storeId: "store-B",
+      status: "ready",
+    });
     fixture.getProduct.mockResolvedValue(ok(product()));
 
     const { sinks, cleanup } = mountHooks();
@@ -842,9 +852,7 @@ describe("useReorderItems — the CURRENT order type is bound to the attempt", (
 
     expect(sinks[0].current!.pendingConfirmation).toBeNull();
     expect(useCartStore.getState().lines).toHaveLength(0);
-    expect(fixture.toastError).toHaveBeenCalledWith(
-      expect.stringContaining("order type"),
-    );
+    expect(fixture.toastError).toHaveBeenCalledWith(expect.stringContaining("order type"));
 
     // Fence released for a later attempt.
     let second: ReorderResult | undefined;

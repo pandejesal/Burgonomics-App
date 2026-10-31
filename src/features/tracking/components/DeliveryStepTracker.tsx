@@ -7,10 +7,7 @@ interface DeliveryStepTrackerProps {
   onAdvanceDevStatus?: () => void;
 }
 
-export function DeliveryStepTracker({
-  tracking,
-  onAdvanceDevStatus,
-}: DeliveryStepTrackerProps) {
+export function DeliveryStepTracker({ tracking, onAdvanceDevStatus }: DeliveryStepTrackerProps) {
   const {
     currentStage,
     stageName,
@@ -63,7 +60,11 @@ export function DeliveryStepTracker({
     {
       stage: 3,
       title: isTakeawayOrDineIn ? "Ready" : "On the Way",
-      sub: isTakeawayOrDineIn ? "At Counter" : courierUnconfirmed ? "Out for delivery" : "With Courier",
+      sub: isTakeawayOrDineIn
+        ? "At Counter"
+        : courierUnconfirmed
+          ? "Out for delivery"
+          : "With Courier",
       icon: isTakeawayOrDineIn ? Utensils : Bike,
     },
     {
@@ -136,15 +137,19 @@ export function DeliveryStepTracker({
                     isCompleted
                       ? "border-primary bg-primary text-primary-foreground shadow-xs"
                       : isActive
-                      ? "scale-110 border-accent bg-accent text-accent-foreground shadow-md"
-                      : "border-divider bg-bg-secondary text-text-secondary"
+                        ? "scale-110 border-accent bg-accent text-accent-foreground shadow-md"
+                        : "border-divider bg-bg-secondary text-text-secondary"
                   }`}
                 >
                   <Icon className="h-4 w-4" aria-hidden />
                 </div>
                 <span
                   className={`mt-2 text-sm leading-tight ${
-                    isActive ? "font-semibold text-text" : isCompleted ? "font-medium text-primary-text" : "font-medium text-text-secondary"
+                    isActive
+                      ? "font-semibold text-text"
+                      : isCompleted
+                        ? "font-medium text-primary-text"
+                        : "font-medium text-text-secondary"
                   }`}
                 >
                   {step.title}

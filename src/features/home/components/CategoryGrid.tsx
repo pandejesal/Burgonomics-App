@@ -41,12 +41,15 @@ function usePhotoFlip(
     const schedule = () => {
       stop();
       if (played || !visible || motion.matches || document.visibilityState === "hidden") return;
-      timer = setTimeout(() => {
-        timer = undefined;
-        if (!visible || motion.matches || document.visibilityState === "hidden") return;
-        played = true;
-        setFlipped(true);
-      }, 800 + index * 150);
+      timer = setTimeout(
+        () => {
+          timer = undefined;
+          if (!visible || motion.matches || document.visibilityState === "hidden") return;
+          played = true;
+          setFlipped(true);
+        },
+        800 + index * 150,
+      );
     };
     const onMotionChange = () => {
       if (motion.matches) setFlipped(false);
@@ -90,7 +93,8 @@ function ShortcutPhoto({
   const [failed, setFailed] = React.useState<string[]>([]);
   const [loaded, setLoaded] = React.useState<string[]>([]);
   const images = [imageUrl, alternateImageUrl].filter(
-    (url, position, all): url is string => !!url && all.indexOf(url) === position && !failed.includes(url),
+    (url, position, all): url is string =>
+      !!url && all.indexOf(url) === position && !failed.includes(url),
   );
   const canFlip = images.length === 2 && images.every((url) => loaded.includes(url));
   const flipped = usePhotoFlip(frame, canFlip, index);
@@ -102,8 +106,8 @@ function ShortcutPhoto({
       alt=""
       loading="lazy"
       decoding="async"
-      onLoad={() => setLoaded((current) => current.includes(url) ? current : [...current, url])}
-      onError={() => setFailed((current) => current.includes(url) ? current : [...current, url])}
+      onLoad={() => setLoaded((current) => (current.includes(url) ? current : [...current, url]))}
+      onError={() => setFailed((current) => (current.includes(url) ? current : [...current, url]))}
       className={cn("home-shortcut-photo__face", back && "home-shortcut-photo__face--back")}
     />
   );
@@ -116,13 +120,21 @@ function ShortcutPhoto({
       className="home-shortcut-photo absolute inset-0 overflow-hidden bg-bg-secondary"
     >
       {images.length > 0 ? (
-        <div className={cn("home-shortcut-photo__faces", canFlip && flipped && "home-shortcut-photo__faces--flipped")}>
+        <div
+          className={cn(
+            "home-shortcut-photo__faces",
+            canFlip && flipped && "home-shortcut-photo__faces--flipped",
+          )}
+        >
           {photo(images[0])}
           {images[1] && photo(images[1], true)}
         </div>
       ) : expectPhoto ? (
         // A photo was expected but failed to load: say so.
-        <span aria-hidden="true" className="absolute inset-0 grid place-items-center px-3 text-center text-sm text-text-secondary">
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 grid place-items-center px-3 text-center text-sm text-text-secondary"
+        >
           Photo unavailable
         </span>
       ) : null}

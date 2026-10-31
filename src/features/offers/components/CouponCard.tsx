@@ -65,7 +65,7 @@ export function CouponCard({
         applied
           ? "border-success bg-success/10 shadow-sm"
           : "border-divider hover:border-primary/50",
-        className
+        className,
       )}
     >
       {/* Ticket Dotted Border Decorative Left Cutout */}
@@ -109,8 +109,8 @@ export function CouponCard({
               applied
                 ? "border border-success/40 bg-success/10 text-success hover:bg-success/20"
                 : isEligible
-                ? "bg-primary text-primary-foreground hover:bg-primary-hover"
-                : "border border-divider bg-bg-secondary text-text-secondary cursor-not-allowed opacity-80"
+                  ? "bg-primary text-primary-foreground hover:bg-primary-hover"
+                  : "border border-divider bg-bg-secondary text-text-secondary cursor-not-allowed opacity-80",
             )}
           >
             {applied ? "Applied" : "Apply"}
@@ -156,7 +156,11 @@ export function CouponCard({
             className="flex min-h-11 items-center gap-0.5 font-semibold text-primary-text hover:underline cursor-pointer"
           >
             <span>T&amp;C</span>
-            {showTerms ? <ChevronUp className="h-3.5 w-3.5" aria-hidden /> : <ChevronDown className="h-3.5 w-3.5" aria-hidden />}
+            {showTerms ? (
+              <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+            )}
           </button>
         </div>
 

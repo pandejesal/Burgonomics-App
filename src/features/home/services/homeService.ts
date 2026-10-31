@@ -16,51 +16,74 @@ import { menuService } from "@/features/menu/services/menuService";
  * No mock data in production paths.
  */
 
-function toError(message: string, code = "HOME_UPSTREAM"): { code: string; message: string; retryable?: boolean } {
+function toError(
+  message: string,
+  code = "HOME_UPSTREAM",
+): { code: string; message: string; retryable?: boolean } {
   return { code, message, retryable: true };
 }
 
 // Editorial picks from the owner-referenced Home proposal, not a sales ranking.
 // Names select existing outlet products; they never supply IDs, prices or badges.
 const HOME_FEATURED_NAMES = [
-  "Cheese Burst Burger", "Super Hero Burger", "Great Indian Burger",
-  "Tandoori Paneer Burger", "American Burger", "Gochuchang Burger",
+  "Cheese Burst Burger",
+  "Super Hero Burger",
+  "Great Indian Burger",
+  "Tandoori Paneer Burger",
+  "American Burger",
+  "Gochuchang Burger",
 ];
 const normalizedName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
-function selectHomeMerchandising(products: readonly MenuItem[]): Pick<HomeBundle, "bestSellers" | "popularCombos"> {
+function selectHomeMerchandising(
+  products: readonly MenuItem[],
+): Pick<HomeBundle, "bestSellers" | "popularCombos"> {
   const available = products.filter((product) => product.inStock === true);
   const flagged = available.filter((product) =>
-    [...(product.tags ?? []), ...(product.badges ?? []).map((badge) => `${badge.id} ${badge.label}`)]
-      .some((signal) => /best[\s_-]*sellers?/i.test(signal)),
+    [
+      ...(product.tags ?? []),
+      ...(product.badges ?? []).map((badge) => `${badge.id} ${badge.label}`),
+    ].some((signal) => /best[\s_-]*sellers?/i.test(signal)),
   );
   const featured = HOME_FEATURED_NAMES.flatMap((name) => {
-    const match = available.find((product) => normalizedName(product.name) === normalizedName(name));
+    const match = available.find(
+      (product) => normalizedName(product.name) === normalizedName(name),
+    );
     return match ? [match] : [];
   });
   const seen = new Set<string>();
-  const bestSellers = [...flagged, ...featured].filter((product) => {
-    if (seen.has(product.id)) return false;
-    seen.add(product.id);
-    return true;
-  }).slice(0, 8);
-  const popularCombos: Combo[] = available.filter((product) =>
-    /combo|meal/i.test(`${product.categoryId} ${product.categoryName ?? ""}`) ||
-    /\b(?:combo|meal)s?\b/i.test(product.name),
-  ).sort((a, b) => Number(/\bmeals?\b/i.test(b.name)) - Number(/\bmeals?\b/i.test(a.name)))
-    .slice(0, 8).map((product) => ({
-    id: product.id,
-    productId: product.id,
-    name: product.name,
-    description: product.description ?? "",
-    price: product.price,
-    originalPrice: typeof product.compareAtPrice === "number" && Number.isFinite(product.compareAtPrice) && product.compareAtPrice > product.price
-      ? product.compareAtPrice : product.price,
-    imageUrl: product.imageUrl,
-    fallbackImageUrl: product.fallbackImageUrl,
-    visual: "",
-    gradient: "",
-  }));
+  const bestSellers = [...flagged, ...featured]
+    .filter((product) => {
+      if (seen.has(product.id)) return false;
+      seen.add(product.id);
+      return true;
+    })
+    .slice(0, 8);
+  const popularCombos: Combo[] = available
+    .filter(
+      (product) =>
+        /combo|meal/i.test(`${product.categoryId} ${product.categoryName ?? ""}`) ||
+        /\b(?:combo|meal)s?\b/i.test(product.name),
+    )
+    .sort((a, b) => Number(/\bmeals?\b/i.test(b.name)) - Number(/\bmeals?\b/i.test(a.name)))
+    .slice(0, 8)
+    .map((product) => ({
+      id: product.id,
+      productId: product.id,
+      name: product.name,
+      description: product.description ?? "",
+      price: product.price,
+      originalPrice:
+        typeof product.compareAtPrice === "number" &&
+        Number.isFinite(product.compareAtPrice) &&
+        product.compareAtPrice > product.price
+          ? product.compareAtPrice
+          : product.price,
+      imageUrl: product.imageUrl,
+      fallbackImageUrl: product.fallbackImageUrl,
+      visual: "",
+      gradient: "",
+    }));
   return { bestSellers, popularCombos };
 }
 
@@ -91,11 +114,15 @@ export const homeService = {
   },
   async getBestSellers(storeId: string): Promise<ApiResult<MenuItem[]>> {
     const catalog = await menuService.listHomeCatalog(storeId);
-    return catalog.success ? ok(selectHomeMerchandising(catalog.data.products).bestSellers) : catalog;
+    return catalog.success
+      ? ok(selectHomeMerchandising(catalog.data.products).bestSellers)
+      : catalog;
   },
   async getPopularCombos(storeId: string): Promise<ApiResult<Combo[]>> {
     const catalog = await menuService.listHomeCatalog(storeId);
-    return catalog.success ? ok(selectHomeMerchandising(catalog.data.products).popularCombos) : catalog;
+    return catalog.success
+      ? ok(selectHomeMerchandising(catalog.data.products).popularCombos)
+      : catalog;
   },
   async getRecommendations(storeId: string): Promise<ApiResult<any[]>> {
     try {
@@ -117,7 +144,7 @@ export const homeService = {
   /**
    * Aggregated home bundle — the shape the real backend is expected to
    * expose as `GET /v1/home?storeId=…`. Fan-outs to the individual services.
-   * 
+   *
    * Categories and both food rails share one full verified menu snapshot, so
    * they match the Menu's outlet, product IDs, prices and availability.
    * We also fetch Firestore categories (for images) and merge them by name.
@@ -129,21 +156,15 @@ export const homeService = {
    */
   async getHome(storeId: string, userId?: string): Promise<ApiResult<HomeBundle>> {
     void userId;
-    const [
-      banners,
-      catalog,
-      firestoreCategories,
-      featuredOffers,
-      recommendations,
-      recentlyViewed,
-    ] = await Promise.all([
-      this.getBanners(),
-      menuService.listHomeCatalog(storeId),
-      this.getCategories(), // Firestore categories (for images)
-      this.getFeaturedOffers(),
-      this.getRecommendations(storeId),
-      this.getRecentlyViewed(),
-    ]);
+    const [banners, catalog, firestoreCategories, featuredOffers, recommendations, recentlyViewed] =
+      await Promise.all([
+        this.getBanners(),
+        menuService.listHomeCatalog(storeId),
+        this.getCategories(), // Firestore categories (for images)
+        this.getFeaturedOffers(),
+        this.getRecommendations(storeId),
+        this.getRecentlyViewed(),
+      ]);
 
     // Catalog failures reach Home's error state, not successful empty food rails.
     if (!catalog.success) return catalog;

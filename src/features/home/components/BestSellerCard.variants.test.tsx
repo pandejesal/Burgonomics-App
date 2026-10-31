@@ -34,8 +34,7 @@ vi.mock("motion/react", () => ({
   motion: new Proxy(
     {},
     {
-      get: () =>
-        (props: { children?: React.ReactNode }) => <div>{props.children}</div>,
+      get: () => (props: { children?: React.ReactNode }) => <div>{props.children}</div>,
     },
   ),
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -120,10 +119,7 @@ afterEach(async () => {
 describe("L5 — best-seller quantity reflects every line of the product", () => {
   it("sums the quantity across variant lines instead of showing only the first", async () => {
     useCartStore.setState({
-      lines: [
-        lineFor("line_custom", 2, "opt_gluten"),
-        lineFor("line_basic", 1, "opt_brioche"),
-      ],
+      lines: [lineFor("line_custom", 2, "opt_gluten"), lineFor("line_basic", 1, "opt_brioche")],
     });
     await mount(<BestSellerCard product={product} />);
 

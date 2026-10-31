@@ -26,14 +26,16 @@ function makeBundle(storeId: string, user?: string, categoryName = "Classic Burg
     popularCombos: [],
     recommendations: [],
     recentlyViewed: [],
-    quickReorder: [{
-      id: `${storeId}-${user ?? "guest"}-reorder`,
-      orderId: `order-${storeId}`,
-      title: categoryName,
-      subtitle: "Previous order",
-      total: 250,
-      placedAt: "2026-10-29T00:00:00.000Z",
-    }],
+    quickReorder: [
+      {
+        id: `${storeId}-${user ?? "guest"}-reorder`,
+        orderId: `order-${storeId}`,
+        title: categoryName,
+        subtitle: "Previous order",
+        total: 250,
+        placedAt: "2026-10-29T00:00:00.000Z",
+      },
+    ],
   };
 }
 
@@ -56,9 +58,7 @@ describe("Home store scope and request ownership", () => {
   it("ignores an older store's success after a newer store has loaded", async () => {
     const pendingA = deferred<ApiResult<HomeBundle>>();
     const pendingB = deferred<ApiResult<HomeBundle>>();
-    getHome
-      .mockReturnValueOnce(pendingA.promise)
-      .mockReturnValueOnce(pendingB.promise);
+    getHome.mockReturnValueOnce(pendingA.promise).mockReturnValueOnce(pendingB.promise);
 
     const loadA = useHomeStore.getState().load("store-A");
     const loadB = useHomeStore.getState().load("store-B");
@@ -79,8 +79,9 @@ describe("Home store scope and request ownership", () => {
       lastLoadedUserId: null,
     });
     expect(useHomeStore.getState().bundle?.categories[0].name).toBe("Sizzling");
-    expect(resolveHomeMenuShortcuts(useHomeStore.getState().bundle!.categories)[0].members)
-      .toHaveLength(1);
+    expect(
+      resolveHomeMenuShortcuts(useHomeStore.getState().bundle!.categories)[0].members,
+    ).toHaveLength(1);
   });
 
   it.each(["success", "failure"] as const)(
@@ -88,9 +89,7 @@ describe("Home store scope and request ownership", () => {
     async (lateResult) => {
       const pendingA = deferred<ApiResult<HomeBundle>>();
       const pendingB = deferred<ApiResult<HomeBundle>>();
-      getHome
-        .mockReturnValueOnce(pendingA.promise)
-        .mockReturnValueOnce(pendingB.promise);
+      getHome.mockReturnValueOnce(pendingA.promise).mockReturnValueOnce(pendingB.promise);
 
       const loadA = useHomeStore.getState().load("store-A");
       const loadB = useHomeStore.getState().load("store-B");

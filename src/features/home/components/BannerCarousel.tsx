@@ -113,7 +113,8 @@ export function BannerCarousel({ banners, className }: Props) {
   // at its actual leading edge when the banner set changes.
   const firstBannerId = banners[0]?.id;
   React.useLayoutEffect(() => {
-    if (scrollerRef.current && scrollerRef.current.scrollLeft !== 0) scrollerRef.current.scrollLeft = 0;
+    if (scrollerRef.current && scrollerRef.current.scrollLeft !== 0)
+      scrollerRef.current.scrollLeft = 0;
     setActive(0);
   }, [firstBannerId]);
 
@@ -229,7 +230,10 @@ export function BannerCarousel({ banners, className }: Props) {
       el.releasePointerCapture(drag.pointerId);
     }
     if (el.clientWidth > 0) {
-      const nearest = Math.max(0, Math.min(banners.length - 1, Math.round(el.scrollLeft / el.clientWidth)));
+      const nearest = Math.max(
+        0,
+        Math.min(banners.length - 1, Math.round(el.scrollLeft / el.clientWidth)),
+      );
       goTo(nearest);
     }
   };
@@ -316,7 +320,9 @@ export function BannerCarousel({ banners, className }: Props) {
                   <div
                     className="h-full w-full"
                     style={{
-                      background: b.gradient ? parseTailwindGradient(b.gradient) : BRAND_FALLBACK_GRADIENT,
+                      background: b.gradient
+                        ? parseTailwindGradient(b.gradient)
+                        : BRAND_FALLBACK_GRADIENT,
                     }}
                   />
                 )}
@@ -349,7 +355,11 @@ export function BannerCarousel({ banners, className }: Props) {
         // Each control keeps a 44px pointer target that overflows the band
         // invisibly, so the gap to the Menu row stays tight without shrinking
         // the hit area or overlapping the slide's CTA.
-        <div role="tablist" aria-label="Select banner" className="flex h-7 items-center justify-center gap-1">
+        <div
+          role="tablist"
+          aria-label="Select banner"
+          className="flex h-7 items-center justify-center gap-1"
+        >
           {banners.map((b, idx) => (
             <button
               key={b.id}
@@ -364,9 +374,7 @@ export function BannerCarousel({ banners, className }: Props) {
                 aria-hidden="true"
                 className={cn(
                   "block h-2 rounded-full transition-all duration-300",
-                  idx === active
-                    ? "w-6 bg-primary dark:bg-primary-text"
-                    : "w-2 bg-text-secondary",
+                  idx === active ? "w-6 bg-primary dark:bg-primary-text" : "w-2 bg-text-secondary",
                 )}
               />
             </button>

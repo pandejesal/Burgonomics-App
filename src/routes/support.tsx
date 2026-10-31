@@ -145,9 +145,9 @@ function Page() {
             <span className="type-title-large text-text">Burgonomics Customer Care</span>
           </div>
           <p className="text-base leading-relaxed text-text-secondary">
-            Need help with your meal or delivery? Send a ticket below and our support team will
-            get back to you — track its status right on this page. For urgent help, contact the
-            store directly.
+            Need help with your meal or delivery? Send a ticket below and our support team will get
+            back to you — track its status right on this page. For urgent help, contact the store
+            directly.
           </p>
           <button
             type="button"
@@ -166,10 +166,7 @@ function Page() {
               Your Active &amp; Past Tickets ({tickets.length})
             </Text>
           </div>
-          <TicketListAccordion
-            tickets={tickets}
-            onOpenNewTicket={() => setOpenTicket(true)}
-          />
+          <TicketListAccordion tickets={tickets} onOpenNewTicket={() => setOpenTicket(true)} />
         </section>
 
         {/* Direct Contact Channels */}
@@ -207,7 +204,9 @@ function Page() {
           <div className="flex items-center justify-between gap-3">
             <div className="space-y-1">
               <h3 className="type-title-large text-text">Share store feedback</h3>
-              <p className="text-sm leading-relaxed text-text-secondary">Rate your food, service, or suggest a new burger flavour.</p>
+              <p className="text-sm leading-relaxed text-text-secondary">
+                Rate your food, service, or suggest a new burger flavour.
+              </p>
             </div>
             <button
               type="button"
@@ -307,18 +306,15 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
   const Icon = ICONS[channel.kind] ?? MessageSquare;
   // Loop 19/120: masked fixture values (e.g. "+911****3123") must never
   // become tappable tel: links. Loop 20/120: same for fixture emails.
-  const callOk =
-    channel.kind === "call" && !!channel.value && isSafeTelNumber(channel.value);
-  const emailOk =
-    channel.kind === "email" && !!channel.value && isSafeEmail(channel.value);
-  const href =
-    callOk
-      ? `tel:${channel.value}`
-      : emailOk
-        ? `mailto:${channel.value}`
-        : channel.kind === "whatsapp" && channel.value
-          ? channel.value
-          : undefined;
+  const callOk = channel.kind === "call" && !!channel.value && isSafeTelNumber(channel.value);
+  const emailOk = channel.kind === "email" && !!channel.value && isSafeEmail(channel.value);
+  const href = callOk
+    ? `tel:${channel.value}`
+    : emailOk
+      ? `mailto:${channel.value}`
+      : channel.kind === "whatsapp" && channel.value
+        ? channel.value
+        : undefined;
 
   const disabled = !channel.available || !href;
   const Wrapper: React.ElementType = href && !disabled ? "a" : "div";
@@ -339,9 +335,7 @@ function ChannelRow({ channel }: { channel: SupportChannel }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold break-words">
-            {channel.label}
-          </span>
+          <span className="text-sm font-semibold break-words">{channel.label}</span>
           {!channel.available && <AppBadge tone="neutral">Soon</AppBadge>}
         </div>
         {channel.helper && (
@@ -365,13 +359,9 @@ function FaqAccordion({ item }: { item: FaqItem }) {
         className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-secondary"
       >
         <div className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-text break-words">
-            {item.question}
-          </span>
+          <span className="block text-sm font-semibold text-text break-words">{item.question}</span>
           {item.category && (
-            <span className="type-label-medium text-text-secondary">
-              {item.category}
-            </span>
+            <span className="type-label-medium text-text-secondary">{item.category}</span>
           )}
         </div>
         <ChevronDown
@@ -384,9 +374,7 @@ function FaqAccordion({ item }: { item: FaqItem }) {
       </button>
       {open && (
         <div className="px-4 pb-4">
-          <p className="text-sm leading-relaxed text-text-secondary">
-            {item.answer}
-          </p>
+          <p className="text-sm leading-relaxed text-text-secondary">{item.answer}</p>
         </div>
       )}
     </div>

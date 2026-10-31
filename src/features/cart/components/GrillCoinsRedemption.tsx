@@ -54,7 +54,7 @@ export function GrillCoinsRedemption({
           ? "border-[#0E4825] bg-[#0E4825]/10"
           : "border-divider bg-surface hover:border-primary/40",
         maxRedeemable <= 0 && "opacity-60 cursor-not-allowed",
-        className
+        className,
       )}
     >
       {/* Left Icon & Information */}
@@ -65,9 +65,7 @@ export function GrillCoinsRedemption({
 
         <div className="space-y-0.5 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-xs sm:text-sm font-bold text-text">
-              Loyalty Points
-            </h4>
+            <h4 className="text-xs sm:text-sm font-bold text-text">Loyalty Points</h4>
             <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-black font-mono">
               {availableCoins} pts
             </span>
@@ -90,13 +88,13 @@ export function GrillCoinsRedemption({
           aria-hidden
           className={cn(
             "w-11 h-6 rounded-full transition-colors p-0.5 flex items-center",
-            isApplied ? "bg-[#0E4825]" : "bg-divider"
+            isApplied ? "bg-[#0E4825]" : "bg-divider",
           )}
         >
           <div
             className={cn(
               "w-5 h-5 rounded-full bg-white shadow-sm transition-transform transform",
-              isApplied ? "translate-x-5" : "translate-x-0"
+              isApplied ? "translate-x-5" : "translate-x-0",
             )}
           />
         </div>

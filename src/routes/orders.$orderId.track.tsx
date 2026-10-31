@@ -39,7 +39,10 @@ export const Route = createFileRoute("/orders/$orderId/track")({
   head: () => ({
     meta: [
       { title: "Track Order — Burgonomics" },
-      { name: "description", content: "Track your Burgonomics order status, stages, and estimated time." },
+      {
+        name: "description",
+        content: "Track your Burgonomics order status, stages, and estimated time.",
+      },
     ],
   }),
   component: TrackOrderPage,
@@ -130,10 +133,7 @@ function TrackOrderPage() {
   // button, never dial a hardcoded number that isn't the restaurant.
   const storePhone = order.store?.phone || undefined;
   const shortOrderNum = order.shortCode || order.id.slice(-6).toUpperCase();
-  const addressText =
-    order.address?.line1 ||
-    order.address?.label ||
-    "Delivery Destination";
+  const addressText = order.address?.line1 || order.address?.label || "Delivery Destination";
 
   // Real outlet + destination coordinates only — no default store/drop
   // coordinates. Without them the map is replaced by an honest caption.
@@ -248,9 +248,7 @@ function TrackOrderPage() {
               <div className="flex items-center gap-3">
                 <Receipt className="h-4.5 w-4.5 shrink-0 text-primary-text" aria-hidden />
                 <div className="min-w-0">
-                  <h3 className="type-title-large text-text">
-                    View Itemized Tax Invoice
-                  </h3>
+                  <h3 className="type-title-large text-text">View Itemized Tax Invoice</h3>
                   <p className="text-sm leading-relaxed text-text-secondary tabular-nums">
                     {order.items?.length ?? 1} Items • {formatINR(order.totals?.grandTotal ?? 0)}
                   </p>
@@ -291,7 +289,11 @@ function TrackOrderPage() {
                   )}
                   <div className="flex justify-between gap-3">
                     <span>Delivery fee</span>
-                    <span className="tabular-nums">{order.totals?.deliveryFee === 0 ? "Free" : formatINR(order.totals?.deliveryFee ?? 0)}</span>
+                    <span className="tabular-nums">
+                      {order.totals?.deliveryFee === 0
+                        ? "Free"
+                        : formatINR(order.totals?.deliveryFee ?? 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between gap-3 border-t border-divider pt-3 text-base font-semibold text-text">
                     <span>Total Paid ({order.payment?.method?.toUpperCase() ?? "PAID"})</span>

@@ -49,7 +49,10 @@ const SOURCES = {
   CheckoutRoute: readFileSync("src/routes/checkout.tsx", "utf8"),
   CartItemRow: readFileSync(`${CART}/CartItemRow.tsx`, "utf8"),
   PromoInput: readFileSync(`${CART}/PromoInput.tsx`, "utf8"),
-  KitchenClosedBanner: readFileSync("src/shared/components/feedback/KitchenClosedBanner.tsx", "utf8"),
+  KitchenClosedBanner: readFileSync(
+    "src/shared/components/feedback/KitchenClosedBanner.tsx",
+    "utf8",
+  ),
 };
 
 let root: Root | null = null;
@@ -198,6 +201,8 @@ describe("checkout and cart readability", () => {
   });
 
   it("does not advertise retired app loyalty rewards in the login sheet", () => {
-    expect(SOURCES.QuickAuthSheet).not.toMatch(/Get 50 welcome points|welcome points on your first order/);
+    expect(SOURCES.QuickAuthSheet).not.toMatch(
+      /Get 50 welcome points|welcome points on your first order/,
+    );
   });
 });

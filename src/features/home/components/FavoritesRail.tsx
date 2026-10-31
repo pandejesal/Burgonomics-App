@@ -102,7 +102,10 @@ function FavoriteCard({ favorite }: { favorite: Favorite }) {
  * are no favourites, and issues no network request of any kind: there is no
  * catalog, order or provider read behind this component.
  */
-export function FavoritesRail({ limit = DEFAULT_FAVORITES_RAIL_LIMIT, className }: FavoritesRailProps) {
+export function FavoritesRail({
+  limit = DEFAULT_FAVORITES_RAIL_LIMIT,
+  className,
+}: FavoritesRailProps) {
   const items = useFavoritesStore((state) => state.items);
   const visible = limit > 0 ? items.slice(0, limit) : items;
 

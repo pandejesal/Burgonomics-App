@@ -30,11 +30,24 @@ describe("approved bottom-of-Home announcements", () => {
 
   it("places Awards & Recognition before Upcoming Branches using only supplied content", async () => {
     await mount({
-      awards: [{ id: "test-award", title: "Owner-supplied recognition", description: "Approved test description" }],
-      upcomingStores: [{ id: "test-announcement", name: "Owner-supplied store", location: "Approved test location" }],
+      awards: [
+        {
+          id: "test-award",
+          title: "Owner-supplied recognition",
+          description: "Approved test description",
+        },
+      ],
+      upcomingStores: [
+        {
+          id: "test-announcement",
+          name: "Owner-supplied store",
+          location: "Approved test location",
+        },
+      ],
     });
     expect(Array.from(host.querySelectorAll("h2"), (heading) => heading.textContent)).toEqual([
-      "Awards & Recognition", "Upcoming Branches",
+      "Awards & Recognition",
+      "Upcoming Branches",
     ]);
     expect(host.textContent).toContain("Approved test description");
     expect(host.textContent).toContain("Approved test location");
@@ -45,7 +58,14 @@ describe("approved bottom-of-Home announcements", () => {
   it("hides each empty section independently and adds dates only when supplied", async () => {
     await mount({
       awards: [],
-      upcomingStores: [{ id: "test-announcement", name: "Test store", location: "Test location", openingText: "Owner-confirmed test timing" }],
+      upcomingStores: [
+        {
+          id: "test-announcement",
+          name: "Test store",
+          location: "Test location",
+          openingText: "Owner-confirmed test timing",
+        },
+      ],
     });
     expect(host.querySelectorAll("section")).toHaveLength(1);
     expect(host.textContent).not.toContain("Awards & Recognition");

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
 export interface CartItem {
   id: string;
@@ -7,7 +7,7 @@ export interface CartItem {
   quantity: number;
 }
 
-export type FulfillmentMode = 'delivery' | 'takeaway' | 'dinein';
+export type FulfillmentMode = "delivery" | "takeaway" | "dinein";
 
 export interface CartCalculationInput {
   items: CartItem[];
@@ -40,14 +40,14 @@ export function calculateCart(input: CartCalculationInput): CartCalculationResul
   let deliveryFee = 0;
   let packagingFee = 0;
 
-  if (input.fulfillmentMode === 'delivery') {
+  if (input.fulfillmentMode === "delivery") {
     const dist = input.deliveryDistanceKm || 3;
     deliveryFee = dist <= 3 ? 30 : 30 + Math.ceil(dist - 3) * 10;
     packagingFee = 20;
-  } else if (input.fulfillmentMode === 'takeaway') {
+  } else if (input.fulfillmentMode === "takeaway") {
     deliveryFee = 0;
     packagingFee = 20;
-  } else if (input.fulfillmentMode === 'dinein') {
+  } else if (input.fulfillmentMode === "dinein") {
     deliveryFee = 0;
     packagingFee = 0;
   }
@@ -82,14 +82,14 @@ export function calculateCart(input: CartCalculationInput): CartCalculationResul
   };
 }
 
-describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () => {
-  it('correctly calculates Delivery fulfillment mode pricing', () => {
+describe("Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark", () => {
+  it("correctly calculates Delivery fulfillment mode pricing", () => {
     const result = calculateCart({
       items: [
-        { id: '1', name: 'Truffle Smash Burger', price: 299, quantity: 2 },
-        { id: '2', name: 'Peri Peri Crispy Fries', price: 149, quantity: 1 },
+        { id: "1", name: "Truffle Smash Burger", price: 299, quantity: 2 },
+        { id: "2", name: "Peri Peri Crispy Fries", price: 149, quantity: 1 },
       ],
-      fulfillmentMode: 'delivery',
+      fulfillmentMode: "delivery",
       deliveryDistanceKm: 4.5,
       promoDiscountPercent: 10,
       promoMaxDiscount: 100,
@@ -105,10 +105,10 @@ describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () =
     expect(result.finalTotal).toBe(760);
   });
 
-  it('correctly calculates Takeaway fulfillment mode pricing with zero delivery fee', () => {
+  it("correctly calculates Takeaway fulfillment mode pricing with zero delivery fee", () => {
     const result = calculateCart({
-      items: [{ id: '1', name: 'Double Cheese Overload', price: 349, quantity: 1 }],
-      fulfillmentMode: 'takeaway',
+      items: [{ id: "1", name: "Double Cheese Overload", price: 349, quantity: 1 }],
+      fulfillmentMode: "takeaway",
     });
 
     expect(result.subtotal).toBe(349);
@@ -118,10 +118,10 @@ describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () =
     expect(result.finalTotal).toBe(386);
   });
 
-  it('correctly calculates Dine-In fulfillment mode with zero delivery and zero packaging fees', () => {
+  it("correctly calculates Dine-In fulfillment mode with zero delivery and zero packaging fees", () => {
     const result = calculateCart({
-      items: [{ id: '1', name: 'Double Cheese Overload', price: 349, quantity: 2 }],
-      fulfillmentMode: 'dinein',
+      items: [{ id: "1", name: "Double Cheese Overload", price: 349, quantity: 2 }],
+      fulfillmentMode: "dinein",
     });
 
     expect(result.subtotal).toBe(698);
@@ -131,19 +131,19 @@ describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () =
     expect(result.finalTotal).toBe(733);
   });
 
-  it('STRESS BENCHMARK: executes 1,000 multi-item cart calculations with sub-millisecond latency', () => {
+  it("STRESS BENCHMARK: executes 1,000 multi-item cart calculations with sub-millisecond latency", () => {
     const testItems: CartItem[] = [
-      { id: 'item_1', name: 'Smash OG Single', price: 199, quantity: 2 },
-      { id: 'item_2', name: 'Double Truffle Melt', price: 349, quantity: 1 },
-      { id: 'item_3', name: 'Peri Peri Loaded Fries', price: 179, quantity: 3 },
-      { id: 'item_4', name: 'Cold Pressed Lemonade', price: 99, quantity: 2 },
+      { id: "item_1", name: "Smash OG Single", price: 199, quantity: 2 },
+      { id: "item_2", name: "Double Truffle Melt", price: 349, quantity: 1 },
+      { id: "item_3", name: "Peri Peri Loaded Fries", price: 179, quantity: 3 },
+      { id: "item_4", name: "Cold Pressed Lemonade", price: 99, quantity: 2 },
     ];
 
     // JIT Warmup pass
     for (let w = 0; w < 100; w++) {
       calculateCart({
         items: testItems,
-        fulfillmentMode: 'delivery',
+        fulfillmentMode: "delivery",
         deliveryDistanceKm: 4,
       });
     }
@@ -153,8 +153,7 @@ describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () =
     let accumulatedTotal = 0;
 
     for (let i = 0; i < iterations; i++) {
-      const mode: FulfillmentMode =
-        i % 3 === 0 ? 'delivery' : i % 3 === 1 ? 'takeaway' : 'dinein';
+      const mode: FulfillmentMode = i % 3 === 0 ? "delivery" : i % 3 === 1 ? "takeaway" : "dinein";
       const calc = calculateCart({
         items: testItems,
         fulfillmentMode: mode,
@@ -172,8 +171,8 @@ describe('Customer App Core — 3-Way Fulfillment & Cart Stress Benchmark', () =
 
     console.log(
       `[Benchmark: Customer App Cart] Executed ${iterations} cart recalculations in ${duration.toFixed(
-        2
-      )}ms (Throughput: ${(1000 / avgPerOpMs).toFixed(0)} ops/sec, Avg: ${avgPerOpMs.toFixed(4)}ms/op)`
+        2,
+      )}ms (Throughput: ${(1000 / avgPerOpMs).toFixed(0)} ops/sec, Avg: ${avgPerOpMs.toFixed(4)}ms/op)`,
     );
 
     expect(accumulatedTotal).toBeGreaterThan(0);

@@ -10,7 +10,7 @@
 export function needsRepriceAcceptance(
   displayed: number | undefined,
   authoritative: number | undefined,
-  accepted: number | null
+  accepted: number | null,
 ): boolean {
   return (
     typeof displayed === "number" &&

@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { db } from "@/core/config/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { currentScopedUid, onAuthUidChange, scopedStorageKey } from "@/features/auth/utils/scopedPersistence";
+import {
+  currentScopedUid,
+  onAuthUidChange,
+  scopedStorageKey,
+} from "@/features/auth/utils/scopedPersistence";
 
 // Loop 36/120 privacy (finding 6): the cached balance is per signed-in user
 // (guests keep the legacy key). STRICT scoping — no legacy fallback read,
@@ -51,9 +55,7 @@ function persist(state: Pick<LoyaltyState, "balance" | "lastSyncedAt">) {
 }
 
 function cleanBalance(raw: unknown): number {
-  return typeof raw === "number" && Number.isFinite(raw) && raw > 0
-    ? Math.floor(raw)
-    : 0;
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
 }
 
 export const useLoyaltyStore = create<LoyaltyState>((set, get) => ({
@@ -82,9 +84,7 @@ export const useLoyaltyStore = create<LoyaltyState>((set, get) => ({
     }
     try {
       const snap = await getDoc(doc(db, "customers", uid));
-      const server = snap.exists()
-        ? cleanBalance((snap.data() as any)?.loyaltyPoints)
-        : 0;
+      const server = snap.exists() ? cleanBalance((snap.data() as any)?.loyaltyPoints) : 0;
       const at = Date.now();
       // Server is truth: adopt unconditionally, even downward (post-purchase
       // debits must show).

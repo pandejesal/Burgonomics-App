@@ -37,9 +37,7 @@ function SplashPage() {
     >
       <BrandMascot size={160} float={!reduceMotion} />
       <BrandWordmark />
-      <span className="type-caption text-text-secondary">
-        {APP.vegPromise}
-      </span>
+      <span className="type-caption text-text-secondary">{APP.vegPromise}</span>
     </div>
   );
 }

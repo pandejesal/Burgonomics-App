@@ -47,7 +47,8 @@ const KIND_PLURAL_LABELS = {
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchParamsSchema => ({
     q: typeof search.q === "string" && search.q.trim() ? search.q.trim() : undefined,
-    filter: typeof search.filter === "string" && search.filter.trim() ? search.filter.trim() : undefined,
+    filter:
+      typeof search.filter === "string" && search.filter.trim() ? search.filter.trim() : undefined,
     kind: ["all", "product", "combo", "category", "offer"].includes(search.kind as string)
       ? (search.kind as SearchKind)
       : undefined,
@@ -55,7 +56,10 @@ export const Route = createFileRoute("/search")({
   head: () => ({
     meta: [
       { title: "Search — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "Instant search the 100% Pure Veg Burgonomics menu with diet filters." },
+      {
+        name: "description",
+        content: "Instant search the 100% Pure Veg Burgonomics menu with diet filters.",
+      },
     ],
   }),
   component: SearchPage,
@@ -132,7 +136,11 @@ function SearchPage() {
       void submit(store?.id);
       void navigate({
         to: "/search",
-        search: (prev: SearchParamsSchema) => ({ ...prev, q, filter: activeFilter !== "all" ? activeFilter : undefined }),
+        search: (prev: SearchParamsSchema) => ({
+          ...prev,
+          q,
+          filter: activeFilter !== "all" ? activeFilter : undefined,
+        }),
         replace: true,
       });
     }, 300);
@@ -180,10 +188,17 @@ function SearchPage() {
     if (activeFilter === "all") return results;
     return results.filter((item) => {
       if (activeFilter === "jain") {
-        return item.name.toLowerCase().includes("jain") || item.description?.toLowerCase().includes("jain");
+        return (
+          item.name.toLowerCase().includes("jain") ||
+          item.description?.toLowerCase().includes("jain")
+        );
       }
       if (activeFilter === "bestseller") {
-        return item.badges?.some((b) => b.label.toLowerCase().includes("special") || b.label.toLowerCase().includes("bestseller"));
+        return item.badges?.some(
+          (b) =>
+            b.label.toLowerCase().includes("special") ||
+            b.label.toLowerCase().includes("bestseller"),
+        );
       }
       if (activeFilter === "spicy") {
         return (
@@ -289,7 +304,10 @@ function SearchPage() {
                       setKind(k);
                       void navigate({
                         to: "/search",
-                        search: (prev: SearchParamsSchema) => ({ ...prev, kind: k !== "all" ? k : undefined }),
+                        search: (prev: SearchParamsSchema) => ({
+                          ...prev,
+                          kind: k !== "all" ? k : undefined,
+                        }),
                         replace: true,
                       });
                     }}
@@ -297,7 +315,7 @@ function SearchPage() {
                       "min-h-11 whitespace-nowrap rounded-xl border px-3.5 py-2 text-sm font-semibold transition-colors select-none active:scale-[0.96] cursor-pointer",
                       active
                         ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                        : "border-divider bg-surface text-text-secondary hover:text-primary"
+                        : "border-divider bg-surface text-text-secondary hover:text-primary",
                     )}
                   >
                     {k === "all" ? "All" : KIND_PLURAL_LABELS[k]}
@@ -321,7 +339,7 @@ function SearchPage() {
                     "inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors select-none cursor-pointer",
                     active
                       ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                      : "border-divider bg-surface text-text-secondary hover:border-primary/40 hover:text-text"
+                      : "border-divider bg-surface text-text-secondary hover:border-primary/40 hover:text-text",
                   )}
                 >
                   {Icon && <Icon className="h-4 w-4" aria-hidden />}
@@ -351,7 +369,9 @@ function SearchPage() {
                         >
                           <Tag className="h-4 w-4 text-primary-text" aria-hidden />
                           <span className="type-body-large font-medium">{s.label}</span>
-                          <span className="ml-auto text-sm capitalize text-text-secondary">{s.kind}</span>
+                          <span className="ml-auto text-sm capitalize text-text-secondary">
+                            {s.kind}
+                          </span>
                         </button>
                       </li>
                     ))}

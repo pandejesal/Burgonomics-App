@@ -54,8 +54,9 @@ async function loadThreeCategoriesWithPages() {
     success: true,
     data: [{ id: "cat_a", name: "Alpha", order: 1, itemCount: 60 }],
   });
-  repository.listProducts.mockImplementation(async (_storeId: string, categoryId: string, pageNumber: number) =>
-    page(categoryId, pageNumber, 60),
+  repository.listProducts.mockImplementation(
+    async (_storeId: string, categoryId: string, pageNumber: number) =>
+      page(categoryId, pageNumber, 60),
   );
   await useMenuStore.getState().load("store-1");
   await useMenuStore.getState().loadMore("cat_a");
@@ -117,12 +118,7 @@ describe("live snapshot recovery (A)", () => {
     expect(bucket.hasMore).toBe(true);
 
     await useMenuStore.getState().loadMore("cat_a");
-    expect(repository.listProducts).toHaveBeenLastCalledWith(
-      "store-1",
-      "cat_a",
-      2,
-      MENU_PAGE_SIZE,
-    );
+    expect(repository.listProducts).toHaveBeenLastCalledWith("store-1", "cat_a", 2, MENU_PAGE_SIZE);
     bucket = useMenuStore.getState().buckets.cat_a;
     expect(bucket.items.length).toBeGreaterThan(MENU_PAGE_SIZE);
   });
@@ -150,8 +146,9 @@ describe("live snapshot recovery (A)", () => {
       success: true,
       data: [{ id: "cat_a", name: "Alpha", order: 1, itemCount: 3 }],
     });
-    repository.listProducts.mockImplementation(async (_storeId: string, categoryId: string, pageNumber: number) =>
-      page(categoryId, pageNumber, 3),
+    repository.listProducts.mockImplementation(
+      async (_storeId: string, categoryId: string, pageNumber: number) =>
+        page(categoryId, pageNumber, 3),
     );
 
     await useMenuStore.getState().load("store-1");
@@ -166,15 +163,17 @@ describe("live snapshot recovery (A)", () => {
     // 97 inserts land on top of the 3 known rows; canonical order is what the
     // paged reads slice.
     const canonical = Array.from({ length: 100 }, (_, index) => product(`n${index + 1}`));
-    repository.listProducts.mockImplementation(async (_storeId: string, _categoryId: string, pageNumber: number) => ({
-      success: true as const,
-      data: {
-        items: canonical.slice((pageNumber - 1) * MENU_PAGE_SIZE, pageNumber * MENU_PAGE_SIZE),
-        page: pageNumber,
-        pageSize: MENU_PAGE_SIZE,
-        total: canonical.length,
-      },
-    }));
+    repository.listProducts.mockImplementation(
+      async (_storeId: string, _categoryId: string, pageNumber: number) => ({
+        success: true as const,
+        data: {
+          items: canonical.slice((pageNumber - 1) * MENU_PAGE_SIZE, pageNumber * MENU_PAGE_SIZE),
+          page: pageNumber,
+          pageSize: MENU_PAGE_SIZE,
+          total: canonical.length,
+        },
+      }),
+    );
 
     liveCallback!({ success: true, data: { products: canonical, removedIds: [], complete: true } });
     let bucket = useMenuStore.getState().buckets.cat_a;
@@ -207,7 +206,8 @@ describe("live snapshot recovery (A)", () => {
     repository.listProducts.mockImplementation(async (_storeId: string, categoryId: string) => ({
       success: true as const,
       data: {
-        items: categoryId === "cat_a" ? [product("keepA"), product("mover")] : [product("b1", "cat_b")],
+        items:
+          categoryId === "cat_a" ? [product("keepA"), product("mover")] : [product("b1", "cat_b")],
         page: 1,
         pageSize: MENU_PAGE_SIZE,
         total: categoryId === "cat_a" ? 2 : 1,
@@ -244,7 +244,10 @@ describe("malformed page retryability (D)", () => {
       data: [{ id: "cat_a", name: "Alpha", order: 1, itemCount: 20 }],
     });
     repository.listProducts
-      .mockResolvedValueOnce({ success: true, data: { items: null, page: 1, pageSize: 20, total: 20 } })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { items: null, page: 1, pageSize: 20, total: 20 },
+      })
       .mockImplementation(async (_storeId: string, categoryId: string, pageNumber: number) =>
         page(categoryId, pageNumber, 20),
       );

@@ -43,7 +43,10 @@ describe("paymentsService.createOrder - structured server refusals survive trans
 
   it("surfaces the server's 409 ITEM_UNAVAILABLE verbatim and non-retryable", async () => {
     fetchMock.mockResolvedValueOnce(
-      makeResponse(409, { error: "Biryani is no longer available — please review your cart.", code: "ITEM_UNAVAILABLE" })
+      makeResponse(409, {
+        error: "Biryani is no longer available — please review your cart.",
+        code: "ITEM_UNAVAILABLE",
+      }),
     );
     const res = await paymentsService.createOrder(VALID_INPUT);
     expect(res.success).toBe(false);
@@ -57,9 +60,10 @@ describe("paymentsService.createOrder - structured server refusals survive trans
   it("surfaces 409 ITEM_PRICE_UNVERIFIED the same way (fail-closed on unverifiable price)", async () => {
     fetchMock.mockResolvedValueOnce(
       makeResponse(409, {
-        error: "An item could not be verified against the menu — please refresh your cart and try again.",
+        error:
+          "An item could not be verified against the menu — please refresh your cart and try again.",
         code: "ITEM_PRICE_UNVERIFIED",
-      })
+      }),
     );
     const res = await paymentsService.createOrder(VALID_INPUT);
     expect(res.success).toBe(false);
@@ -91,7 +95,7 @@ describe("paymentsService.createOrder - structured server refusals survive trans
 
   it("still parses a successful gateway order (create contract unchanged)", async () => {
     fetchMock.mockResolvedValueOnce(
-      makeResponse(200, { razorpayOrderId: "order_rzp_ok", amountPaise: 19900, keyId: "rzp_test" })
+      makeResponse(200, { razorpayOrderId: "order_rzp_ok", amountPaise: 19900, keyId: "rzp_test" }),
     );
     const res = await paymentsService.createOrder(VALID_INPUT);
     expect(res.success).toBe(true);

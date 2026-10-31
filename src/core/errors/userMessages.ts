@@ -35,8 +35,10 @@ const CODE_MESSAGES: Record<string, string> = {
   "auth/invalid-phone-number": "That mobile number doesn't look right. Please check it.",
   "auth/too-many-requests": "Too many attempts. Please wait a few minutes and try again.",
   "auth/quota-exceeded": "Too many attempts. Please wait a few minutes and try again.",
-  "auth/network-request-failed": "We couldn't reach our servers. Check your connection and try again.",
-  "auth/captcha-check-failed": "We couldn't complete the security check. Please refresh and try again.",
+  "auth/network-request-failed":
+    "We couldn't reach our servers. Check your connection and try again.",
+  "auth/captcha-check-failed":
+    "We couldn't complete the security check. Please refresh and try again.",
   "auth/invalid-app-credential": "We couldn't verify this request. Please refresh and try again.",
   "auth/user-disabled": "This number can't sign in. Please contact support.",
   "auth/operation-not-allowed": "Sign-in isn't available right now. Please try again later.",
@@ -76,8 +78,7 @@ type ErrorLike = {
   error?: unknown;
 };
 
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null;
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
 const asCode = (v: unknown): string | undefined =>
   typeof v === "string" && v.length > 0 ? v : undefined;

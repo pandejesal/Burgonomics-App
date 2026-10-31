@@ -4,11 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { TextField } from "@/shared/components/common/TextField";
 import { Text } from "@/shared/components/common/Text";
-import {
-  COUNTRY_CODE,
-  PHONE_LENGTH,
-  validatePhone,
-} from "@/features/auth/utils/validators";
+import { COUNTRY_CODE, PHONE_LENGTH, validatePhone } from "@/features/auth/utils/validators";
 import { APP } from "@/core/constants/app";
 
 export interface PhoneLoginFormProps {
@@ -59,7 +55,8 @@ export function PhoneLoginForm({
             Welcome to {APP.name}
           </Text>
           <Text variant="bodyMedium" tone="secondary" className="text-center">
-            Enter your 10-digit mobile number to continue. We'll send a secure SMS verification code.
+            Enter your 10-digit mobile number to continue. We'll send a secure SMS verification
+            code.
           </Text>
         </div>
 

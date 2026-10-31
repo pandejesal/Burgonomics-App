@@ -19,8 +19,7 @@ export function orderNotesUnits(value: string): number {
 }
 
 export type OrderNotesEdit =
-  | { ok: true; value: string }
-  | { ok: false; reason: "too_long"; value: string };
+  { ok: true; value: string } | { ok: false; reason: "too_long"; value: string };
 
 /**
  * Apply a proposed edit. Overflow rejects the WHOLE change (never a partial

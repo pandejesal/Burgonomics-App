@@ -28,11 +28,7 @@ function reportErrorToSink(error: unknown, routeContext: string) {
   // Best-effort beacon (no secrets, no PII — error.message only)
   try {
     const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === "string"
-          ? error
-          : String(error);
+      error instanceof Error ? error.message : typeof error === "string" ? error : String(error);
     const payload = JSON.stringify({
       type: "browser_error",
       message,

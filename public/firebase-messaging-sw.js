@@ -3,7 +3,7 @@
  * browser-public by design (same values as src/core/config/firebase.ts).
  * Registered by the app only after the user grants notification permission.
  */
-/* eslint-disable no-undef */
+
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js");
 
@@ -44,7 +44,7 @@ try {
         if (self.clients.openWindow) {
           return self.clients.openWindow(targetUrl);
         }
-      })
+      }),
     );
   });
 } catch (e) {

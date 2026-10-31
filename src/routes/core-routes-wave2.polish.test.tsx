@@ -161,7 +161,9 @@ describe("L2 - orders search input has an accessible name", () => {
   it("exposes aria-label on the search input", async () => {
     await mount(OrdersRoute);
 
-    const input = container.querySelector<HTMLInputElement>('input[placeholder^="Search by Order"]');
+    const input = container.querySelector<HTMLInputElement>(
+      'input[placeholder^="Search by Order"]',
+    );
     expect(input).not.toBeNull();
     expect(input!.getAttribute("aria-label")).toBe("Search orders");
   });

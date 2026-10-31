@@ -27,7 +27,10 @@ import { CategoryGrid } from "./CategoryGrid";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const category = (id: string, name: string, order = 1): MenuCategory => ({
-  id, name, order, itemCount: 17,
+  id,
+  name,
+  order,
+  itemCount: 17,
 });
 const categories: MenuCategory[] = [
   category("pp-combos", "Combos"),
@@ -68,7 +71,9 @@ describe("Home's available photographed menu shortcuts", () => {
   it("renders the available photographed labels, not empty primary cards or unverified counts", async () => {
     await mount();
     expect(Array.from(host!.querySelectorAll("h4"), (heading) => heading.textContent)).toEqual([
-      "Burgers", "Sides", "Shakes & Drinks",
+      "Burgers",
+      "Sides",
+      "Shakes & Drinks",
     ]);
     expect(host!.querySelectorAll("button")).toHaveLength(3);
     expect(host!.textContent).not.toMatch(/Combos|Pizza|UFO Burgers|Cold Coffee|17 items/);
@@ -95,7 +100,8 @@ describe("Home's available photographed menu shortcuts", () => {
     ]) {
       await act(async () => shortcut(label).click());
       expect(effects.navigate).toHaveBeenLastCalledWith({
-        to: "/menu", search: { category: id },
+        to: "/menu",
+        search: { category: id },
       });
     }
     expect(effects.navigate).toHaveBeenCalledTimes(3);
@@ -113,12 +119,15 @@ describe("Home's available photographed menu shortcuts", () => {
 
   it("uses the verified group photos and neutral text after any image fails", async () => {
     await mount();
-    expect(shortcut("Burgers").querySelector("img")?.getAttribute("src"))
-      .toBe("/images/menu/classic-burgers/hero-burger.jpg");
-    expect(shortcut("Sides").querySelector("img")?.getAttribute("src"))
-      .toBe("/images/menu/fries/salted-fries.jpg");
-    expect(shortcut("Shakes & Drinks").querySelector("img")?.getAttribute("src"))
-      .toBe("/images/menu/thick-shakes/oreo-shake.jpg");
+    expect(shortcut("Burgers").querySelector("img")?.getAttribute("src")).toBe(
+      "/images/menu/classic-burgers/hero-burger.jpg",
+    );
+    expect(shortcut("Sides").querySelector("img")?.getAttribute("src")).toBe(
+      "/images/menu/fries/salted-fries.jpg",
+    );
+    expect(shortcut("Shakes & Drinks").querySelector("img")?.getAttribute("src")).toBe(
+      "/images/menu/thick-shakes/oreo-shake.jpg",
+    );
 
     await act(async () => {
       for (const image of host!.querySelectorAll("img")) image.dispatchEvent(new Event("error"));
@@ -132,10 +141,13 @@ describe("Home's available photographed menu shortcuts", () => {
   });
 
   it("does not turn a loaded Wraps name into a primary tile without a verified photograph", async () => {
-    await mount([...categories, {
-      ...category("pp-loaded-wraps", "Wraps"),
-      imageUrl: "/images/menu/classic-burgers/hero-burger.jpg",
-    }]);
+    await mount([
+      ...categories,
+      {
+        ...category("pp-loaded-wraps", "Wraps"),
+        imageUrl: "/images/menu/classic-burgers/hero-burger.jpg",
+      },
+    ]);
     expect(host!.querySelector('[aria-label="Wraps"]')).toBeNull();
     expect(effects.navigate).not.toHaveBeenCalled();
   });

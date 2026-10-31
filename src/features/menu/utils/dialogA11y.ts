@@ -23,14 +23,12 @@ const FOCUSABLE_SELECTOR = [
  * every control. `hidden`, `aria-hidden` and disabled are checked instead.
  */
 export function getFocusableElements(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (element) => {
-      if (element.hasAttribute("disabled")) return false;
-      if (element.getAttribute("aria-hidden") === "true") return false;
-      if (element.hidden) return false;
-      return true;
-    },
-  );
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (element.hasAttribute("disabled")) return false;
+    if (element.getAttribute("aria-hidden") === "true") return false;
+    if (element.hidden) return false;
+    return true;
+  });
 }
 
 /**

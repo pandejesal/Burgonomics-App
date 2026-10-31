@@ -67,7 +67,6 @@ export function isStoreInDeliveryArea(
   return distanceKm <= radius;
 }
 
-
 /** Structural minimum a store must expose to be judged visible. */
 export interface StoreVisibilityCandidate {
   lat: number;
@@ -131,4 +130,3 @@ export function selectVisibleStores<T extends StoreVisibilityCandidate>(
     return isStoreInDeliveryArea(store, userLat, userLng);
   });
 }
-

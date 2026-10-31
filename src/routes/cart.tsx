@@ -37,7 +37,10 @@ export const Route = createFileRoute("/cart")({
   head: () => ({
     meta: [
       { title: "Your Cart — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "Review your 100% Pure Veg Burgonomics cart and order breakdown." },
+      {
+        name: "description",
+        content: "Review your 100% Pure Veg Burgonomics cart and order breakdown.",
+      },
     ],
   }),
   component: CartPage,
@@ -275,7 +278,10 @@ function CartPage() {
 
         {/* Offline pending-sync notice — cart persists locally either way */}
         {syncPending && (
-          <div role="status" className="rounded-[var(--radius-large)] border border-divider bg-bg-secondary p-4 type-caption text-text-secondary">
+          <div
+            role="status"
+            className="rounded-[var(--radius-large)] border border-divider bg-bg-secondary p-4 type-caption text-text-secondary"
+          >
             Offline changes saved on this device — will sync when back online.
           </div>
         )}
@@ -288,13 +294,21 @@ function CartPage() {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="type-caption font-semibold text-primary-text">
-                  {fulfillment === "delivery" ? "Delivery" : fulfillment === "takeaway" ? "Takeaway" : "Dine-In"}
+                  {fulfillment === "delivery"
+                    ? "Delivery"
+                    : fulfillment === "takeaway"
+                      ? "Takeaway"
+                      : "Dine-In"}
                 </span>
               </div>
               <p className="type-body break-words font-medium text-text-primary">
                 {fulfillment === "delivery"
-                   ? selectedAddress ? `${selectedAddress.customLabel || selectedAddress.label} • ${selectedAddress.line1}` : "Select Delivery Address"
-                  : activeStore ? activeStore.name : "Select Branch"}
+                  ? selectedAddress
+                    ? `${selectedAddress.customLabel || selectedAddress.label} • ${selectedAddress.line1}`
+                    : "Select Delivery Address"
+                  : activeStore
+                    ? activeStore.name
+                    : "Select Branch"}
               </p>
             </div>
           </div>
@@ -316,7 +330,9 @@ function CartPage() {
                   ? "🎉 You've unlocked FREE Delivery!"
                   : `Add ${formatINR(freeDeliveryDelta)} more for FREE delivery`}
               </span>
-              <span className="type-price shrink-0 text-text-primary">{Math.min(100, Math.round((subtotal / 499) * 100))}%</span>
+              <span className="type-price shrink-0 text-text-primary">
+                {Math.min(100, Math.round((subtotal / 499) * 100))}%
+              </span>
             </div>
             <div className="h-2 w-full rounded-full bg-bg-secondary overflow-hidden">
               <div
@@ -346,7 +362,10 @@ function CartPage() {
             ))}
           </div>
           <div className="pt-1">
-            <Link to="/menu" className="inline-flex min-h-11 items-center type-caption font-semibold text-primary-text hover:underline">
+            <Link
+              to="/menu"
+              className="inline-flex min-h-11 items-center type-caption font-semibold text-primary-text hover:underline"
+            >
               + Add more items from menu
             </Link>
           </div>

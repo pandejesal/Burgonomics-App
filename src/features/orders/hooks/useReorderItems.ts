@@ -217,8 +217,7 @@ export function useReorderItems() {
   const [isReordering, setIsReordering] = useState(false);
   const [outOfStockModal, setOutOfStockModal] =
     useState<ReorderOutOfStockState>(EMPTY_OUT_OF_STOCK);
-  const [pendingConfirmation, setPendingConfirmation] =
-    useState<ReorderConfirmation | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<ReorderConfirmation | null>(null);
   const pendingRef = useRef<PendingAdd | null>(null);
 
   // Liveness: a hook that unmounts must abort its async work instead of
@@ -348,16 +347,16 @@ export function useReorderItems() {
       if (!pastStoreId) {
         // Never invent "store_default": without a real outlet nothing can be
         // verified, so nothing is added.
-        toast.error("We couldn't tell which outlet this order came from. Please add items from the menu.");
+        toast.error(
+          "We couldn't tell which outlet this order came from. Please add items from the menu.",
+        );
         return { success: false, addedCount: 0, reason: "missing_store" };
       }
 
       const selection = useStoreSelection.getState();
       const currentStore = selection.activeStore ?? null;
       const currentStoreId =
-        typeof currentStore?.id === "string" && currentStore.id.length > 0
-          ? currentStore.id
-          : "";
+        typeof currentStore?.id === "string" && currentStore.id.length > 0 ? currentStore.id : "";
 
       if (!currentStoreId) {
         toast.error(
@@ -414,7 +413,9 @@ export function useReorderItems() {
           return { success: false, addedCount: 0, reason: "lookup_failed" };
         }
         if (!scopeMatches(scope)) {
-          toast.error("Your cart, account or order type changed while we checked availability, so nothing was added.");
+          toast.error(
+            "Your cart, account or order type changed while we checked availability, so nothing was added.",
+          );
           return { success: false, addedCount: 0, reason: "aborted" };
         }
 
@@ -492,7 +493,9 @@ export function useReorderItems() {
       if (!scopeMatches(pending)) {
         clearPending(token);
         setOutOfStockModal(EMPTY_OUT_OF_STOCK);
-        toast.error("Your cart or order type changed while we checked availability, so nothing was added.");
+        toast.error(
+          "Your cart or order type changed while we checked availability, so nothing was added.",
+        );
         return;
       }
 
@@ -514,7 +517,9 @@ export function useReorderItems() {
       if (!scopeMatches(pending)) {
         clearPending(token);
         setOutOfStockModal(EMPTY_OUT_OF_STOCK);
-        toast.error("Your cart or order type changed while we checked availability, so nothing was added.");
+        toast.error(
+          "Your cart or order type changed while we checked availability, so nothing was added.",
+        );
         return;
       }
 
@@ -577,7 +582,9 @@ export function useReorderItems() {
       if (!scopeMatches(pending)) {
         clearPending(token);
         setPendingConfirmation(null);
-        toast.error("Your cart or order type changed, so nothing was added. Review the cart and try again.");
+        toast.error(
+          "Your cart or order type changed, so nothing was added. Review the cart and try again.",
+        );
         return;
       }
 
@@ -597,7 +604,9 @@ export function useReorderItems() {
       if (!scopeMatches(pending)) {
         clearPending(token);
         setPendingConfirmation(null);
-        toast.error("Your cart or order type changed, so nothing was added. Review the cart and try again.");
+        toast.error(
+          "Your cart or order type changed, so nothing was added. Review the cart and try again.",
+        );
         return;
       }
 

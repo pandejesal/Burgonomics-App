@@ -377,7 +377,7 @@ export function ProductCustomizerModal({
               "flex-1 min-h-[52px] py-3.5 px-5 rounded-xl font-bold text-base flex items-center justify-between shadow-lg transition-all active:scale-[0.98] cursor-pointer",
               canAdd
                 ? "bg-primary text-primary-foreground hover:bg-primary-hover"
-                : "bg-divider text-text-secondary cursor-not-allowed"
+                : "bg-divider text-text-secondary cursor-not-allowed",
             )}
           >
             <span>{ctaLabel}</span>

@@ -15,13 +15,21 @@ import {
   doc,
   Timestamp,
 } from "firebase/firestore";
-import type { Banner, MenuCategory, MenuItem, Offer, Combo, RecommendationItem, QuickReorderItem } from "@/features/home/models";
+import type {
+  Banner,
+  MenuCategory,
+  MenuItem,
+  Offer,
+  Combo,
+  RecommendationItem,
+  QuickReorderItem,
+} from "@/features/home/models";
 
 export const firestoreService = {
   async getBanners(): Promise<any[]> {
     try {
       const snap = await getDocs(
-        query(collection(db, "banners"), where("active", "==", true), orderBy("order", "asc"))
+        query(collection(db, "banners"), where("active", "==", true), orderBy("order", "asc")),
       );
       return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch {
@@ -32,7 +40,7 @@ export const firestoreService = {
   async getCategories(): Promise<any[]> {
     try {
       const snap = await getDocs(
-        query(collection(db, "categories"), where("active", "==", true), orderBy("order", "asc"))
+        query(collection(db, "categories"), where("active", "==", true), orderBy("order", "asc")),
       );
       return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch {
@@ -43,7 +51,12 @@ export const firestoreService = {
   async getFeaturedOffers(): Promise<any[]> {
     try {
       const snap = await getDocs(
-        query(collection(db, "offers"), where("active", "==", true), orderBy("priority", "desc"), limit(10))
+        query(
+          collection(db, "offers"),
+          where("active", "==", true),
+          orderBy("priority", "desc"),
+          limit(10),
+        ),
       );
       return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch {
@@ -59,8 +72,8 @@ export const firestoreService = {
           where("branchId", "==", storeId),
           where("isBestSeller", "==", true),
           where("inStock", "==", true),
-          limit(10)
-        )
+          limit(10),
+        ),
       );
       return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch {
@@ -75,8 +88,8 @@ export const firestoreService = {
           collection(db, "combos"),
           where("branchId", "==", storeId),
           where("inStock", "==", true),
-          limit(10)
-        )
+          limit(10),
+        ),
       );
       return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch {
@@ -92,8 +105,8 @@ export const firestoreService = {
           where("storeId", "==", storeId),
           where("active", "==", true),
           orderBy("priority", "desc"),
-          limit(10)
-        )
+          limit(10),
+        ),
       );
       return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     } catch {
@@ -121,8 +134,8 @@ export const firestoreService = {
             collection(db, "orders"),
             where(field, "==", userId),
             orderBy("createdAt", "desc"),
-            limit(10)
-          )
+            limit(10),
+          ),
         );
       } catch {
         continue;

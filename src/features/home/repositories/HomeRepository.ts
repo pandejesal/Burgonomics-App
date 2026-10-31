@@ -1,11 +1,6 @@
 import type { ApiResult } from "@/core/network/http";
 import { homeService } from "@/features/home/services/homeService";
-import type {
-  Banner,
-  Combo,
-  HomeBundle,
-  RecommendationItem,
-} from "@/features/home/models";
+import type { Banner, Combo, HomeBundle, RecommendationItem } from "@/features/home/models";
 import type { MenuCategory, MenuItem } from "@/features/menu/services/menuService";
 import type { Offer } from "@/features/offers/models";
 

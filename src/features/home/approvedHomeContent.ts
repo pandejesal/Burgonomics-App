@@ -56,7 +56,8 @@ export const approvedHomeContent: ApprovedHomeContent = {
       imageUrl: "/images/brand/food-connoisseurs-ceremony-2026.webp",
       certificateUrl: "/images/brand/food-connoisseurs-qsr-certificate-2026.webp",
       imageAlt: "Burgonomics team at the Food Connoisseurs India Awards 2026 ceremony",
-      certificateAlt: "Food Connoisseurs certificate for Best Quick Service Restaurant Chain, Ahmedabad 2026",
+      certificateAlt:
+        "Food Connoisseurs certificate for Best Quick Service Restaurant Chain, Ahmedabad 2026",
     },
     {
       id: "food-connoisseurs-burger-2026",

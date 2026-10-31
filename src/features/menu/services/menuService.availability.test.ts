@@ -34,7 +34,7 @@ describe("mapProductDoc availability mapping (consumer of the Petpooja sync)", (
   it("honours an explicit false and keeps a supplied reason", () => {
     const product = mapProductDoc(
       { ...base, inStock: false, unavailableReason: "86'd by the kitchen" },
-      "prod_x"
+      "prod_x",
     );
     expect(product.inStock).toBe(false);
     expect(product.unavailableReason).toBe("86'd by the kitchen");
@@ -55,11 +55,11 @@ describe("mapProductDoc availability mapping (consumer of the Petpooja sync)", (
   });
 
   it("prefers inStock over isAvailable when both are present", () => {
-    expect(
-      mapProductDoc({ ...base, inStock: false, isAvailable: true }, "prod_x").inStock
-    ).toBe(false);
-    expect(
-      mapProductDoc({ ...base, inStock: true, isAvailable: false }, "prod_x").inStock
-    ).toBe(true);
+    expect(mapProductDoc({ ...base, inStock: false, isAvailable: true }, "prod_x").inStock).toBe(
+      false,
+    );
+    expect(mapProductDoc({ ...base, inStock: true, isAvailable: false }, "prod_x").inStock).toBe(
+      true,
+    );
   });
 });

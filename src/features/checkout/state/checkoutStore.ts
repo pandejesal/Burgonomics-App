@@ -20,7 +20,10 @@
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { SANDBOX_DELIVERY_QUOTE, type DeliveryQuote } from "@/features/checkout/services/deliveryQuoteService";
+import {
+  SANDBOX_DELIVERY_QUOTE,
+  type DeliveryQuote,
+} from "@/features/checkout/services/deliveryQuoteService";
 import {
   scopedNamespacedStorage,
   browserOrMemoryStorage,
@@ -191,8 +194,7 @@ export const useCheckoutStore = create<CheckoutState>()(
         }
         const outletChanged =
           binding.storeId !== null && storeId !== null && binding.storeId !== storeId;
-        const accountChanged =
-          binding.uid !== null && uid !== null && binding.uid !== uid;
+        const accountChanged = binding.uid !== null && uid !== null && binding.uid !== uid;
         if (outletChanged || accountChanged) {
           set({
             orderNotes: "",
@@ -228,8 +230,7 @@ export const useCheckoutStore = create<CheckoutState>()(
         if (!sameDraft) return;
         set({ orderNotes: "", legacyOrderNotes: "", notesRevision: current.notesRevision + 1 });
       },
-      reset: () =>
-        set((current) => ({ ...initial, notesRevision: current.notesRevision + 1 })),
+      reset: () => set((current) => ({ ...initial, notesRevision: current.notesRevision + 1 })),
     }),
     {
       name: "burg.checkout",
@@ -264,9 +265,7 @@ export const useCheckoutStore = create<CheckoutState>()(
           // order captured before the reload cannot clear the restored draft.
           notesRevision: (current.notesRevision ?? 0) + 1,
           notesScope:
-            p.notesScope && typeof p.notesScope === "object"
-              ? (p.notesScope as NotesScope)
-              : null,
+            p.notesScope && typeof p.notesScope === "object" ? (p.notesScope as NotesScope) : null,
         };
       },
       // v3 → v4 only added the legacy-review field; the sanitizer in `merge`
@@ -301,8 +300,7 @@ const CHECKOUT_EMPTY: ScopedCheckout = {
   loyaltyPointsToRedeem: 0,
 };
 
-const str = (v: unknown, max: number): string =>
-  typeof v === "string" ? v.slice(0, max) : "";
+const str = (v: unknown, max: number): string => (typeof v === "string" ? v.slice(0, max) : "");
 const nonNegInt = (v: unknown, max: number): number =>
   typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(0, Math.floor(v))) : 0;
 

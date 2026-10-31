@@ -39,7 +39,9 @@ export function CreateTicketForm({
   onSubmit,
   onCancel,
 }: CreateTicketFormProps) {
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(preselectedOrderId || (orders[0]?.id || ""));
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(
+    preselectedOrderId || orders[0]?.id || "",
+  );
   const [category, setCategory] = useState<TicketCategory>(initialCategory ?? "FOOD_QUALITY");
   const [description, setDescription] = useState(initialDescription ?? "");
   // Local files only — previews use object URLs, uploads go to Storage via
@@ -118,7 +120,10 @@ export function CreateTicketForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 rounded-3xl border border-divider bg-surface p-5 text-text shadow-xl">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-5 rounded-3xl border border-divider bg-surface p-5 text-text shadow-xl"
+    >
       {/* Header */}
       <div className="border-b border-divider pb-3">
         <h2 className="type-title-large flex items-center gap-2 text-text">
@@ -132,9 +137,7 @@ export function CreateTicketForm({
       {/* 1. Order Selector */}
       {orders.length > 0 && (
         <div className="space-y-2">
-          <label className="block type-label-large text-text-secondary">
-            Select related order
-          </label>
+          <label className="block type-label-large text-text-secondary">Select related order</label>
           <select
             value={selectedOrderId}
             onChange={(e) => setSelectedOrderId(e.target.value)}
@@ -143,7 +146,8 @@ export function CreateTicketForm({
             <option value="">-- No specific order --</option>
             {orders.map((o) => (
               <option key={o.id} value={o.id}>
-                #{o.shortCode || o.id.slice(-6).toUpperCase()} • {o.store?.name || "Burgonomics"} ({o.status?.label || o.status?.code})
+                #{o.shortCode || o.id.slice(-6).toUpperCase()} • {o.store?.name || "Burgonomics"} (
+                {o.status?.label || o.status?.code})
               </option>
             ))}
           </select>
@@ -152,9 +156,7 @@ export function CreateTicketForm({
 
       {/* 2. Issue Category Grid */}
       <div className="space-y-2">
-        <label className="block type-label-large text-text-secondary">
-          Issue category
-        </label>
+        <label className="block type-label-large text-text-secondary">Issue category</label>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {CATEGORIES.map((cat) => (
             <button
@@ -168,7 +170,9 @@ export function CreateTicketForm({
                   : "border-divider bg-bg-secondary text-text-secondary hover:text-text"
               }`}
             >
-              <div className="mb-1 text-base" aria-hidden>{cat.icon}</div>
+              <div className="mb-1 text-base" aria-hidden>
+                {cat.icon}
+              </div>
               <span className="block text-sm font-semibold leading-tight">{cat.label}</span>
             </button>
           ))}
@@ -178,10 +182,10 @@ export function CreateTicketForm({
       {/* 3. Description Field */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <label className="type-label-large text-text-secondary">
-            Describe the problem
-          </label>
-          <span className={`text-sm ${description.length >= 10 ? "text-success" : "text-text-secondary"}`}>
+          <label className="type-label-large text-text-secondary">Describe the problem</label>
+          <span
+            className={`text-sm ${description.length >= 10 ? "text-success" : "text-text-secondary"}`}
+          >
             {description.length}/10 min chars
           </span>
         </div>
@@ -203,8 +207,15 @@ export function CreateTicketForm({
 
         <div className="flex items-center gap-2.5">
           {previews.map((src, index) => (
-            <div key={index} className="group relative h-16 w-16 overflow-hidden rounded-xl border border-divider">
-              <img src={src} alt={`Attachment ${index + 1}`} className="h-full w-full object-cover" />
+            <div
+              key={index}
+              className="group relative h-16 w-16 overflow-hidden rounded-xl border border-divider"
+            >
+              <img
+                src={src}
+                alt={`Attachment ${index + 1}`}
+                className="h-full w-full object-cover"
+              />
               <button
                 type="button"
                 onClick={() => handleRemovePhoto(index)}
@@ -239,7 +250,8 @@ export function CreateTicketForm({
           <span>How support works</span>
         </div>
         <p className="text-sm leading-relaxed text-text-secondary">
-          Our store team is notified as soon as you submit. Track status and responses under Your Tickets below.
+          Our store team is notified as soon as you submit. Track status and responses under Your
+          Tickets below.
         </p>
       </div>
 

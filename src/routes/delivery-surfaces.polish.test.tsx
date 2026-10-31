@@ -137,7 +137,11 @@ describe("sentence-case, token-driven primitives", () => {
 
   it("shared OfferCard applies with a green primary button", () => {
     const html = renderToStaticMarkup(
-      <SharedOfferCard code="BOGO50" title="Buy one get one" description="Two burgers for the price of one" />,
+      <SharedOfferCard
+        code="BOGO50"
+        title="Buy one get one"
+        description="Two burgers for the price of one"
+      />,
     );
     expect(html).toContain(">Apply<");
     expect(html).toMatch(/bg-primary[^"]*text-primary-foreground/);
@@ -193,7 +197,9 @@ describe("tracking surfaces keep their honest copy and readable labels", () => {
     const html = renderToStaticMarkup(
       <EstimatedDeliveryCountdown
         fulfillment="delivery"
-        status={{ code: "OUT_FOR_DELIVERY", label: "Out", kind: "in_progress", terminal: false } as never}
+        status={
+          { code: "OUT_FOR_DELIVERY", label: "Out", kind: "in_progress", terminal: false } as never
+        }
         estimatedMinutes={undefined}
       />,
     );

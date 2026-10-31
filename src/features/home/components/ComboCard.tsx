@@ -68,14 +68,22 @@ export function ComboCard({ combo, className }: Props) {
           )}
         </div>
         <div className="pt-3">
-          <Text as="h3" variant="titleMedium" className="text-base font-semibold leading-snug break-words">
+          <Text
+            as="h3"
+            variant="titleMedium"
+            className="text-base font-semibold leading-snug break-words"
+          >
             {combo.name}
           </Text>
           <Text variant="bodyMedium" tone="secondary" className="mt-2 text-sm leading-relaxed">
             {combo.description}
           </Text>
           <div className="mt-4 flex flex-wrap items-baseline gap-2">
-            <Text as="span" variant="bodyLarge" className="text-base font-semibold text-primary-text">
+            <Text
+              as="span"
+              variant="bodyLarge"
+              className="text-base font-semibold text-primary-text"
+            >
               {formatINR(combo.price)}
             </Text>
             {savings > 0 && (

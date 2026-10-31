@@ -67,9 +67,7 @@ export function sanitizeSelections(
 ): ModifierSelections {
   const next: ModifierSelections = {};
   for (const group of groups) {
-    const selectable = new Set(
-      group.options.filter(isOptionSelectable).map((option) => option.id),
-    );
+    const selectable = new Set(group.options.filter(isOptionSelectable).map((option) => option.id));
     const current = selections[group.id] ?? [];
     const unique = [...new Set(current)].filter(
       (optionId) => typeof optionId === "string" && selectable.has(optionId),
@@ -85,9 +83,7 @@ export function isSelectionValid(
 ): boolean {
   for (const group of groups) {
     const chosen = selections[group.id] ?? [];
-    const selectable = new Set(
-      group.options.filter(isOptionSelectable).map((option) => option.id),
-    );
+    const selectable = new Set(group.options.filter(isOptionSelectable).map((option) => option.id));
     if (chosen.some((optionId) => !selectable.has(optionId))) return false;
     if (new Set(chosen).size !== chosen.length) return false;
     const count = chosen.length;

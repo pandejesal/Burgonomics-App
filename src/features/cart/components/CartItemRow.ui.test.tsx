@@ -13,10 +13,16 @@ import { CartItemRow } from "./CartItemRow";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const line: CartLine = {
-  lineId: "sample-line", productId: "sample-product", storeId: "sample-store",
+  lineId: "sample-line",
+  productId: "sample-product",
+  storeId: "sample-store",
   name: "Cheese Burst Burger with a deliberately long readable name",
   imageUrl: "/images/menu/big-bang-burgers/cheese-burst-burger.jpg",
-  unitPrice: 199, quantity: 2, modifiers: [], veg: true, availability: "available",
+  unitPrice: 199,
+  quantity: 2,
+  modifiers: [],
+  veg: true,
+  availability: "available",
 };
 let host: HTMLDivElement;
 let root: Root | null = null;
@@ -31,7 +37,11 @@ async function mount(value = line) {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root!.render(<CartItemRow line={value} onQuantityChange={onQuantityChange} onRemove={onRemove} />));
+  await act(async () =>
+    root!.render(
+      <CartItemRow line={value} onQuantityChange={onQuantityChange} onRemove={onRemove} />,
+    ),
+  );
   return { onQuantityChange, onRemove };
 }
 
@@ -54,9 +64,17 @@ describe("small Cart visual cleanup preserves line behaviour", () => {
   });
 
   it("still disables quantity changes for unavailable items and allows removal", async () => {
-    const actions = await mount({ ...line, availability: "unavailable", unavailableReason: "Sold out" });
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="Decrease quantity"]')?.disabled).toBe(true);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="Increase quantity"]')?.disabled).toBe(true);
+    const actions = await mount({
+      ...line,
+      availability: "unavailable",
+      unavailableReason: "Sold out",
+    });
+    expect(
+      host.querySelector<HTMLButtonElement>('[aria-label="Decrease quantity"]')?.disabled,
+    ).toBe(true);
+    expect(
+      host.querySelector<HTMLButtonElement>('[aria-label="Increase quantity"]')?.disabled,
+    ).toBe(true);
     const remove = host.querySelector<HTMLButtonElement>(`[aria-label="Remove ${line.name}"]`)!;
     await act(async () => remove.click());
     expect(actions.onRemove).toHaveBeenCalledOnce();

@@ -125,100 +125,106 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
           >
             {/* Drag handle — fixed shape, never compressed */}
             <div className="mx-auto mb-3 h-1.5 w-10 shrink-0 rounded-full bg-divider" aria-hidden />
-          {/* Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Lock className="h-4 w-4" aria-hidden />
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Lock className="h-4 w-4" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="type-title-large text-text-primary">1-Tap Instant Login</h3>
+                  <p className="type-caption text-text-secondary">Sign in to continue</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h3 className="type-title-large text-text-primary">1-Tap Instant Login</h3>
-                <p className="type-caption text-text-secondary">Sign in to continue</p>
-              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close login dialog"
+                className="flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-bg-secondary text-text-secondary transition-colors hover:text-text-primary"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close login dialog"
-              className="flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-bg-secondary text-text-secondary transition-colors hover:text-text-primary"
-            >
-              <X className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
 
-          {step === "phone" ? (
-            <form onSubmit={handleSendOtp} className="mt-4 space-y-4">
-              <div>
-                <label htmlFor="checkout-phone" className="mb-1.5 block type-caption font-medium text-text-primary">
-                  Mobile Number
-                </label>
-                <div className="flex min-h-12 items-center rounded-[var(--radius-medium)] border border-border bg-bg-secondary px-3 transition-colors focus-within:border-primary">
-                  <span className="mr-2 shrink-0 border-r border-border pr-2 type-caption font-semibold text-text-primary">
-                    +91
-                  </span>
+            {step === "phone" ? (
+              <form onSubmit={handleSendOtp} className="mt-4 space-y-4">
+                <div>
+                  <label
+                    htmlFor="checkout-phone"
+                    className="mb-1.5 block type-caption font-medium text-text-primary"
+                  >
+                    Mobile Number
+                  </label>
+                  <div className="flex min-h-12 items-center rounded-[var(--radius-medium)] border border-border bg-bg-secondary px-3 transition-colors focus-within:border-primary">
+                    <span className="mr-2 shrink-0 border-r border-border pr-2 type-caption font-semibold text-text-primary">
+                      +91
+                    </span>
+                    <input
+                      id="checkout-phone"
+                      type="tel"
+                      required
+                      maxLength={10}
+                      inputMode="numeric"
+                      placeholder="98765 43210"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                      className="min-h-11 w-full bg-transparent text-base font-semibold text-text-primary outline-none"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={busy || phone.length < 10}
+                  className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 type-button text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50"
+                >
+                  <span>{busy ? "Sending OTP..." : "Get Verification Code"}</span>
+                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} className="mt-4 space-y-4">
+                <div>
+                  <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <label
+                      htmlFor="checkout-otp"
+                      className="type-caption font-medium text-text-primary"
+                    >
+                      Enter 6-Digit OTP Code
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setStep("phone")}
+                      className="-mr-2 inline-flex min-h-11 cursor-pointer items-center px-2 type-caption font-semibold text-primary-text hover:underline"
+                    >
+                      Change Number
+                    </button>
+                  </div>
                   <input
-                    id="checkout-phone"
-                    type="tel"
+                    id="checkout-otp"
+                    type="text"
                     required
-                    maxLength={10}
+                    maxLength={6}
                     inputMode="numeric"
-                    placeholder="98765 43210"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                    className="min-h-11 w-full bg-transparent text-base font-semibold text-text-primary outline-none"
+                    placeholder="••••••"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    className="min-h-[52px] w-full rounded-[var(--radius-medium)] border border-border bg-bg-secondary py-3 text-center text-lg font-semibold tracking-[0.4em] text-text-primary outline-none transition-colors focus:border-primary"
                     autoFocus
                   />
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={busy || phone.length < 10}
-                className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 type-button text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50"
-              >
-                <span>{busy ? "Sending OTP..." : "Get Verification Code"}</span>
-                <ArrowRight className="h-4 w-4" aria-hidden />
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="mt-4 space-y-4">
-              <div>
-                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                  <label htmlFor="checkout-otp" className="type-caption font-medium text-text-primary">
-                    Enter 6-Digit OTP Code
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setStep("phone")}
-                    className="-mr-2 inline-flex min-h-11 cursor-pointer items-center px-2 type-caption font-semibold text-primary-text hover:underline"
-                  >
-                    Change Number
-                  </button>
-                </div>
-                <input
-                  id="checkout-otp"
-                  type="text"
-                  required
-                  maxLength={6}
-                  inputMode="numeric"
-                  placeholder="••••••"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                  className="min-h-[52px] w-full rounded-[var(--radius-medium)] border border-border bg-bg-secondary py-3 text-center text-lg font-semibold tracking-[0.4em] text-text-primary outline-none transition-colors focus:border-primary"
-                  autoFocus
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={busy || otp.replace(/\D/g, "").length !== 6}
-                className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 type-button text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50"
-              >
-                <ShieldCheck className="h-4 w-4" aria-hidden />
-                <span>{busy ? "Verifying..." : "Verify & Place Order"}</span>
-              </button>
-            </form>
-          )}
+                <button
+                  type="submit"
+                  disabled={busy || otp.replace(/\D/g, "").length !== 6}
+                  className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary py-3 type-button text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50"
+                >
+                  <ShieldCheck className="h-4 w-4" aria-hidden />
+                  <span>{busy ? "Verifying..." : "Verify & Place Order"}</span>
+                </button>
+              </form>
+            )}
           </motion.div>
         </div>
       )}

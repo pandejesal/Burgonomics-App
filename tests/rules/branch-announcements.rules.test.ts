@@ -142,9 +142,7 @@ describe("Firestore Security Rules — branch_announcements is branch-scoped", (
 
   it("4. [ANNOUNCE-CUSTOMER-DENY] customers (role claim) still cannot write announcements", async (context) => {
     if (!emulatorAvailable) return context.skip();
-    const custDb = testEnv!
-      .authenticatedContext("cust_100", { role: "customer" })
-      .firestore();
+    const custDb = testEnv!.authenticatedContext("cust_100", { role: "customer" }).firestore();
 
     await assertFails(
       setDoc(doc(custDb, "branch_announcements", "ann_cust_evil"), {
@@ -250,16 +248,16 @@ describe("Firestore Security Rules — branch_announcements is branch-scoped", (
     await assertFails(
       updateDoc(doc(brandDb, "branch_announcements", ANNOUNCEMENT_DOC), { title: "brand rewrite" }),
     );
-    await assertFails(updateDoc(doc(brandDb, "branch_announcements", ANNOUNCEMENT_DOC), { title: deleteField() }));
+    await assertFails(
+      updateDoc(doc(brandDb, "branch_announcements", ANNOUNCEMENT_DOC), { title: deleteField() }),
+    );
     await assertFails(deleteDoc(doc(b1Db, "branch_announcements", ANNOUNCEMENT_DOC)));
     await assertFails(deleteDoc(doc(brandDb, "branch_announcements", ANNOUNCEMENT_DOC)));
   });
 
   it("11. [ANNOUNCE-SUPPORT-GLOBAL-ALLOW] support keeps its shipped all-branch write", async (context) => {
     if (!emulatorAvailable) return context.skip();
-    const supportDb = testEnv!
-      .authenticatedContext("support_1", { role: "support" })
-      .firestore();
+    const supportDb = testEnv!.authenticatedContext("support_1", { role: "support" }).firestore();
 
     await assertSucceeds(
       setDoc(doc(supportDb, "branch_announcements", "ann_support_02"), {
@@ -332,6 +330,10 @@ describe("Firestore Security Rules — branch_announcements is branch-scoped", (
     if (!emulatorAvailable) return context.skip();
     const b1Db = testEnv!.authenticatedContext("branch_owner_1").firestore();
 
-    await assertFails(setDoc(doc(b1Db, "branch_announcements", ANNOUNCEMENT_DOC, "audit", "row_1"), { seeded: true }));
+    await assertFails(
+      setDoc(doc(b1Db, "branch_announcements", ANNOUNCEMENT_DOC, "audit", "row_1"), {
+        seeded: true,
+      }),
+    );
   });
 });

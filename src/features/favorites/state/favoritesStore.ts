@@ -42,7 +42,7 @@ onAuthUidChange((uid) => {
     ? readScopedPersisted<Favorite[]>(
         STORAGE_KEY,
         uid,
-        (state) => Array.isArray(state.items) ? state.items as Favorite[] : [],
+        (state) => (Array.isArray(state.items) ? (state.items as Favorite[]) : []),
         [],
       )
     : [];

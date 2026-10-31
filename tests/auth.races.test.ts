@@ -160,7 +160,12 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
     const gate = deferred<ReturnType<typeof ok>>();
     service.verifyOtp.mockReturnValueOnce(gate.promise);
     service.requestOtp.mockResolvedValueOnce(
-      ok({ otpToken: `+91${PHONE_B}`, expiresInSec: 300, resendAfterSec: 60, deliveryMethod: "sms" as const }),
+      ok({
+        otpToken: `+91${PHONE_B}`,
+        expiresInSec: 300,
+        resendAfterSec: 60,
+        deliveryMethod: "sms" as const,
+      }),
     );
 
     const pending = useAuthStore.getState().verifyOtp("444444");
@@ -200,7 +205,12 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
     expect(service.requestOtp).toHaveBeenCalledTimes(1);
 
     gate.resolve(
-      ok({ otpToken: `+91${PHONE_A}`, expiresInSec: 300, resendAfterSec: 60, deliveryMethod: "sms" as const }),
+      ok({
+        otpToken: `+91${PHONE_A}`,
+        expiresInSec: 300,
+        resendAfterSec: 60,
+        deliveryMethod: "sms" as const,
+      }),
     );
     const [a, b] = await Promise.all([first, second]);
     expect(a.ok).toBe(true);
@@ -275,9 +285,7 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
         sessionRef: { uid: USER_A.id, refreshToken: "refresh_synthetic" },
       }),
     );
-    const setSpy = vi
-      .spyOn(secureStorage, "set")
-      .mockRejectedValue(new Error("quota exceeded"));
+    const setSpy = vi.spyOn(secureStorage, "set").mockRejectedValue(new Error("quota exceeded"));
 
     const result = await useAuthStore.getState().verifyOtp("555555");
 
@@ -330,13 +338,23 @@ describe("auth races: cancelled confirm cannot leave an adoptable session", () =
     useAuthStore.getState().changePhone();
 
     service.requestOtp.mockResolvedValueOnce(
-      ok({ otpToken: `+91${PHONE_B}`, expiresInSec: 300, resendAfterSec: 60, deliveryMethod: "sms" as const }),
+      ok({
+        otpToken: `+91${PHONE_B}`,
+        expiresInSec: 300,
+        resendAfterSec: 60,
+        deliveryMethod: "sms" as const,
+      }),
     );
     const fresh = await useAuthStore.getState().requestOtp(PHONE_B);
     expect(fresh.ok).toBe(true);
 
     staleGate.resolve(
-      ok({ otpToken: `+91${PHONE_A}`, expiresInSec: 300, resendAfterSec: 60, deliveryMethod: "sms" as const }),
+      ok({
+        otpToken: `+91${PHONE_A}`,
+        expiresInSec: 300,
+        resendAfterSec: 60,
+        deliveryMethod: "sms" as const,
+      }),
     );
     const stale = await staleRequest;
 
@@ -378,7 +396,11 @@ describe("auth races: cancelled confirm cannot leave an adoptable session", () =
   it("keeps logout authoritative when bootstrap is still probing", async () => {
     const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
     const payload = btoa(
-      JSON.stringify({ sub: USER_A.id, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 }),
+      JSON.stringify({
+        sub: USER_A.id,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
     );
     await Promise.all([
       secureStorage.set(SECURE_KEYS.ACCESS_TOKEN, `${header}.${payload}.sig`),
@@ -491,7 +513,12 @@ describe("auth races: abandoned work must not block or delete another session", 
     const hung = deferred<ReturnType<typeof ok>>();
     service.verifyOtp.mockReturnValueOnce(hung.promise);
     service.requestOtp.mockResolvedValueOnce(
-      ok({ otpToken: `+91${PHONE_B}`, expiresInSec: 300, resendAfterSec: 60, deliveryMethod: "sms" as const }),
+      ok({
+        otpToken: `+91${PHONE_B}`,
+        expiresInSec: 300,
+        resendAfterSec: 60,
+        deliveryMethod: "sms" as const,
+      }),
     );
     service.verifyOtp.mockResolvedValueOnce(
       ok({

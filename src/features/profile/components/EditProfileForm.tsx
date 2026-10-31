@@ -56,8 +56,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
       // (INVALID_PROFILE: "Enter a valid email address."; UNAUTHORIZED).
       // SERVER_ERROR appends the raw Firestore message, so every other code
       // is logged and mapped instead.
-      const curated =
-        res.error.code === "INVALID_PROFILE" || res.error.code === "UNAUTHORIZED";
+      const curated = res.error.code === "INVALID_PROFILE" || res.error.code === "UNAUTHORIZED";
       if (!curated) console.error("[profile] update failed:", res.error);
       setError(curated ? res.error.message : toUserMessage(res));
       return;
@@ -121,9 +120,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
       />
 
       <fieldset>
-        <legend className="type-label-large mb-2 text-text-secondary">
-          Gender (optional)
-        </legend>
+        <legend className="type-label-large mb-2 text-text-secondary">Gender (optional)</legend>
         <div className="grid grid-cols-2 gap-2">
           {GENDERS.map((opt) => {
             const active = gender === opt.value;

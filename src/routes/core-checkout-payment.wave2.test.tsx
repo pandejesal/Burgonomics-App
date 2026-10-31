@@ -207,9 +207,12 @@ vi.mock("@/features/addresses", () => ({
   selectSelectedAddress: () => null,
 }));
 vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
-  useLoyaltyStore: Object.assign((select: (s: { balance: number }) => unknown) => select({ balance: 0 }), {
-    getState: () => ({ refreshFromServer: vi.fn() }),
-  }),
+  useLoyaltyStore: Object.assign(
+    (select: (s: { balance: number }) => unknown) => select({ balance: 0 }),
+    {
+      getState: () => ({ refreshFromServer: vi.fn() }),
+    },
+  ),
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {

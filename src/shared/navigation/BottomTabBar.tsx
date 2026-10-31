@@ -79,12 +79,17 @@ export function BottomTabBar() {
                     "group relative flex min-h-14 w-full flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5",
                     "transition-colors duration-200 ease-out",
                     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                    active ? "text-primary dark:text-primary-text" : "text-text-secondary hover:text-text-primary",
+                    active
+                      ? "text-primary dark:text-primary-text"
+                      : "text-text-secondary hover:text-text-primary",
                   )}
                 >
                   <div className="relative">
                     <Icon
-                      className={cn("h-5 w-5 transition-transform", active && "scale-105 stroke-[2.5px]")}
+                      className={cn(
+                        "h-5 w-5 transition-transform",
+                        active && "scale-105 stroke-[2.5px]",
+                      )}
                       aria-hidden
                     />
 

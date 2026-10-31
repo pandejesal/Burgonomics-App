@@ -37,9 +37,7 @@ export function BrandMascot({
 export function BrandWordmark({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-col items-center gap-1", className)}>
-      <span className="type-display-large text-primary-text">
-        BURGONOMICS
-      </span>
+      <span className="type-display-large text-primary-text">BURGONOMICS</span>
       <span className="type-caption text-text-secondary">The House of DAMN GOOD BURGERS!!</span>
     </div>
   );

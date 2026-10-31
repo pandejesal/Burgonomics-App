@@ -48,9 +48,7 @@ export function resolveCategoryParam(
   const target = normalizeCategoryToken(raw);
   if (!target) return { status: "unknown", param: raw };
 
-  const byName = categories.filter(
-    (category) => normalizeCategoryToken(category.name) === target,
-  );
+  const byName = categories.filter((category) => normalizeCategoryToken(category.name) === target);
   if (byName.length === 1) {
     return { status: "resolved", param: raw, id: byName[0].id, matchedBy: "name" };
   }

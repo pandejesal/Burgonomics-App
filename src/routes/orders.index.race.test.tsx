@@ -152,17 +152,14 @@ async function click(el: Element | null) {
 }
 
 const byText = (container: HTMLElement, text: string) =>
-  Array.from(container.querySelectorAll("button")).find(
-    (b) => b.textContent?.trim() === text,
-  ) ?? null;
+  Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.trim() === text) ??
+  null;
 
 const refreshButton = (container: HTMLElement) =>
   container.querySelector('button[aria-label="Refresh orders"]');
 
 const cardIds = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll('[data-testid="order-card"]')).map(
-    (n) => n.textContent,
-  );
+  Array.from(container.querySelectorAll('[data-testid="order-card"]')).map((n) => n.textContent);
 
 const nextDeferred = () => {
   const d = deferred<Res>();
@@ -374,12 +371,10 @@ describe("order history — request races (CUST-F1)", () => {
   });
 
   it("NEGATIVE CONTROL: a load-more ApiFailure is surfaced the same way", async () => {
-    listOrders
-      .mockResolvedValueOnce(ok(["ord_active_1"], true, 1) as never)
-      .mockResolvedValueOnce({
-        success: false,
-        error: { code: "BACKEND_UNAVAILABLE", message: "raw private diagnostic" },
-      } as never);
+    listOrders.mockResolvedValueOnce(ok(["ord_active_1"], true, 1) as never).mockResolvedValueOnce({
+      success: false,
+      error: { code: "BACKEND_UNAVAILABLE", message: "raw private diagnostic" },
+    } as never);
 
     const { container, unmount } = await mount();
     await settle();

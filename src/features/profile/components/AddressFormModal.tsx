@@ -196,14 +196,7 @@ export function AddressFormModal({
       if (token !== geocodeTokenRef.current) return;
 
       if (data && data.address) {
-        const {
-          road,
-          house_number,
-          city: fetchedCity,
-          town,
-          village,
-          postcode,
-        } = data.address;
+        const { road, house_number, city: fetchedCity, town, village, postcode } = data.address;
 
         const bestCity = fetchedCity || town || village;
         if (!cityEditedRef.current && bestCity) setCity(bestCity);
@@ -262,8 +255,7 @@ export function AddressFormModal({
       setCity(addressToEdit.city);
       setPincode(addressToEdit.pincode);
       setIsDefault(addressToEdit.isDefault);
-      const hasCoords =
-        Number.isFinite(addressToEdit.lat) && Number.isFinite(addressToEdit.lng);
+      const hasCoords = Number.isFinite(addressToEdit.lat) && Number.isFinite(addressToEdit.lng);
       setPinPlaced(hasCoords);
       setMapCenter({
         lat: hasCoords ? (addressToEdit.lat as number) : DEFAULT_CENTER.lat,
@@ -310,7 +302,13 @@ export function AddressFormModal({
   }, [isOpen, addressToEdit?.lat, requestLocation]);
 
   React.useEffect(() => {
-    if (isOpen && !Number.isFinite(addressToEdit?.lat) && locationStatus === "granted" && userCoords && !autoLocatedRef.current) {
+    if (
+      isOpen &&
+      !Number.isFinite(addressToEdit?.lat) &&
+      locationStatus === "granted" &&
+      userCoords &&
+      !autoLocatedRef.current
+    ) {
       autoLocatedRef.current = true;
       setMapCenter(userCoords);
       setPinPlaced(true);
@@ -336,12 +334,15 @@ export function AddressFormModal({
     }
   }, [reverseGeocode]);
 
-  const handleMapClick = React.useCallback((lat: number, lng: number) => {
-    autoLocatedRef.current = true;
-    setMapCenter({ lat, lng });
-    setPinPlaced(true);
-    void reverseGeocode(lat, lng);
-  }, [reverseGeocode]);
+  const handleMapClick = React.useCallback(
+    (lat: number, lng: number) => {
+      autoLocatedRef.current = true;
+      setMapCenter({ lat, lng });
+      setPinPlaced(true);
+      void reverseGeocode(lat, lng);
+    },
+    [reverseGeocode],
+  );
 
   // --- Unsaved-changes guard ------------------------------------------------
   // The sheet captures a baseline of its values when it opens; a close attempt
@@ -512,8 +513,7 @@ export function AddressFormModal({
       const first = items[0];
       const last = items[items.length - 1];
       const active = document.activeElement;
-      const activeInside =
-        active instanceof HTMLElement && dialog.contains(active);
+      const activeInside = active instanceof HTMLElement && dialog.contains(active);
       if (e.shiftKey) {
         if (!activeInside || active === first || active === dialog) {
           e.preventDefault();
@@ -606,7 +606,9 @@ export function AddressFormModal({
         ? await addressRepository.update(addressToEdit.id, payload)
         : await addressRepository.create(payload);
       if (res.success) {
-        toast.success(addressToEdit ? "Address updated successfully" : "Address saved successfully");
+        toast.success(
+          addressToEdit ? "Address updated successfully" : "Address saved successfully",
+        );
         onSuccess?.();
         onClose();
       } else {
@@ -736,7 +738,10 @@ export function AddressFormModal({
                   disabled={isLocating}
                   className="flex min-h-11 items-center gap-1.5 rounded-full border-2 border-white bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover cursor-pointer disabled:opacity-50"
                 >
-                  <Navigation className={cn("h-3.5 w-3.5", isLocating && "animate-spin")} aria-hidden />
+                  <Navigation
+                    className={cn("h-3.5 w-3.5", isLocating && "animate-spin")}
+                    aria-hidden
+                  />
                   {isLocating ? "Locating..." : "Locate Me"}
                 </button>
               </div>
@@ -745,17 +750,15 @@ export function AddressFormModal({
               locationStatus === "blocked" ||
               locationStatus === "unavailable") && (
               <p role="status" className="text-center text-sm leading-relaxed text-text-secondary">
-                Location unavailable — drag the pin manually, or enable location in your
-                browser settings and tap Locate Me.
+                Location unavailable — drag the pin manually, or enable location in your browser
+                settings and tap Locate Me.
               </p>
             )}
           </div>
 
           {/* Label Type Selector */}
           <fieldset className="space-y-1.5 border-0 p-0 m-0">
-            <legend className="type-label-large p-0 text-text-secondary">
-              Save As
-            </legend>
+            <legend className="type-label-large p-0 text-text-secondary">Save As</legend>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
@@ -768,7 +771,7 @@ export function AddressFormModal({
                   "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors cursor-pointer",
                   label === "home"
                     ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                    : "border-divider bg-bg-secondary text-text hover:border-primary/40"
+                    : "border-divider bg-bg-secondary text-text hover:border-primary/40",
                 )}
               >
                 <Home className="w-4 h-4" aria-hidden />
@@ -786,7 +789,7 @@ export function AddressFormModal({
                   "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors cursor-pointer",
                   label === "work"
                     ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                    : "border-divider bg-bg-secondary text-text hover:border-primary/40"
+                    : "border-divider bg-bg-secondary text-text hover:border-primary/40",
                 )}
               >
                 <Briefcase className="w-4 h-4" aria-hidden />
@@ -804,7 +807,7 @@ export function AddressFormModal({
                   "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors cursor-pointer",
                   label === "other"
                     ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                    : "border-divider bg-bg-secondary text-text hover:border-primary/40"
+                    : "border-divider bg-bg-secondary text-text hover:border-primary/40",
                 )}
               >
                 <MapPin className="w-4 h-4" aria-hidden />
@@ -836,10 +839,7 @@ export function AddressFormModal({
 
           {/* Flat / Building */}
           <div className="space-y-1">
-            <label
-              htmlFor="address-modal-line1"
-              className="type-label-large text-text-secondary"
-            >
+            <label htmlFor="address-modal-line1" className="type-label-large text-text-secondary">
               Flat / House / Building *
             </label>
             <input
@@ -858,10 +858,7 @@ export function AddressFormModal({
 
           {/* Area / Street */}
           <div className="space-y-1">
-            <label
-              htmlFor="address-modal-line2"
-              className="type-label-large text-text-secondary"
-            >
+            <label htmlFor="address-modal-line2" className="type-label-large text-text-secondary">
               Area / Street
             </label>
             <input
@@ -919,10 +916,7 @@ export function AddressFormModal({
 
           {/* City */}
           <div className="space-y-1">
-            <label
-              htmlFor="address-modal-city"
-              className="type-label-large text-text-secondary"
-            >
+            <label htmlFor="address-modal-city" className="type-label-large text-text-secondary">
               City *
             </label>
             <input
@@ -941,13 +935,8 @@ export function AddressFormModal({
 
           {/* Inline save-validation copy — announced via role="alert" */}
           {validationError && (
-            <div
-              role="alert"
-              className="p-3 rounded-xl bg-error/10 border border-error/20"
-            >
-              <p className="text-center text-sm font-semibold text-error">
-                {validationError}
-              </p>
+            <div role="alert" className="p-3 rounded-xl bg-error/10 border border-error/20">
+              <p className="text-center text-sm font-semibold text-error">{validationError}</p>
             </div>
           )}
 
@@ -959,27 +948,30 @@ export function AddressFormModal({
               onChange={(e) => setIsDefault(e.target.checked)}
               className="h-5 w-5 cursor-pointer rounded-sm accent-primary"
             />
-            <span className="text-sm font-medium text-text">
-              Set as default delivery address
-            </span>
+            <span className="text-sm font-medium text-text">Set as default delivery address</span>
           </label>
-
         </form>
-          {/* Keep the save action outside the scrolling fields. The primary CTA
+        {/* Keep the save action outside the scrolling fields. The primary CTA
               uses the semantic primary pair (primary bg + primary-foreground
               label) rather than a raw orange fill, so it inherits the theme's
               contrast guarantees in both light and dark. */}
-          <div className="shrink-0 border-t border-divider p-4 pb-[calc(16px+env(safe-area-inset-bottom,0px))]">
-            <button
-              type="submit"
-              form={formId}
-              disabled={submitting || saveBlocked}
-              aria-disabled={submitting || saveBlocked}
-              className="min-h-12 w-full rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-[0.98] cursor-pointer disabled:opacity-50"
-            >
-              {submitting ? "Saving..." : saveBlocked ? "Reopen to retry" : addressToEdit ? "Update Address" : "Save Address"}
-            </button>
-          </div>
+        <div className="shrink-0 border-t border-divider p-4 pb-[calc(16px+env(safe-area-inset-bottom,0px))]">
+          <button
+            type="submit"
+            form={formId}
+            disabled={submitting || saveBlocked}
+            aria-disabled={submitting || saveBlocked}
+            className="min-h-12 w-full rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-[0.98] cursor-pointer disabled:opacity-50"
+          >
+            {submitting
+              ? "Saving..."
+              : saveBlocked
+                ? "Reopen to retry"
+                : addressToEdit
+                  ? "Update Address"
+                  : "Save Address"}
+          </button>
+        </div>
 
         {/* Discard confirmation — inline step so Escape/backdrop/X never
             silently drop typed input. Focus lands on the safe action and the
@@ -1023,7 +1015,8 @@ export function AddressFormModal({
           </div>
         )}
       </div>
-    </div>, document.body
+    </div>,
+    document.body,
   );
 }
 

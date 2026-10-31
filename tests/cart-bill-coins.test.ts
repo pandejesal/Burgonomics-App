@@ -13,7 +13,10 @@ describe("Prompt 13: Cart, Bill Breakdown & Grill Coins Engine Suite", () => {
     });
 
     it("applies tiered delivery fee correctly based on order subtotal", () => {
-      const calculateDeliveryFee = (subtotal: number, fulfillment: "delivery" | "takeaway" | "dine_in") => {
+      const calculateDeliveryFee = (
+        subtotal: number,
+        fulfillment: "delivery" | "takeaway" | "dine_in",
+      ) => {
         if (fulfillment !== "delivery") return 0;
         return subtotal >= 349 ? 0 : 35;
       };
@@ -67,7 +70,7 @@ describe("Prompt 13: Cart, Bill Breakdown & Grill Coins Engine Suite", () => {
 
       const toPay = Math.max(
         0,
-        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip
+        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip,
       );
 
       // 500 - 100 - 50 + 25 + 20 + 0 + 30 = 425
@@ -85,7 +88,7 @@ describe("Prompt 13: Cart, Bill Breakdown & Grill Coins Engine Suite", () => {
 
       const toPay = Math.max(
         0,
-        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip
+        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip,
       );
 
       expect(toPay).toBeGreaterThanOrEqual(0);

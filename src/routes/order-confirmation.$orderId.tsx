@@ -46,7 +46,10 @@ export const Route = createFileRoute("/order-confirmation/$orderId")({
   head: () => ({
     meta: [
       { title: "Order Confirmed — Burgonomics (100% Pure Veg)" },
-      { name: "description", content: "Your delicious 100% Pure Veg burgers are being prepared fresh." },
+      {
+        name: "description",
+        content: "Your delicious 100% Pure Veg burgers are being prepared fresh.",
+      },
     ],
   }),
   component: OrderConfirmationPage,
@@ -63,9 +66,7 @@ function OrderConfirmationPage() {
   // Legacy order documents have no whatsappOptIn field — render those as
   // off (never assert consent the document does not store); new orders are
   // stamped with a boolean at creation.
-  const [whatsappOptIn, setWhatsappOptIn] = React.useState(
-    cachedOrder?.whatsappOptIn === true,
-  );
+  const [whatsappOptIn, setWhatsappOptIn] = React.useState(cachedOrder?.whatsappOptIn === true);
   const [waBusy, setWaBusy] = React.useState(false);
 
   // Sync the toggle once the order document arrives (cache-miss deep
@@ -140,7 +141,9 @@ function OrderConfirmationPage() {
                 return {
                   ...prev,
                   status: liveData.status ? { ...prev.status, ...liveData.status } : prev.status,
-                  payment: liveData.payment ? { ...prev.payment, ...liveData.payment } : prev.payment,
+                  payment: liveData.payment
+                    ? { ...prev.payment, ...liveData.payment }
+                    : prev.payment,
                   petpoojaStatus: liveData.petpoojaStatus,
                   whatsappOptIn:
                     typeof liveData.whatsappOptIn === "boolean"
@@ -152,7 +155,7 @@ function OrderConfirmationPage() {
           },
           (err) => {
             console.warn("[Firestore onSnapshot] Order listener fell back to cached data:", err);
-          }
+          },
         );
       }
     } catch {
@@ -249,7 +252,10 @@ function OrderConfirmationPage() {
     <AppShell title="Order Confirmed" showTabs={false} showTopBar={false}>
       <div className="mx-auto flex min-h-[100dvh] max-w-[560px] flex-col space-y-5 px-4 pb-12 pt-8 sm:px-6">
         {/* 1. Celebratory Animation & Mascot */}
-        <OrderSuccessCelebration orderNumber={order.shortCode} petpoojaStatus={order.petpoojaStatus} />
+        <OrderSuccessCelebration
+          orderNumber={order.shortCode}
+          petpoojaStatus={order.petpoojaStatus}
+        />
 
         {/* 2. Real-Time Makeline & Delivery Countdown */}
         <EstimatedDeliveryCountdown
@@ -297,9 +303,7 @@ function OrderConfirmationPage() {
           {order.fulfillment === "dinein" && order.tableNumber && (
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4">
               <div>
-                <span className="block type-label-medium text-primary-text">
-                  Dine-in table
-                </span>
+                <span className="block type-label-medium text-primary-text">Dine-in table</span>
                 <span className="text-2xl font-semibold tabular-nums text-primary-text">
                   Table {order.tableNumber}
                 </span>
@@ -317,7 +321,9 @@ function OrderConfirmationPage() {
 
             <MetaRow icon={<MapPin className="h-4 w-4" />} label="Branch outlet">
               <span className="block font-semibold text-text">{order.store.name}</span>
-              <span className="block leading-relaxed text-text-secondary">{order.store.address}</span>
+              <span className="block leading-relaxed text-text-secondary">
+                {order.store.address}
+              </span>
             </MetaRow>
 
             <MetaRow icon={<FileText className="h-4 w-4" />} label="Payment status">
@@ -326,10 +332,10 @@ function OrderConfirmationPage() {
                 {order.payment.status === "paid"
                   ? "Paid ✓"
                   : order.payment.status === "CASH_PENDING"
-                  ? "Cash on Delivery (Pending)"
-                  : order.payment.status === "PAY_AT_STORE"
-                  ? "Pay at Counter"
-                  : order.payment.status}
+                    ? "Cash on Delivery (Pending)"
+                    : order.payment.status === "PAY_AT_STORE"
+                      ? "Pay at Counter"
+                      : order.payment.status}
               </span>
             </MetaRow>
           </div>
@@ -351,9 +357,7 @@ function OrderConfirmationPage() {
           aria-label="Bill Breakdown"
           className="space-y-4 rounded-2xl border border-divider bg-surface p-4 sm:p-5 shadow-xs"
         >
-          <h3 className="type-title-large text-text">
-            Price breakdown
-          </h3>
+          <h3 className="type-title-large text-text">Price breakdown</h3>
           <OrderPriceSummary totals={order.totals} promo={order.promo} />
         </section>
 
@@ -454,9 +458,7 @@ function MetaRow({
     <div className="flex items-start gap-3">
       <span className="mt-0.5 text-text-secondary">{icon}</span>
       <div className="min-w-0 flex-1">
-        <span className="block type-label-medium text-text-secondary">
-          {label}
-        </span>
+        <span className="block type-label-medium text-text-secondary">{label}</span>
         <div className="mt-0.5 text-sm leading-relaxed text-text">{children}</div>
       </div>
     </div>

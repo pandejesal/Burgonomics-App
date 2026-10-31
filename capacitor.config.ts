@@ -48,10 +48,10 @@ const config: CapacitorConfig = {
       resizeOnFullScreen: true,
     },
     PushNotifications: {
-      presentationOptions: ['badge', 'sound', 'alert'],
+      presentationOptions: ["badge", "sound", "alert"],
     },
     Geolocation: {
-      permissions: ['location'],
+      permissions: ["location"],
     },
     Haptics: {},
   },

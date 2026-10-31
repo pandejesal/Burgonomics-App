@@ -132,6 +132,7 @@ Format: `[ID severity] [repo] file:line (reports) — description`. XF-overlaps 
 ### Batch 1 — Unblock build + close forgery seams (R0 only; lands first)
 
 Goal: `tsc` green; staging can no longer mint payable orders / forge webhooks on missing env.
+
 - **S1 — Function wiring + webhook swap.** Owns `functions/src/index.ts`, new `modules/petpooja/index.ts`, `modules/auth/index.ts`, `modules/notifications/index.ts`, `modules/payments/razorpayClient.ts` (restore or drop its two importers), `modules/payments/webhookHandler.ts` (reject missing `payload.id`, freshness window), delete `modules/payments/razorpay.webhook.ts` after reroute. Fixes C2, H11.
 - **S2 — Mock fail-closed + secrets.** Owns `functions/src/config/env.ts`, `functions/.env.example`, `core/security.ts` (dedicated `OTP_HMAC_SECRET`; M16), `core/middleware.ts` (remove mock bypass + `body.app_key` fallback; 401 not 500), `modules/petpooja/client.ts`, `porter.service.ts` §§323–390 (HMAC wiring). Fixes C3, C4, M16.
 - **S3 — Rules emergency.** Owns `firestore.rules` ONLY (payments/refunds/audits/unmatched → server-only; cancel literal-shape + `kind/terminal` allowlist; chats/messages/notifications/device-tokens lockdown). Fixes C5, H13, H14, H15.
@@ -140,6 +141,7 @@ Goal: `tsc` green; staging can no longer mint payable orders / forge webhooks on
 ### Batch 2 — Money-path truth (backend → fronts)
 
 Goal: one price, one tip/coins/loyalty/promo truth cart→gateway; no fabricated order flags.
+
 - **S1 — Backend pricing/payments (R0).** Owns `modules/payments/razorpay.service.ts`, `pricing.engine.ts`, `routeTransfers.ts` (verify busy-poll → 202 + client retry), `porter.service.ts` §§quote/book/rebook/verify (idempotency key, fail-closed rate-card/GPS). Depends on Batch 1 S1/S2.
 - **S2 — Core cart/checkout/pay (R1).** Owns `src/routes/cart.tsx`, `checkout.tsx`, `payment.tsx`, `menu.product.$productId.tsx`, `src/features/cart/**`, `checkout/**`, `payments/**`, `offersService.ts`, `pricingEngine.ts`, `BillBreakdown.tsx`, `loyalty/**`. Fixes C1, C6, H1–H8, M6, M7, L1–L3.
 - **S3 — Partner ops money (R2).** Owns `useTicket.ts`, `TicketDetailPage.tsx`, `ManualOrderCreateModal.tsx`, `OrdersPage.tsx`, `OrderDetailPage.tsx`, `OrderTableList.tsx`, `partnerFunctionsApi.ts` (timeout/idempotency/offline). Fixes C9, C11, H21(money half), H22, H24, M25, M26.
@@ -148,6 +150,7 @@ Goal: one price, one tip/coins/loyalty/promo truth cart→gateway; no fabricated
 ### Batch 3 — Auth, roles, session integrity
 
 Goal: one enforced role policy; no client-minted sessions, bonus mint, or stale-claim overreach.
+
 - **S1 — Backend authz + rules auth model (R0).** Owns `firestore.rules` (narrow `isAdmin` to brand roles; `customerId==uid` bind; ticket-owner `affectedKeys` allowlist; session self-mint block), `claimsManager.ts` (in-function role assert), `guestMigration.ts` (signed guest-ownership proof; OTP-verified phone; UID-bonus once per device/AppCheck; chunk ≤400), `index.ts` §§auth/FCM (auth on verify/quote; per-route limiters). Fixes C7, M14, M15.
 - **S2 — Core auth + identity honesty (R1).** Owns `src/features/auth/**`, `auth.login.tsx`, `auth.otp.tsx`, `QuickAuthSheet.tsx`, `secureStorage.ts`, `profile/**`, `AddressForm.tsx` (phone/`"0000000000"` fail-closed only). Fixes H6, M1–M4, L4.
 - **S3 — Partner auth + guards (R2).** Owns `src/App.tsx` (guard mount), `core/auth/*`, `LoginPage.tsx`, `authStore.ts`, `adminAuthService.ts`, `AdminRoutes.tsx`, R2 `secureStorage.ts`, `config/firebase.ts`. Fixes H28–H30, H37, M30–M35, L8. PIN: restore `pinHelpers` with server custom-token exchange **or** delete PIN tab + imports.
@@ -156,6 +159,7 @@ Goal: one enforced role policy; no client-minted sessions, bonus mint, or stale-
 ### Batch 4 — Orders / KDS / delivery / tracking truth
 
 Goal: KDS + tracking + dispatch reflect one backend order truth; no phantom-empty or phantom-rush screens.
+
 - **S1 — Petpooja/Porter bridge (R0).** Owns `petpooja/orderPush.ts`, `menuSyncWebhook.ts` (chunk ≤500), `item86ingSync.ts` (indexed `where+limit(1)`, drop full-scan fallback), `petpooja.scheduler.ts` (paginate), delete legacy `petpooja.service.ts`, `porter.service.ts` §§webhook/poll (event-id dedup, server `orderId` mapping, freshness, concurrent fetch), `porter/client.ts` + `index.ts`. Fixes H10 (bridge half), M17(part), M18.
 - **S2 — Core orders/tracking/robustness (R1).** Owns `routes/orders.*`, `stores.tsx`, `features/tracking/*` (implement or delete route + import), `features/orders/**`, `useLocationPermission.ts`, `OfflineBanner.tsx`, `GlobalErrorBoundary.tsx` (+twin), `addressService.ts` (shared update validation), `__root.tsx` (report sink). Fixes H12(R1), M3, M8–M11, M22, H7-gate half.
 - **S3 — Partner KDS/queue/dashboard honesty (R2).** Owns `KDSPage.tsx`, `features/kds/**`, `DeliveryQueuePage.tsx`, `DashboardPage.tsx`, `orderContract.ts`, `useOrders.ts`, `useOrder.ts`, `useMenu.ts`, `useBranchMenu.ts`, `MenuPage.tsx`, `ChatPage.tsx`, `useChats.ts`, `chatService.ts`. Fixes C8, C10, H19–H23, H25–H27, H31, H32, M37.
@@ -164,6 +168,7 @@ Goal: KDS + tracking + dispatch reflect one backend order truth; no phantom-empt
 ### Batch 5 — Support / tickets / PII / push parity
 
 Goal: tickets are real backend records; notifications PII-free and correct on all platforms.
+
 - **S1 — Tickets + notify backend (R0).** Owns `modules/tickets/*`, `notifications/templates.ts` (conditional veg/refund/ETA/POS-ack copy; plain-case KOT), `fcm.service.ts` + `fcmClient.ts` (badge = unread count + clear-on-read; shared `apns` + `webpush`), `triggers.ts`, `core/validation.ts` + `errors.ts` (user-safe copy map). Fixes H17, H18, H33, H34, H36, M21.
 - **S2 — Core support honesty (R1).** Owns `routes/support.tsx`, `features/support/**`. Fixes H9, M12, M13. Wires `POST /v1/support/tickets`; SLA copy gated on backend field; `[]` empty state; delete `INITIAL_MOCK_TICKETS`; backend-sourced channels/FAQs; storage-backed photo evidence.
 - **S3 — Partner tickets/branches scope (R2).** Owns `useTickets.ts` (fallback → `[]` + chunked `in`), `TicketsPage.tsx`, `TicketDetailPage.tsx` (non-money halves: toasts + retry + confirm), `ticketContract.ts`, `BranchesPage.tsx` + scope helpers (10-branch cap surfaced). Fixes H21(non-money), H32, M28, M29.
@@ -172,6 +177,7 @@ Goal: tickets are real backend records; notifications PII-free and correct on al
 ### Batch 6 — Platform hardening, perf, hygiene (last)
 
 Goal: cold starts, cost storms, deep-links, lint/type blind spots fixed on frozen behavior.
+
 - **S1 — Backend perf/hygiene (R0).** Owns `index.ts` §§schedulers/monolith (server-side inequalities + composite indexes; skip empty ticks; jitter; lazy `firebase-admin/*`), `maintenance/orderBackfill.ts`, `bin/backfillOrders.ts` (→ `scripts/`), `tsconfig.json`, `firebase.json` (predeploy scoping; immutable `/assets/*` + no-cache shell; CSP; `SAMEORIGIN` eval; emulator port doc/fix; per-webhook body caps), `firestore.indexes.json` (prune `store.id` drift; add chats/messages/payments/refunds/franchise/coupons + `customerId+status`/`branchId+status` composites), `scripts/`. Fixes M17–M20, H35(server), L5–L7.
 - **S2 — Core platform (R1).** Owns `vite.config.ts`, `vite.mobile.config.ts`, `capacitor.config.ts`, `router.tsx`, `mobile-entry.tsx`, `theme/tokens.ts`, `styles.css`, `shared/platform/*`, `public/.well-known/*`, `android/*`, `ios/*`, `index.html`, `tsconfig.json`, `vitest.config.ts`, `package.json`, `scripts/test-rules.mjs`, `SafeImage.tsx`. Fixes H12, M20(app), M23, M24.
 - **S3 — Partner platform (R2).** Owns R2 `capacitor.config.ts`, `android/*`, `ios/*`, `index.html`, `vite.config.ts`, `shared/platform/*`, `App.tsx` (router shell only), `tsconfig.json`, oxlint config, `tests/*`, missing-component audit (`OrderStatusBadge/Stepper/FiltersBar/TicketQueueTable/LiveStatsGrid/ActiveOrdersPulse` — restore or delete imports), R2 `scripts/*`. Fixes H38, H35(app), M35, M36, M38–M40, L9–L12.

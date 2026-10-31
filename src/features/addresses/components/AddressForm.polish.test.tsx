@@ -69,10 +69,7 @@ function deferred<T>() {
 
 /** Type into a React-controlled input without firing focus (jsdom-safe). */
 function typeInto(input: HTMLInputElement, value: string) {
-  const desc = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(input),
-    "value",
-  );
+  const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value");
   desc?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -131,9 +128,7 @@ afterEach(() => {
 });
 
 it("exposes stable field ids with associated labels", async () => {
-  const { cleanup } = await mount(
-    <AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />,
-  );
+  const { cleanup } = await mount(<AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />);
   for (const id of [
     "address-line1",
     "address-line2",
@@ -152,9 +147,7 @@ it("exposes stable field ids with associated labels", async () => {
 
 it("requires a city before saving — no fabricated default is submitted", async () => {
   const onSaved = vi.fn();
-  const { cleanup } = await mount(
-    <AddressForm onCancel={vi.fn()} onSaved={onSaved} />,
-  );
+  const { cleanup } = await mount(<AddressForm onCancel={vi.fn()} onSaved={onSaved} />);
   expect(field("address-city").value).toBe("");
 
   await act(async () => {
@@ -163,9 +156,7 @@ it("requires a city before saving — no fabricated default is submitted", async
   });
   await submitForm();
 
-  expect(document.querySelector('[role=alert]')?.textContent).toContain(
-    "Please enter your city.",
-  );
+  expect(document.querySelector("[role=alert]")?.textContent).toContain("Please enter your city.");
   expect(toast.error).toHaveBeenCalledWith("Please enter your city.");
   expect(addressRepository.create).not.toHaveBeenCalled();
   expect(onSaved).not.toHaveBeenCalled();
@@ -174,9 +165,7 @@ it("requires a city before saving — no fabricated default is submitted", async
 });
 
 it("keeps the confirmed-pin requirement for new addresses", async () => {
-  const { cleanup } = await mount(
-    <AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />,
-  );
+  const { cleanup } = await mount(<AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />);
   await act(async () => {
     typeInto(field("address-line1"), "B-42, Sunshine Heights");
     typeInto(field("address-city"), "Ahmedabad");
@@ -184,7 +173,7 @@ it("keeps the confirmed-pin requirement for new addresses", async () => {
   });
   await submitForm();
 
-  expect(document.querySelector('[role=alert]')?.textContent).toContain(
+  expect(document.querySelector("[role=alert]")?.textContent).toContain(
     "confirm your delivery pin location",
   );
   expect(addressRepository.create).not.toHaveBeenCalled();
@@ -194,26 +183,29 @@ it("keeps the confirmed-pin requirement for new addresses", async () => {
 
 it("fills untouched fields from a pin tap geocode and saves the trimmed values", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   vi.mocked(addressRepository.create).mockResolvedValue({
     success: true,
     data: { id: "addr_new_1" },
   } as never);
   const onSaved = vi.fn();
-  const { cleanup } = await mount(
-    <AddressForm onCancel={vi.fn()} onSaved={onSaved} />,
-  );
+  const { cleanup } = await mount(<AddressForm onCancel={vi.fn()} onSaved={onSaved} />);
 
   act(() => map.events?.click({ latlng: { lat: 19.076, lng: 72.877 } }));
   await act(async () =>
-    pending.resolve(geocodeReply({
-      city: "Mumbai",
-      town: "Mumbai",
-      postcode: "400050",
-      state: "Maharashtra",
-      house_number: "12",
-      road: "MG Road",
-    })),
+    pending.resolve(
+      geocodeReply({
+        city: "Mumbai",
+        town: "Mumbai",
+        postcode: "400050",
+        state: "Maharashtra",
+        house_number: "12",
+        road: "MG Road",
+      }),
+    ),
   );
 
   expect(field("address-city").value).toBe("Mumbai");
@@ -244,7 +236,10 @@ it("fills untouched fields from a pin tap geocode and saves the trimmed values",
 
 it("never overwrites loaded fields of an edited address when a pin geocode resolves", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   const initial: Address = {
     id: "addr_edit_1",
     label: "home",
@@ -265,13 +260,15 @@ it("never overwrites loaded fields of an edited address when a pin geocode resol
   expect(loc.current.request).not.toHaveBeenCalled();
   act(() => map.events?.click({ latlng: { lat: 19.076, lng: 72.877 } }));
   await act(async () =>
-    pending.resolve(geocodeReply({
-      city: "Surat",
-      postcode: "395001",
-      state: "Gujarat",
-      house_number: "12",
-      road: "MG Road",
-    })),
+    pending.resolve(
+      geocodeReply({
+        city: "Surat",
+        postcode: "395001",
+        state: "Gujarat",
+        house_number: "12",
+        road: "MG Road",
+      }),
+    ),
   );
 
   expect(field("address-line1").value).toBe("B-42, Sunshine Heights");
@@ -284,27 +281,30 @@ it("never overwrites loaded fields of an edited address when a pin geocode resol
 
 it("fills untouched fields from an auto GPS fix but protects a typed city", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   loc.current = {
     request: vi.fn(async () => ({ status: "granted" as const })),
     coords: { lat: 19.076, lng: 72.877 },
     status: "granted",
     isLoading: false,
   };
-  const { cleanup } = await mount(
-    <AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />,
-  );
+  const { cleanup } = await mount(<AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />);
   expect(vi.mocked(fetch)).toHaveBeenCalled(); // auto-fix requested a geocode
 
   await act(async () => typeInto(field("address-city"), "Mumbai"));
   await act(async () =>
-    pending.resolve(geocodeReply({
-      city: "Surat",
-      postcode: "395001",
-      state: "Gujarat",
-      house_number: "12",
-      road: "MG Road",
-    })),
+    pending.resolve(
+      geocodeReply({
+        city: "Surat",
+        postcode: "395001",
+        state: "Gujarat",
+        house_number: "12",
+        road: "MG Road",
+      }),
+    ),
   );
 
   expect(field("address-city").value).toBe("Mumbai");
@@ -324,9 +324,7 @@ it("keeps the form, the typed values and the route on a failed create", async ()
     },
   } as never);
   const onSaved = vi.fn();
-  const { cleanup } = await mount(
-    <AddressForm onCancel={vi.fn()} onSaved={onSaved} />,
-  );
+  const { cleanup } = await mount(<AddressForm onCancel={vi.fn()} onSaved={onSaved} />);
 
   // A confirmed pin is required before submit can reach the repository.
   act(() => map.events?.click({ latlng: { lat: 19.076, lng: 72.877 } }));
@@ -339,12 +337,10 @@ it("keeps the form, the typed values and the route on a failed create", async ()
   await submitForm();
 
   // Accessible, persistent error with the curated message.
-  expect(document.querySelector('[role=alert]')?.textContent).toContain(
+  expect(document.querySelector("[role=alert]")?.textContent).toContain(
     "We couldn't save your address. Please try again.",
   );
-  expect(toast.error).toHaveBeenCalledWith(
-    "We couldn't save your address. Please try again.",
-  );
+  expect(toast.error).toHaveBeenCalledWith("We couldn't save your address. Please try again.");
   // No success claim and no navigation (the route navigates only onSaved).
   expect(toast.success).not.toHaveBeenCalled();
   expect(onSaved).not.toHaveBeenCalled();
@@ -372,9 +368,7 @@ it("jumps the map instantly under prefers-reduced-motion instead of flying", asy
     configurable: true,
     writable: true,
   });
-  const { cleanup } = await mount(
-    <AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />,
-  );
+  const { cleanup } = await mount(<AddressForm onCancel={vi.fn()} onSaved={vi.fn()} />);
   expect(map.setView).toHaveBeenCalled();
   expect(map.flyTo).not.toHaveBeenCalled();
   await cleanup();

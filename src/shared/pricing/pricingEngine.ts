@@ -67,7 +67,10 @@ export const FREE_DELIVERY_THRESHOLD = 499;
 /** Flat delivery fee fallback (₹) for legacy tests. */
 export const DELIVERY_FEE_FLAT = 40;
 
-export const DEFAULT_PRICING_CONFIG: PricingConfig & { freeDeliveryThreshold?: number; deliveryFeeFlat?: number } = {
+export const DEFAULT_PRICING_CONFIG: PricingConfig & {
+  freeDeliveryThreshold?: number;
+  deliveryFeeFlat?: number;
+} = {
   gstRate: GST_RATE,
   packagingFee: PACKAGING_FEE_BY_FULFILLMENT.delivery,
   deliveryFee: DEFAULT_DELIVERY_QUOTE_FEE,
@@ -175,7 +178,11 @@ export function resolvePricingConfig(input?: {
 
   const quote = Number(input?.deliveryQuoteFee);
   const deliveryFee =
-    isDelivery && Number.isFinite(quote) && quote >= 0 ? round2(quote) : isDelivery ? DEFAULT_DELIVERY_QUOTE_FEE : 0;
+    isDelivery && Number.isFinite(quote) && quote >= 0
+      ? round2(quote)
+      : isDelivery
+        ? DEFAULT_DELIVERY_QUOTE_FEE
+        : 0;
 
   const override = Number(input?.storeOverride?.minOrderAmount);
   const minOrderAmount = isDelivery
@@ -320,9 +327,12 @@ export function calculateOrderTotals(input: PricingCalculationInput): Calculated
   const sgst = round2(taxableAmount * (gstRate / 2));
   const taxes = round2(cgst + sgst);
 
-  const packagingFee = hasItems && typeof config.packagingFee === "number" ? config.packagingFee : 0;
+  const packagingFee =
+    hasItems && typeof config.packagingFee === "number" ? config.packagingFee : 0;
   const deliveryFee =
-    hasItems && asPricingFulfillment(fulfillment) === "delivery" && typeof config.deliveryFee === "number"
+    hasItems &&
+    asPricingFulfillment(fulfillment) === "delivery" &&
+    typeof config.deliveryFee === "number"
       ? config.deliveryFee
       : 0;
 

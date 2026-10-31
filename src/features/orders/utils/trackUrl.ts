@@ -5,9 +5,9 @@
  * explicitly) so it stays unit-testable in the node suite.
  */
 export function buildTrackUrl(id: string, origin?: string): string {
-  const base = (
-    origin ??
-    (typeof window !== "undefined" ? window.location.origin : "")
-  ).replace(/\/$/, "");
+  const base = (origin ?? (typeof window !== "undefined" ? window.location.origin : "")).replace(
+    /\/$/,
+    "",
+  );
   return `${base}/orders/${id}/track`;
 }

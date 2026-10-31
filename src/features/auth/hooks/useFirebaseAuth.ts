@@ -32,7 +32,10 @@ export function useFirebaseAuth() {
       const validation = validatePhone(sanitized);
 
       if (!validation.valid) {
-        return { ok: false, error: validation.error || "Please enter a valid 10-digit mobile number" };
+        return {
+          ok: false,
+          error: validation.error || "Please enter a valid 10-digit mobile number",
+        };
       }
 
       setIsSubmitting(true);
@@ -47,7 +50,7 @@ export function useFirebaseAuth() {
         return { ok: false, error: err.message || "Failed to send verification code" };
       }
     },
-    [requestOtpAction, clearError]
+    [requestOtpAction, clearError],
   );
 
   const verifyOtp = useCallback(
@@ -68,7 +71,7 @@ export function useFirebaseAuth() {
         return { ok: false, error: err.message || "Verification failed" };
       }
     },
-    [verifyOtpAction, clearError]
+    [verifyOtpAction, clearError],
   );
 
   const resendOtp = useCallback(async () => {

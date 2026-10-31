@@ -229,9 +229,14 @@ function MenuPage() {
       // intent and outlet ownership after the async boundary.
       await afterNextPaint();
       const live = useMenuStore.getState();
-      if (request !== jumpRequestRef.current || live.epoch !== state.epoch ||
-          live.storeId !== state.storeId || currentStoreRef.current !== state.storeId ||
-          !live.categories.some((category) => category.id === categoryId)) return;
+      if (
+        request !== jumpRequestRef.current ||
+        live.epoch !== state.epoch ||
+        live.storeId !== state.storeId ||
+        currentStoreRef.current !== state.storeId ||
+        !live.categories.some((category) => category.id === categoryId)
+      )
+        return;
       jumpGuardRef.current = { id: categoryId, until: Date.now() + JUMP_GUARD_MS };
       live.setActiveCategory(categoryId);
 
@@ -507,12 +512,9 @@ function MenuPage() {
   // store's categories/cards under it — show the loading shell until the store
   // state belongs to this store.
   const storeScopeMismatch = Boolean(menuStoreId) && menuStoreId !== store.id;
-  const initialLoading =
-    storeScopeMismatch || (status === "loading" && categories.length === 0);
+  const initialLoading = storeScopeMismatch || (status === "loading" && categories.length === 0);
   // Only claim an item total when every category reported a real count.
-  const countedCategories = categories.filter(
-    (category) => typeof category.itemCount === "number",
-  );
+  const countedCategories = categories.filter((category) => typeof category.itemCount === "number");
   const totalItems =
     categories.length > 0 && countedCategories.length === categories.length
       ? countedCategories.reduce((sum, category) => sum + (category.itemCount ?? 0), 0)
@@ -551,7 +553,9 @@ function MenuPage() {
               role="status"
               className="flex items-center justify-between gap-3 rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 p-3 text-base font-medium text-amber-900 dark:text-amber-200"
             >
-              <span>Live updates paused{error ? ` (${error})` : ""} — showing last saved menu.</span>
+              <span>
+                Live updates paused{error ? ` (${error})` : ""} — showing last saved menu.
+              </span>
               <button
                 type="button"
                 onClick={() => store && void load(store.id, { refresh: true })}
@@ -612,16 +616,32 @@ function MenuPage() {
                 is the scroll margin for every section jump. */}
             <div
               ref={stickyRef}
-              className={cn("sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 backdrop-blur-md shadow-sm border-b border-divider", viewMode === "grid" && "flex items-center")}
+              className={cn(
+                "sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 backdrop-blur-md shadow-sm border-b border-divider",
+                viewMode === "grid" && "flex items-center",
+              )}
             >
               <CategoryNavRail
                 categories={categories}
                 activeCategoryId={activeCategoryId}
                 onSelectCategory={handleCategorySelect}
-                className={viewMode === "grid" ? "min-w-0 flex-1 border-b-0 shadow-none" : undefined}
+                className={
+                  viewMode === "grid" ? "min-w-0 flex-1 border-b-0 shadow-none" : undefined
+                }
               />
-              <div className={cn("flex items-center justify-between", viewMode === "grid" ? "shrink-0 gap-0 px-1 py-1" : "gap-3 px-4 py-2 border-t border-divider/40")}>
-                <Text variant="bodyMedium" tone="secondary" className={cn("font-medium text-sm", viewMode === "grid" && "sr-only")}>
+              <div
+                className={cn(
+                  "flex items-center justify-between",
+                  viewMode === "grid"
+                    ? "shrink-0 gap-0 px-1 py-1"
+                    : "gap-3 px-4 py-2 border-t border-divider/40",
+                )}
+              >
+                <Text
+                  variant="bodyMedium"
+                  tone="secondary"
+                  className={cn("font-medium text-sm", viewMode === "grid" && "sr-only")}
+                >
                   {categories.length} {categories.length === 1 ? "category" : "categories"}
                   {typeof totalItems === "number" ? ` • ${totalItems} items` : ""}
                 </Text>

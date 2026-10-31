@@ -19,11 +19,7 @@ interface RecentOrdersRailProps {
 }
 
 function isEligible(order: Order): boolean {
-  return (
-    order.status?.kind === "completed" &&
-    Array.isArray(order.items) &&
-    order.items.length > 0
-  );
+  return order.status?.kind === "completed" && Array.isArray(order.items) && order.items.length > 0;
 }
 
 /**
@@ -115,8 +111,8 @@ export function RecentOrdersRail({ enabled = true }: RecentOrdersRailProps) {
                   {order.store?.name ?? "Burgonomics"}
                 </p>
                 <p className="text-sm text-text-secondary">
-                  #{order.shortCode || order.id.slice(-6).toUpperCase()} •{" "}
-                  {order.items.length} {order.items.length === 1 ? "item" : "items"} •{" "}
+                  #{order.shortCode || order.id.slice(-6).toUpperCase()} • {order.items.length}{" "}
+                  {order.items.length === 1 ? "item" : "items"} •{" "}
                   {formatINR(order.totals?.grandTotal ?? 0)}
                 </p>
               </div>

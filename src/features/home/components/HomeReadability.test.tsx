@@ -17,9 +17,19 @@ const effects = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => effects.navigate,
-  Link: ({ to, params: _params, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
-    to: string; params?: unknown;
-  }) => <a href={to} {...props}>{children}</a>,
+  Link: ({
+    to,
+    params: _params,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    to: string;
+    params?: unknown;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
 }));
 vi.mock("@/core/services/haptics", () => ({
   HapticService: { impact: vi.fn(), selection: vi.fn() },
@@ -29,15 +39,16 @@ vi.mock("@/features/cart/state/cartStore", () => ({
 }));
 vi.mock("@/features/cart/repositories/CartRepository", () => ({ cartRepository: effects }));
 vi.mock("@/features/stores/state/storeStore", () => ({
-  useStoreSelection: (select: (state: unknown) => unknown) => select({
-    activeStore: {
-      id: "verified-store",
-      name: "Burgonomics - An unusually long owner-confirmed outlet name",
-      address: "The actual loaded address, Ahmedabad",
-    },
-    fulfillment: effects.fulfillment,
-    setFulfillment: effects.setFulfillment,
-  }),
+  useStoreSelection: (select: (state: unknown) => unknown) =>
+    select({
+      activeStore: {
+        id: "verified-store",
+        name: "Burgonomics - An unusually long owner-confirmed outlet name",
+        address: "The actual loaded address, Ahmedabad",
+      },
+      fulfillment: effects.fulfillment,
+      setFulfillment: effects.setFulfillment,
+    }),
 }));
 vi.mock("@/features/addresses", () => ({
   useAddressStore: () => null,
@@ -47,7 +58,10 @@ vi.mock("@/features/notifications/state/notificationsStore", () => ({
   useNotificationsStore: (select: (state: unknown) => unknown) => select({ unreadCount: 2 }),
 }));
 vi.mock("@/shared/components/common/SafeImage", () => ({
-  SafeImage: ({ fallbackSrc: _fallback, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & {
+  SafeImage: ({
+    fallbackSrc: _fallback,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement> & {
     fallbackSrc?: string;
   }) => <img {...props} />,
 }));
@@ -63,9 +77,13 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | null = null;
 let host: HTMLDivElement;
 const product: Product = {
-  id: "product-1", categoryId: "actual-category", name: "A long product title that must remain readable",
+  id: "product-1",
+  categoryId: "actual-category",
+  name: "A long product title that must remain readable",
   description: "A full product description that must not be hidden behind a one-line clamp.",
-  price: 249, veg: true, inStock: true,
+  price: 249,
+  veg: true,
+  inStock: true,
 };
 
 async function mount(element: React.ReactElement) {
@@ -84,7 +102,14 @@ afterEach(async () => {
 
 describe("Home readability without changing ordering/navigation", () => {
   it("keeps long headings visible and identifies their sections", async () => {
-    await mount(<SectionHeader id="section-title" title="A long section title" actionLabel="Full menu" actionTo="/menu" />);
+    await mount(
+      <SectionHeader
+        id="section-title"
+        title="A long section title"
+        actionLabel="Full menu"
+        actionTo="/menu"
+      />,
+    );
     expect(host.querySelector("h2")?.id).toBe("section-title");
     expect(host.querySelector("h2")?.className).not.toContain("truncate");
     expect(host.querySelector("a")?.className).toContain("min-h-11");
@@ -102,7 +127,9 @@ describe("Home readability without changing ordering/navigation", () => {
     expect(add.className).toContain("min-h-11");
     expect(add.className).toContain("bg-primary");
     await act(async () => add.click());
-    expect(effects.addItem).toHaveBeenCalledWith(expect.objectContaining({ storeId: "verified-store", productId: product.id }));
+    expect(effects.addItem).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: "verified-store", productId: product.id }),
+    );
   });
 
   it("keeps the lower-Home food rail unboxed with a square photo", async () => {
@@ -118,7 +145,8 @@ describe("Home readability without changing ordering/navigation", () => {
     await act(async () => host.querySelector("button")!.click());
     expect(effects.addItem).not.toHaveBeenCalled();
     expect(effects.navigate).toHaveBeenCalledWith({
-      to: "/menu/product/$productId", params: { productId: product.id },
+      to: "/menu/product/$productId",
+      params: { productId: product.id },
     });
   });
 
@@ -148,7 +176,9 @@ describe("Home readability without changing ordering/navigation", () => {
     expect(outlet.className).not.toContain("bg-bg-secondary");
     expect(host.querySelector('[aria-label="Search the menu"]')).toBeNull();
     expect(host.querySelector('input[type="search"]')).toBeNull();
-    expect(host.querySelector('[aria-label="Burgonomics Home"] > span')?.className).toContain("text-2xl");
+    expect(host.querySelector('[aria-label="Burgonomics Home"] > span')?.className).toContain(
+      "text-2xl",
+    );
     expect(effects.navigate).not.toHaveBeenCalled();
   });
 
@@ -158,14 +188,28 @@ describe("Home readability without changing ordering/navigation", () => {
     const radios = host.querySelectorAll<HTMLButtonElement>('[role="radio"]');
     expect(radios[0].tabIndex).toBe(0);
     expect(radios[1].tabIndex).toBe(-1);
-    await act(async () => radios[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    await act(async () =>
+      radios[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })),
+    );
     expect(onChange).toHaveBeenCalledWith("takeaway");
     expect(document.activeElement).toBe(radios[1]);
     expect(radios[0].className).toContain("min-h-12");
   });
 
   it("keeps combo names readable and does not invent a savings claim or image", async () => {
-    await mount(<ComboCard combo={{ id: "actual-combo", name: "An actual long combo name", description: "Full details", price: 100, originalPrice: 100, gradient: "", visual: "" }} />);
+    await mount(
+      <ComboCard
+        combo={{
+          id: "actual-combo",
+          name: "An actual long combo name",
+          description: "Full details",
+          price: 100,
+          originalPrice: 100,
+          gradient: "",
+          visual: "",
+        }}
+      />,
+    );
     expect(host.querySelector("h3")?.className).not.toContain("truncate");
     expect(host.querySelector("button")?.getAttribute("aria-label")).not.toContain("save");
     expect(host.textContent).toContain("Photo unavailable");
@@ -174,13 +218,24 @@ describe("Home readability without changing ordering/navigation", () => {
   });
 
   it("opens the actual meal product even when its catalog ID has no prd_ prefix", async () => {
-    await mount(<ComboCard combo={{
-      id: "812736", productId: "812736", name: "An actual meal", description: "From the catalog",
-      price: 327, originalPrice: 327, gradient: "", visual: "",
-    }} />);
+    await mount(
+      <ComboCard
+        combo={{
+          id: "812736",
+          productId: "812736",
+          name: "An actual meal",
+          description: "From the catalog",
+          price: 327,
+          originalPrice: 327,
+          gradient: "",
+          visual: "",
+        }}
+      />,
+    );
     await act(async () => host.querySelector("button")!.click());
     expect(effects.navigate).toHaveBeenCalledWith({
-      to: "/menu/product/$productId", params: { productId: "812736" },
+      to: "/menu/product/$productId",
+      params: { productId: "812736" },
     });
   });
 });

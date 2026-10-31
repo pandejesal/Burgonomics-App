@@ -41,13 +41,10 @@ vi.mock("@/features/favorites/components/FavoriteHeart", () => ({
 }));
 vi.mock("@/features/cart/state/cartStore", () => {
   const state: { lines: Array<Record<string, unknown>> } = { lines: [] };
-  const useCartStore = Object.assign(
-    (selector: (s: typeof state) => unknown) => selector(state),
-    {
-      getState: () => state,
-      setState: (patch: Partial<typeof state>) => Object.assign(state, patch),
-    },
-  );
+  const useCartStore = Object.assign((selector: (s: typeof state) => unknown) => selector(state), {
+    getState: () => state,
+    setState: (patch: Partial<typeof state>) => Object.assign(state, patch),
+  });
   return { useCartStore };
 });
 vi.mock("@/features/cart/repositories/CartRepository", () => ({
@@ -113,8 +110,8 @@ describe("compact grid — 2:1 image, 8px body, 14px two-line title", () => {
 
   it("grid body uses p-2 and gap-1; the row body still uses p-4", () => {
     const grid = render(<MenuProductCard product={product} layout="grid" />);
-    const gridBody = withToken(grid, "flex-col").find(
-      (el) => (el.className ?? "").includes("flex-1"),
+    const gridBody = withToken(grid, "flex-col").find((el) =>
+      (el.className ?? "").includes("flex-1"),
     )!;
     expect(gridBody.className).toContain("p-2");
     expect(gridBody.className).toContain("gap-1");
@@ -128,7 +125,9 @@ describe("compact grid — 2:1 image, 8px body, 14px two-line title", () => {
   it("keeps the price plate below the 44px favourite target, including wrapped compare prices", () => {
     const ordinary = render(<MenuProductCard product={product} layout="grid" />);
     expect(withToken(ordinary, "aspect-[2/1]")[0].classList.contains("min-h-20")).toBe(true);
-    const discounted = render(<MenuProductCard product={{ ...product, compareAtPrice: 399 }} layout="grid" />);
+    const discounted = render(
+      <MenuProductCard product={{ ...product, compareAtPrice: 399 }} layout="grid" />,
+    );
     expect(withToken(discounted, "aspect-[2/1]")[0].classList.contains("min-h-24")).toBe(true);
   });
 
@@ -162,7 +161,9 @@ describe("compact grid — 2:1 image, 8px body, 14px two-line title", () => {
   });
 
   it("grid announces prep-time, badges and Customisable instead of painting them (the Add + action carries the state)", () => {
-    const host = render(<MenuProductCard product={{ ...product, customizable: true }} layout="grid" />);
+    const host = render(
+      <MenuProductCard product={{ ...product, customizable: true }} layout="grid" />,
+    );
 
     const prep = Array.from(host.querySelectorAll<HTMLElement>("span")).find(
       (s) => (s.textContent ?? "").trim() === "20m",
@@ -185,7 +186,9 @@ describe("compact grid — 2:1 image, 8px body, 14px two-line title", () => {
     expect(customisable.className).toContain("sr-only");
 
     // …and the visible action still proves the product is customisable.
-    const add = host.querySelector<HTMLButtonElement>(`button[aria-label="Add ${LONG_NAME} to cart"]`)!;
+    const add = host.querySelector<HTMLButtonElement>(
+      `button[aria-label="Add ${LONG_NAME} to cart"]`,
+    )!;
     expect(add.textContent).toBe("Add +");
   });
 
@@ -268,7 +271,8 @@ describe("compact grid — 2:1 image, 8px body, 14px two-line title", () => {
   it("never caps the card height or clips its body (must grow at 200% zoom)", () => {
     const host = render(<MenuProductCard product={product} layout="grid" />);
     const card = withToken(host, "border").find(
-      (el) => (el.className ?? "").includes("rounded-2xl") && (el.className ?? "").includes("flex-col"),
+      (el) =>
+        (el.className ?? "").includes("rounded-2xl") && (el.className ?? "").includes("flex-col"),
     )!;
     expect(card).toBeDefined();
     expect(card.className).not.toContain("max-h-");
@@ -277,7 +281,9 @@ describe("compact grid — 2:1 image, 8px body, 14px two-line title", () => {
   });
 
   it("the series badge owns top-left, capped short of the 44px favourite corner, and the discount takes bottom-left", () => {
-    const host = render(<MenuProductCard product={{ ...product, discountPercentage: 20 }} layout="grid" />);
+    const host = render(
+      <MenuProductCard product={{ ...product, discountPercentage: 20 }} layout="grid" />,
+    );
     const overlay = host.querySelector<HTMLElement>('[data-testid="product-image-badge"]')!;
     expect(overlay).not.toBeNull();
     expect(overlay.textContent).toBe("Bestseller");

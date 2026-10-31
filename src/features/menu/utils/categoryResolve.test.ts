@@ -32,14 +32,20 @@ describe("resolveCategoryParam", () => {
 
   it("resolves a uniquely normalised name", () => {
     const result = resolveCategoryParam("cold-drinks", [{ id: "x", name: "Cold Drinks!" }]);
-    expect(result).toEqual({ status: "resolved", param: "cold-drinks", id: "x", matchedBy: "name" });
+    expect(result).toEqual({
+      status: "resolved",
+      param: "cold-drinks",
+      id: "x",
+      matchedBy: "name",
+    });
     expect(normalizeCategoryToken("  Cold   Drinks! ")).toBe("cold drinks");
   });
 
   it("reports ambiguity instead of picking the first of two identical names", () => {
     const result = resolveCategoryParam("Cold Drinks", categories);
     expect(result.status).toBe("ambiguous");
-    if (result.status === "ambiguous") expect(result.candidates).toEqual(["Cold Drinks", "Cold Drinks"]);
+    if (result.status === "ambiguous")
+      expect(result.candidates).toEqual(["Cold Drinks", "Cold Drinks"]);
   });
 
   it("does not fall back to a shared first word", () => {

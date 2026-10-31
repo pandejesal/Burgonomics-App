@@ -10,11 +10,7 @@ interface BOGOBannerProps {
   className?: string;
 }
 
-export function BOGOBanner({
-  code = "BURGERBOGO",
-  onApplyCode,
-  className,
-}: BOGOBannerProps) {
+export function BOGOBanner({ code = "BURGERBOGO", onApplyCode, className }: BOGOBannerProps) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -30,7 +26,7 @@ export function BOGOBanner({
     <div
       className={cn(
         "relative select-none overflow-hidden rounded-2xl border border-primary bg-primary p-5 text-primary-foreground shadow-lg",
-        className
+        className,
       )}
     >
       <div className="flex flex-col gap-4">

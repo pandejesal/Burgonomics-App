@@ -19,14 +19,20 @@ import type { Product, ProductDetails, CustomizationGroup } from "@/features/men
 import type { CartModifier } from "@/features/cart/models";
 import { formatINR } from "@/core/utils/format";
 import { cn } from "@/lib/utils";
-import { ModifierGroupSelector, type ModifierSelections } from "@/features/menu/components/ModifierGroupSelector";
+import {
+  ModifierGroupSelector,
+  type ModifierSelections,
+} from "@/features/menu/components/ModifierGroupSelector";
 import { NutritionAllergenPanel } from "@/features/menu/components/NutritionAllergenPanel";
 
 export const Route = createFileRoute("/menu/product/$productId")({
   head: () => ({
     meta: [
       { title: "Product Details — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "100% Pure Vegetarian handcrafted smash burger with customizable modifiers." },
+      {
+        name: "description",
+        content: "100% Pure Vegetarian handcrafted smash burger with customizable modifiers.",
+      },
     ],
   }),
   component: ProductPage,
@@ -284,7 +290,11 @@ function ProductPage() {
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
           <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3">
             {/* Quantity Stepper (mirrors QuantityStepper: grouped, live, 44px) */}
-            <div role="group" aria-label={`Quantity for ${p.name}`} className="flex h-11 shrink-0 items-center rounded-xl bg-bg-secondary border border-divider p-1">
+            <div
+              role="group"
+              aria-label={`Quantity for ${p.name}`}
+              className="flex h-11 shrink-0 items-center rounded-xl bg-bg-secondary border border-divider p-1"
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -297,7 +307,12 @@ function ProductPage() {
               >
                 <Minus className="h-4 w-4" />
               </button>
-              <span aria-live="polite" className="w-8 min-w-8 shrink-0 text-center text-xs font-black font-mono tabular-nums text-text">{qty}</span>
+              <span
+                aria-live="polite"
+                className="w-8 min-w-8 shrink-0 text-center text-xs font-black font-mono tabular-nums text-text"
+              >
+                {qty}
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -321,12 +336,18 @@ function ProductPage() {
                 "flex flex-1 items-center justify-between rounded-xl px-5 py-3.5 text-white shadow-lg transition-all active:scale-[0.98] cursor-pointer",
                 disabled || !isValidationPassed
                   ? "bg-zinc-700 opacity-60 cursor-not-allowed"
-                  : "bg-[#FF6600] hover:bg-[#e05a00]"
+                  : "bg-[#FF6600] hover:bg-[#e05a00]",
               )}
             >
               <span className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wide">
                 <ShoppingBag className="h-4 w-4" />
-                <span>{disabled ? "Sold Out" : isValidationPassed ? "Add To Cart" : "Choose Required Options"}</span>
+                <span>
+                  {disabled
+                    ? "Sold Out"
+                    : isValidationPassed
+                      ? "Add To Cart"
+                      : "Choose Required Options"}
+                </span>
               </span>
               <span className="font-mono text-sm font-black">{formatINR(totalPrice)}</span>
             </button>
@@ -365,7 +386,9 @@ function ProductPage() {
             <span className="flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border border-emerald-600 p-[1.5px]">
               <span className="h-2 w-2 rounded-full bg-emerald-600" />
             </span>
-            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 tracking-wider">100% PURE VEG</span>
+            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 tracking-wider">
+              100% PURE VEG
+            </span>
           </div>
 
           {disabled && (
@@ -382,11 +405,10 @@ function ProductPage() {
           {/* Header */}
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-black text-text leading-tight">
-                {p.name}
-              </h1>
+              <h1 className="text-2xl font-black text-text leading-tight">{p.name}</h1>
               <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                {p.description || "Freshly grilled smash patty layered with crisp greens and gourmet house sauce."}
+                {p.description ||
+                  "Freshly grilled smash patty layered with crisp greens and gourmet house sauce."}
               </p>
             </div>
             <div className="shrink-0 text-right">

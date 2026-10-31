@@ -24,7 +24,7 @@ export function GrillCoinsEarnedCard({
     <div
       className={cn(
         "relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/15 via-[#0E4825]/10 to-amber-500/5 p-4 shadow-sm select-none",
-        className
+        className,
       )}
     >
       <div className="flex items-start gap-3.5">
@@ -45,7 +45,11 @@ export function GrillCoinsEarnedCard({
           </p>
 
           <p className="text-xs text-text-secondary">
-            You have earned <span className="font-bold text-[#0E4825] dark:text-[#4ADE80]">{formatINR(earned)} in wallet credit</span> (1 point = Rs.1). Use them to save on your next order.
+            You have earned{" "}
+            <span className="font-bold text-[#0E4825] dark:text-[#4ADE80]">
+              {formatINR(earned)} in wallet credit
+            </span>{" "}
+            (1 point = Rs.1). Use them to save on your next order.
           </p>
 
           <div className="pt-1.5 flex items-center gap-2">

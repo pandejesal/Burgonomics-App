@@ -53,7 +53,7 @@ export function InvoiceDownloadButton({
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right;">${formatINR(item.unitPrice || 0)}</td>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right; font-weight: bold;">${formatINR((item.unitPrice || 0) * (item.quantity || 1))}</td>
         </tr>
-      `
+      `,
       )
       .join("");
 
@@ -65,8 +65,7 @@ export function InvoiceDownloadButton({
     // component backs OUT of the total (total - total/1.05), never 5% on top.
     // The old fallback charged an extra ~5% phantom tax whenever server
     // taxes were absent.
-    const taxes =
-      order.totals?.taxes ?? Math.round((grandTotal - grandTotal / 1.05) * 100) / 100;
+    const taxes = order.totals?.taxes ?? Math.round((grandTotal - grandTotal / 1.05) * 100) / 100;
     const packing = order.totals?.packingFee || 0;
     const delivery = order.totals?.deliveryFee || 0;
 

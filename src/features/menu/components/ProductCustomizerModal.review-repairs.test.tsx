@@ -14,7 +14,10 @@ import type { CustomizationGroup, ProductDetails } from "@/features/menu/models"
  */
 
 const fixture = vi.hoisted(() => ({
-  lines: [] as Array<{ productId: string; modifiers?: Array<{ groupId: string; optionId: string }> }>,
+  lines: [] as Array<{
+    productId: string;
+    modifiers?: Array<{ groupId: string; optionId: string }>;
+  }>,
   addItem: vi.fn(),
 }));
 
@@ -160,13 +163,9 @@ describe("selection guards (C)", () => {
   });
 
   it("drops retired options from repeat-last and keeps the required group blocking", async () => {
-    fixture.lines = [
-      { productId: "p1", modifiers: [{ groupId: "g1", optionId: "retired" }] },
-    ];
+    fixture.lines = [{ productId: "p1", modifiers: [{ groupId: "g1", optionId: "retired" }] }];
     const product = details({
-      customizations: [
-        singleGroup([{ id: "o1", name: "Current bun", priceDelta: 0 }]),
-      ],
+      customizations: [singleGroup([{ id: "o1", name: "Current bun", priceDelta: 0 }])],
     });
 
     await render(<ProductCustomizerModal product={product} isOpen onClose={() => {}} />);
@@ -209,9 +208,7 @@ describe("selection guards (C)", () => {
     });
     const onClose = vi.fn();
 
-    await render(
-      <ProductCustomizerModal product={details()} isOpen onClose={onClose} />,
-    );
+    await render(<ProductCustomizerModal product={details()} isOpen onClose={onClose} />);
     await act(async () => addButton()!.click());
 
     expect(toast.error).toHaveBeenCalledWith("Couldn't add to cart", expect.anything());
@@ -223,9 +220,7 @@ describe("selection guards (C)", () => {
     fixture.addItem.mockRejectedValue(new Error("network down"));
     const onClose = vi.fn();
 
-    await render(
-      <ProductCustomizerModal product={details()} isOpen onClose={onClose} />,
-    );
+    await render(<ProductCustomizerModal product={details()} isOpen onClose={onClose} />);
     await act(async () => addButton()!.click());
 
     expect(toast.error).toHaveBeenCalledWith("Couldn't add to cart", expect.anything());

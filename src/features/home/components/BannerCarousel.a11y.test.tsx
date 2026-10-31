@@ -60,8 +60,8 @@ const mount = async (ui: React.ReactElement) => {
 
 /** The interactive control each slide is (or should be) wrapped in. */
 const slideControls = () =>
-  Array.from(host!.querySelectorAll<HTMLElement>('[aria-roledescription="slide"]')).map(
-    (slide) => slide.closest<HTMLElement>("a[href], button"),
+  Array.from(host!.querySelectorAll<HTMLElement>('[aria-roledescription="slide"]')).map((slide) =>
+    slide.closest<HTMLElement>("a[href], button"),
   );
 
 const stubReducedMotion = (matches: boolean) => {
@@ -127,13 +127,17 @@ describe("L3 — carousel keyboard access and motion preferences", () => {
     Object.defineProperty(HTMLElement.prototype, "scrollLeft", {
       configurable: true,
       get: () => offset,
-      set: (value: number) => { offset = value; },
+      set: (value: number) => {
+        offset = value;
+      },
     });
     try {
       await mount(<BannerCarousel banners={banners} />);
       expect(offset).toBe(0);
       offset = 23;
-      await act(async () => root!.render(<BannerCarousel banners={[{ ...banners[0], id: "new-first" }, banners[1]]} />));
+      await act(async () =>
+        root!.render(<BannerCarousel banners={[{ ...banners[0], id: "new-first" }, banners[1]]} />),
+      );
       expect(offset).toBe(0);
       expect(slideControls()[0]?.className).toContain("snap-start");
     } finally {
@@ -230,7 +234,11 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
     pointerType: "mouse" | "touch" | "pen",
   ) => {
     const event = new MouseEvent(type, {
-      bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
       buttons: type === "pointerup" || type === "pointercancel" ? 0 : 1,
     });
     Object.defineProperty(event, "pointerId", { value: 1 });
@@ -243,7 +251,9 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
 
   const click = async (el: HTMLElement, detail = 1) => {
     const event = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, detail });
-    await act(async () => { el.dispatchEvent(event); });
+    await act(async () => {
+      el.dispatchEvent(event);
+    });
     return event;
   };
 
@@ -254,8 +264,12 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
   beforeEach(() => {
     scrollWrites.length = 0;
     const capturedPointers = new Set<number>();
-    setCapture = vi.fn((id: number) => { capturedPointers.add(id); });
-    releaseCapture = vi.fn((id: number) => { capturedPointers.delete(id); });
+    setCapture = vi.fn((id: number) => {
+      capturedPointers.add(id);
+    });
+    releaseCapture = vi.fn((id: number) => {
+      capturedPointers.delete(id);
+    });
     Object.defineProperty(Element.prototype, "setPointerCapture", {
       value: setCapture,
       configurable: true,
@@ -301,25 +315,31 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
     expect(scroller().classList.contains("scroll-smooth")).toBe(false);
   });
 
-  it.each(["touch", "pen"] as const)("never captures or writes scroll position for native %s gestures", async (pointerType) => {
-    await mount(<BannerCarousel banners={banners} />);
-    const el = scroller();
-    el.scrollLeft = 100;
-    scrollWrites.length = 0;
-    for (const [x, y] of [[80, 14], [14, 80]]) {
-      const down = await pointer(el, "pointerdown", 10, 10, pointerType);
-      const move = await pointer(el, "pointermove", x, y, pointerType);
-      await pointer(el, "pointerup", x, y, pointerType);
-      await pointer(el, "pointercancel", x, y, pointerType);
-      expect(down.defaultPrevented).toBe(false);
-      expect(move.defaultPrevented).toBe(false);
-    }
-    expect(setCapture).not.toHaveBeenCalled();
-    expect(releaseCapture).not.toHaveBeenCalled();
-    expect(scrollWrites).toEqual([]);
-    expect(scrollTo).not.toHaveBeenCalled();
-    expect(el.style.scrollSnapType).toBe("");
-  });
+  it.each(["touch", "pen"] as const)(
+    "never captures or writes scroll position for native %s gestures",
+    async (pointerType) => {
+      await mount(<BannerCarousel banners={banners} />);
+      const el = scroller();
+      el.scrollLeft = 100;
+      scrollWrites.length = 0;
+      for (const [x, y] of [
+        [80, 14],
+        [14, 80],
+      ]) {
+        const down = await pointer(el, "pointerdown", 10, 10, pointerType);
+        const move = await pointer(el, "pointermove", x, y, pointerType);
+        await pointer(el, "pointerup", x, y, pointerType);
+        await pointer(el, "pointercancel", x, y, pointerType);
+        expect(down.defaultPrevented).toBe(false);
+        expect(move.defaultPrevented).toBe(false);
+      }
+      expect(setCapture).not.toHaveBeenCalled();
+      expect(releaseCapture).not.toHaveBeenCalled();
+      expect(scrollWrites).toEqual([]);
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect(el.style.scrollSnapType).toBe("");
+    },
+  );
 
   it("updates the active dot from the browser's scroll event without driving native scrolling", async () => {
     await mount(<BannerCarousel banners={banners} />);
@@ -327,8 +347,12 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
     setSlideWidth(el);
     el.scrollLeft = 300; // Simulate a browser-reported position, not a touch implementation.
     scrollWrites.length = 0;
-    await act(async () => { el.dispatchEvent(new Event("scroll")); });
-    expect(host!.querySelector('button[aria-label="Go to banner 2"]')?.getAttribute("aria-selected")).toBe("true");
+    await act(async () => {
+      el.dispatchEvent(new Event("scroll"));
+    });
+    expect(
+      host!.querySelector('button[aria-label="Go to banner 2"]')?.getAttribute("aria-selected"),
+    ).toBe("true");
     expect(scrollWrites).toEqual([]);
     expect(scrollTo).not.toHaveBeenCalled();
   });
@@ -425,15 +449,18 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
     expect(router.navigate).toHaveBeenCalledWith({ to: banners[0].ctaHref });
   });
 
-  it.each(["touch", "pen"] as const)("retains link activation for a %s tap without dragging in JS", async (pointerType) => {
-    await mount(<BannerCarousel banners={banners} />);
-    const link = slideControls()[0]!;
-    await pointer(link, "pointerdown", 100, 10, pointerType);
-    await pointer(link, "pointerup", 100, 10, pointerType);
-    await click(link);
-    expect(link.getAttribute("href")).toBe(banners[0].ctaHref);
-    expect(router.navigate).toHaveBeenCalledWith({ to: banners[0].ctaHref });
-    expect(setCapture).not.toHaveBeenCalled();
-    expect(scrollWrites).toEqual([]);
-  });
+  it.each(["touch", "pen"] as const)(
+    "retains link activation for a %s tap without dragging in JS",
+    async (pointerType) => {
+      await mount(<BannerCarousel banners={banners} />);
+      const link = slideControls()[0]!;
+      await pointer(link, "pointerdown", 100, 10, pointerType);
+      await pointer(link, "pointerup", 100, 10, pointerType);
+      await click(link);
+      expect(link.getAttribute("href")).toBe(banners[0].ctaHref);
+      expect(router.navigate).toHaveBeenCalledWith({ to: banners[0].ctaHref });
+      expect(setCapture).not.toHaveBeenCalled();
+      expect(scrollWrites).toEqual([]);
+    },
+  );
 });

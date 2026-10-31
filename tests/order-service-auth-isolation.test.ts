@@ -18,20 +18,28 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // post-write yield must fail AUTH_CHANGED, never return ok() to the session
 // that replaced the placing account.
 
-const { mockSetDoc, mockGetDoc, mockGetDocs, mockDoc, mockCollection, mockQuery, mockWhere, authState } =
-  vi.hoisted(() => {
-    const authState: { currentUser: { uid: string } | null } = { currentUser: null };
-    return {
-      authState,
-      mockSetDoc: vi.fn(),
-      mockGetDoc: vi.fn(),
-      mockGetDocs: vi.fn(),
-      mockDoc: vi.fn((...args: unknown[]) => args),
-      mockCollection: vi.fn((...args: unknown[]) => args),
-      mockQuery: vi.fn((...args: unknown[]) => args),
-      mockWhere: vi.fn((...args: unknown[]) => args),
-    };
-  });
+const {
+  mockSetDoc,
+  mockGetDoc,
+  mockGetDocs,
+  mockDoc,
+  mockCollection,
+  mockQuery,
+  mockWhere,
+  authState,
+} = vi.hoisted(() => {
+  const authState: { currentUser: { uid: string } | null } = { currentUser: null };
+  return {
+    authState,
+    mockSetDoc: vi.fn(),
+    mockGetDoc: vi.fn(),
+    mockGetDocs: vi.fn(),
+    mockDoc: vi.fn((...args: unknown[]) => args),
+    mockCollection: vi.fn((...args: unknown[]) => args),
+    mockQuery: vi.fn((...args: unknown[]) => args),
+    mockWhere: vi.fn((...args: unknown[]) => args),
+  };
+});
 
 vi.mock("firebase/firestore", () => ({
   collection: mockCollection,
@@ -171,7 +179,11 @@ describe("A. account switch drops the previous account's caches", () => {
 
   it("getTracking fails safe for B on A's order id (orders + progression dropped)", async () => {
     mockGetDocs.mockResolvedValueOnce(
-      snapshotOf([fsOrder("ord_a1", "cust_a", { estimatedAt: new Date(Date.now() + 35 * 60_000).toISOString() })]),
+      snapshotOf([
+        fsOrder("ord_a1", "cust_a", {
+          estimatedAt: new Date(Date.now() + 35 * 60_000).toISOString(),
+        }),
+      ]),
     );
     const seeded = await ordersService.listOrders();
     expect(seeded.success).toBe(true);

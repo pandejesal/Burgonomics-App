@@ -83,7 +83,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
         const hostOk =
           url.protocol === "https:" &&
           ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
-            url.hostname.toLowerCase()
+            url.hostname.toLowerCase(),
           );
         if (!schemeOk && !hostOk) return;
         const path = url.pathname + url.search + url.hash;
@@ -142,7 +142,8 @@ export async function bootstrapNativePlatform(): Promise<void> {
       const path = hash || window.location.pathname;
       // Drop query string / fragment so `/home?from=x` still counts as Home.
       const pathOnly = path.split(/[?#]/)[0] || path;
-      const isEntry = !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
+      const isEntry =
+        !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
 
       if (isEntry) {
         // At an entry screen, minimize instead of abrupt termination.

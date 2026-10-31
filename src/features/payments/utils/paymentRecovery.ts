@@ -27,10 +27,7 @@ import { isUncapturedPaymentError } from "@/features/payments/services/paymentsS
 
 /** Reconciliation reasons that have recovery-panel copy (and vice versa). */
 export type RecoveryReason =
-  | "PAYMENT_SYNC_PENDING"
-  | "TRANSFER_IN_PROGRESS"
-  | "ORDER_TERMINAL"
-  | "PAYMENT_NOT_CAPTURED";
+  "PAYMENT_SYNC_PENDING" | "TRANSFER_IN_PROGRESS" | "ORDER_TERMINAL" | "PAYMENT_NOT_CAPTURED";
 
 export type VerifyOutcome =
   | { kind: "verified"; verification: PaymentVerification }

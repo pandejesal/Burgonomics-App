@@ -25,15 +25,13 @@ export function ConfigErrorScreen({ error }: { error: unknown }) {
       }}
     >
       <div style={{ maxWidth: "420px", textAlign: "center" }}>
-        <p style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 8px" }}>
-          BURGONOMICS
-        </p>
+        <p style={{ fontSize: "14px", fontWeight: 600, margin: "0 0 8px" }}>BURGONOMICS</p>
         <h1 style={{ fontSize: "24px", fontWeight: 600, margin: "0 0 12px" }}>
           The app could not start
         </h1>
         <p style={{ fontSize: "16px", lineHeight: 1.6, margin: "0 0 12px" }}>
-          A required service is not configured. Please update the app — if this
-          keeps happening, contact support.
+          A required service is not configured. Please update the app — if this keeps happening,
+          contact support.
         </p>
         <details style={{ fontSize: "14px", textAlign: "left" }}>
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>Technical details</summary>

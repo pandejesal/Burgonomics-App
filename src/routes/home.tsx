@@ -84,8 +84,7 @@ function HomePage() {
   const scopedUserId = user?.id ?? null;
   const hasScopedResult =
     loadedStoreId === store.id && loadedUserId === scopedUserId && bundle !== null;
-  const isLoading =
-    status === "loading" || (status !== "error" && !hasScopedResult);
+  const isLoading = status === "loading" || (status !== "error" && !hasScopedResult);
   const isRefreshing = status === "refreshing";
 
   const handleRefresh = async () => {
@@ -94,11 +93,7 @@ function HomePage() {
   };
 
   return (
-    <AppShell
-      title="BURGONOMICS"
-      showTabs
-      showTopBar={false}
-    >
+    <AppShell title="BURGONOMICS" showTabs showTopBar={false}>
       <div className="mx-auto max-w-[520px] pb-16">
         {/* One page-level heading for assistive tech; the visual wordmark is
             rendered by BrandHeader so it stays a single tappable home control. */}
@@ -141,7 +136,9 @@ function HomePage() {
         ) : (
           <div className="mt-3 space-y-6">
             {/* POS-driven Promo Banner Carousel — single source of truth */}
-            {bundle.banners.length > 0 && <BannerCarousel key={store.id} banners={bundle.banners} />}
+            {bundle.banners.length > 0 && (
+              <BannerCarousel key={store.id} banners={bundle.banners} />
+            )}
 
             {/* Menu heading and Search share one row below the promo; the four
                 photo shortcuts follow. Order matches the observed reference. */}
@@ -222,7 +219,6 @@ function HomePage() {
           </div>
         )}
       </div>
-
     </AppShell>
   );
 }

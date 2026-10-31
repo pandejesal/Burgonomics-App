@@ -35,10 +35,7 @@ export function AddressCard({ address, selected, onClick, actionSlot }: Props) {
   // Only ever render contact details the doc actually carries: a missing
   // number must not leave a stray "+91 ", and an absent name must not print
   // "undefined".
-  const contact = [
-    address.contactName,
-    address.contactPhone ? `+91 ${address.contactPhone}` : null,
-  ]
+  const contact = [address.contactName, address.contactPhone ? `+91 ${address.contactPhone}` : null]
     .filter((part): part is string => Boolean(part))
     .join(" · ");
 
@@ -71,7 +68,10 @@ export function AddressCard({ address, selected, onClick, actionSlot }: Props) {
             </Text>
             {address.isDefault && <AppBadge tone="success">Default</AppBadge>}
             {selected && (
-              <Check className="ml-auto h-4 w-4 flex-none text-primary-text" aria-label="Selected" />
+              <Check
+                className="ml-auto h-4 w-4 flex-none text-primary-text"
+                aria-label="Selected"
+              />
             )}
           </div>
           <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-relaxed">

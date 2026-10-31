@@ -57,7 +57,10 @@ export function ProfileMenuList({ title, items }: Props) {
               </div>
               {it.trailing}
               {!it.trailing && it.to && (
-                <ChevronRight className="h-[18px] w-[18px] flex-none text-text-secondary" aria-hidden />
+                <ChevronRight
+                  className="h-[18px] w-[18px] flex-none text-text-secondary"
+                  aria-hidden
+                />
               )}
             </div>
           );

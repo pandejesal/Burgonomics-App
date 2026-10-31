@@ -57,7 +57,11 @@ const SHORTCUTS: readonly ShortcutDefinition[] = [
 ];
 
 function normalizeCategoryKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 /** Only intersect categories derived from the selected store's loaded products. */
@@ -71,8 +75,9 @@ export function resolveHomeMenuShortcuts(
       if (typeof category.id !== "string" || !category.id.trim()) return false;
       const nameMatches = shortcut.categoryKeys.includes(normalizeCategoryKey(category.name));
       // No Wraps POS ID has been verified; only a loaded category named Wraps qualifies.
-      const idMatches = shortcut.key !== "wraps"
-        && shortcut.categoryKeys.includes(normalizeCategoryKey(category.id));
+      const idMatches =
+        shortcut.key !== "wraps" &&
+        shortcut.categoryKeys.includes(normalizeCategoryKey(category.id));
       return nameMatches || idMatches;
     });
     return {

@@ -289,22 +289,34 @@ afterEach(async () => {
 });
 
 describe("empty cart — past reorders, not a kitchen-note editor", () => {
-  it.each([600_000, -1_000])("does not display a price-lock pill for a stored expiry offset of %i ms", async (offset) => {
-    const expiry = Date.now() + offset;
-    useCartStore.setState({
-      lines: [{ lineId: "l1", productId: "prod-1", storeId: "store-A", name: "Smash Burger", quantity: 1, unitPrice: 249 }] as never,
-      status: "ready",
-      priceLockExpiresAt: expiry,
-    });
-    await mountCart();
+  it.each([600_000, -1_000])(
+    "does not display a price-lock pill for a stored expiry offset of %i ms",
+    async (offset) => {
+      const expiry = Date.now() + offset;
+      useCartStore.setState({
+        lines: [
+          {
+            lineId: "l1",
+            productId: "prod-1",
+            storeId: "store-A",
+            name: "Smash Burger",
+            quantity: 1,
+            unitPrice: 249,
+          },
+        ] as never,
+        status: "ready",
+        priceLockExpiresAt: expiry,
+      });
+      await mountCart();
 
-    expect(container.querySelector('[data-testid="cart-line"]')).not.toBeNull();
-    expect(text()).not.toContain("Prices locked for this order");
-    expect(text()).not.toContain("Price lock expired");
-    expect(useCartStore.getState().priceLockExpiresAt).toBe(expiry);
-    expect(fixture.calculateTotals).toHaveBeenCalled();
-    expect(fixture.clearCart).not.toHaveBeenCalled();
-  });
+      expect(container.querySelector('[data-testid="cart-line"]')).not.toBeNull();
+      expect(text()).not.toContain("Prices locked for this order");
+      expect(text()).not.toContain("Price lock expired");
+      expect(useCartStore.getState().priceLockExpiresAt).toBe(expiry);
+      expect(fixture.calculateTotals).toHaveBeenCalled();
+      expect(fixture.clearCart).not.toHaveBeenCalled();
+    },
+  );
 
   it("guest: renders the empty state with no notes editor and zero history reads", async () => {
     await mountCart();

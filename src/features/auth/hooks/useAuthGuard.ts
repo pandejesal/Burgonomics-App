@@ -51,7 +51,9 @@ export function useRequireAuth({ redirectTo = "/auth/login" }: Partial<GuardOpti
   // triggers another redirect — an infinite navigate loop that surfaces as
   // React error #185 (too many re-renders) via rejected load promises.
   const alreadyAtTarget = (target: string) =>
-    currentHref === target || currentHref.startsWith(`${target}?`) || currentHref.startsWith(`${target}/`);
+    currentHref === target ||
+    currentHref.startsWith(`${target}?`) ||
+    currentHref.startsWith(`${target}/`);
 
   useEffect(() => {
     if (!isBootstrapped) return;

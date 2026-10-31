@@ -178,9 +178,7 @@ async function generateInvoice(order: Order, variant: "button" | "icon") {
       },
     })),
   );
-  const { host, cleanup } = await mount(
-    <InvoiceDownloadButton order={order} variant={variant} />,
-  );
+  const { host, cleanup } = await mount(<InvoiceDownloadButton order={order} variant={variant} />);
   const button = host.querySelector("button")!;
   await act(async () => {
     button.click();
@@ -275,7 +273,9 @@ describe("M4 — address form fabricates state and contact name", () => {
     });
 
     await submitForm();
-    expect(document.querySelector("[role=alert]")?.textContent).toContain("Please enter your state.");
+    expect(document.querySelector("[role=alert]")?.textContent).toContain(
+      "Please enter your state.",
+    );
     expect(addressRepository.create).not.toHaveBeenCalled();
 
     // Supply the state explicitly, then save.
@@ -283,8 +283,7 @@ describe("M4 — address form fabricates state and contact name", () => {
     await submitForm();
 
     const payload = vi.mocked(addressRepository.create).mock.calls[0]?.[0] as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     expect(payload?.state).toBe("Maharashtra");
     expect(payload?.contactName).toBeUndefined();
     expect(JSON.stringify(payload ?? {})).not.toContain("Guest Customer");
@@ -311,9 +310,9 @@ describe("M5 — contact phone can be silently empty", () => {
 
     await submitForm();
 
-    expect(
-      document.querySelector("[role=alert]")?.textContent?.toLowerCase() ?? "",
-    ).toContain("add a contact number");
+    expect(document.querySelector("[role=alert]")?.textContent?.toLowerCase() ?? "").toContain(
+      "add a contact number",
+    );
     expect(toast.error).toHaveBeenCalled();
     expect(addressRepository.create).not.toHaveBeenCalled();
 

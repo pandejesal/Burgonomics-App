@@ -1,13 +1,12 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import {
-  paymentRepository,
-  usePaymentStore,
-  razorpayAdapter,
-} from "@/features/payments";
+import { paymentRepository, usePaymentStore, razorpayAdapter } from "@/features/payments";
 import type { PaymentMethod, PaymentResult } from "@/features/payments/models";
-import { persistPaymentReconciliation, clearPaymentReconciliation } from "@/features/payments/state/paymentStore";
+import {
+  persistPaymentReconciliation,
+  clearPaymentReconciliation,
+} from "@/features/payments/state/paymentStore";
 import {
   describePaymentRecovery,
   resolveVerifyOutcome,
@@ -131,7 +130,8 @@ export function useRazorpayPayment(options?: UseRazorpayPaymentOptions) {
               confirmedInternal?: string | null,
             ) => {
               const store = usePaymentStore.getState();
-              const boundInternal = confirmedInternal ?? internalOrderId ?? store.internalOrderId ?? null;
+              const boundInternal =
+                confirmedInternal ?? internalOrderId ?? store.internalOrderId ?? null;
               const boundGateway = result.orderId ?? store.gatewayOrderId ?? null;
               store.setReconciliation(true, reason, boundInternal, boundGateway);
               persistPaymentReconciliation(reconUid, {
@@ -183,7 +183,9 @@ export function useRazorpayPayment(options?: UseRazorpayPaymentOptions) {
                   paymentId: result.paymentId,
                 });
                 toast.error("Payment verification failed", { description: message });
-                void orderRepository.markPaymentFailed(outcome.internalOrderId).catch(() => undefined);
+                void orderRepository
+                  .markPaymentFailed(outcome.internalOrderId)
+                  .catch(() => undefined);
                 options?.onFailure?.({ code: outcome.code, message });
                 return;
               }

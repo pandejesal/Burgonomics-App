@@ -22,19 +22,19 @@ describe("toUserMessage (P1-8)", () => {
 
   it("maps a bare { code, message } object by its code", () => {
     expect(toUserMessage({ code: "NETWORK", message: "fetch failed" })).toBe(
-      "We couldn't reach our servers. Please try again."
+      "We couldn't reach our servers. Please try again.",
     );
   });
 
   it("falls back to the generic string for unknown codes", () => {
     expect(toUserMessage({ code: "SOMETHING_OBSCURE", message: "raw text" })).toBe(
-      GENERIC_ERROR_MESSAGE
+      GENERIC_ERROR_MESSAGE,
     );
   });
 
   it("drops the raw text of Error instances entirely", () => {
     expect(toUserMessage(new Error("Firebase: Error (auth/network-request-failed)"))).toBe(
-      GENERIC_ERROR_MESSAGE
+      GENERIC_ERROR_MESSAGE,
     );
   });
 
@@ -69,14 +69,14 @@ describe("toUserMessage (P1-8)", () => {
  */
 describe("userMessageForText / store result shape (P1-13)", () => {
   it("maps a Firebase auth code recovered from raw SDK text", () => {
-    expect(
-      userMessageForText("Firebase: Error (auth/invalid-verification-code).")
-    ).toBe("That code isn't right. Please check it and try again.");
+    expect(userMessageForText("Firebase: Error (auth/invalid-verification-code).")).toBe(
+      "That code isn't right. Please check it and try again.",
+    );
     expect(userMessageForText("Firebase: Error (auth/too-many-requests).")).toBe(
-      "Too many attempts. Please wait a few minutes and try again."
+      "Too many attempts. Please wait a few minutes and try again.",
     );
     expect(userMessageForText("Firebase: Error (auth/network-request-failed).")).toBe(
-      "We couldn't reach our servers. Check your connection and try again."
+      "We couldn't reach our servers. Check your connection and try again.",
     );
   });
 
@@ -93,27 +93,25 @@ describe("userMessageForText / store result shape (P1-13)", () => {
 
   it("preserves store-authored copy", () => {
     expect(userMessageForText("Please wait 12s before requesting a new code.")).toBe(
-      "Please wait 12s before requesting a new code."
+      "Please wait 12s before requesting a new code.",
     );
     expect(userMessageForText("No active OTP request.")).toBe("No active OTP request.");
-    expect(userMessageForText("Please request an OTP first.")).toBe(
-      "Please request an OTP first."
-    );
+    expect(userMessageForText("Please request an OTP first.")).toBe("Please request an OTP first.");
   });
 
   it("preserves the curated authService fallbacks", () => {
     // These are the strings authService itself authors when Firebase supplies
     // no code — they must survive the text path intact.
     expect(userMessageForText("Invalid verification code. Please check and try again.")).toBe(
-      "Invalid verification code. Please check and try again."
+      "Invalid verification code. Please check and try again.",
     );
     expect(
       userMessageForText(
-        "Verification check failed to load. Please refresh the page and try again."
-      )
+        "Verification check failed to load. Please refresh the page and try again.",
+      ),
     ).toBe("Verification check failed to load. Please refresh the page and try again.");
     expect(
-      userMessageForText("No active verification session found. Please request a new code.")
+      userMessageForText("No active verification session found. Please request a new code."),
     ).toBe("No active verification session found. Please request a new code.");
   });
 
@@ -138,20 +136,21 @@ describe("userMessageForText / store result shape (P1-13)", () => {
 
   it("passes numeric cooldown copy through, by text and envelope", () => {
     expect(userMessageForText("Please wait 30s before requesting a new code.")).toBe(
-      "Please wait 30s before requesting a new code."
+      "Please wait 30s before requesting a new code.",
     );
     expect(
-      toUserMessage({ ok: false, error: "Please wait 45s before requesting a new code." })
+      toUserMessage({ ok: false, error: "Please wait 45s before requesting a new code." }),
     ).toBe("Please wait 45s before requesting a new code.");
   });
 
   it("maps `{ ok: false, error: '<raw text>' }` through the string path", () => {
     expect(
-      toUserMessage({ ok: false, error: "Firebase: Error (auth/invalid-verification-code)." })
+      toUserMessage({ ok: false, error: "Firebase: Error (auth/invalid-verification-code)." }),
     ).toBe("That code isn't right. Please check it and try again.");
     expect(toUserMessage({ ok: false, error: "fetch failed" })).toBe(GENERIC_ERROR_MESSAGE);
-    expect(toUserMessage({ ok: false, error: "Please wait 12s before requesting a new code." }))
-      .toBe("Please wait 12s before requesting a new code.");
+    expect(
+      toUserMessage({ ok: false, error: "Please wait 12s before requesting a new code." }),
+    ).toBe("Please wait 12s before requesting a new code.");
   });
 
   it("keeps structured ApiFailure precedence over the error string", () => {
@@ -160,17 +159,17 @@ describe("userMessageForText / store result shape (P1-13)", () => {
       toUserMessage({
         success: false,
         error: { code: "WRITE_FAILED", message: "recaptcha is not defined" },
-      })
+      }),
     ).toBe("We couldn't save your changes. Please try again.");
     // A codeless structured failure never echoes its message.
-    expect(
-      toUserMessage({ success: false, error: { message: "recaptcha is not defined" } })
-    ).toBe(GENERIC_ERROR_MESSAGE);
+    expect(toUserMessage({ success: false, error: { message: "recaptcha is not defined" } })).toBe(
+      GENERIC_ERROR_MESSAGE,
+    );
   });
 
   it("leaves AppError kind mapping unchanged", () => {
     expect(toUserMessage({ kind: "SESSION_EXPIRED", message: "recaptcha is not defined" })).toBe(
-      "Your session expired. Please sign in again."
+      "Your session expired. Please sign in again.",
     );
   });
 });
@@ -204,22 +203,22 @@ describe("userMessageForText fails closed (P1-13 revision)", () => {
 
   it("maps an arbitrary unknown sentence to generic", () => {
     expect(userMessageForText("The widget exploded while parsing the response.")).toBe(
-      GENERIC_ERROR_MESSAGE
+      GENERIC_ERROR_MESSAGE,
     );
   });
 
   it("maps a plain URL to generic", () => {
     expect(userMessageForText("https://api.burgonomics.example/v1/orders")).toBe(
-      GENERIC_ERROR_MESSAGE
+      GENERIC_ERROR_MESSAGE,
     );
   });
 
   it("does not let a non-numeric wait string through the cooldown pattern", () => {
     expect(userMessageForText("Please wait a moment before requesting a new code.")).toBe(
-      GENERIC_ERROR_MESSAGE
+      GENERIC_ERROR_MESSAGE,
     );
     expect(userMessageForText("Please wait 0s before requesting a new code.")).toBe(
-      GENERIC_ERROR_MESSAGE
+      GENERIC_ERROR_MESSAGE,
     );
   });
 

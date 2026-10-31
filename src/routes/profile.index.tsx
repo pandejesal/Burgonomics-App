@@ -32,7 +32,10 @@ export const Route = createFileRoute("/profile/")({
   head: () => ({
     meta: [
       { title: "Profile — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "Manage your Burgonomics account, saved addresses, favourites and orders." },
+      {
+        name: "description",
+        content: "Manage your Burgonomics account, saved addresses, favourites and orders.",
+      },
     ],
   }),
   component: Page,
@@ -115,11 +118,12 @@ function Page() {
       description: "Offers and order updates",
       to: "/profile/notifications",
       Icon: Bell,
-      trailing: unreadCount > 0 ? (
-        <span className="rounded-full bg-accent px-2 py-0.5 text-sm font-semibold text-accent-foreground">
-          {unreadCount}
-        </span>
-      ) : undefined,
+      trailing:
+        unreadCount > 0 ? (
+          <span className="rounded-full bg-accent px-2 py-0.5 text-sm font-semibold text-accent-foreground">
+            {unreadCount}
+          </span>
+        ) : undefined,
     },
   ];
 
