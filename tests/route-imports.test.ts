@@ -115,12 +115,8 @@ describe("route imports resolve", () => {
     expect("DELIVERY_FEE_FLAT" in pricing).toBe(false);
     expect("DEFAULT_DELIVERY_QUOTE_FEE" in pricing).toBe(false);
     expect(pricing.DEFAULT_PRICING_CONFIG.deliveryFee).toBe(0);
-    // MT-10 packaging estimate is cart-only copy; checkout uses the server's
-    // `packagingFee` from POST /checkout/fees.
-    expect(pricing.PACKAGING_FEE_BY_FULFILLMENT).toEqual({
-      delivery: 20,
-      takeaway: 20,
-      dinein: 0,
-    });
+    // P2: packaging is server-decided; the client holds no packaging number.
+    expect("PACKAGING_FEE_BY_FULFILLMENT" in pricing).toBe(false);
+    expect(pricing.DEFAULT_PRICING_CONFIG.packagingFee).toBe(0);
   }, 60000);
 });

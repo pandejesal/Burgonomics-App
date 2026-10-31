@@ -51,6 +51,25 @@ describe("MT-09: Tax-Inclusive Pricing Display Suite", () => {
       // The unknown fare is not added to the payable.
       expect(toPayAmount(html)).toBe(formatINR(349));
     });
+
+    it("says packaging is calculated at checkout and omits it from the estimate", () => {
+      const html = renderToStaticMarkup(
+        <BillBreakdown
+          subtotal={349}
+          gstAmount={17}
+          packagingKnown={false}
+          packagingFee={20}
+          deliveryFeeKnown={false}
+          fulfillment="delivery"
+        />,
+      );
+
+      expect(html).toContain("Packaging");
+      expect(html).toContain("Calculated at checkout");
+      // P2: the client must not print a packaging number it cannot know.
+      expect(html).not.toMatch(/₹\s*20\b/);
+      expect(toPayAmount(html)).toBe(formatINR(349));
+    });
   });
 
   describe("2. Added-on charges still reach the payable", () => {

@@ -14,8 +14,12 @@ export interface BillBreakdownProps {
    * reads "Calculated at checkout" instead of inventing ₹40 / FREE (R8).
    */
   deliveryFeeKnown?: boolean;
-  /** Marks the packaging figure as a cart estimate (server value wins). */
-  packagingEstimated?: boolean;
+  /**
+   * False on the cart: the outlet's packaging charge is only known at
+   * checkout, so the row reads "Calculated at checkout" instead of a number
+   * (P2: the client holds no packaging value).
+   */
+  packagingKnown?: boolean;
   packagingFee?: number;
   gstAmount?: number;
   tipAmount?: number;
@@ -37,7 +41,7 @@ export function BillBreakdown({
   coinsRedeemed = 0,
   deliveryFee = 0,
   deliveryFeeKnown = true,
-  packagingEstimated = false,
+  packagingKnown = true,
   packagingFee = 0,
   gstAmount = 0,
   tipAmount = 0,
@@ -48,9 +52,9 @@ export function BillBreakdown({
   const isDineIn = fulfillment === "dinein";
 
   // Display-only mirroring of caller-provided values: dine-in never shows
-  // packaging, non-delivery never shows a delivery fee. An unknown fare adds
-  // nothing to the total and never prints FREE.
-  const actualPackagingFee = isDineIn ? 0 : packagingFee;
+  // packaging, non-delivery never shows a delivery fee. An unknown fee adds
+  // nothing to the total and never prints a number.
+  const actualPackagingFee = isDineIn || !packagingKnown ? 0 : packagingFee;
   const actualDeliveryFee = isDelivery && deliveryFeeKnown ? deliveryFee : 0;
 
   // GST is passed post-discount from the engine — never recompute here.
@@ -124,11 +128,17 @@ export function BillBreakdown({
           <span className="font-mono font-bold">{formatINR(calculatedGST)}</span>
         </div>
 
-        {/* Restaurant Packaging Fee */}
-        {actualPackagingFee > 0 && (
+        {/* Packaging charge — P2: server-decided, unknown on the cart. */}
+        {!isDineIn && (
           <div className="flex items-center justify-between text-text-secondary">
-            <span>Restaurant Packaging{packagingEstimated ? " (est.)" : ""}</span>
-            <span className="font-mono font-bold">{formatINR(actualPackagingFee)}</span>
+            <span>Packaging</span>
+            <span className="font-mono font-bold">
+              {packagingKnown ? (
+                formatINR(actualPackagingFee)
+              ) : (
+                <span className="text-[10px] font-black uppercase">Calculated at checkout</span>
+              )}
+            </span>
           </div>
         )}
 

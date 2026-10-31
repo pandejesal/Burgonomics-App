@@ -329,6 +329,16 @@ describe("httpClient transport metadata", () => {
   });
 });
 
+describe("packaging comes only from the server", () => {
+  it("prices no packaging without a server response (the client holds no number)", async () => {
+    const totals = await cartRepository.calculateTotals();
+    expect(totals.success).toBe(true);
+    if (!totals.success) return;
+    // takeaway, no quote yet: packaging must be 0, never 15/20 from the client.
+    expect(totals.data.packingFee).toBe(0);
+  });
+});
+
 describe("delivery quote state machine", () => {
   it("ignores a stale response from a previous address", async () => {
     let releaseOld: (() => void) | null = null;

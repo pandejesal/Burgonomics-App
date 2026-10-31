@@ -16,7 +16,7 @@ import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedB
 import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
 import { toUserMessage } from "@/core/errors/userMessages";
-import { PACKAGING_FEE_BY_FULFILLMENT, asPricingFulfillment, includedGst } from "@/shared/pricing/pricingEngine";
+import { includedGst } from "@/shared/pricing/pricingEngine";
 
 import {
   cartRepository,
@@ -254,17 +254,13 @@ function CartPage() {
 
   const subtotal = totals?.subtotal ?? lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const discountAmount = promo?.discount ? Math.abs(promo.discount) : (totals?.promoDiscount ?? 0);
-  // R8: the cart cannot know the courier fare, so it never prints one. The
-  // delivery fee line reads "Calculated at checkout"; packaging is an ESTIMATE
-  // (the server's `packagingFee` is what checkout charges). GST is the
-  // inclusive share of the discounted food value (R1) — never added.
+  // R8/P2: the cart cannot know the courier fare or the outlet's packaging
+  // charge, so it prints neither. Both rows read "Calculated at checkout" and
+  // the estimate total omits them. GST is the inclusive share of the
+  // discounted food value (R1) — never added.
   const deliveryFee = 0;
+  const packagingFee = 0;
   const taxableFallback = Math.max(0, subtotal - discountAmount);
-  const packagingFee =
-    totals?.packingFee ??
-    (fulfillment === "dinein" || lines.length === 0
-      ? 0
-      : PACKAGING_FEE_BY_FULFILLMENT[asPricingFulfillment(fulfillment)]);
   const gst = totals?.taxes ?? totals?.tax ?? includedGst(taxableFallback);
   // Redemption cap shared by GrillCoinsRedemption and the checkout screen
   // (1 pt = ₹1, max 20% of subtotal). A persisted choice from a larger
@@ -308,7 +304,7 @@ function CartPage() {
               <p className="font-mono text-xl font-black text-text">
                 {formatINR(finalToPay)}
               </p>
-              <p className="text-[10px] font-semibold text-text-secondary">Delivery fee calculated at checkout</p>
+              <p className="text-[10px] font-semibold text-text-secondary">Packaging and delivery fee calculated at checkout</p>
             </div>
             <button
               type="button"
@@ -466,15 +462,15 @@ function CartPage() {
           />
         )}
 
-        {/* Transparent Financial Bill Breakdown — packaging is an estimate,
-            the delivery fee is only known at checkout (R8). */}
+        {/* Transparent Financial Bill Breakdown — the outlet's packaging charge
+            and the courier fare are only known at checkout (R8/P2). */}
         <BillBreakdown
           subtotal={subtotal}
           discountAmount={discountAmount}
           coinsRedeemed={appliedCoins}
           deliveryFee={deliveryFee}
           deliveryFeeKnown={false}
-          packagingEstimated
+          packagingKnown={false}
           packagingFee={packagingFee}
           gstAmount={gst}
           tipAmount={tipAmount}
