@@ -204,9 +204,31 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(getDoc(doc(unauthedDb, "branches", "branch_01")));
   });
 
-  it("5b. [BRANCHES-SIGNEDIN-ALLOW] Any signed-in user can read branches (customer app never reads branches/*; partner hooks are signed-in)", async () => {
+  it("5b. [BRANCHES-CUSTOMER-DENY] A signed-in customer cannot read branches (SEC-06: restIDs/payout account)", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
-    await assertSucceeds(getDoc(doc(custDb, "branches", "branch_01")));
+    await assertFails(getDoc(doc(custDb, "branches", "branch_01")));
+  });
+
+  it("5c. [BRANCHES-STAFF-ALLOW] Branch staff can read branches", async () => {
+    const b1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(getDoc(doc(b1Db, "branches", "branch_01")));
+  });
+
+  it("5d. [BRANCHES-SUPPORT-ALLOW] Support can read branches", async () => {
+    const supportDb = testEnv.authenticatedContext("support_1", { role: "support" }).firestore();
+    await assertSucceeds(getDoc(doc(supportDb, "branches", "branch_01")));
+  });
+
+  it("5e. [BRANCHES-REGIONAL-ALLOW] regional_manager can read branches", async () => {
+    const regionalDb = testEnv
+      .authenticatedContext("regional_1", { role: "regional_manager" })
+      .firestore();
+    await assertSucceeds(getDoc(doc(regionalDb, "branches", "branch_01")));
+  });
+
+  it("5f. [BRANCHES-ANON-DENY] An unauthenticated user cannot read branches", async () => {
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(anonDb, "branches", "branch_01")));
   });
 
   // =========================================================================
@@ -268,11 +290,20 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(getDoc(doc(branch2Db, "orders", "order_501")));
   });
 
-  it("13. [BRANCH-STATUS-UPDATE] Branch Owner of branch_01 can update order status at branch_01", async () => {
+  it("13. [BRANCH-STATUS-UPDATE-DENY] Branch Owner of branch_01 cannot update order status directly (SEC-04: status only via POST /orders/bumpStatus)", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branch1Db, "orders", "order_501"), {
+        status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
+      })
+    );
+  });
+
+  it("13b. [BRANCH-NON-STATUS-UPDATE-ALLOW] Branch Owner can still update non-status order fields at branch_01", async () => {
     const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
     await assertSucceeds(
       updateDoc(doc(branch1Db, "orders", "order_501"), {
-        status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
+        notes: "Extra napkins please",
       })
     );
   });
@@ -405,9 +436,9 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("24. [TAKEAWAY-DELIVER-ALLOW] Branch staff CAN complete a takeaway order directly", async () => {
+  it("24. [TAKEAWAY-DELIVER-DENY] Branch staff cannot complete a takeaway order by direct status write (completion is server-owned: partnerFunctionsApi.bumpOrderStatus -> functions orderStatus.ts terminal PICKED_UP)", async () => {
     const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(branch1Db, "orders", "ord_takeaway_01"), {
         status: { kind: "completed", code: "DELIVERED" },
       })
