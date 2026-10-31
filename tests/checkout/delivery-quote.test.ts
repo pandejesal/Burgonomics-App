@@ -27,7 +27,7 @@ import {
 import { defaultFunctionsBase } from "../../src/core/config/functionsBase";
 import { quoteCheckoutFees } from "../../src/features/checkout/services/checkoutQuote";
 import { deliveryQuoteView } from "../../src/features/checkout/utils/deliveryQuoteView";
-import { mapTransportError } from "../../src/core/network/httpClient";
+import { mapTransportError, httpClient } from "../../src/core/network/httpClient";
 import { useCheckoutStore } from "../../src/features/checkout/state/checkoutStore";
 import { cartRepository } from "../../src/features/cart/repositories/CartRepository";
 import { useCartStore } from "../../src/features/cart/state/cartStore";
@@ -259,8 +259,56 @@ describe("CUS-13 — the fee request targets the Functions API", () => {
       appCheckToken: async () => "app-check-token",
     });
 
-    expect(calls[0].headers?.Authorization).toBe("Bearer firebase-id-token");
+    expect(calls[0].headers?.authorization).toBe("Bearer firebase-id-token");
     expect(calls[0].headers?.["X-Firebase-AppCheck"]).toBe("app-check-token");
+  });
+});
+
+describe("the fee request sends exactly one authorization header", () => {
+  const ctx = buildCheckoutFeesContext({
+    storeId: "demo",
+    orderType: "delivery",
+    dropLat: 23.03,
+    dropLng: 72.58,
+  });
+
+  it("the httpClient interceptor overrides (not duplicates) the service token", async () => {
+    // `setupHttpAuth` registers this exact interceptor on every run.
+    httpClient.useRequest((req) => ({
+      ...req,
+      headers: { ...req.headers, authorization: "Bearer FRESH_FROM_INTERCEPTOR" },
+    }));
+
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            serviceable: true,
+            packagingFee: 15,
+            deliveryFee: 57,
+            deliveryQuoteId: "q_merge",
+            expiresAt: Date.now() + 60_000,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await requestCheckoutFees(ctx, {
+        idToken: async () => "STALE_SERVICE_TOKEN",
+        appCheckToken: async () => "app-check-token",
+      });
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      // The REAL merge the browser performs. Two differently-cased keys would
+      // become "Bearer STALE_SERVICE_TOKEN, Bearer FRESH_FROM_INTERCEPTOR".
+      const merged = new Headers(init.headers);
+      expect(merged.get("authorization")).toBe("Bearer FRESH_FROM_INTERCEPTOR");
+      expect(merged.get("authorization")).not.toContain(",");
+      expect(merged.get("x-firebase-appcheck")).toBe("app-check-token");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

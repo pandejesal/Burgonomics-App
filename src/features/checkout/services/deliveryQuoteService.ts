@@ -116,7 +116,12 @@ export async function buildCheckoutFeesHeaders(
       return tokens;
     };
     const idToken = await (deps.idToken ?? (await resolveTokens()).idToken)();
-    if (idToken) headers.Authorization = `Bearer ${idToken}`;
+    // Lowercase on purpose: `authSetup` injects `authorization` (lowercase) on
+    // every httpClient request. A capital-A `Authorization` here would survive
+    // as a SECOND header, and `new Headers()` joins the pair into
+    // "Bearer T1, Bearer T2" — rejected by requireAuth. Lowercase lets the
+    // interceptor's spread replace this value with the fresh token.
+    if (idToken) headers.authorization = `Bearer ${idToken}`;
     const appCheckToken = await (deps.appCheckToken ?? (await resolveTokens()).appCheckToken)();
     if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
   } catch (err) {
