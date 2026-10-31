@@ -21,7 +21,7 @@ In the terminal, you need to navigate to this project folder and run the automat
    ./mac-build.sh
    ```
 
-The script will automatically check for Node.js, install NPM dependencies, build the web app, sync Capacitor, and open Xcode!
+The script will automatically check for Node.js and CocoaPods, install NPM dependencies, build the mobile web bundle, sync Capacitor to iOS, normalise the Swift package graph (see "About the patch step" below), and open Xcode!
 
 ## Step 3: Archive in Xcode
 Once the script finishes, Xcode will open automatically.
@@ -47,3 +47,49 @@ When the Archive finishes, the Xcode Organizer window will pop up.
 4. Finally, click **Export** and choose where to save your `.ipa` file (e.g., the Desktop).
 
 You are done! You can now send the `.ipa` to your testers or upload it to TestFlight via the Transporter app.
+
+## About the patch step
+
+`mac-build.sh` runs `node scripts/patch-ios-spm.js` after `npx cap sync ios`.
+That order matters and is not cosmetic:
+
+- `npx cap sync ios` regenerates `ios/App/CapApp-SPM/Package.swift` and writes
+  `capacitor-swift-pm` as `exact: "8.5.2"` (that matches `@capacitor/ios` 8.5.2).
+- `@capacitor/push-notifications` 8.1.2 ships its own `Package.swift` with
+  `exact: "8.5.0"`. That is upstream's own pin, not something this project added.
+- SwiftPM intersects all constraints on a package identity, and
+  `exact 8.5.2` AND `exact  "8.5.0"` is an empty set, so Xcode would report an
+  unresolvable package graph. The patch step normalises every requirement onto
+  the one version the installed plugin set can actually satisfy.
+
+Known and accepted for now: with that pin the native Capacitor runtime is 8.5.0
+while `@capacitor/ios` and the CLI are 8.5.2. This is tracked and must be
+revisited when `@capacitor/push-notifications` is upgraded; see the header
+comment in `scripts/patch-ios-spm.js`. Do not delete the pin without re-running
+package resolution on a Mac first.
+
+## Before you ship to the App Store
+
+These two are **not** needed for a local test build on a borrowed Mac, but the
+App Store submission will fail without them:
+
+1. **Resolve the `TEAMID` placeholder.**
+   `public/.well-known/apple-app-site-association` ships with
+   `TEAMID.com.burgonomics` as a literal placeholder. Until you replace `TEAMID`
+   with your real 10-character Apple Team ID (Xcode > Settings > Accounts, or the
+   Team shown in Signing & Capabilities), the published file authorises nothing
+   and every universal link fails to open the app. After editing it, re-run
+   `npm run build:mobile` and redeploy hosting; the file is copied from
+   `public/` into the publish directory at build time.
+2. **Run the optional preflight.** From the Burgonomics root workspace:
+   `node scripts/validate-mobile-hosting.cjs`
+   It is read-only (no build, no deploy, no network) and fails on a missing
+   publish directory, a missing `Content-Type: application/json` header for the
+   association files, or an unresolved `TEAMID`. Add
+   `--allow-unresolved-teamid` to downgrade that last one to a warning while you
+   are still only doing local builds. It will not invent a Team ID for you.
+
+Do not turn off App-Bound Domains (`ios.limitsNavigationsToAppBoundDomains` in
+`capacitor.config.ts`). Payment and captcha subresources genuinely load from the
+WKAppBoundDomains entries, and Apple's App Store review checks that the list is
+justified.

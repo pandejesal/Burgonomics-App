@@ -1,6 +1,41 @@
 import fs from "fs";
 import path from "path";
 
+/*
+ * WHY THE 8.5.0 REWRITE BELOW IS STILL HERE (R18 investigated; NOT removed)
+ * ---------------------------------------------------------------------
+ * It looks like an unjustified downgrade and it is, but deleting it does not
+ * produce a resolvable SPM graph with the plugin versions installed today.
+ *
+ * Measured from the installed tree:
+ *   @capacitor/ios, @capacitor/core, @capacitor/cli   8.5.2
+ *   @capacitor-firebase/app-check                     8.5.2
+ *   ios/App/CapApp-SPM/Package.swift (CLI-generated)  exact: "8.5.2"
+ *   @capacitor/app 8.1.1 / geolocation 8.2.2 / haptics 8.0.2 / keyboard 8.0.5 /
+ *   network 8.0.1 / preferences 8.0.1 / splash-screen 8.0.2 / status-bar 8.0.3
+ *     -> .package(url: capacitor-swift-pm, from: "8.0.0")
+ *   @capacitor/push-notifications 8.1.2
+ *     -> .package(url: capacitor-swift-pm, EXACT: "8.5.0")   <-- hard pin, upstream
+ *   @aparajita/capacitor-secure-storage 8.x
+ *     -> capacitor-swift-pm from: "8.0.0" + keychain-swift from: "21.0.0"
+ *
+ * `cap sync ios` regenerates CapApp-SPM/Package.swift with exact: "8.5.2".
+ * SwiftPM intersects every constraint on a package identity, and
+ * `exact 8.5.2` AND `exact 8.5.0` is an empty set — so with the CLI output
+ * alone the graph cannot resolve. The rewrite is what makes it resolve.
+ *
+ * Removing it safely needs one of:
+ *   a) a @capacitor/push-notifications release whose Package.swift does not
+ *      hard-pin 8.5.0 (needs a package install — out of R18 scope), or
+ *   b) hand-editing the CLI-generated CapApp-SPM/Package.swift, which the next
+ *      `npx cap sync ios` silently reverts.
+ * Neither is available here, so R18 records this as BLOCKED rather than
+ * deleting the step. Known residual risk: with this pin the native Capacitor
+ * runtime is 8.5.0 while @capacitor/ios + the CLI are 8.5.2. Revisit when
+ * push-notifications is upgraded; do not "tidy" it without re-running the
+ * SPM resolution on a Mac.
+ */
+
 // 1. Patch CapApp-SPM Package.swift
 const spmFile = path.resolve("ios/App/CapApp-SPM/Package.swift");
 
@@ -13,11 +48,14 @@ if (fs.existsSync(spmFile)) {
   // Set deployment target to iOS 16.0
   content = content.replace(/\.iOS\(\.v15\)/g, ".iOS(.v16)");
 
-  // Pin capacitor-swift-pm to 8.5.0
+  // Normalise every capacitor-swift-pm requirement onto the one version the
+  // installed plugin set can actually resolve (see the block comment above).
   content = content.replace(/exact:\s*"8\.[0-9]+\.[0-9]+"/g, 'exact: "8.5.0"');
   content = content.replace(/from:\s*"8\.[0-9]+\.[0-9]+"/g, 'exact: "8.5.0"');
 
-  // Inject keychain-swift dependency if missing
+  // @aparajita/capacitor-secure-storage already declares keychain-swift itself
+  // (from: "21.0.0" in its own Package.swift), so this only fills in the
+  // top-level product reference when the CLI left it out.
   if (!content.includes("keychain-swift")) {
     content = content.replace(
       /(\.package\(url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*exact:\s*"8\.5\.0"\),)/,
@@ -39,6 +77,12 @@ if (fs.existsSync(spmFile)) {
 }
 
 // 2. Patch all capacitor plugins in node_modules to pin capacitor-swift-pm to 8.5.0
+// Belt-and-braces: step 1 already pins the aggregator, so a plugin's own
+// `from: "8.0.0"` resolves to 8.5.0 regardless. Left in place so a plugin
+// re-added by `npm ci` cannot widen the range.
+// @capacitor-firebase/* is intentionally not walked: it declares
+// `from: "8.0.0"`, which the step-1 pin already satisfies, and rewriting it
+// would be an edit outside this script's demonstrated scope.
 const nodeModulesDirs = [
   path.resolve("node_modules/@capacitor"),
   path.resolve("node_modules/@aparajita"),
@@ -1555,26 +1599,24 @@ if (fs.existsSync(geolocationPluginSwift)) {
   console.log("✅ Overwritten GeolocationPlugin.swift");
 }
 
-// 10. Ensure AppDelegate.swift uses direct universal link handling
-const appDelegatePath = path.resolve("ios/App/App/AppDelegate.swift");
-if (fs.existsSync(appDelegatePath)) {
-  let content = fs.readFileSync(appDelegatePath, "utf8");
-  if (
-    content.includes(
-      "return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)",
-    )
-  ) {
-    content = content.replace(
-      "return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)",
-      `guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else {
-            return false
-        }
-        NotificationCenter.default.post(name: .capacitorOpenUniversalLink, object: [
-            "url": url
-        ])
-        return true`,
-    );
-    fs.writeFileSync(appDelegatePath, content, "utf8");
-    console.log("✅ Patched AppDelegate.swift universal links handling");
-  }
-}
+// 10. AppDelegate.swift — REMOVED IN R18 (was: rewrite universal-link handling)
+//
+// This step used to replace
+//   return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
+// with a hand-rolled guard + NotificationCenter.post. That was a straight
+// regression, and it silently reverted the deliberate fix recorded in
+// references/verification/8.1-ios.md (Gap 4).
+//
+// Evidence from the installed native sources (@capacitor/ios 8.5.2):
+//   node_modules/@capacitor/ios/Capacitor/Capacitor/CAPApplicationDelegateProxy.swift
+//     application(_:continue:restorationHandler:) already performs the SAME guard
+//     (activityType == NSUserActivityTypeBrowsingWeb, webpageURL != nil), posts the
+//     SAME payload (["url": url]) on .capacitorOpenUniversalLink — and additionally
+//     sets `lastURL = url`. `lastURL` is declared `public internal(set)`, so the app
+//     target cannot set it itself; the proxy is the only writer.
+//   node_modules/@capacitor/app/.../AppPlugin.swift:98 reads exactly that
+//     `ApplicationDelegateProxy.shared.lastURL` for App.getLaunchUrl().
+//
+// So the old step kept appUrlOpen delivery working but made a cold-start universal
+// link invisible to App.getLaunchUrl(). Nothing here is needed: do not re-add it.
+// ios/App/App/AppDelegate.swift is a tracked file, so `cap sync` does not clobber it.

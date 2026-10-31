@@ -42,6 +42,28 @@ jobs:
       - name: Neutralize Windows-only org.gradle.java.home
         run: sed -i '/^org.gradle.java.home=/d' android/gradle.properties
 
+      - name: 🛡️ Preflight: Validate release secrets non-empty
+        # CI gate: ensure all required release signing secrets are present before
+        # attempting decode or Gradle release task. Error messages use generic field
+        # names only — no secret values are printed to the logs.
+        run: |
+          if [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 secret is empty or missing";
+            exit 1;
+          fi
+          if [ -z "${{ secrets.RELEASE_STORE_PASSWORD }}" ]; then
+            echo "::error::RELEASE_STORE_PASSWORD secret is empty or missing";
+            exit 1;
+          fi
+          if [ -z "${{ secrets.RELEASE_KEY_PASSWORD }}" ]; then
+            echo "::error::RELEASE_KEY_PASSWORD secret is empty or missing";
+            exit 1;
+          fi
+          if [ -z "${{ secrets.RELEASE_KEY_ALIAS }}" ]; then
+            echo "::error::RELEASE_KEY_ALIAS secret is empty or missing";
+            exit 1;
+          fi
+
       - name: 🔑 Decode Release Keystore (from secret)
         working-directory: android
         env:
@@ -54,9 +76,9 @@ jobs:
         working-directory: android
         env:
           RELEASE_STORE_FILE: "../release.keystore"
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || 'ci_build_keystore_pass' }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: "burgonomics"
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD || 'ci_build_keystore_pass' }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease bundleRelease --stacktrace

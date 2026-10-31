@@ -68,6 +68,14 @@ echo ""
 echo "🔄 Running npx cap sync ios..."
 npx cap sync ios
 
+# Normalise the SPM package graph. This MUST run AFTER `cap sync`: the CLI
+# regenerates ios/App/CapApp-SPM/Package.swift with `exact: "8.5.2"`, while
+# @capacitor/push-notifications@8.1.2 hard-pins `exact: "8.5.0"`. SwiftPM
+# intersects those two constraints to an empty set, so Xcode would fail to
+# resolve packages. See the header comment in scripts/patch-ios-spm.js.
+echo "🔧 Normalising the Swift package graph..."
+node scripts/patch-ios-spm.js
+
 echo ""
 echo "================================================="
 echo "   Success! Launching Xcode..."
@@ -79,6 +87,13 @@ echo "2. Go to 'Signing & Capabilities' tab"
 echo "3. Select your Apple Developer Team in the dropdown"
 echo "4. In the top menu bar, go to Product -> Destination -> Any iOS Device (arm64)"
 echo "5. Finally, go to Product -> Archive"
+echo ""
+echo "Before you ship to the App Store (not needed for a local test build):"
+echo "- Replace the TEAMID placeholder in public/.well-known/apple-app-site-association"
+echo "  with your real 10-character Apple Team ID, then re-run npm run build:mobile"
+echo "  and redeploy hosting. Universal links stay dead until you do."
+echo "- Optional preflight from the Burgonomics root workspace:"
+echo "  node scripts/validate-mobile-hosting.cjs"
 echo ""
 
 # Open Xcode workspace
