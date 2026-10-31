@@ -156,6 +156,30 @@ export function asPricingFulfillment(
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 /**
+ * R1: the GST already contained in an inclusive amount.
+ * `includedGst(105) === 5` — the old `105 * 0.05` reported 5.25, i.e. tax on
+ * top of a price that already carried it.
+ */
+export function includedGst(inclusiveAmount: number, rate: number = GST_RATE): number {
+  const amount = Number(inclusiveAmount);
+  const gstRate = Number(rate);
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(gstRate) || gstRate <= 0) {
+    return 0;
+  }
+  return round2((amount * gstRate) / (1 + gstRate));
+}
+
+/**
+ * R2: canonical paise conversion. Both repos must produce the same integer for
+ * the same rupee total: `Math.round(grandTotal * 100)`.
+ */
+export function toPaise(rupees: number): number {
+  const value = Number(rupees);
+  return Number.isFinite(value) ? Math.round(value * 100) : 0;
+}
+
+
+/**
  * Builds the pricing config for one order: app-wide launch schedule, with the
  * live delivery quote and any store-level minimum folded in.
  *
@@ -316,9 +340,15 @@ export function calculateOrderTotals(input: PricingCalculationInput): Calculated
   const taxableAmount = round2(Math.max(0, subtotal - validItemDiscount - validPromoDiscount));
 
   const gstRate = typeof config.gstRate === "number" ? config.gstRate : GST_RATE;
-  const cgst = round2(taxableAmount * (gstRate / 2));
-  const sgst = round2(taxableAmount * (gstRate / 2));
-  const taxes = round2(cgst + sgst);
+  // GST is INCLUSIVE (R1): the share embedded in an inclusive amount is
+  // `amount * rate / (1 + rate)`, never `amount * rate`. The old maths
+  // reported ₹5.25 on a ₹105 bill where the true share is exactly ₹5.00.
+  const taxes = includedGst(taxableAmount, gstRate);
+  // CGST is the rounded half; SGST takes the remainder so the two always sum
+  // back to `taxes` exactly (to the paisa) — no lost or invented paisa.
+  const cgst = round2(taxes / 2);
+  const sgst = round2(taxes - cgst);
+
 
   const packagingFee = hasItems && typeof config.packagingFee === "number" ? config.packagingFee : 0;
   const deliveryFee =
