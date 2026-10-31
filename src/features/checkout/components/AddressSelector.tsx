@@ -1,16 +1,25 @@
 import * as React from "react";
-import { MapPin, CheckCircle2, AlertTriangle, Plus, ArrowRight, Home, Briefcase } from "lucide-react";
+import {
+  MapPin,
+  CheckCircle2,
+  AlertTriangle,
+  Plus,
+  ArrowRight,
+  Home,
+  Briefcase,
+} from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 import type { Address } from "@/features/addresses/models";
 import type { Store } from "@/features/stores/models/Store";
+import { DEFAULT_DELIVERY_RADIUS_KM } from "@/features/stores/utils/serviceArea";
 
 export function calculateHaversineKm(
   lat1: number,
   lon1: number,
   lat2: number,
-  lon2: number
+  lon2: number,
 ): number {
   const R = 6371; // Earth radius in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -42,146 +51,188 @@ export function AddressSelector({
   onSwitchToTakeaway,
   className,
 }: AddressSelectorProps) {
-  const maxRadiusKm = activeStore?.deliveryRadiusKm ?? 8.0;
+  const maxRadiusKm = activeStore?.deliveryRadiusKm ?? DEFAULT_DELIVERY_RADIUS_KM;
+  // Doc-stated radius — display sites may only show a number that the store
+  // actually declared; the fallback above is for logic comparisons alone.
+  const docRadiusKm = activeStore?.deliveryRadiusKm;
+
+  const selectAddress = (addr: Address) => {
+    void HapticService.selection();
+    onSelectAddress(addr);
+  };
 
   return (
     <div className={cn("space-y-3", className)}>
-      <div className="flex items-center justify-between">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-          Delivery Address
-        </h4>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="type-title-medium text-text-primary">Delivery Address</h4>
         <Link
           to="/profile/addresses"
-          className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+          className="-mr-2 inline-flex min-h-[44px] items-center gap-1 px-2 type-caption font-semibold text-primary-text hover:underline"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="h-4 w-4" aria-hidden />
           <span>Manage Addresses</span>
         </Link>
       </div>
 
       {addresses.length === 0 ? (
-        <div className="p-4 rounded-2xl border border-divider bg-surface text-center space-y-2">
-          <MapPin className="w-6 h-6 text-text-secondary mx-auto" />
-          <p className="text-xs font-medium text-text-secondary">
-            No saved delivery addresses found.
-          </p>
+        <div className="space-y-3 rounded-[var(--radius-large)] border border-divider bg-surface p-4 text-center">
+          <MapPin className="mx-auto h-6 w-6 text-text-secondary" aria-hidden />
+          <p className="type-body-medium text-text-secondary">No saved delivery addresses found.</p>
           <Link
-            to="/profile/addresses"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-xs hover:bg-primary-hover transition-colors"
+            to="/addresses/create"
+            search={{ returnTo: "/checkout" }}
+            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full bg-primary px-4 type-button-sm text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" aria-hidden />
             <span>Add Delivery Address</span>
           </Link>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div role="radiogroup" aria-label="Delivery addresses" className="space-y-2.5">
           {addresses.map((addr) => {
             const isSelected = selectedAddress?.id === addr.id;
-            
-            // Calculate distance if coordinates exist, or estimate from store lat/lng
-            const userLat = addr.lat ?? (activeStore ? activeStore.lat + 0.015 : 0);
-            const userLng = addr.lng ?? (activeStore ? activeStore.lng + 0.015 : 0);
-            const branchLat = activeStore?.lat ?? userLat;
-            const branchLng = activeStore?.lng ?? userLng;
-            
-            const distanceKm = calculateHaversineKm(userLat, userLng, branchLat, branchLng);
-            const isDeliverable = distanceKm <= maxRadiusKm;
+
+            // Honest deliverability: never synthesize a user position from the
+            // store position. Without verified lat/lng on BOTH ends the
+            // distance is unknown — no figure, neither badge.
+            const storeLat = activeStore ? Number(activeStore.lat) : NaN;
+            const storeLng = activeStore ? Number(activeStore.lng) : NaN;
+            const hasVerifiedLocation =
+              Number.isFinite(addr.lat) &&
+              Number.isFinite(addr.lng) &&
+              Number.isFinite(storeLat) &&
+              Number.isFinite(storeLng);
+            const distanceKm = hasVerifiedLocation
+              ? calculateHaversineKm(addr.lat as number, addr.lng as number, storeLat, storeLng)
+              : null;
+            const isDeliverable: boolean | null =
+              distanceKm === null ? null : distanceKm <= maxRadiusKm;
 
             return (
               <div
                 key={addr.id}
-                onClick={() => {
-                  void HapticService.selection();
-                  onSelectAddress(addr);
-                }}
                 className={cn(
-                  "p-3.5 sm:p-4 rounded-2xl border transition-all select-none cursor-pointer flex flex-col gap-2",
+                  "flex flex-col gap-3 rounded-[var(--radius-large)] border p-4 transition-colors",
                   isSelected
-                    ? isDeliverable
-                      ? "border-[#0E4825] bg-[#0E4825]/5 shadow-xs"
-                      : "border-amber-500 bg-amber-500/5 shadow-xs"
-                    : "border-divider bg-surface hover:border-primary/40"
+                    ? isDeliverable === false
+                      ? "border-warning bg-warning/5 shadow-xs"
+                      : "border-primary bg-primary/5 shadow-xs"
+                    : "border-divider bg-surface hover:border-primary/50",
                 )}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2.5 min-w-0">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  onClick={() => selectAddress(addr)}
+                  className="flex min-h-11 w-full cursor-pointer flex-wrap items-start justify-between gap-2 rounded-[var(--radius-medium)] text-left"
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
                     <div
                       className={cn(
-                        "w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
+                        "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-medium)]",
                         isSelected
-                          ? "bg-[#0E4825] text-white"
-                          : "bg-bg-secondary text-text-secondary"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-bg-secondary text-text-secondary",
                       )}
                     >
                       {addr.label === "home" ? (
-                        <Home className="w-4 h-4" />
+                        <Home className="h-4 w-4" aria-hidden />
                       ) : addr.label === "work" ? (
-                        <Briefcase className="w-4 h-4" />
+                        <Briefcase className="h-4 w-4" aria-hidden />
                       ) : (
-                        <MapPin className="w-4 h-4" />
+                        <MapPin className="h-4 w-4" aria-hidden />
                       )}
                     </div>
 
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-full bg-[#0E4825]/15 text-[#0E4825] dark:text-[#4ADE80] text-[10px] font-black uppercase">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full bg-primary/10 px-2.5 py-0.5 type-caption font-semibold text-primary-text">
                           {addr.customLabel || addr.label}
                         </span>
                         {addr.isDefault && (
-                          <span className="text-[10px] text-text-secondary font-bold">
+                          <span className="type-caption font-medium text-text-secondary">
                             • Default
                           </span>
                         )}
                       </div>
 
-                      <p className="text-xs font-bold text-text truncate">
+                      <p className="type-body font-semibold text-text-primary break-words">
                         {addr.line1}
                       </p>
-                      <p className="text-[11px] text-text-secondary truncate">
-                        {addr.line2 || addr.landmark ? `${addr.line2 ? addr.line2 + ", " : ""}${addr.landmark || ""}` : `${addr.city} • ${addr.pincode}`}
+                      <p className="type-caption text-text-secondary break-words">
+                        {addr.line2 || addr.landmark
+                          ? `${addr.line2 ? addr.line2 + ", " : ""}${addr.landmark || ""}`
+                          : `${addr.city} • ${addr.pincode}`}
                       </p>
                     </div>
                   </div>
 
                   {/* Radio / Selection Check */}
-                  <div className="shrink-0 pt-0.5">
+                  <div className="shrink-0 pt-1">
                     <span
+                      aria-hidden
                       className={cn(
-                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                        "flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors",
                         isSelected
-                          ? "border-[#0E4825] bg-[#0E4825] text-white"
-                          : "border-divider"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-text-secondary/60",
                       )}
                     >
-                      {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
+                      {isSelected && (
+                        <span className="h-2 w-2 rounded-full bg-primary-foreground" />
+                      )}
                     </span>
                   </div>
-                </div>
+                </button>
 
                 {/* Geofence Distance & Radius Status */}
-                <div className="pt-1.5 border-t border-divider/60 flex items-center justify-between text-[11px]">
-                  <span className="text-text-secondary font-medium">
-                    📍 {distanceKm} km from {activeStore?.name ?? "outlet"}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-divider pt-2 type-caption">
+                  {distanceKm !== null ? (
+                    <>
+                      <span className="min-w-0 break-words font-medium text-text-secondary">
+                        📍 {distanceKm} km from {activeStore?.name ?? "outlet"}
+                      </span>
 
-                  {isDeliverable ? (
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Deliverable</span>
-                    </span>
+                      {isDeliverable ? (
+                        <span className="flex items-center gap-1 font-semibold text-success">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                          <span>Deliverable</span>
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 font-semibold text-warning">
+                          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                          <span>
+                            {docRadiusKm != null
+                              ? `Out of ${docRadiusKm} km range`
+                              : "Out of delivery range"}
+                          </span>
+                        </span>
+                      )}
+                    </>
                   ) : (
-                    <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      <span>Out of {maxRadiusKm} km range</span>
-                    </span>
+                    <>
+                      <span className="min-w-0 break-words font-medium text-text-secondary">
+                        Location not verified — add a pin
+                      </span>
+                      <Link
+                        to="/addresses/create"
+                        search={{ editId: addr.id, returnTo: "/checkout" }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex min-h-[44px] items-center font-semibold text-primary-text hover:underline"
+                      >
+                        Pin on map
+                      </Link>
+                    </>
                   )}
                 </div>
 
                 {/* Out of range alert banner with switch to takeaway CTA */}
-                {isSelected && !isDeliverable && (
-                  <div className="mt-1 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs space-y-1.5">
-                    <p className="font-medium">
-                      This address is {distanceKm} km away (exceeds our {maxRadiusKm} km delivery limit).
+                {isSelected && isDeliverable === false && distanceKm !== null && (
+                  <div className="space-y-1.5 rounded-[var(--radius-medium)] border border-warning/30 bg-warning/10 p-3 type-caption text-warning">
+                    <p className="break-words font-medium">
+                      This address is {distanceKm} km away (exceeds our{" "}
+                      {docRadiusKm != null ? `${docRadiusKm} km ` : ""}delivery limit).
                     </p>
                     {onSwitchToTakeaway && (
                       <button
@@ -191,10 +242,10 @@ export function AddressSelector({
                           void HapticService.impact("medium");
                           onSwitchToTakeaway();
                         }}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 dark:text-amber-200 underline cursor-pointer"
+                        className="inline-flex min-h-[44px] cursor-pointer items-center gap-1 font-semibold text-warning underline"
                       >
                         <span>Switch to Takeaway (Self-Pickup)</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
                       </button>
                     )}
                   </div>
@@ -202,6 +253,17 @@ export function AddressSelector({
               </div>
             );
           })}
+
+          <div className="pt-1">
+            <Link
+              to="/addresses/create"
+              search={{ returnTo: "/checkout" }}
+              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[var(--radius-medium)] border border-dashed border-primary/40 bg-primary/5 px-4 type-button-sm text-primary transition-colors hover:bg-primary/10 cursor-pointer"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              <span>Add Delivery Address</span>
+            </Link>
+          </div>
         </div>
       )}
     </div>

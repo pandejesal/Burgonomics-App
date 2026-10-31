@@ -2,6 +2,8 @@ import {
   menuService,
   type MenuCategory,
   type MenuItem,
+  type MenuSearchOptions,
+  type MenuStoreSnapshot,
 } from "@/features/menu/services/menuService";
 import type {
   CustomizationGroup,
@@ -47,8 +49,8 @@ export class MenuRepository {
   listFeatured(storeId?: string): Promise<ApiResult<Product[]>> {
     return this.service.listFeatured(storeId);
   }
-  search(storeId: string | undefined, query: string, page = 1, pageSize = 20) {
-    return this.service.search(storeId, query, page, pageSize);
+  search(storeId: string | undefined, query: string, opts?: MenuSearchOptions) {
+    return this.service.search(storeId, query, opts);
   }
   suggest(storeId: string | undefined, query: string): Promise<ApiResult<SearchSuggestion[]>> {
     return this.service.suggest(storeId, query);
@@ -88,6 +90,17 @@ export class MenuRepository {
     callback: (result: ApiResult<ProductDetails | null>) => void,
   ): () => void {
     return this.service.subscribeProduct(id, callback);
+  }
+
+  /**
+   * Whole store-scoped snapshot + explicit removals. The continuous menu needs
+   * this to keep every already-rendered card current without a page-1 shape.
+   */
+  subscribeStoreProducts(
+    storeId: string | undefined,
+    callback: (result: ApiResult<MenuStoreSnapshot>) => void,
+  ): () => void {
+    return this.service.subscribeStoreProducts(storeId, callback);
   }
 }
 

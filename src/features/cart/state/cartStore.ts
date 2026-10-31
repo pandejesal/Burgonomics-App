@@ -5,6 +5,9 @@ import type { Product } from "@/features/menu/models";
 
 export const PRICE_LOCK_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
+/** Money rounding — 2 decimals, matching `pricingEngine`. */
+const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
+
 interface CartState {
   // Persisted
   storeId: string | null;
@@ -144,17 +147,39 @@ export const useCartStore = create<CartState>()(
 
         const updatedLines = s.lines.map((line) => {
           const prod = productMap.get(line.productId);
-          if (!prod) return line;
+          if (!prod) {
+            // Fail-closed: a cart line whose product cannot be verified against
+            // this store's live menu (deleted doc, cross-store stray, menu
+            // window) must not keep claiming availability — previously the
+            // unmatched line silently passed as available.
+            changed = true;
+            messages.push(`${line.name} is no longer available — please review your cart.`);
+            return {
+              ...line,
+              availability: "unavailable" as const,
+              unavailableReason: "Could not verify this item in the live menu.",
+            };
+          }
 
           let lineChanged = false;
           let newPrice = line.unitPrice;
           let newAvailability = line.availability;
 
-          if (prod.price !== line.unitPrice) {
+          // `unitPrice` is all-in (base + modifiers), while `prod.price` is the
+          // base menu price. Compare like-for-like on the base so customized
+          // lines don't get a bogus "price updated" message — and so the add-on
+          // deltas survive a menu price change instead of being stripped.
+          const modifierDelta = (line.modifiers ?? []).reduce(
+            (sum, m) => sum + (Number(m.priceDelta) || 0),
+            0,
+          );
+          const lineBasePrice = round2(line.unitPrice - modifierDelta);
+
+          if (prod.price !== lineBasePrice) {
             messages.push(
-              `Price for ${line.name} updated from ₹${line.unitPrice} to ₹${prod.price}.`,
+              `Price for ${line.name} updated from ₹${lineBasePrice} to ₹${prod.price}.`,
             );
-            newPrice = prod.price;
+            newPrice = round2(prod.price + modifierDelta);
             lineChanged = true;
           }
 
@@ -231,50 +256,50 @@ export const useCartStore = create<CartState>()(
       onRehydrateStorage: () => (state) => {
         if (state) state.status = initialStatus(state.lines);
       },
-    migrate: (persisted, version) => {
-      const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
-      // Promo is NEVER trusted across reloads: a hand-edited burg.cart
-      // promo ({discount: 9999}) used to flow straight into checkout.
-      // v<5 entries are scrubbed to null; v5+ entries must still carry a
-      // well-shaped promo or they are scrubbed too. The coupon code is
-      // re-applied (and re-checked for active status) via applyPromo —
-      // see CartRepository.validateCart + PromoInput mount revalidation.
-      const scrubbedPromo =
-        version >= 5 && isShapedPromo(anyPersisted.promo)
-          ? (anyPersisted.promo as AppliedPromo)
-          : null;
-      if (!persisted || typeof persisted !== "object" || version < 4) {
-        // Per-line validation: a tampered/legacy burg.cart entry
-        // ({unitPrice:"free", quantity:"999"}) used to rehydrate straight
-        // into pricing math (free items, NaN totals). Scrub or drop lines.
-        const lines = Array.isArray(anyPersisted.lines)
-          ? (anyPersisted.lines as Record<string, unknown>[]).flatMap((l) => {
-              if (!l || typeof l !== "object") return [];
-              const unitPrice = Number((l as { unitPrice?: unknown }).unitPrice);
-              const quantity = Number((l as { quantity?: unknown }).quantity);
-              if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 100000) return [];
-              if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return [];
-              const productId = (l as { productId?: unknown }).productId;
-              const name = (l as { name?: unknown }).name;
-              if (typeof productId !== "string" || typeof name !== "string") return [];
-              const rawMods = (l as { modifiers?: unknown }).modifiers;
-              const modifiers = Array.isArray(rawMods) ? rawMods : [];
-              return [{ ...(l as object), unitPrice, quantity, modifiers } as CartLine];
-            })
-          : [];
-        return {
-          storeId: (anyPersisted.storeId as string | null) ?? null,
-          lines,
-          promo: scrubbedPromo,
-          priceLockExpiresAt:
-            typeof anyPersisted.priceLockExpiresAt === "number"
-              ? anyPersisted.priceLockExpiresAt
-              : null,
-        } as Partial<CartState>;
-      }
-      // v4+ shape is otherwise current — but the promo is still scrubbed.
-      return { ...(persisted as object), promo: scrubbedPromo } as Partial<CartState>;
-    },
+      migrate: (persisted, version) => {
+        const anyPersisted = (persisted ?? {}) as Record<string, unknown>;
+        // Promo is NEVER trusted across reloads: a hand-edited burg.cart
+        // promo ({discount: 9999}) used to flow straight into checkout.
+        // v<5 entries are scrubbed to null; v5+ entries must still carry a
+        // well-shaped promo or they are scrubbed too. The coupon code is
+        // re-applied (and re-checked for active status) via applyPromo —
+        // see CartRepository.validateCart + PromoInput mount revalidation.
+        const scrubbedPromo =
+          version >= 5 && isShapedPromo(anyPersisted.promo)
+            ? (anyPersisted.promo as AppliedPromo)
+            : null;
+        if (!persisted || typeof persisted !== "object" || version < 4) {
+          // Per-line validation: a tampered/legacy burg.cart entry
+          // ({unitPrice:"free", quantity:"999"}) used to rehydrate straight
+          // into pricing math (free items, NaN totals). Scrub or drop lines.
+          const lines = Array.isArray(anyPersisted.lines)
+            ? (anyPersisted.lines as Record<string, unknown>[]).flatMap((l) => {
+                if (!l || typeof l !== "object") return [];
+                const unitPrice = Number((l as { unitPrice?: unknown }).unitPrice);
+                const quantity = Number((l as { quantity?: unknown }).quantity);
+                if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 100000) return [];
+                if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return [];
+                const productId = (l as { productId?: unknown }).productId;
+                const name = (l as { name?: unknown }).name;
+                if (typeof productId !== "string" || typeof name !== "string") return [];
+                const rawMods = (l as { modifiers?: unknown }).modifiers;
+                const modifiers = Array.isArray(rawMods) ? rawMods : [];
+                return [{ ...(l as object), unitPrice, quantity, modifiers } as CartLine];
+              })
+            : [];
+          return {
+            storeId: (anyPersisted.storeId as string | null) ?? null,
+            lines,
+            promo: scrubbedPromo,
+            priceLockExpiresAt:
+              typeof anyPersisted.priceLockExpiresAt === "number"
+                ? anyPersisted.priceLockExpiresAt
+                : null,
+          } as Partial<CartState>;
+        }
+        // v4+ shape is otherwise current — but the promo is still scrubbed.
+        return { ...(persisted as object), promo: scrubbedPromo } as Partial<CartState>;
+      },
     },
   ),
 );

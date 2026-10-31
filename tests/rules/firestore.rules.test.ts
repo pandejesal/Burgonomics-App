@@ -10,7 +10,12 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection } from "firebase/
 
 const PROJECT_ID = "burgonomics-test-rules";
 
-describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
+// Default matches firebase.json; override only when 8080 is occupied locally
+// (e.g. a proxy daemon owns it) by running the emulator on another port and
+// pointing this at it. CI leaves it unset and keeps the canonical port.
+const EMULATOR_PORT = Number(process.env.FIRESTORE_EMULATOR_PORT ?? 8080);
+
+describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
   let testEnv: RulesTestEnvironment | null = null;
   let emulatorAvailable = false;
 
@@ -21,12 +26,14 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
         firestore: {
           rules: readFileSync("firestore.rules", "utf8"),
           host: "127.0.0.1",
-          port: 8080,
+          port: EMULATOR_PORT,
         },
       });
       emulatorAvailable = true;
     } catch {
-      console.warn("Firestore Emulator is not running on 127.0.0.1:8080. Skipping rules integration tests.");
+      console.warn(
+        `Firestore Emulator is not running on 127.0.0.1:${EMULATOR_PORT}. Skipping rules integration tests.`,
+      );
       emulatorAvailable = false;
     }
   });
@@ -43,7 +50,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
       // emulator job must run — fail hard instead of skipping.
       if (process.env.CI === "true") {
         throw new Error(
-          "Firestore emulator unavailable in CI — the rules job must start it (see .github/workflows/ci.yml `rules` job)."
+          "Firestore emulator unavailable in CI — the rules job must start it (see .github/workflows/ci.yml `rules` job).",
         );
       }
       context.skip();
@@ -181,13 +188,18 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
         orderId: "order_501",
         branchId: "branch_01",
         discrepancy: 50,
-      })
+      }),
     );
   });
 
-  it("5. [ANON-ALLOW] Anonymous request to read public branches is ALLOWED", async () => {
+  it("5. [BRANCHES-ANON-DENY] Anonymous request to read branches is DENIED (hardened: was public)", async () => {
     const unauthedDb = testEnv.unauthenticatedContext().firestore();
-    await assertSucceeds(getDoc(doc(unauthedDb, "branches", "branch_01")));
+    await assertFails(getDoc(doc(unauthedDb, "branches", "branch_01")));
+  });
+
+  it("5b. [BRANCHES-SIGNEDIN-ALLOW] Any signed-in user can read branches (customer app never reads branches/*; partner hooks are signed-in)", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(getDoc(doc(custDb, "branches", "branch_01")));
   });
 
   // =========================================================================
@@ -216,20 +228,22 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
     await assertFails(
       updateDoc(doc(custDb, "customers", "cust_100"), {
         loyaltyPoints: 99999,
-      })
+      }),
     );
   });
 
-  it("10. [CUSTOMER-CREATE-ORDER] Customer can create pending order for self", async () => {
+  it("10. [CUSTOMER-CREATE-ORDER] Customer can create pending order for self (pins the real ordersService.createOrder payload: BOTH customerId+userId, initial PLACED status meta)", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
     await assertSucceeds(
       setDoc(doc(custDb, "orders", "order_new_1"), {
         orderId: "order_new_1",
         customerId: "cust_100",
+        userId: "cust_100",
         branchId: "branch_01",
         paymentStatus: "Pending",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         totals: { grandTotal: 499 },
-      })
+      }),
     );
   });
 
@@ -252,7 +266,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
     await assertSucceeds(
       updateDoc(doc(branch1Db, "orders", "order_501"), {
         status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
-      })
+      }),
     );
   });
 
@@ -261,7 +275,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
     await assertFails(
       updateDoc(doc(branch1Db, "orders", "order_501"), {
         totals: { grandTotal: 9999 },
-      })
+      }),
     );
   });
 
@@ -277,7 +291,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
         city: "Ahmedabad",
         status: "upcoming",
         expectedOpenDate: "2026-11-01",
-      })
+      }),
     );
   });
 
@@ -288,7 +302,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
         name: "Burgonomics Rogue Store",
         city: "Ahmedabad",
         status: "upcoming",
-      })
+      }),
     );
   });
 
@@ -304,7 +318,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
         senderId: "branch_owner_1",
         text: "Stock delivered for today",
         createdAt: new Date().toISOString(),
-      })
+      }),
     );
 
     const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
@@ -329,7 +343,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
         resolution: "Looking into it",
         "assignedTo.tier": "branch",
         timeline: [{ action: "message_added" }],
-      })
+      }),
     );
   });
 
@@ -339,7 +353,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
       updateDoc(doc(branch1Db, "support_tickets", "tkt_rules_01"), {
         status: "resolved",
         refundAmount: 99,
-      })
+      }),
     );
   });
 
@@ -358,7 +372,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
     await assertFails(
       updateDoc(doc(branch1Db, "orders", "ord_deliver_01"), {
         status: { kind: "completed", code: "DELIVERED" },
-      })
+      }),
     );
   });
 
@@ -367,7 +381,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
     await assertSucceeds(
       updateDoc(doc(branch1Db, "orders", "ord_takeaway_01"), {
         status: { kind: "completed", code: "DELIVERED" },
-      })
+      }),
     );
   });
 
@@ -382,7 +396,404 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC (24 Tests)", () => {
       setDoc(doc(branch1Db, "broadcasts", "bc_rules_evil"), {
         title: "Fake",
         successCount: 99999,
-      })
+      }),
+    );
+  });
+
+  it("27. [CUSTOMER-WHATSAPP-OPTIN-ALLOW] Customer can toggle their own whatsappOptIn preference", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(
+      updateDoc(doc(custDb, "orders", "order_501"), {
+        whatsappOptIn: false,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  });
+
+  it("28. [CUSTOMER-ORDER-FIELD-DENY] Customer cannot write money fields on their own order", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      updateDoc(doc(custDb, "orders", "order_501"), {
+        totals: { grandTotal: 1 },
+        whatsappOptIn: false,
+      }),
+    );
+  });
+
+  // =========================================================================
+  // 6. ORDERS CREATE HARDENING (audit: identity-only create was
+  //    client-priced / privileged-key plantable)
+  // =========================================================================
+
+  it("29. [ORDERS-CREATE-VICTIM-ID-DENY] Customer cannot birth an order stamped to a victim in BOTH identity fields", async () => {
+    const attackerDb = testEnv.authenticatedContext("attacker_1").firestore();
+    await assertFails(
+      setDoc(doc(attackerDb, "orders", "ord_evil_1"), {
+        customerId: "victim_999",
+        userId: "victim_999",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        totals: { grandTotal: 1 },
+      }),
+    );
+  });
+
+  it("30. [ORDERS-CREATE-SPLIT-IDENTITY-DENY] Customer cannot pair own customerId with a victim userId (old `||` lanes both closed)", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_2"), {
+        customerId: "cust_100",
+        userId: "victim_999",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      }),
+    );
+  });
+
+  it("31. [ORDERS-CREATE-PRIVILEGED-KEYS-DENY] Customer create cannot carry server-owned keys at birth (OTP/refund/pricing/dispatch)", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_3"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        deliveryOtp: "123456",
+        deliveryOtpHash: "deadbeef",
+        refundStatus: "approved",
+        pricing: { grandTotal: 1 },
+        petpoojaOrderId: "PP-FAKE-1",
+        dispatchStatus: "booked",
+      }),
+    );
+  });
+
+  it("32. [ORDERS-CREATE-PLANTED-STATUS-DENY] Customer create cannot be born DELIVERED/terminal", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_4"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
+      }),
+    );
+  });
+
+  it("33. [ORDERS-CREATE-PLANTED-PAID-DENY] Customer create cannot be born paid ('paid' or POS 'completed')", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+    };
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_5a"), { ...base, paymentStatus: "paid" }),
+    );
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_5b"), { ...base, paymentStatus: "completed" }),
+    );
+  });
+
+  it("34. [ORDERS-CREATE-WALKIN-ALLOW] Branch staff CAN birth a POS walk-in order (customerId 'cust_walkin' + staff userId + own branch, born completed)", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      setDoc(doc(branch1Db, "orders", "ord_pos_01"), {
+        customerId: "cust_walkin",
+        userId: "branch_owner_1",
+        customerName: "Walk-in Customer",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        paymentStatus: "completed",
+        total: 349,
+      }),
+    );
+  });
+
+  it("35. [ORDERS-CREATE-WALKIN-NONSTAFF-DENY] A customer cannot use the walk-in lane", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_pos_evil_1"), {
+        customerId: "cust_walkin",
+        userId: "cust_100",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        paymentStatus: "completed",
+      }),
+    );
+  });
+
+  it("36. [ORDERS-CREATE-WALKIN-CROSS-BRANCH-DENY] Branch staff cannot create walk-in orders stamped to someone else's branch", async () => {
+    const branch2Db = testEnv.authenticatedContext("branch_owner_2").firestore();
+    await assertFails(
+      setDoc(doc(branch2Db, "orders", "ord_pos_evil_2"), {
+        customerId: "cust_walkin",
+        userId: "branch_owner_2",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        paymentStatus: "completed",
+      }),
+    );
+  });
+
+  it("37. [ORDERS-CREATE-WALKIN-PRIVILEGED-KEYS-DENY] Walk-in lane cannot plant delivery OTP at birth either", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      setDoc(doc(branch1Db, "orders", "ord_pos_evil_3"), {
+        customerId: "cust_walkin",
+        userId: "branch_owner_1",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        paymentStatus: "completed",
+        deliveryOtp: "999999",
+      }),
+    );
+  });
+
+  // =========================================================================
+  // 7. SHADOW SUBCOLLECTION, CUSTOMERS DENYLIST, CHATS MASK,
+  //    PRODUCTS CREATE, TICKETS CREATE (audit hardening)
+  // =========================================================================
+
+  it("38. [USER-ORDERS-SUBCOLLECTION-DENY] users/{uid}/orders is server-only — owner cannot create shadow orders", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      setDoc(doc(custDb, "users", "cust_100", "orders", "shadow_1"), {
+        totals: { grandTotal: 99999 },
+        status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
+      }),
+    );
+  });
+
+  it("39. [CUSTOMERS-CREATE-ALLOW] Customer can create their own clean profile doc", async () => {
+    const newCustDb = testEnv.authenticatedContext("cust_new").firestore();
+    await assertSucceeds(
+      setDoc(doc(newCustDb, "customers", "cust_new"), {
+        customerId: "cust_new",
+        fullName: "New User",
+      }),
+    );
+  });
+
+  it("40. [CUSTOMERS-CREATE-ESCALATION-DENY] Customer cannot birth their profile with role/claim/PII escalation fields", async () => {
+    const newCustDb = testEnv.authenticatedContext("cust_new").firestore();
+    await assertFails(
+      setDoc(doc(newCustDb, "customers", "cust_new"), {
+        customerId: "cust_new",
+        role: "brand_owner",
+        isAdmin: true,
+        loyaltyPoints: 99999,
+      }),
+    );
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(
+      setDoc(doc(custDb, "customers", "cust_100"), {
+        customerId: "cust_100",
+        phone: "+919999999999",
+        email: "spoof@evil.test",
+        createdAt: new Date().toISOString(),
+      }),
+    );
+  });
+
+  it("41. [CUSTOMERS-UPDATE-ESCALATION-DENY] Customer update cannot write escalation/PII projection fields", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(updateDoc(doc(custDb, "customers", "cust_100"), { phone: "+919999999999" }));
+    await assertFails(updateDoc(doc(custDb, "customers", "cust_100"), { isAdmin: true }));
+    await assertFails(
+      updateDoc(doc(custDb, "customers", "cust_100"), { createdAt: new Date().toISOString() }),
+    );
+  });
+
+  it("42. [CUSTOMERS-CLEAN-UPDATE-ALLOW] Customer can update their own non-privileged profile fields", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(updateDoc(doc(custDb, "customers", "cust_100"), { fullName: "Rahul P." }));
+  });
+
+  it("43. [CHATS-REPLY-ALLOW] Participant can update reply metadata on their thread", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(branch1Db, "chats", "branch_01_brand_owner_1"), {
+        lastMessageText: "Acknowledged",
+        lastMessageSender: "Navrangpura Operator",
+        lastMessageAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  });
+
+  it("44. [CHATS-PARTICIPANT-REWRITE-DENY] Participant cannot rewrite thread membership (participantIds/participantNames)", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branch1Db, "chats", "branch_01_brand_owner_1"), {
+        participantIds: ["branch_owner_1", "brand_owner_1", "victim_999"],
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(branch1Db, "chats", "branch_01_brand_owner_1"), {
+        participantNames: { branch_owner_1: "Hijacked" },
+      }),
+    );
+  });
+
+  it("45. [PRODUCTS-COMBO-CREATE-ALLOW] Branch staff can create a combo product with price (pins createComboMeal payload)", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      setDoc(doc(branch1Db, "products", "combo_rules_01"), {
+        id: "combo_rules_01",
+        name: "Rules Combo",
+        description: "Burger + Fries",
+        price: 299,
+        originalPrice: 349,
+        categoryId: "cat_combos",
+        categoryName: "Combo Meals",
+        branchId: "branch_01",
+        inStock: true,
+        isCombo: true,
+      }),
+    );
+  });
+
+  it("46. [PRODUCTS-CREATE-DENYLIST-DENY] Branch staff cannot plant costPrice / discount fields / fabricated petpoojaItemId at birth", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    const base = {
+      name: "Shady Item",
+      price: 1,
+      branchId: "branch_01",
+    };
+    await assertFails(
+      setDoc(doc(branch1Db, "products", "prod_evil_1"), { ...base, costPrice: 500 }),
+    );
+    await assertFails(
+      setDoc(doc(branch1Db, "products", "prod_evil_2"), { ...base, discountPercentage: 99 }),
+    );
+    await assertFails(
+      setDoc(doc(branch1Db, "products", "prod_evil_3"), { ...base, petpoojaItemId: "PP-BRG-101" }),
+    );
+  });
+
+  it("47. [PRODUCTS-BRAND-CREATE-ALLOW] Brand owner catalog creates are unrestricted", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(
+      setDoc(doc(brandDb, "products", "prod_brand_01"), {
+        name: "Classic Burger",
+        price: 129,
+        costPrice: 60,
+        branchId: "branch_01",
+      }),
+    );
+  });
+
+  it("48. [TICKETS-CREATE-CLEAN-ALLOW] Authenticated user can create a clean ticket (status 'open')", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      setDoc(doc(branch1Db, "support_tickets", "tkt_new_01"), {
+        ticketNumber: "TICK-NEW-01",
+        customerId: "branch_owner_1",
+        branchId: "branch_01",
+        status: "open",
+        subject: "Printer jam",
+      }),
+    );
+  });
+
+  it("49. [TICKETS-CREATE-PRIORITY-DENY] Client create cannot self-set priority or assignedTo (server-stamped via POST /tickets/create)", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      setDoc(doc(branch1Db, "support_tickets", "tkt_evil_01"), {
+        customerId: "branch_owner_1",
+        branchId: "branch_01",
+        status: "open",
+        subject: "Queue jump",
+        priority: "urgent",
+      }),
+    );
+    await assertFails(
+      setDoc(doc(branch1Db, "tickets", "tkt_evil_02"), {
+        customerId: "branch_owner_1",
+        branchId: "branch_01",
+        status: "open",
+        subject: "Self-assign",
+        assignedTo: { tier: "developer_team" },
+      }),
+    );
+  });
+
+  // =========================================================================
+  // 8. TENANT / SERVER-OWNED FIELD MASKS (30 Oct hardening regressions)
+  // =========================================================================
+
+  it("50. [USERS-CREATE-TENANT-DENY] Customer cannot birth their user doc with tenant or lifecycle authority", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    for (const planted of [
+      { branchIds: ["branch_01"] },
+      { cityIds: ["ahmedabad"] },
+      { active: true },
+      { isDeleted: false },
+    ]) {
+      await assertFails(setDoc(doc(custDb, "users", "cust_100"), { name: "Customer", ...planted }));
+    }
+  });
+
+  it("51. [USERS-UPDATE-TENANT-DENY] Customer cannot grant themselves tenant scope or self-reactivate a deleted profile", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "cust_100"), { name: "Customer" });
+    });
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    for (const planted of [
+      { branchIds: ["branch_01"] },
+      { cityIds: ["ahmedabad"] },
+      { active: true },
+      { isDeleted: false },
+      { deletedAt: null },
+    ]) {
+      await assertFails(updateDoc(doc(custDb, "users", "cust_100"), planted));
+    }
+  });
+
+  it("52. [USERS-UPDATE-CLEAN-ALLOW] Customer can still update their own ordinary profile fields", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "cust_100"), { name: "Customer" });
+    });
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(updateDoc(doc(custDb, "users", "cust_100"), { name: "Renamed Customer" }));
+  });
+
+  it("53. [BRAND-ORDER-REFUND-LEDGER-DENY] Brand owner cannot plant refund accounting the rules now reserve for the server", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    for (const planted of [
+      { refundLedger: { captured: 349 } },
+      { refundedTotalPaise: 34900 },
+      { refundOverCapturedPaise: 1000 },
+      { refundNeedsReview: true },
+    ]) {
+      await assertFails(updateDoc(doc(brandDb, "orders", "order_501"), planted));
+    }
+  });
+
+  it("54. [BRAND-OTP-UPDATE-DENY] Brand owner cannot rewrite delivery OTP proof fields on an update", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), { deliveryOtp: "000000" }),
+    );
+  });
+
+  it("55. [BRAND-DIRECT-DELIVERED-DENY] Brand owner cannot flip a delivery order to DELIVERED without OTP proof", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), {
+        status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
+      }),
+    );
+  });
+
+  it("56. [BRAND-WORKFLOW-UPDATE-ALLOW] Brand owner can still advance a delivery order through a non-terminal workflow status", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), {
+        status: { code: "READY_FOR_PICKUP", label: "Ready", kind: "in_progress", terminal: false },
+      }),
     );
   });
 });

@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { Text } from "@/shared/components/common/Text";
 import { formatINR } from "@/core/utils/format";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import type { AppliedPromo } from "@/features/cart/models";
 
@@ -12,6 +13,31 @@ interface Props {
   onChanged: () => void;
   /** Show a "Browse offers" link. Defaults to true. */
   showBrowseLink?: boolean;
+}
+
+/**
+ * P1-14 (mirrors `routes/offers.tsx`): `offersService` returns copy written
+ * for customers — including the dynamic parts (the quoted code, the ₹
+ * shortfall to unlock a minimum) that generic text would lose — while
+ * `CartRepository.applyPromo`'s catch wraps raw exception text in
+ * `PRICING_CALCULATION_ERROR`. Only the curated codes below pass through
+ * verbatim; every other code is logged and mapped.
+ */
+const CURATED_PROMO_CODES = new Set([
+  "INVALID_CODE",
+  "COUPON_NOT_FOUND",
+  "COUPON_INACTIVE",
+  "COUPON_EXPIRED",
+  "MIN_ORDER_NOT_MET",
+  "OFFER_INELIGIBLE",
+  "OFFER_NOT_FOUND",
+  "OFFER_ERROR",
+]);
+
+function promoFailureMessage(error: { code: string; message: string }): string {
+  if (CURATED_PROMO_CODES.has(error.code)) return error.message;
+  console.error("[promo] apply failed:", error);
+  return toUserMessage(error);
 }
 
 /**
@@ -57,7 +83,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
     const res = await cartRepository.applyPromo(code);
     setBusy(false);
     if (!res.success) {
-      setError(res.error.message);
+      setError(promoFailureMessage(res.error));
       return;
     }
     setCode("");
@@ -75,10 +101,10 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
         <div className="flex min-w-0 items-center gap-2">
           <Tag className="h-4 w-4 shrink-0 text-success" aria-hidden />
           <div className="min-w-0">
-            <Text variant="titleMedium" className="truncate">
+            <Text variant="titleMedium" className="break-words">
               {applied.description ?? applied.code}
             </Text>
-            <Text variant="caption" tone="secondary" className="truncate">
+            <Text variant="caption" tone="secondary" className="break-words">
               {applied.code} · {applied.savingsLabel ?? `−${formatINR(applied.discount)}`}
             </Text>
           </div>
@@ -87,7 +113,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
           type="button"
           onClick={() => void remove()}
           aria-label="Remove offer"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-text-secondary hover:bg-bg-secondary"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-text-secondary hover:bg-bg-secondary"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>
@@ -98,7 +124,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
   return (
     <div className="space-y-2">
       <form onSubmit={apply} className="space-y-1">
-        <label className="flex items-center gap-2 rounded-[var(--radius-medium)] border border-divider bg-surface px-3">
+        <label className="flex items-center gap-2 rounded-[var(--radius-medium)] border border-text-secondary/60 bg-surface px-3">
           <Tag className="h-4 w-4 text-text-secondary" aria-hidden />
           <input
             type="text"
@@ -112,7 +138,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            className="min-h-[44px] flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled"
+            className="min-h-[44px] min-w-0 flex-1 bg-transparent outline-none type-body-large placeholder:text-text-secondary"
           />
           <AppButton type="submit" variant="ghost" size="sm" disabled={!code.trim()} loading={busy}>
             Apply
@@ -127,7 +153,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
       {showBrowseLink && (
         <Link
           to="/offers"
-          className="inline-flex items-center gap-1.5 type-label-large text-primary hover:underline"
+          className="inline-flex min-h-11 items-center gap-1.5 type-label-large text-primary-text hover:underline"
         >
           <Sparkles className="h-4 w-4" aria-hidden />
           Browse available offers

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Heart, Smile, Check } from "lucide-react";
+import { Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 
@@ -44,71 +44,78 @@ export function DeliveryTipSelector({
   };
 
   return (
-    <div className={cn("p-4 rounded-2xl bg-surface border border-divider space-y-3 shadow-xs", className)}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#FF6600]/10 flex items-center justify-center">
-            <Heart className="w-4 h-4 text-[#FF6600] fill-[#FF6600]/20" />
+    <div
+      className={cn(
+        "space-y-3 rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-xs sm:p-5",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-accent/10">
+            <Heart className="h-4 w-4 text-accent" aria-hidden />
           </div>
-          <h4 className="text-xs sm:text-sm font-bold text-text">
-            Tip your delivery partner
-          </h4>
+          <h4 className="type-title-medium text-text-primary">Tip your delivery partner</h4>
         </div>
         {selectedTip > 0 && (
           <button
             type="button"
             onClick={() => onSelectTip(0)}
-            className="text-[11px] font-bold text-[#FF6600] hover:underline transition-colors cursor-pointer"
+            className="-mr-2 inline-flex min-h-[44px] items-center px-2 type-caption font-semibold text-primary-text hover:underline transition-colors cursor-pointer"
           >
             Clear Tip
           </button>
         )}
       </div>
 
-      <p className="text-[11px] text-text-secondary">
+      <p className="type-caption text-text-secondary">
         100% of your tip goes directly to your delivery partner.
       </p>
 
       {/* Preset Tip Buttons */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-        {TIP_OPTIONS.map((amount) => {
-          const isSelected = selectedTip === amount && !customActive;
-          return (
-            <button
-              key={amount}
-              type="button"
-              onClick={() => handleTipClick(amount)}
-              className={cn(
-                "flex-1 py-2 px-3 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer select-none text-center min-h-[38px]",
-                isSelected
-                  ? "border-[#0E4825] bg-[#0E4825] text-white shadow-xs"
-                  : "border-divider bg-bg-secondary text-text hover:border-primary/40"
-              )}
-            >
-              ₹{amount}
-            </button>
-          );
-        })}
+      <div className="overflow-x-auto no-scrollbar">
+        <div className="grid grid-cols-2 gap-2 min-[400px]:grid-cols-5">
+          {TIP_OPTIONS.map((amount) => {
+            const isSelected = selectedTip === amount && !customActive;
+            return (
+              <button
+                key={amount}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => handleTipClick(amount)}
+                className={cn(
+                  "min-h-[44px] rounded-[var(--radius-medium)] border px-3 py-2 text-sm font-semibold transition-colors cursor-pointer select-none text-center",
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                    : "border-divider bg-bg-secondary text-text-primary hover:border-primary/50",
+                )}
+              >
+                ₹{amount}
+              </button>
+            );
+          })}
 
-        <button
-          type="button"
-          onClick={() => setCustomActive(true)}
-          className={cn(
-            "py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer select-none whitespace-nowrap min-h-[38px]",
-            customActive || (selectedTip > 0 && !TIP_OPTIONS.includes(selectedTip))
-              ? "border-[#0E4825] bg-[#0E4825] text-white"
-              : "border-divider bg-bg-secondary text-text-secondary hover:text-text"
-          )}
-        >
-          {selectedTip > 0 && !TIP_OPTIONS.includes(selectedTip) ? `₹${selectedTip}` : "Custom"}
-        </button>
+          <button
+            type="button"
+            aria-pressed={customActive || (selectedTip > 0 && !TIP_OPTIONS.includes(selectedTip))}
+            onClick={() => setCustomActive(true)}
+            className={cn(
+              "min-h-[44px] rounded-[var(--radius-medium)] border px-3 py-2 text-sm font-semibold transition-colors cursor-pointer select-none min-[400px]:whitespace-nowrap",
+              customActive || (selectedTip > 0 && !TIP_OPTIONS.includes(selectedTip))
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-divider bg-bg-secondary text-text-secondary hover:text-text-primary",
+            )}
+          >
+            {selectedTip > 0 && !TIP_OPTIONS.includes(selectedTip) ? `₹${selectedTip}` : "Custom"}
+          </button>
+        </div>
       </div>
 
       {/* Custom Tip Input */}
       {customActive && (
         <form onSubmit={handleCustomSubmit} className="flex items-center gap-2 pt-1">
-          <div className="relative flex-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-text-secondary">
+          <div className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-text-secondary">
               ₹
             </span>
             <input
@@ -116,15 +123,16 @@ export function DeliveryTipSelector({
               min="1"
               max="500"
               placeholder="Enter amount"
+              aria-label="Custom tip amount"
               value={customValue}
               onChange={(e) => setCustomValue(e.target.value)}
-              className="w-full pl-7 pr-3 py-2 rounded-xl bg-bg-secondary border border-divider text-xs font-mono font-bold text-text outline-none focus:border-primary"
+              className="min-h-[44px] w-full rounded-[var(--radius-medium)] border border-border bg-bg-secondary py-2 pl-7 pr-3 text-base font-semibold text-text-primary outline-none transition-colors focus:border-primary"
               autoFocus
             />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 rounded-xl bg-[#0E4825] text-white text-xs font-bold shadow-xs cursor-pointer hover:bg-[#0b381d]"
+            className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover cursor-pointer"
           >
             Apply
           </button>

@@ -1,12 +1,37 @@
 import { describe, it, expect } from "vitest";
 import { calculateHaversineKm } from "../features/checkout/components/AddressSelector";
+import { needsRepriceAcceptance } from "../features/checkout/utils/repriceAcceptance";
+
+describe("re-price acceptance gate (authoritative server total)", () => {
+  it("does not prompt when the server total equals the displayed total", () => {
+    expect(needsRepriceAcceptance(555, 555, null)).toBe(false);
+  });
+
+  it("prompts when the server total differs by a paisa or more", () => {
+    expect(needsRepriceAcceptance(555, 540, null)).toBe(true);
+    expect(needsRepriceAcceptance(555, 570, null)).toBe(true);
+  });
+
+  it("does not re-prompt once that exact server total was accepted", () => {
+    // The divergence is structural, so without this the customer would be
+    // asked again on every re-entry.
+    expect(needsRepriceAcceptance(555, 540, 540)).toBe(false);
+    // A DIFFERENT server total still needs a fresh acceptance.
+    expect(needsRepriceAcceptance(555, 541, 540)).toBe(true);
+  });
+
+  it("stays inert when either total is unknown (never blocks on a guess)", () => {
+    expect(needsRepriceAcceptance(undefined, 540, null)).toBe(false);
+    expect(needsRepriceAcceptance(555, undefined, null)).toBe(false);
+  });
+});
 
 describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", () => {
   describe("1. Haversine Distance Geofence Engine", () => {
     it("calculates accurate distance between Surat coordinates", () => {
       // Surat Vesu flagship: 21.1518, 72.7758
       // Near Customer (Vesu): 21.1620, 72.7850 (~1.5 km)
-      const dist = calculateHaversineKm(21.1518, 72.7758, 21.1620, 72.7850);
+      const dist = calculateHaversineKm(21.1518, 72.7758, 21.162, 72.785);
       expect(dist).toBeGreaterThan(0.5);
       expect(dist).toBeLessThan(3.0);
     });
@@ -14,7 +39,7 @@ describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", (
     it("identifies out-of-range customer addresses beyond branch delivery radius", () => {
       const branchRadiusKm = 8.0;
       // Far customer in Northern Surat: 21.2700, 72.8600 (~15 km away)
-      const farDist = calculateHaversineKm(21.1518, 72.7758, 21.2700, 72.8600);
+      const farDist = calculateHaversineKm(21.1518, 72.7758, 21.27, 72.86);
       expect(farDist).toBeGreaterThan(branchRadiusKm);
 
       const isDeliverable = farDist <= branchRadiusKm;
@@ -27,11 +52,11 @@ describe("Prompt 15: Checkout, Address Selection & Geofence Validation Suite", (
       const fulfillment = "delivery";
       const subtotal = 400;
       const deliveryFee = subtotal >= 349 ? 0 : 35;
-      const packagingFee = 15;
+      const packagingFee = 20;
 
       expect(fulfillment).toBe("delivery");
       expect(deliveryFee).toBe(0);
-      expect(packagingFee).toBe(15);
+      expect(packagingFee).toBe(20);
     });
 
     it("configures takeaway mode with zero delivery fee and pickup prep ETA", () => {

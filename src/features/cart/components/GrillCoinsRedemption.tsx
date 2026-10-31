@@ -41,15 +41,20 @@ export function GrillCoinsRedemption({
   if (availableCoins <= 0) return null;
 
   return (
-    <div
-      onClick={maxRedeemable > 0 ? handleToggle : undefined}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isApplied}
+      aria-disabled={maxRedeemable <= 0}
+      aria-label="Redeem Loyalty Points"
+      onClick={handleToggle}
       className={cn(
-        "p-4 rounded-2xl border transition-all select-none cursor-pointer flex items-center justify-between gap-4 shadow-xs",
+        "w-full text-left p-4 rounded-2xl border transition-all select-none cursor-pointer flex items-center justify-between gap-4 shadow-xs",
         isApplied
           ? "border-[#0E4825] bg-[#0E4825]/10"
           : "border-divider bg-surface hover:border-primary/40",
         maxRedeemable <= 0 && "opacity-60 cursor-not-allowed",
-        className
+        className,
       )}
     >
       {/* Left Icon & Information */}
@@ -60,9 +65,7 @@ export function GrillCoinsRedemption({
 
         <div className="space-y-0.5 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-xs sm:text-sm font-bold text-text">
-              Loyalty Points
-            </h4>
+            <h4 className="text-xs sm:text-sm font-bold text-text">Loyalty Points</h4>
             <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-black font-mono">
               {availableCoins} pts
             </span>
@@ -78,26 +81,25 @@ export function GrillCoinsRedemption({
         </div>
       </div>
 
-      {/* Right Switch / Checkmark */}
+      {/* Right Switch / Checkmark — decorative only: the outer control is the
+          switch and owns the checked state, so this must not be announced. */}
       <div className="shrink-0">
         <div
-          role="switch"
-          aria-checked={isApplied}
-          aria-label="Redeem Loyalty Points"
+          aria-hidden
           className={cn(
             "w-11 h-6 rounded-full transition-colors p-0.5 flex items-center",
-            isApplied ? "bg-[#0E4825]" : "bg-divider"
+            isApplied ? "bg-[#0E4825]" : "bg-divider",
           )}
         >
           <div
             className={cn(
               "w-5 h-5 rounded-full bg-white shadow-sm transition-transform transform",
-              isApplied ? "translate-x-5" : "translate-x-0"
+              isApplied ? "translate-x-5" : "translate-x-0",
             )}
           />
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

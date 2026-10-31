@@ -8,14 +8,22 @@
  * argument shapes, `ApiResult` returns) must stay unchanged so no UI
  * code needs to move.
  */
-import { authService, type AuthService } from "@/features/auth/services/authService";
+import {
+  authService,
+  type AuthService,
+  type AuthSessionRef,
+} from "@/features/auth/services/authService";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import type { ApiResult } from "@/core/network/http";
 
 export class AuthRepository {
   constructor(private readonly service: AuthService = authService) {}
 
-  requestOtp(phone: string, deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD, otpToken?: string) {
+  requestOtp(
+    phone: string,
+    deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
+    otpToken?: string,
+  ) {
     return this.service.requestOtp(phone, deliveryMethod, otpToken);
   }
 
@@ -29,6 +37,24 @@ export class AuthRepository {
 
   logout(refreshToken: string | null): Promise<ApiResult<null>> {
     return this.service.logout(refreshToken);
+  }
+
+  /**
+   * Drops any in-flight OTP challenge on the transport.
+   *
+   * Optional on the seam so injected/fake services without challenge state
+   * still satisfy the repository contract.
+   */
+  cancelChallenge(): void {
+    this.service.cancelChallenge?.();
+  }
+
+  /**
+   * Signs out only the session a cancelled verify created. Optional on the
+   * seam so injected services without session state still satisfy it.
+   */
+  discardConfirmedSession(ref: AuthSessionRef): Promise<void> {
+    return this.service.discardConfirmedSession?.(ref) ?? Promise.resolve();
   }
 }
 

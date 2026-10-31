@@ -22,9 +22,9 @@ interface Props {
 
 export function ProfileMenuList({ title, items }: Props) {
   return (
-    <section className="space-y-2">
+    <section className="space-y-2.5">
       {title && (
-        <Text variant="caption" tone="secondary" className="uppercase tracking-wide px-1">
+        <Text variant="caption" tone="secondary" className="px-1 font-semibold">
           {title}
         </Text>
       )}
@@ -32,32 +32,35 @@ export function ProfileMenuList({ title, items }: Props) {
         {items.map((it, idx) => {
           const Icon = it.Icon;
           const inner = (
-            <div className="flex w-full items-center gap-3 px-4 py-3 text-left">
+            <div className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left">
               <div
                 className={cn(
-                  "grid h-9 w-9 flex-none place-items-center rounded-full",
-                  it.danger ? "bg-error/10 text-error" : "bg-primary/10 text-primary",
+                  "grid h-10 w-10 flex-none place-items-center rounded-full",
+                  it.danger ? "bg-error/10 text-error" : "bg-primary/10 text-primary-text",
                 )}
               >
-                <Icon className="h-4.5 w-4.5 h-[18px] w-[18px]" aria-hidden />
+                <Icon className="h-[18px] w-[18px]" aria-hidden />
               </div>
               <div className="min-w-0 flex-1">
                 <Text
                   variant="bodyLarge"
                   tone={it.danger ? "error" : "primary"}
-                  className="truncate"
+                  className="font-medium"
                 >
                   {it.label}
                 </Text>
                 {it.description && (
-                  <Text variant="caption" tone="secondary" className="truncate">
+                  <Text variant="caption" tone="secondary" className="mt-0.5">
                     {it.description}
                   </Text>
                 )}
               </div>
               {it.trailing}
               {!it.trailing && it.to && (
-                <ChevronRight className="h-4 w-4 flex-none text-text-secondary" aria-hidden />
+                <ChevronRight
+                  className="h-[18px] w-[18px] flex-none text-text-secondary"
+                  aria-hidden
+                />
               )}
             </div>
           );

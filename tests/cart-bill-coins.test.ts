@@ -13,7 +13,10 @@ describe("Prompt 13: Cart, Bill Breakdown & Grill Coins Engine Suite", () => {
     });
 
     it("applies tiered delivery fee correctly based on order subtotal", () => {
-      const calculateDeliveryFee = (subtotal: number, fulfillment: "delivery" | "takeaway" | "dine_in") => {
+      const calculateDeliveryFee = (
+        subtotal: number,
+        fulfillment: "delivery" | "takeaway" | "dine_in",
+      ) => {
         if (fulfillment !== "delivery") return 0;
         return subtotal >= 349 ? 0 : 35;
       };
@@ -27,11 +30,11 @@ describe("Prompt 13: Cart, Bill Breakdown & Grill Coins Engine Suite", () => {
 
     it("waives packaging fee for dine-in fulfillment", () => {
       const calculatePackagingFee = (fulfillment: "delivery" | "takeaway" | "dine_in") => {
-        return fulfillment === "dine_in" ? 0 : 15;
+        return fulfillment === "dine_in" ? 0 : 20;
       };
 
-      expect(calculatePackagingFee("delivery")).toBe(15);
-      expect(calculatePackagingFee("takeaway")).toBe(15);
+      expect(calculatePackagingFee("delivery")).toBe(20);
+      expect(calculatePackagingFee("takeaway")).toBe(20);
       expect(calculatePackagingFee("dine_in")).toBe(0);
     });
   });
@@ -61,17 +64,17 @@ describe("Prompt 13: Cart, Bill Breakdown & Grill Coins Engine Suite", () => {
       const couponDiscount = 100;
       const coinsRedeemed = 50;
       const gst = Math.round(subtotal * 0.05); // 25
-      const packagingFee = 15;
+      const packagingFee = 20;
       const deliveryFee = 0; // subtotal >= 349
       const tip = 30;
 
       const toPay = Math.max(
         0,
-        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip
+        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip,
       );
 
-      // 500 - 100 - 50 + 25 + 15 + 0 + 30 = 420
-      expect(toPay).toBe(420);
+      // 500 - 100 - 50 + 25 + 20 + 0 + 30 = 425
+      expect(toPay).toBe(425);
     });
 
     it("guarantees non-negative bounds if discounts exceed bill", () => {
@@ -79,13 +82,13 @@ describe("Prompt 13: Cart, Bill Breakdown & Grill Coins Engine Suite", () => {
       const couponDiscount = 150;
       const coinsRedeemed = 50;
       const gst = 5;
-      const packagingFee = 15;
+      const packagingFee = 20;
       const deliveryFee = 35;
       const tip = 0;
 
       const toPay = Math.max(
         0,
-        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip
+        subtotal - couponDiscount - coinsRedeemed + gst + packagingFee + deliveryFee + tip,
       );
 
       expect(toPay).toBeGreaterThanOrEqual(0);

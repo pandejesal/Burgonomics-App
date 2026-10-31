@@ -44,21 +44,18 @@ describe("ProductCustomizerModal & Modifiers Specification Suite", () => {
   };
 
   describe("1. Dynamic Price Aggregation Math", () => {
-    it("sums basePrice + selected modifier price deltas + combo upgrade", () => {
+    it("sums basePrice + selected modifier price deltas with no combo surcharge", () => {
       const basePrice = sampleProduct.price; // 299
       const selectedModifiersDeltas = [40, 35, 25]; // Gluten-free bun (40) + Cheddar (35) + Jalapenos (25)
-      const comboPrice = 99; // Regular meal combo
 
-      const unitPrice =
-        basePrice +
-        selectedModifiersDeltas.reduce((acc, d) => acc + d, 0) +
-        comboPrice;
+      // Combo meal upsell was removed (2026-10-06): no +99/+149 surcharge applies.
+      const unitPrice = basePrice + selectedModifiersDeltas.reduce((acc, d) => acc + d, 0);
 
-      expect(unitPrice).toBe(299 + 40 + 35 + 25 + 99); // 498
+      expect(unitPrice).toBe(299 + 40 + 35 + 25); // 399
 
       const qty = 2;
       const totalOrderPrice = unitPrice * qty;
-      expect(totalOrderPrice).toBe(996);
+      expect(totalOrderPrice).toBe(798);
     });
   });
 
@@ -87,7 +84,7 @@ describe("ProductCustomizerModal & Modifiers Specification Suite", () => {
   describe("3. Multi-Select Max Selection Limits", () => {
     it("enforces maxSelect limit when adding extra toppings", () => {
       const maxSelect = 3;
-      let currentSelected = ["opt_cheddar", "opt_jalapenos", "opt_mushrooms"];
+      const currentSelected = ["opt_cheddar", "opt_jalapenos", "opt_mushrooms"];
       const newOption = "opt_onions";
 
       const handleToggle = (current: string[], nextOpt: string, max?: number) => {
@@ -117,16 +114,17 @@ describe("ProductCustomizerModal & Modifiers Specification Suite", () => {
 
   describe("5. Deterministic Cart Fingerprint Generation", () => {
     it("generates matching fingerprints regardless of modifier selection order", () => {
+      // The combo upsell (a former `comboId` fingerprint component) was removed
+      // (2026-10-06); the fingerprint now derives from productId + modifiers only.
       const generateFingerprint = (
         productId: string,
         mods: Array<{ groupId: string; optionId: string }>,
-        comboId: string | null
       ) => {
         const sorted = [...mods]
           .sort((a, b) => `${a.groupId}:${a.optionId}`.localeCompare(`${b.groupId}:${b.optionId}`))
           .map((m) => `${m.groupId}:${m.optionId}`)
           .join("|");
-        return `${productId}#${sorted}#${comboId || "none"}`;
+        return `${productId}#${sorted}`;
       };
 
       const order1 = [
@@ -141,12 +139,18 @@ describe("ProductCustomizerModal & Modifiers Specification Suite", () => {
         { groupId: "grp_cheese", optionId: "opt_cheddar" },
       ];
 
-      const fp1 = generateFingerprint("prod_truffle_burger", order1, "combo_regular");
-      const fp2 = generateFingerprint("prod_truffle_burger", order2, "combo_regular");
+      const fp1 = generateFingerprint("prod_truffle_burger", order1);
+      const fp2 = generateFingerprint("prod_truffle_burger", order2);
 
       expect(fp1).toBe(fp2);
 
-      const fp3 = generateFingerprint("prod_truffle_burger", order1, null);
+      // A genuinely different selection must still produce a different fingerprint.
+      const differentSelection = [
+        { groupId: "grp_bun", optionId: "opt_gluten_free" },
+        { groupId: "grp_cheese", optionId: "opt_cheddar" },
+        { groupId: "grp_cheese", optionId: "opt_jalapenos" },
+      ];
+      const fp3 = generateFingerprint("prod_truffle_burger", differentSelection);
       expect(fp1).not.toBe(fp3);
     });
   });

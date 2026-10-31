@@ -26,12 +26,32 @@ export async function bootstrapNativePlatform(): Promise<void> {
       import("@capacitor/app"),
     ]);
 
-    // Status bar — brand green, light content style (matches capacitor.config.ts StatusBar plugin).
-    try {
-      await StatusBar.setStyle({ style: Style.Light });
+    // Status bar follows the same white/black appearance authority as the app.
+    // Style.Dark paints dark icons for the white canvas; Style.Light paints
+    // light icons for the black canvas. Android also needs the bar colour.
+    const applyStatusBarAppearance = (theme?: string) => {
+      const resolved =
+        theme === "dark" || theme === "light"
+          ? theme
+          : document.documentElement.classList.contains("dark")
+            ? "dark"
+            : "light";
+      void StatusBar.setStyle({ style: resolved === "dark" ? Style.Light : Style.Dark }).catch(
+        () => undefined,
+      );
       if (getPlatform() === "android") {
-        await StatusBar.setBackgroundColor({ color: "#0E4825" });
+        void StatusBar.setBackgroundColor({
+          color: resolved === "dark" ? "#000000" : "#FFFFFF",
+        }).catch(() => undefined);
       }
+    };
+
+    try {
+      applyStatusBarAppearance(document.documentElement.dataset.theme);
+      window.addEventListener("burg:themechange", (event) => {
+        const detail = (event as CustomEvent<{ resolved?: string }>).detail;
+        applyStatusBarAppearance(detail?.resolved);
+      });
     } catch {
       /* status bar not available on this device */
     }
@@ -62,9 +82,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
         const schemeOk = url.protocol === "burgonomics:";
         const hostOk =
           url.protocol === "https:" &&
-          ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
-            url.hostname.toLowerCase()
-          );
+          ["burgonomics.com", "www.burgonomics.com"].includes(url.hostname.toLowerCase());
         if (!schemeOk && !hostOk) return;
         const path = url.pathname + url.search + url.hash;
         const safe = sanitizeRedirectUrl(path, "");
@@ -110,17 +128,36 @@ export async function bootstrapNativePlatform(): Promise<void> {
         return;
       }
 
-      // 2. Navigate back in history if available and not at root route
+      // 2. Back must never kill the app from a sub-route.
+      //
+      // The old `isRoot` set included `/stores`, so pressing back on Store
+      // Selection called `App.minimizeApp()` even when the WebView still had
+      // history to pop — the app visibly "closed" from a sub-route. Only true
+      // entry screens (launch / splash / home) may minimize; every other path
+      // pops history, and a sub-route with nothing to pop (deep link / cold
+      // start) falls back to Home instead of terminating.
       const hash = window.location.hash.replace(/^#/, "");
       const path = hash || window.location.pathname;
-      const isRoot = !path || path === "/" || path === "/home" || path === "/stores";
+      // Drop query string / fragment so `/home?from=x` still counts as Home.
+      const pathOnly = path.split(/[?#]/)[0] || path;
+      const isEntry =
+        !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
 
-      if (canGoBack && !isRoot) {
-        window.history.back();
-      } else {
-        // At root screen, minimize app instead of abrupt termination
+      if (isEntry) {
+        // At an entry screen, minimize instead of abrupt termination.
         void App.minimizeApp();
+        return;
       }
+
+      if (canGoBack) {
+        window.history.back();
+        return;
+      }
+
+      // Sub-route with no history entry — keep the app alive on Home.
+      // (Same pushState + popstate contract used by the deep-link handler above.)
+      window.history.pushState({}, "", "#/home");
+      window.dispatchEvent(new PopStateEvent("popstate"));
     });
   } catch (err) {
     console.warn("[burgonomics] native bootstrap failed", err);

@@ -10,6 +10,8 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 
 import { cn } from "@/lib/utils";
+import type { ApiFailure } from "@/core/network/http";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import {
   offerRepository,
@@ -38,7 +40,7 @@ export const Route = createFileRoute("/offers")({
       { title: "Offers — Burgonomics" },
       {
         name: "description",
-        content: "Coupons, combos, and limited-time promos, synced from PETPOOJA.",
+        content: "Coupons, combos, and limited-time promos.",
       },
     ],
   }),
@@ -102,6 +104,32 @@ const SECTION_ORDER: Array<{
   },
 ];
 
+/**
+ * P1-13/P1-14: promo failures arrive in two flavours. `offersService` returns
+ * copy written for customers — including the dynamic parts (the quoted code,
+ * the ₹ shortfall to unlock a minimum) that generic text would lose — while
+ * `CartRepository`'s catch wraps raw exception text ("fetch failed") in
+ * `PRICING_CALCULATION_ERROR`. Only the curated codes below may pass through
+ * verbatim; everything else goes through the shared mapper, so raw exception
+ * text can never reach the toast or the coupon field.
+ */
+const CURATED_PROMO_CODES = new Set([
+  "INVALID_CODE",
+  "COUPON_NOT_FOUND",
+  "COUPON_INACTIVE",
+  "COUPON_EXPIRED",
+  "MIN_ORDER_NOT_MET",
+  "OFFER_INELIGIBLE",
+  "OFFER_NOT_FOUND",
+  "OFFER_ERROR",
+]);
+
+function promoFailureMessage(res: ApiFailure): string {
+  if (CURATED_PROMO_CODES.has(res.error.code)) return res.error.message;
+  console.error("[offers] promo apply failed:", res.error);
+  return toUserMessage(res);
+}
+
 function OffersPage() {
   const navigate = useNavigate();
 
@@ -148,7 +176,7 @@ function OffersPage() {
     try {
       const res = await cartRepository.applyPromo({ offerId: offer.id });
       if (!res.success) {
-        toast.error(res.error.message);
+        toast.error(promoFailureMessage(res));
         return;
       }
       toast.success(res.data.savingsLabel ?? `${offer.title} applied.`, { duration: 2500 });
@@ -185,12 +213,12 @@ function OffersPage() {
         subtotal: 0,
       });
       if (!validate.success) {
-        setCoupon({ busy: false, error: validate.error.message, success: null });
+        setCoupon({ busy: false, error: promoFailureMessage(validate), success: null });
         return;
       }
       const applied = await cartRepository.applyPromo({ code });
       if (!applied.success) {
-        setCoupon({ busy: false, error: applied.error.message, success: null });
+        setCoupon({ busy: false, error: promoFailureMessage(applied), success: null });
         return;
       }
       setCoupon({
@@ -199,7 +227,11 @@ function OffersPage() {
         success: applied.data.savingsLabel ?? `${applied.data.description ?? code} applied.`,
       });
     } catch {
-      setCoupon({ busy: false, error: "Could not apply the coupon. Please try again.", success: null });
+      setCoupon({
+        busy: false,
+        error: "Could not apply the coupon. Please try again.",
+        success: null,
+      });
     }
   };
 
@@ -312,7 +344,7 @@ function OffersPage() {
           </section>
         )}
 
-        {/* Signature La Pino'z BOGO Promotion Banner */}
+        {/* Signature BOGO Promotion Banner */}
         <BOGOBanner onApplyCode={(code) => void submitCoupon(code)} />
 
         {/* Coupon entry */}
@@ -343,7 +375,10 @@ function OffersPage() {
 
         {/* Empty */}
         {status === "empty" && (
-          <PetpoojaSyncPlaceholder storeId={storeId || undefined} />
+          <PetpoojaSyncPlaceholder
+            storeId={storeId || undefined}
+            onRetry={() => void onRefresh()}
+          />
         )}
 
         {/* Sections */}
@@ -372,7 +407,7 @@ function OffersPage() {
                       onRemove={() => void removeOffer()}
                       onViewTerms={openTerms}
                     />
-                  )
+                  ),
                 )}
               </div>
             </section>

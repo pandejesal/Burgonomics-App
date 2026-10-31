@@ -48,7 +48,7 @@ process.env.VITE_PORTAL_MODE = "partner";
 process.env.VITEST = "true";
 process.env.NODE_ENV = "test";
 
-Object.defineProperty(import.meta, 'env', {
+Object.defineProperty(import.meta, "env", {
   value: {
     ...import.meta.env,
     PROD: false,

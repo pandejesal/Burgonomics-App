@@ -28,6 +28,8 @@ import type {
 import { calculateTotals } from "@/features/cart/services/cartService";
 import { offerRepository } from "@/features/offers/repositories/OfferRepository";
 import { useAppConfig } from "@/core/state/appConfigStore";
+import { resolvePricingConfig } from "@/shared/pricing/pricingEngine";
+import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 
 /** Default used when the user hasn't chosen a fulfillment method yet. */
 const DEFAULT_FULFILLMENT: Fulfillment = "delivery";
@@ -142,28 +144,39 @@ export class CartRepository {
 
   // -- Calculations ----------------------------------------------------
 
+  /**
+   * The one pricing schedule every surface bills against: launch defaults,
+   * the live delivery quote, and the outlet's minimum-order override.
+   *
+   * Read here (not at each call site) so the cart preview, the checkout bill,
+   * and the amount sent to the gateway can never diverge — the old per-item
+   * packing charge plus a screen-local fee estimate produced three different
+   * totals for one basket.
+   *
+   * This also removed the old hard dependency on `activeStore.pricing`: an
+   * outlet doc without a `pricing` block used to fail closed and block every
+   * bill. The app-level schedule IS the published price list, so the bill no
+   * longer depends on optional per-doc data being present.
+   */
+  private pricingConfigFor(fulfillment: Fulfillment = this.getFulfillment()) {
+    const store = useStoreSelection.getState().activeStore;
+    const quote = useCheckoutStore.getState().deliveryQuote;
+    return resolvePricingConfig({
+      fulfillment,
+      deliveryQuoteFee: quote?.fee,
+      storeOverride: store?.pricing ?? null,
+    });
+  }
+
   async calculateTotals(): Promise<ApiResult<CartTotals>> {
     const s = useCartStore.getState();
-    const sel = useStoreSelection.getState();
-    const pricingConfig = sel.activeStore?.pricing;
-
-    if (!pricingConfig) {
-      return {
-        success: false,
-        error: {
-          code: "PRICING_CONFIG_UNAVAILABLE",
-          message:
-            "Store pricing configuration is currently unavailable. Please select your store or retry.",
-        },
-      };
-    }
 
     try {
       const totals = calculateTotals({
         lines: s.lines,
         fulfillment: this.getFulfillment(),
         promo: s.promo,
-        pricingConfig,
+        pricingConfig: this.pricingConfigFor(),
       });
       return ok(totals);
     } catch (err: unknown) {
@@ -189,26 +202,13 @@ export class CartRepository {
     codeOrInput: string | { code?: string; offerId?: string },
   ): Promise<ApiResult<AppliedPromo>> {
     const s = useCartStore.getState();
-    const sel = useStoreSelection.getState();
-    const pricingConfig = sel.activeStore?.pricing;
-
-    if (!pricingConfig) {
-      return {
-        success: false,
-        error: {
-          code: "PRICING_CONFIG_UNAVAILABLE",
-          message:
-            "Store pricing configuration is currently unavailable. Please select your store or retry.",
-        },
-      };
-    }
 
     try {
       const totals = calculateTotals({
         lines: s.lines,
         fulfillment: this.getFulfillment(),
         promo: null,
-        pricingConfig,
+        pricingConfig: this.pricingConfigFor(),
       });
       const payload = typeof codeOrInput === "string" ? { code: codeOrInput } : codeOrInput;
       const res = await offerRepository.apply({
@@ -314,11 +314,15 @@ export class CartRepository {
 
     try {
       const { menuRepository } = await import("@/features/menu/repositories/MenuRepository");
+      // The underlying services read the store's ENTIRE product list in one
+      // query; the pagination here only slices it. A 100-item slice used to
+      // leave every 86ed item beyond #100 unverified and treated as sellable —
+      // request the full store scope so the check below is real.
       const productsRes = await menuRepository.listProducts(
         s.storeId ?? undefined,
         undefined,
         1,
-        100,
+        1000,
       );
       if (productsRes.success) {
         const res = s.revalidateWithProducts(productsRes.data.items);
@@ -334,7 +338,10 @@ export class CartRepository {
     // Renewing would stamp a fresh lock on stale, unverified prices and the
     // checkout banner would promise a lock that was never verified. Leave
     // expired (banner hides — honest) and say so.
-    return ok({ revalidated: false, messages: ["Could not reverify menu prices — showing last known prices."] });
+    return ok({
+      revalidated: false,
+      messages: ["Could not reverify menu prices — showing last known prices."],
+    });
   }
 
   async prepareCheckout(): Promise<ApiResult<{ checkoutToken: string }>> {

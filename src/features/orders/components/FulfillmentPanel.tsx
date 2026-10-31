@@ -97,8 +97,8 @@ export function FulfillmentPanel({ order, etaMinutes }: Props) {
             </Text>
           </div>
           <div className="text-right">
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-              KOT Dispatched
+            <span className="inline-flex items-center rounded-full bg-success/10 px-3 py-1 text-sm font-semibold text-success">
+              Order sent to kitchen
             </span>
           </div>
         </div>

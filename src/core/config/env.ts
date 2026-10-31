@@ -19,6 +19,15 @@ const readEnv = (key: string, fallback = ""): string => {
 
 const ENV_NAME = (readEnv("VITE_APP_ENV", "development") as AppEnvironment) || "development";
 
+/**
+ * True for RELEASE bundles (`vite build` → `import.meta.env.PROD`), whatever
+ * `VITE_APP_ENV` says. The configured name alone was not enough: `.env` and
+ * CI never set `VITE_APP_ENV`, so it defaulted to "development" and every
+ * release build passed the production gates below.
+ */
+const IS_RELEASE_BUILD =
+  (import.meta as unknown as { env?: Record<string, unknown> }).env?.PROD === true;
+
 export interface AppConfig {
   env: AppEnvironment;
   appName: string;
@@ -91,10 +100,7 @@ export const appConfig: AppConfig = {
     // keyId (split-string to dodge scanners) silently booted dev/staging on a
     // shared test key. Empty key = explicit simulation mode in the adapter.
     // Accept both VITE_RAZORPAY_KEY_ID (canonical) and VITE_RAZORPAY_KEY (alias).
-    razorpayKeyId: readEnv(
-      "VITE_RAZORPAY_KEY_ID",
-      readEnv("VITE_RAZORPAY_KEY", ""),
-    ),
+    razorpayKeyId: readEnv("VITE_RAZORPAY_KEY_ID", readEnv("VITE_RAZORPAY_KEY", "")),
     paymentsApiBaseUrl: readEnv("VITE_PAYMENTS_API_BASE_URL", ""),
     petpoojaEnabled: readEnv("VITE_PETPOOJA_ENABLED", "false") === "true",
     // Accept both VITE_MAPS_API_KEY (canonical) and VITE_MAPS_KEY (alias).
@@ -105,7 +111,9 @@ export const appConfig: AppConfig = {
 };
 
 // ── Production safety assertions ────────────────────────────────────────
-if (ENV_NAME === "production") {
+// Fires for a configured production env OR any release bundle — a shipped
+// build with VITE_APP_ENV unset (the historical default) must not skip it.
+if (ENV_NAME === "production" || IS_RELEASE_BUILD) {
   const rzpKey = appConfig.integrations.razorpayKeyId;
   if (!rzpKey || rzpKey.startsWith("rzp_test_")) {
     console.error(
@@ -118,6 +126,8 @@ if (ENV_NAME === "production") {
 export const isProd = () => appConfig.env === "production";
 export const isStaging = () => appConfig.env === "staging";
 export const isDev = () => appConfig.env === "development";
+/** True for release bundles, regardless of the configured VITE_APP_ENV. */
+export const isReleaseBuild = () => IS_RELEASE_BUILD;
 
 /**
  * True when the API base URL points at a real backend. The built-in

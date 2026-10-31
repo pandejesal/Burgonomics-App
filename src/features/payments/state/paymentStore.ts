@@ -7,6 +7,7 @@
  * by their own stores and survive the auth round-trip.
  */
 import { create } from "zustand";
+import { onAuthUidChange } from "@/features/auth/utils/scopedPersistence";
 import type {
   PaymentFailure,
   PaymentMethod,
@@ -21,12 +22,30 @@ interface PaymentState {
   order: PaymentOrder | null;
   verification: PaymentVerification | null;
   failure: PaymentFailure | null;
+  /**
+   * Internal Firestore order id created BEFORE the gateway opened
+   * (PAYMENTS_CONTRACT_SPEC §3). Held so a retry re-creates the SAME order
+   * doc and a failed verification can mark it `paymentStatus: "failed"`.
+   */
+  internalOrderId: string | null;
+  gatewayOrderId: string | null;
+  reconciliationPending: boolean;
+  reconciliationReason: string | null;
 
   setStatus: (s: PaymentStatus) => void;
   setMethod: (m: PaymentMethod) => void;
   setOrder: (o: PaymentOrder | null) => void;
   setVerification: (v: PaymentVerification | null) => void;
   setFailure: (f: PaymentFailure | null) => void;
+  setInternalOrderId: (id: string | null) => void;
+  setGatewayOrderId: (id: string | null) => void;
+  setReconciliation: (
+    pending: boolean,
+    reason: string | null,
+    internalId?: string | null,
+    gatewayId?: string | null,
+  ) => void;
+  clearReconciliation: () => void;
   reset: () => void;
 }
 
@@ -36,6 +55,10 @@ const initial = {
   order: null,
   verification: null,
   failure: null,
+  internalOrderId: null,
+  gatewayOrderId: null,
+  reconciliationPending: false,
+  reconciliationReason: null,
 };
 
 export const usePaymentStore = create<PaymentState>()((set) => ({
@@ -45,5 +68,109 @@ export const usePaymentStore = create<PaymentState>()((set) => ({
   setOrder: (o) => set({ order: o }),
   setVerification: (v) => set({ verification: v }),
   setFailure: (f) => set({ failure: f }),
+  setInternalOrderId: (id) => set({ internalOrderId: id }),
+  setGatewayOrderId: (id) => set({ gatewayOrderId: id }),
+  setReconciliation: (pending, reason, internalId, gatewayId) =>
+    set((state) => ({
+      reconciliationPending: pending,
+      reconciliationReason: pending ? reason : null,
+      internalOrderId: pending ? (internalId ?? state.internalOrderId) : state.internalOrderId,
+      gatewayOrderId: pending ? (gatewayId ?? state.gatewayOrderId) : state.gatewayOrderId,
+    })),
+  // Nulls the ids as well: this is the single place that must not leave a
+  // previous account's internal/gateway reference behind (account isolation).
+  clearReconciliation: () =>
+    set({
+      reconciliationPending: false,
+      reconciliationReason: null,
+      internalOrderId: null,
+      gatewayOrderId: null,
+    }),
   reset: () => set(initial),
 }));
+
+export interface PaymentReconciliationRecord {
+  internalOrderId: string | null;
+  gatewayOrderId: string | null;
+  reason: string;
+  createdAt: number;
+}
+
+function reconKey(uid: string): string {
+  return `burgonomics:payment_reconciliation:${uid}`;
+}
+
+export function persistPaymentReconciliation(
+  uid: string | null | undefined,
+  record: Omit<PaymentReconciliationRecord, "createdAt">,
+): void {
+  if (!uid || typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(reconKey(uid), JSON.stringify({ ...record, createdAt: Date.now() }));
+  } catch {
+    // storage unavailable; in-memory store still guards this tab
+  }
+}
+
+export function loadPaymentReconciliation(
+  uid: string | null | undefined,
+): PaymentReconciliationRecord | null {
+  if (!uid || typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(reconKey(uid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PaymentReconciliationRecord;
+    if (!parsed || typeof parsed.reason !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPaymentReconciliation(uid: string | null | undefined): void {
+  if (!uid || typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.removeItem(reconKey(uid));
+  } catch {
+    // ignore
+  }
+}
+
+export function hydratePaymentReconciliation(
+  uid: string | null | undefined,
+): PaymentReconciliationRecord | null {
+  const rec = loadPaymentReconciliation(uid);
+  if (rec) {
+    usePaymentStore
+      .getState()
+      .setReconciliation(true, rec.reason, rec.internalOrderId, rec.gatewayOrderId);
+    usePaymentStore.getState().setInternalOrderId(rec.internalOrderId);
+    usePaymentStore.getState().setGatewayOrderId(rec.gatewayOrderId);
+  } else {
+    usePaymentStore.getState().clearReconciliation();
+  }
+  return rec;
+}
+
+// -- Account isolation -------------------------------------------------
+// The reconciliation RECORD is per-uid on disk, but this store is in memory:
+// without this, a login/logout/account switch in the same tab would keep the
+// previous account's pending flag and internal/gateway ids. Mirrors the
+// ordersStore pattern (ordersStore.ts). The initial emit is ignored on
+// purpose - a lazily loaded chunk must not wipe a payment already in flight.
+let lastAuthUid: string | null | undefined;
+const unsubscribeAuthUid = onAuthUidChange((uid) => {
+  if (lastAuthUid === undefined) {
+    lastAuthUid = uid;
+    return;
+  }
+  if (uid === lastAuthUid) return;
+  lastAuthUid = uid;
+  usePaymentStore.getState().reset();
+  hydratePaymentReconciliation(uid);
+});
+
+// HMR: re-evaluating this module must not stack a second auth listener on the
+// store. This subscription is module-level by design, so there is no component
+// unmount to leak from - module disposal is the only teardown that applies.
+import.meta.hot?.dispose(() => unsubscribeAuthUid());

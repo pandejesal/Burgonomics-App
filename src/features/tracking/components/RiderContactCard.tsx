@@ -9,11 +9,7 @@ interface RiderContactCardProps {
   onOpenSupport?: () => void;
 }
 
-export function RiderContactCard({
-  tracking,
-  storePhone,
-  onOpenSupport,
-}: RiderContactCardProps) {
+export function RiderContactCard({ tracking, storePhone, onOpenSupport }: RiderContactCardProps) {
   const {
     riderName,
     riderPhone,
@@ -31,40 +27,44 @@ export function RiderContactCard({
 
   if (isTakeawayOrDineIn) {
     return (
-      <div className="p-4 rounded-3xl border border-neutral-800 bg-[#0E4825]/10 space-y-3 text-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-[#0E4825] border border-emerald-500/40 text-emerald-300">
-              <ShieldCheck className="w-4 h-4" />
+      <div className="space-y-4 rounded-3xl border border-divider bg-primary/5 p-5 text-text">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl border border-primary/25 bg-primary p-2 text-primary-foreground">
+              <ShieldCheck className="h-4 w-4" aria-hidden />
             </div>
-            <div>
-              <span className="font-bold text-xs block text-white">Self-Pickup Counter Order</span>
-              <span className="text-[11px] text-neutral-400">Collect directly from the express takeaway counter</span>
+            <div className="min-w-0">
+              <span className="block text-sm font-semibold text-text">
+                Self-Pickup Counter Order
+              </span>
+              <span className="text-sm leading-relaxed text-text-secondary">
+                Collect directly from the express takeaway counter
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pt-1 border-t border-neutral-800">
+        <div className="flex flex-wrap items-center gap-2 border-t border-divider pt-3">
           {safeStorePhone ? (
-          <a
-            href={`tel:${safeStorePhone}`}
-            className="flex-1 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <Phone className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Call Restaurant ({safeStorePhone})</span>
-          </a>
+            <a
+              href={`tel:${safeStorePhone}`}
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-divider bg-surface px-3 py-2.5 text-sm font-semibold text-text transition-colors hover:bg-bg-secondary"
+            >
+              <Phone className="h-3.5 w-3.5 text-primary-text" aria-hidden />
+              <span>Call Restaurant ({safeStorePhone})</span>
+            </a>
           ) : (
-            <span className="text-neutral-500 italic text-[11px]">Restaurant phone unavailable</span>
+            <span className="text-sm italic text-text-secondary">Restaurant phone unavailable</span>
           )}
 
           {onOpenSupport && (
             <button
               type="button"
               onClick={onOpenSupport}
-              className="py-2.5 px-3.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="flex min-h-11 items-center gap-1.5 rounded-xl border border-divider bg-surface px-4 py-2.5 text-sm font-semibold text-text transition-colors hover:bg-bg-secondary cursor-pointer"
             >
-              <MessageSquare className="w-3.5 h-3.5 text-orange-400" />
-              <span>Need Help?</span>
+              <MessageSquare className="h-3.5 w-3.5 text-accent" aria-hidden />
+              <span>Need help?</span>
             </button>
           )}
         </div>
@@ -73,77 +73,81 @@ export function RiderContactCard({
   }
 
   return (
-    <div className="p-5 rounded-3xl border border-neutral-800 bg-[#0D0D0D] space-y-4 text-white shadow-md">
+    <div className="space-y-4 rounded-3xl border border-divider bg-surface p-5 text-text shadow-md">
       {/* Partner Badge & Header */}
-      <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2.5 rounded-2xl bg-cyan-950 border border-cyan-500/40 text-cyan-300">
-            <Bike className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-3 border-b border-divider pb-4">
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl border border-primary/25 bg-primary/10 p-2.5 text-primary-text">
+            <Bike className="h-5 w-5" aria-hidden />
           </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block">
-              Delivery Partner
-            </span>
-            <span className="font-black text-sm text-white">{partnerName}</span>
+          <div className="min-w-0">
+            <span className="block type-label-medium text-text-secondary">Delivery partner</span>
+            <span className="text-base font-semibold text-text">{partnerName}</span>
           </div>
         </div>
 
         {riderVehicleNumber && (
-          <span className="font-mono text-xs px-2.5 py-1 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-300 font-bold">
+          <span className="rounded-xl border border-divider bg-bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums text-text">
             {riderVehicleNumber}
           </span>
         )}
       </div>
 
       {/* Rider Name & 1-Tap Calling CTA */}
-      <div className="flex items-center justify-between text-xs">
-        <div>
-          <span className="text-neutral-400 block text-[11px]">Assigned Rider</span>
-          <span className="font-black text-sm text-white">{riderName || "Assigning Courier..."}</span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <span className="block text-sm text-text-secondary">Assigned rider</span>
+          <span className="text-base font-semibold text-text">
+            {riderName || "Assigning Courier..."}
+          </span>
         </div>
 
         {safeRiderPhone ? (
           <a
             href={`tel:${safeRiderPhone}`}
-            className="px-4 py-2 rounded-xl bg-[#0E4825] hover:bg-[#135d30] border border-emerald-500/40 text-emerald-300 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+            className="flex min-h-11 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover active:scale-95 cursor-pointer"
           >
-            <Phone className="w-3.5 h-3.5" />
+            <Phone className="h-3.5 w-3.5" aria-hidden />
             <span>Call Rider</span>
           </a>
         ) : (
-          <span className="text-neutral-500 italic text-[11px]">Contact available upon dispatch</span>
+          <span className="text-sm italic text-text-secondary">
+            Contact available upon dispatch
+          </span>
         )}
       </div>
 
       {/* Escalation CTAs */}
-      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-800/80 text-xs">
+      <div className="grid grid-cols-2 gap-2.5 border-t border-divider pt-3">
         {safeStorePhone ? (
-        <a
-          href={`tel:${safeStorePhone}`}
-          className="py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white font-bold text-center flex items-center justify-center gap-1.5 transition-colors"
-        >
-          <Phone className="w-3.5 h-3.5 text-neutral-400" />
-          <span>Call Store</span>
-        </a>
+          <a
+            href={`tel:${safeStorePhone}`}
+            className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface"
+          >
+            <Phone className="h-3.5 w-3.5 text-text-secondary" aria-hidden />
+            <span>Call Store</span>
+          </a>
         ) : (
-          <span className="text-neutral-500 italic text-[11px] self-center">Store phone unavailable</span>
+          <span className="self-center text-sm italic text-text-secondary">
+            Store phone unavailable
+          </span>
         )}
 
         {onOpenSupport ? (
           <button
             type="button"
             onClick={onOpenSupport}
-            className="py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface cursor-pointer"
           >
-            <MessageSquare className="w-3.5 h-3.5 text-[#FF6600]" />
+            <MessageSquare className="h-3.5 w-3.5 text-accent" aria-hidden />
             <span>Report Issue</span>
           </button>
         ) : (
           <a
             href="/support"
-            className="py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white font-bold flex items-center justify-center gap-1.5 transition-colors"
+            className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-divider bg-bg-secondary py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface"
           >
-            <MessageSquare className="w-3.5 h-3.5 text-[#FF6600]" />
+            <MessageSquare className="h-3.5 w-3.5 text-accent" aria-hidden />
             <span>Support</span>
           </a>
         )}

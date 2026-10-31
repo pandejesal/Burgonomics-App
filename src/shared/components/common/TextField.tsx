@@ -23,7 +23,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
     }[state];
     return (
       <div className={cn("flex flex-col gap-1 w-full min-w-0", className)}>
-        <label htmlFor={inputId} className="type-caption text-text-secondary uppercase">
+        <label htmlFor={inputId} className="type-label-large text-text-secondary">
           {label}
         </label>
         <div

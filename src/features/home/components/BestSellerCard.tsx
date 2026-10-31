@@ -1,11 +1,12 @@
 import * as React from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus, Minus } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatINR } from "@/core/utils/format";
 import { HapticService } from "@/core/services/haptics";
 import { SafeImage } from "@/shared/components/common/SafeImage";
+import { VegIndicator } from "@/shared/components/common/VegIndicator";
 import { useCartStore } from "@/features/cart/state/cartStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
@@ -18,60 +19,101 @@ interface BestSellerCardProps {
 }
 
 export function BestSellerCard({ product, className, onCardClick }: BestSellerCardProps) {
+  const navigate = useNavigate();
   const store = useStoreSelection((s) => s.activeStore);
-  const line = useCartStore((s) => s.lines.find((l) => l.productId === product.id));
-  const qty = line?.quantity ?? 0;
+  const lines = useCartStore((s) => s.lines);
+  // The same product can sit in the cart as several lines (one per modifier
+  // combination), so the stepper shows the sum across them — the first match
+  // alone under-reports. The stepper still mutates a single line.
+  const matchingLines = React.useMemo(
+    () => lines.filter((l) => l.productId === product.id),
+    [lines, product.id],
+  );
+  const line = matchingLines[0];
+  const qty = matchingLines.reduce((sum, l) => sum + l.quantity, 0);
   const [busy, setBusy] = React.useState(false);
+  // 86ed products can still be rendered here from a cached/real-time fetch —
+  // the card must refuse to add them, exactly like MenuProductCard does.
+  const isOutOfStock = product.inStock === false;
 
   const handleQuickAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (busy || !store) return;
+    if (busy || isOutOfStock || !store) return;
+    if (product.customizable) {
+      if (onCardClick) onCardClick();
+      else void navigate({ to: "/menu/product/$productId", params: { productId: product.id } });
+      return;
+    }
     setBusy(true);
     void HapticService.impact("medium");
-    await cartRepository.addItem({
-      storeId: store.id,
-      productId: product.id,
-      name: product.name,
-      unitPrice: product.price,
-      quantity: 1,
-      veg: product.veg ?? true,
-      imageUrl: product.imageUrl,
-      fallbackImageUrl: product.fallbackImageUrl,
-    });
-    setBusy(false);
+    try {
+      const result = await cartRepository.addItem({
+        storeId: store.id,
+        productId: product.id,
+        name: product.name,
+        unitPrice: product.price,
+        quantity: 1,
+        veg: product.veg,
+        imageUrl: product.imageUrl,
+        fallbackImageUrl: product.fallbackImageUrl,
+      });
+      if (!result.success) toast.error(`Couldn't add ${product.name}. Please try again.`);
+    } catch {
+      toast.error(`Couldn't add ${product.name}. Please try again.`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleIncrement = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (busy || !line) return;
+    if (busy || isOutOfStock || !line) return;
     setBusy(true);
     void HapticService.impact("light");
-    await cartRepository.updateQuantity(line.lineId, line.quantity + 1);
-    setBusy(false);
+    try {
+      const result = await cartRepository.updateQuantity(
+        line.lineId,
+        Math.min(99, line.quantity + 1),
+      );
+      if (!result.success) toast.error("Couldn't update your cart. Please try again.");
+    } catch {
+      toast.error("Couldn't update your cart. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleDecrement = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // Removal stays available on an 86ed line — the customer must still be
+    // able to take it back out of the basket.
     if (busy || !line) return;
     setBusy(true);
     void HapticService.impact("light");
-    if (line.quantity <= 1) {
-      await cartRepository.removeItem(line.lineId);
-    } else {
-      await cartRepository.updateQuantity(line.lineId, line.quantity - 1);
+    try {
+      const result =
+        line.quantity <= 1
+          ? await cartRepository.removeItem(line.lineId)
+          : await cartRepository.updateQuantity(line.lineId, line.quantity - 1);
+      if (!result.success) toast.error("Couldn't update your cart. Please try again.");
+    } catch {
+      toast.error("Couldn't update your cart. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
-  const hasBestsellerTag = product.badges?.some((b) => b.label.toLowerCase().includes("bestseller")) || product.tags?.includes("popular");
+  const hasBestsellerTag =
+    product.badges?.some((b) => b.label.toLowerCase().includes("bestseller")) ||
+    product.tags?.includes("popular");
 
   return (
     <div
       className={cn(
-        "relative flex w-[210px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-low transition-all duration-200 hover:shadow-medium",
+        "relative flex h-full w-[200px] max-w-[calc(100vw-2rem)] shrink-0 flex-col",
         className,
       )}
     >
@@ -85,7 +127,7 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
             onCardClick();
           }
         }}
-        className="group relative block aspect-[4/3] w-full overflow-hidden bg-bg-secondary"
+        className="relative block aspect-square w-full overflow-hidden rounded-xl bg-bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-ring"
       >
         <SafeImage
           src={product.imageUrl}
@@ -93,26 +135,35 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
           alt={product.name}
           loading="lazy"
           decoding="async"
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="h-full w-full object-cover"
         />
 
-        {/* 100% Pure Veg Green Badge */}
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 shadow-sm backdrop-blur-sm">
-          <span className="flex h-3 w-3 items-center justify-center rounded-[2px] border border-emerald-600 p-[1px]">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-          </span>
-          <span className="text-[9px] font-bold text-emerald-800 tracking-wider">VEG</span>
-        </div>
+        {typeof product.veg === "boolean" && (
+          <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 rounded-md bg-surface px-2 py-1">
+            <VegIndicator veg={product.veg} />
+            <span className="text-sm font-medium text-text-primary">
+              {product.veg ? "Veg" : "Non-veg"}
+            </span>
+          </div>
+        )}
 
         {hasBestsellerTag && (
-          <div className="absolute top-2 right-2 z-10 rounded-full bg-accent px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+          <div className="absolute top-3 right-3 z-10 rounded-md bg-accent px-2 py-1 text-sm font-medium text-accent-foreground">
             Bestseller
+          </div>
+        )}
+
+        {isOutOfStock && (
+          <div className="absolute inset-0 z-10 grid place-items-center bg-surface/90 p-4">
+            <span className="rounded-md border border-divider bg-surface px-3 py-2 text-center text-sm font-semibold text-text-primary">
+              {product.unavailableReason ?? "Sold out"}
+            </span>
           </div>
         )}
       </Link>
 
       {/* Card Body */}
-      <div className="flex flex-1 flex-col justify-between p-3">
+      <div className="flex flex-1 flex-col justify-between pt-3">
         <div>
           <Link
             to="/menu/product/$productId"
@@ -123,72 +174,74 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
                 onCardClick();
               }
             }}
-            className="block"
+            className="block rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <h3 className="line-clamp-1 font-sans text-sm font-bold text-text-primary hover:text-primary transition-colors">
+            <h3 className="font-sans text-base font-semibold leading-snug text-text-primary break-words hover:text-primary-text">
               {product.name}
             </h3>
           </Link>
-          <p className="mt-0.5 line-clamp-1 text-xs text-text-secondary">
-            {product.description || "100% Pure Veg delicious smash burger"}
-          </p>
+          <p className="mt-2 text-sm leading-relaxed text-text-secondary">{product.description}</p>
         </div>
 
         {/* Price & Action Row */}
-        <div className="mt-3 flex items-center justify-between gap-2 pt-2 border-t border-border/60">
-          <div className="flex flex-col">
-            <span className="text-[10px] font-medium text-text-secondary uppercase">Price</span>
-            <span className="font-sans text-sm font-extrabold text-text-primary">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span className="font-sans text-base font-semibold text-text-primary">
               {formatINR(product.price)}
             </span>
           </div>
 
           {/* 1-Tap Quick Add / Quantity Stepper */}
           <div className="shrink-0">
-            <AnimatePresence mode="wait">
-              {qty === 0 ? (
-                <motion.button
-                  key="add-btn"
+            {qty === 0 ? (
+              <button
+                type="button"
+                onClick={handleQuickAdd}
+                disabled={busy || isOutOfStock}
+                aria-label={
+                  isOutOfStock
+                    ? `${product.name} is sold out`
+                    : product.customizable
+                      ? `Choose options for ${product.name}`
+                      : `Add ${product.name} to cart`
+                }
+                className="inline-flex min-h-11 min-w-20 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>{isOutOfStock ? "Sold out" : product.customizable ? "Add +" : "Add"}</span>
+              </button>
+            ) : (
+              <div
+                role="group"
+                aria-label={`Quantity of ${product.name}`}
+                className="flex shrink-0 items-center rounded-lg bg-primary text-primary-foreground"
+              >
+                <button
                   type="button"
-                  onClick={handleQuickAdd}
+                  onClick={handleDecrement}
                   disabled={busy}
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.9, opacity: 0 }}
-                  whileTap={{ scale: 0.92 }}
-                  className="inline-flex h-8 items-center justify-center gap-1 rounded-full border-2 border-primary bg-primary/5 px-3 text-xs font-bold text-primary hover:bg-primary hover:text-white transition-all duration-200 shadow-sm"
+                  aria-label={`Remove one ${product.name}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
                 >
-                  <Plus className="h-3.5 w-3.5 stroke-[3px]" />
-                  <span>ADD</span>
-                </motion.button>
-              ) : (
-                <motion.div
-                  key="stepper"
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.9, opacity: 0 }}
-                  className="flex h-8 items-center rounded-full bg-primary text-white shadow-sm overflow-hidden"
+                  <Minus className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <span
+                  className="min-w-6 shrink-0 text-center text-sm font-semibold tabular-nums"
+                  aria-live="polite"
                 >
-                  <button
-                    type="button"
-                    onClick={handleDecrement}
-                    disabled={busy}
-                    className="flex h-full w-7 items-center justify-center hover:bg-black/20 transition-colors"
-                  >
-                    <Minus className="h-3.5 w-3.5 stroke-[2.5px]" />
-                  </button>
-                  <span className="w-5 text-center text-xs font-black">{qty}</span>
-                  <button
-                    type="button"
-                    onClick={handleIncrement}
-                    disabled={busy}
-                    className="flex h-full w-7 items-center justify-center hover:bg-black/20 transition-colors"
-                  >
-                    <Plus className="h-3.5 w-3.5 stroke-[2.5px]" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {qty}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleIncrement}
+                  disabled={busy || isOutOfStock || qty >= 99}
+                  aria-label={`Add one ${product.name}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

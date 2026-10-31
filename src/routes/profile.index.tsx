@@ -20,7 +20,6 @@ import { profileRepository } from "@/features/profile/repositories/ProfileReposi
 import { favoritesRepository } from "@/features/favorites/repositories/FavoritesRepository";
 import { useNotificationsStore } from "@/features/notifications/state/notificationsStore";
 import { ProfileHeader } from "@/features/profile/components/ProfileHeader";
-import { GrillCoinsWalletCard } from "@/features/profile/components/GrillCoinsWalletCard";
 import {
   ProfileMenuList,
   type ProfileMenuItem,
@@ -33,7 +32,10 @@ export const Route = createFileRoute("/profile/")({
   head: () => ({
     meta: [
       { title: "Profile — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "Manage your Burgonomics account, saved addresses, favorites and loyalty points." },
+      {
+        name: "description",
+        content: "Manage your Burgonomics account, saved addresses, favourites and orders.",
+      },
     ],
   }),
   component: Page,
@@ -63,9 +65,10 @@ function Page() {
     void navigate({ to: "/home", replace: true });
   };
 
-  // Render only what the repository-backed store actually holds. No
-  // fabricated membership tier / email / createdAt fallback — if the
-  // backend (or its local cache) has no profile, we render the honest
+  // Render only what the repository-backed store actually holds. The store
+  // is seeded from the auth session and refreshed from the backend and
+  // fabricates no email, membership tier or join date — those render only
+  // when a real value exists. With no profile loaded we show the honest
   // empty state below instead of inventing data.
   const activeProfile = profile;
 
@@ -115,11 +118,12 @@ function Page() {
       description: "Offers and order updates",
       to: "/profile/notifications",
       Icon: Bell,
-      trailing: unreadCount > 0 ? (
-        <span className="px-2 py-0.5 rounded-full bg-[#FF6600] text-white text-[10px] font-black">
-          {unreadCount}
-        </span>
-      ) : undefined,
+      trailing:
+        unreadCount > 0 ? (
+          <span className="rounded-full bg-accent px-2 py-0.5 text-sm font-semibold text-accent-foreground">
+            {unreadCount}
+          </span>
+        ) : undefined,
     },
   ];
 
@@ -143,13 +147,12 @@ function Page() {
 
   return (
     <AppShell title="Profile" showTabs showTopBar>
-      <div className="mx-auto max-w-[520px] space-y-4 px-4 py-4">
+      <div className="mx-auto max-w-[520px] space-y-5 px-4 py-5">
         <ProfileHeader profile={activeProfile} completion={completion} />
-        <GrillCoinsWalletCard />
         <ProfileMenuList title="Account" items={accountItems} />
         <ProfileMenuList title="More" items={helpItems} />
         <ProfileMenuList items={dangerItems} />
-        <p className="pt-2 text-center text-xs text-text-secondary">
+        <p className="pt-2 text-center text-sm text-text-secondary">
           Burgonomics — 100% Pure Vegetarian
         </p>
       </div>

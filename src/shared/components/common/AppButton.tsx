@@ -21,7 +21,9 @@ const variants: Record<Variant, string> = {
   outlined: "bg-transparent text-primary-text border-2 border-primary hover:bg-primary/5",
   ghost: "bg-transparent text-primary-text hover:bg-primary/5",
   danger: "bg-error text-white shadow-[var(--shadow-low)] hover:brightness-110",
-  cta: "bg-accent text-accent-foreground shadow-[var(--shadow-brand)] hover:brightness-110",
+  // `cta` is the strongest call to action on a screen, so it carries the
+  // primary green. Orange is reserved for sparse highlights and badges.
+  cta: "bg-primary text-primary-foreground shadow-[var(--shadow-brand)] hover:brightness-110",
 };
 
 const sizes: Record<Size, string> = {
@@ -73,19 +75,18 @@ export const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
 
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (!isDisabled) {
-        HapticService.impact(variant === "primary" ? "medium" : "light");
+        // Fire-and-forget: a rejected haptic promise must never gate the
+        // click or the platform's native form submission that follows it.
+        void HapticService.impact(variant === "primary" ? "medium" : "light").catch(() => {});
         AudioService.playClick();
       }
       onClick?.(e);
-
-      if (rest.type === "submit" && !e.defaultPrevented) {
-        const form = e.currentTarget.closest("form");
-        if (form) {
-          // Fire a synthetic submit event to ensure onSubmit is triggered
-          const submitEvent = new Event("submit", { cancelable: true, bubbles: true });
-          form.dispatchEvent(submitEvent);
-        }
-      }
+      // No synthetic submit here. A <button type="submit"> is submitted by
+      // the platform's own activation behavior: the browser fires submit on
+      // the button's form owner — an ancestor form or the target of a
+      // form="id" attribute (sticky footers) — exactly once, and skips it
+      // when onClick called e.preventDefault(). Dispatching our own submit
+      // event on top double-fired onSubmit in real browsers.
     };
 
     return (

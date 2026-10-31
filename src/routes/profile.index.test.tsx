@@ -37,9 +37,31 @@ describe("Prompt 14: Customer Profile, Saved Addresses & Favorites Suite", () =>
   describe("2. Default Address Single-Selection Invariant", () => {
     it("ensures exactly one default address across switching operations", () => {
       let addresses: Address[] = [
-        { id: "a1", label: "home", line1: "Flat 101", city: "Mumbai", pincode: "400001", isDefault: true },
-        { id: "a2", label: "work", line1: "Tech Park", city: "Mumbai", pincode: "400002", isDefault: false },
-        { id: "a3", label: "other", customLabel: "Gym", line1: "Clubhouse", city: "Mumbai", pincode: "400003", isDefault: false },
+        {
+          id: "a1",
+          label: "home",
+          line1: "Flat 101",
+          city: "Mumbai",
+          pincode: "400001",
+          isDefault: true,
+        },
+        {
+          id: "a2",
+          label: "work",
+          line1: "Tech Park",
+          city: "Mumbai",
+          pincode: "400002",
+          isDefault: false,
+        },
+        {
+          id: "a3",
+          label: "other",
+          customLabel: "Gym",
+          line1: "Clubhouse",
+          city: "Mumbai",
+          pincode: "400003",
+          isDefault: false,
+        },
       ];
 
       const setDefault = (list: Address[], id: string): Address[] => {

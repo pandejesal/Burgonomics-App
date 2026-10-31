@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Search, WifiOff, RefreshCw, ShoppingBag, ArrowRight, UtensilsCrossed } from "lucide-react";
+import { toast } from "sonner";
 
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -8,6 +9,7 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { useAppConfig } from "@/core/state/appConfigStore";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import {
   orderRepository,
@@ -33,13 +35,6 @@ const BUCKETS: Array<{ id: OrderHistoryBucket; label: string }> = [
   { id: "cancelled", label: "Cancelled" },
 ];
 
-const SORTS: Array<{ id: OrderSortKey; label: string }> = [
-  { id: "recent", label: "Newest" },
-  { id: "oldest", label: "Oldest" },
-  { id: "amount_high", label: "Amount ↑" },
-  { id: "amount_low", label: "Amount ↓" },
-];
-
 const PAGE_SIZE = 10;
 
 function OrderHistoryPage() {
@@ -48,7 +43,10 @@ function OrderHistoryPage() {
   const isOnline = useAppConfig((s) => s.isOnline);
 
   const [bucket, setBucket] = React.useState<OrderHistoryBucket>("ongoing");
-  const [sort, setSort] = React.useState<OrderSortKey>("recent");
+  // L1: no sort control is rendered, so the list order is fixed. Keep the key
+  // as a constant instead of a dead setter/SORTS list that implies a feature
+  // the UI never offers.
+  const sort: OrderSortKey = "recent";
   const [searchInput, setSearchInput] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [orders, setOrders] = React.useState<Order[]>([]);
@@ -64,62 +62,155 @@ function OrderHistoryPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // CUST-F1: one monotonic token covers every list read. A response may only
+  // write state while it is still the newest request. Without this, a slow
+  // refresh (or pagination append) started under one tab could land AFTER a
+  // newer tab's response and paint the wrong rows / wrong pagination state —
+  // the per-effect `cancelled` flag cannot see across these entry points.
+  const requestGeneration = React.useRef(0);
+  const isMounted = React.useRef(true);
+  // Latest filter snapshot for cross-path validity checks (loadMore). Assigned
+  // in an effect (not during render) — loadMore fires from post-commit events.
+  const filterRef = React.useRef({ bucket, search });
+  React.useEffect(() => {
+    filterRef.current = { bucket, search };
+  }, [bucket, search]);
+  React.useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+  const isCurrentRequest = React.useCallback((gen: number) => {
+    return isMounted.current && gen === requestGeneration.current;
+  }, []);
+
+  const applyListResult = React.useCallback(
+    (res: Awaited<ReturnType<typeof orderRepository.listOrders>>, origin: "list" | "refresh") => {
+      if (res.success) {
+        setOrders(res.data.items);
+        setHasMore(res.data.hasMore);
+        setPage(1);
+        setError(null);
+      } else {
+        // Failure branch is typed raw-capable (OrderRepository) — log + map,
+        // keeping the original per-path log tag for triage.
+        console.error(`[orders] ${origin} failed:`, res.error);
+        setError(toUserMessage(res));
+      }
+    },
+    [],
+  );
+
   // Load whenever any filter changes
   React.useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
+    const gen = ++requestGeneration.current;
     setLoading(true);
     setError(null);
     void orderRepository
       .listOrders({ bucket, sort, search, page: 1, pageSize: PAGE_SIZE })
       .then((res) => {
-        if (cancelled) return;
-        if (res.success) {
-          setOrders(res.data.items);
-          setHasMore(res.data.hasMore);
-          setPage(1);
-        } else {
-          setError(res.error.message);
-        }
+        if (cancelled || !isCurrentRequest(gen)) return;
+        applyListResult(res, "list");
+      })
+      .catch((err) => {
+        // A thrown rejection must end the skeleton and offer a retry (P1-8:
+        // raw text is dropped to the generic copy), never spin forever.
+        if (cancelled || !isCurrentRequest(gen)) return;
+        console.error("[orders] list exception:", err);
+        setError(toUserMessage(err));
+      })
+      .finally(() => {
+        if (cancelled || !isCurrentRequest(gen)) return;
         setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [hydrated, bucket, sort, search]);
+  }, [hydrated, bucket, sort, search, applyListResult, isCurrentRequest]);
 
-  const loadMore = async () => {
+  const loadMore = React.useCallback(async () => {
     if (loadingMore || !hasMore) return;
+    // The response must still be the newest intent AND the filter must be
+    // unchanged from click to resolution. Generation closes the ABA window
+    // (load more -> switch tab -> switch back: the first visit's page 2 must
+    // never land on the second visit's fresh page 1) and refresh-during-
+    // loadMore; the filter snapshot refuses cross-bucket/search appends.
+    const requestedBucket = bucket;
+    const requestedSearch = search;
+    const requestedPage = page + 1;
+    const gen = requestGeneration.current;
+    const stillRelevant = () =>
+      isMounted.current &&
+      gen === requestGeneration.current &&
+      requestedBucket === filterRef.current.bucket &&
+      requestedSearch === filterRef.current.search;
     setLoadingMore(true);
-    const next = page + 1;
-    const res = await orderRepository.listOrders({
-      bucket,
-      sort,
-      search,
-      page: next,
-      pageSize: PAGE_SIZE,
-    });
-    if (res.success) {
-      setOrders((prev) => [...prev, ...res.data.items]);
-      setHasMore(res.data.hasMore);
-      setPage(next);
+    try {
+      const res = await orderRepository.listOrders({
+        bucket: requestedBucket,
+        sort,
+        search: requestedSearch,
+        page: requestedPage,
+        pageSize: PAGE_SIZE,
+      });
+      if (!stillRelevant()) return;
+      if (res.success) {
+        if (res.data.page !== requestedPage) {
+          // OrderRepository's empty-page local fallback echoes page 1 with the
+          // whole remaining list; appending it to a later page would duplicate
+          // rows. Fail-closed on pagination too: a re-armed button here would
+          // silently no-op on every further tap, so pagination ends instead
+          // (repository owner: features/orders — the echo itself may be worth
+          // strengthening there; this guard stays client-side).
+          console.error("[orders] load more page mismatch:", {
+            requestedPage,
+            served: res.data.page,
+          });
+          setHasMore(false);
+          return;
+        }
+        setOrders((prev) => [...prev, ...res.data.items]);
+        setHasMore(res.data.hasMore);
+        setPage(requestedPage);
+      } else {
+        console.error("[orders] load more failed:", res.error);
+        toast.error("Couldn't load older feasts", { description: toUserMessage(res) });
+      }
+    } catch (err) {
+      // Never a silent no-op: the customer tapped the control and must get
+      // feedback (raw text stays out of the toast — P1-8). But only for the
+      // context the customer is still looking at — an abandoned request that
+      // rejects after a tab switch must not toast against the new bucket.
+      if (!stillRelevant()) return;
+      console.error("[orders] load more exception:", err);
+      toast.error("Couldn't load older feasts", { description: toUserMessage(err) });
+    } finally {
+      if (isMounted.current) setLoadingMore(false);
     }
-    setLoadingMore(false);
-  };
+  }, [loadingMore, hasMore, bucket, search, page, sort]);
 
-  const handleRefresh = () => {
+  const handleRefresh = React.useCallback(() => {
+    const gen = ++requestGeneration.current;
     setLoading(true);
     void orderRepository
       .listOrders({ bucket, sort, search, page: 1, pageSize: PAGE_SIZE })
       .then((res) => {
-        if (res.success) {
-          setOrders(res.data.items);
-          setHasMore(res.data.hasMore);
-          setPage(1);
-        }
+        if (!isCurrentRequest(gen)) return;
+        applyListResult(res, "refresh");
+      })
+      .catch((err) => {
+        if (!isCurrentRequest(gen)) return;
+        console.error("[orders] refresh exception:", err);
+        setError(toUserMessage(err));
+      })
+      .finally(() => {
+        if (!isCurrentRequest(gen)) return;
         setLoading(false);
       });
-  };
+  }, [bucket, sort, search, applyListResult, isCurrentRequest]);
 
   return (
     <ProtectedRoute>
@@ -132,44 +223,59 @@ function OrderHistoryPage() {
             type="button"
             aria-label="Refresh orders"
             onClick={handleRefresh}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-text-primary hover:bg-neutral-800 cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-text-primary hover:bg-bg-secondary cursor-pointer"
           >
-            <RefreshCw className={`h-4.5 w-4.5 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4.5 w-4.5 ${loading ? "animate-spin" : ""}`} aria-hidden />
           </button>
         }
       >
-        <div className="mx-auto max-w-[540px] space-y-4 px-4 py-3 pb-24 select-none">
+        <div className="mx-auto max-w-[540px] space-y-5 px-4 pb-24 pt-4 select-none">
           {/* Offline Banner */}
           {!isOnline && (
-            <div className="flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-950/40 p-3 text-xs text-amber-300">
-              <WifiOff className="h-4 w-4 shrink-0" />
+            <div className="flex items-center gap-2.5 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm font-medium text-warning">
+              <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
               <span>You're offline. Displaying cached orders.</span>
             </div>
           )}
 
           {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <Search
+              className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
+              aria-hidden
+            />
             <input
               type="text"
               value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by Order # or item name..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-[#0D0D0D] border border-neutral-800 text-white placeholder-neutral-500 text-xs font-medium focus:outline-none focus:border-[#FF6600]"
+              onChange={(e) => {
+                // Invalidate in-flight reads the moment the customer types —
+                // closing the window between setBucket/setSearch commit and
+                // the filtering effect registering its own generation.
+                requestGeneration.current += 1;
+                setSearchInput(e.target.value);
+              }}
+              placeholder="Search by Order # or item name…"
+              aria-label="Search orders"
+              className="min-h-11 w-full rounded-2xl border border-divider bg-surface py-2.5 pl-10 pr-4 text-base font-medium text-text placeholder:text-text-secondary focus:border-primary focus:outline-none"
             />
           </div>
 
           {/* Segmented Filter Tabs */}
-          <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-[#0D0D0D] border border-neutral-800">
+          <div className="flex items-center gap-1.5 rounded-2xl border border-divider bg-bg-secondary p-1.5">
             {BUCKETS.map((b) => (
               <button
                 key={b.id}
                 type="button"
-                onClick={() => setBucket(b.id)}
-                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer text-center ${
+                onClick={() => {
+                  // Same pre-effect invalidation as the search setter above.
+                  requestGeneration.current += 1;
+                  setBucket(b.id);
+                }}
+                aria-pressed={bucket === b.id}
+                className={`min-h-11 flex-1 rounded-xl px-3 py-2 text-center text-sm font-semibold transition-colors cursor-pointer ${
                   bucket === b.id
-                    ? "bg-[#0E4825] border border-emerald-500/40 text-emerald-300 shadow-xs"
-                    : "text-neutral-400 hover:text-white"
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "text-text-secondary hover:text-text"
                 }`}
               >
                 {b.label}
@@ -179,7 +285,7 @@ function OrderHistoryPage() {
 
           {/* Orders Stream List */}
           {loading ? (
-            <div className="space-y-3 pt-2">
+            <div className="space-y-4 pt-2">
               <Skeleton className="h-44 w-full rounded-3xl" />
               <Skeleton className="h-44 w-full rounded-3xl" />
               <Skeleton className="h-44 w-full rounded-3xl" />
@@ -192,13 +298,13 @@ function OrderHistoryPage() {
               onAction={handleRefresh}
             />
           ) : orders.length === 0 ? (
-            <div className="text-center py-16 bg-[#0D0D0D]/60 rounded-3xl border border-dashed border-neutral-800 p-8 space-y-4">
-              <div className="w-16 h-16 mx-auto rounded-full bg-[#0E4825]/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <ShoppingBag className="w-8 h-8" />
+            <div className="space-y-4 rounded-3xl border border-dashed border-divider bg-surface p-8 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary-text">
+                <ShoppingBag className="h-8 w-8" aria-hidden />
               </div>
-              <div>
-                <h3 className="font-black text-white text-base">No Orders Found</h3>
-                <p className="text-xs text-neutral-400 mt-1">
+              <div className="space-y-1">
+                <h3 className="type-title-large text-text">No Orders Found</h3>
+                <p className="text-sm leading-relaxed text-text-secondary">
                   {bucket === "ongoing"
                     ? "You don't have any active orders cooking right now."
                     : "You haven't placed any past orders matching this filter."}
@@ -207,10 +313,10 @@ function OrderHistoryPage() {
 
               <Link
                 to="/menu"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-95"
               >
-                <span>Order Your First Burger</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Order your first burger</span>
+                <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
             </div>
           ) : (
@@ -225,9 +331,9 @@ function OrderHistoryPage() {
                     type="button"
                     disabled={loadingMore}
                     onClick={() => void loadMore()}
-                    className="px-6 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                    className="min-h-11 rounded-xl border border-divider bg-surface px-6 py-2 text-sm font-semibold text-text transition-colors hover:bg-bg-secondary disabled:opacity-50 cursor-pointer"
                   >
-                    {loadingMore ? "Loading more..." : "Load Older Feasts"}
+                    {loadingMore ? "Loading more…" : "Load Older Feasts"}
                   </button>
                 </div>
               )}

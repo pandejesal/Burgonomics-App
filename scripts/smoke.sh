@@ -32,11 +32,11 @@ echo "[6/9] Running Firestore Security Rules Suite (npm run test:rules)..."
 npm run test:rules
 
 echo "[7/9] Verifying Capacitor App ID Configurations..."
-if ! grep -q 'appId: "com.glassdoorsstudio.burgonomics"' capacitor.config.ts ; then
+if ! grep -q 'appId: "com.burgonomics"' capacitor.config.ts ; then
   echo "FAILED: Invalid core appId in capacitor.config.ts"
   exit 1
 fi
-echo "PASS: capacitor.config.ts appId is com.glassdoorsstudio.burgonomics"
+echo "PASS: capacitor.config.ts appId is com.burgonomics"
 
 echo "[8/9] Verifying Composite Indexes (firestore.indexes.json)..."
 if [ ! -f firestore.indexes.json ]; then

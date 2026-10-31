@@ -21,10 +21,10 @@ describe("Cart Route & Financial Calculations Specification Suite", () => {
       expect(isFreeDelivery(348)).toBe(false);
     });
 
-    it("applies ₹15 packaging charge for delivery and takeaway, waived for dine-in", () => {
-      const getPackaging = (fulfillment: string) => (fulfillment === "dine_in" ? 0 : 15);
-      expect(getPackaging("delivery")).toBe(15);
-      expect(getPackaging("takeaway")).toBe(15);
+    it("applies ₹20 packaging charge for delivery and takeaway, waived for dine-in", () => {
+      const getPackaging = (fulfillment: string) => (fulfillment === "dine_in" ? 0 : 20);
+      expect(getPackaging("delivery")).toBe(20);
+      expect(getPackaging("takeaway")).toBe(20);
       expect(getPackaging("dine_in")).toBe(0);
     });
   });
@@ -44,22 +44,31 @@ describe("Cart Route & Financial Calculations Specification Suite", () => {
   });
 
   describe("4. Final 'To Pay' Precision & Non-Negative Clamp", () => {
-    it("accurately calculates total payable amount", () => {
+    it("accurately calculates total payable amount (GST is already inside the subtotal)", () => {
       const subtotal = 400;
       const discount = 50;
       const coins = 100;
-      const gst = Math.round(subtotal * 0.05); // 20
-      const packaging = 15;
+      const packaging = 20;
       const delivery = 0; // >= 349
       const tip = 20;
 
-      const toPay = Math.max(
-        0,
-        subtotal - discount - coins + gst + packaging + delivery + tip
-      );
+      // MT-09: menu prices are GST-inclusive (5% already sits inside the 400),
+      // so the tax must NOT be added on top — that double-charges it. The old
+      // additive formula billed 310 for this basket.
+      const toPay = Math.max(0, subtotal - discount - coins + packaging + delivery + tip);
 
-      // 400 - 50 - 100 + 20 + 15 + 0 + 20 = 305
-      expect(toPay).toBe(305);
+      // 400 - 50 - 100 + 20 + 0 + 20 = 290
+      expect(toPay).toBe(290);
+    });
+
+    it("clamps the payable at zero when discounts exceed the bill", () => {
+      const subtotal = 100;
+      const discount = 80;
+      const coins = 60;
+      const packaging = 20;
+
+      const toPay = Math.max(0, subtotal - discount - coins + packaging);
+      expect(toPay).toBe(0);
     });
   });
 });

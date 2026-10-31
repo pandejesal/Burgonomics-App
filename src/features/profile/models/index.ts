@@ -9,7 +9,12 @@ export interface UserProfile {
   id: string;
   fullName: string;
   phone: string;
-  email?: string;
+  /**
+   * Tri-state on updates: a string sets the address, `null` erases it in
+   * Firestore, `undefined` leaves it untouched — `""` is never valid and
+   * must never be sent. `null`/absent renders as "no email on file".
+   */
+  email?: string | null;
   dateOfBirth?: string; // ISO yyyy-mm-dd
   gender?: Gender;
   photoUrl?: string;

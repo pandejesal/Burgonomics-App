@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { CustomizationGroup, CustomizationOption, ProductDetails } from "../src/features/menu/models";
+import type {
+  CustomizationGroup,
+  CustomizationOption,
+  ProductDetails,
+} from "../src/features/menu/models";
 
 describe("Prompt 12: Product Customization Modal & Modifiers Suite", () => {
   const sampleCustomizationGroups: CustomizationGroup[] = [
@@ -43,11 +47,11 @@ describe("Prompt 12: Product Customization Modal & Modifiers Suite", () => {
       expect(totalCartPrice).toBe(618);
     });
 
-    it("includes combo meal upsell price accurately", () => {
+    it("adds no combo surcharge — price stays base + modifiers only", () => {
       const selectedDeltas = [40]; // Gluten free bun (+40)
-      const comboMealAddon = 99; // Regular meal (+99)
-      const unitPrice = basePrice + selectedDeltas[0] + comboMealAddon;
-      expect(unitPrice).toBe(388);
+      // The combo meal upsell feature was removed (2026-10-06): no +99/+149 is added.
+      const unitPrice = basePrice + selectedDeltas[0];
+      expect(unitPrice).toBe(289);
     });
   });
 
@@ -76,7 +80,7 @@ describe("Prompt 12: Product Customization Modal & Modifiers Suite", () => {
   describe("3. Multi-Select Max Selection Constraints", () => {
     it("enforces maxSelect limit on multi-select topping groups", () => {
       const group = sampleCustomizationGroups[1]; // maxSelect: 2
-      let currentSelected = ["opt_cheddar", "opt_jalapenos"];
+      const currentSelected = ["opt_cheddar", "opt_jalapenos"];
       const newOption = "opt_mushrooms";
 
       const handleAddMulti = (current: string[], nextOpt: string, max?: number) => {

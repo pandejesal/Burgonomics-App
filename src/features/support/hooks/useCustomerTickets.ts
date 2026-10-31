@@ -1,15 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { supportService } from "@/features/support/services/supportService";
 import { useAuthStore } from "@/features/auth/state/authStore";
 
 export type TicketCategory =
-  | "LATE_DELIVERY"
-  | "MISSING_ITEM"
-  | "FOOD_QUALITY"
-  | "WRONG_ORDER"
-  | "PAYMENT_ISSUE"
-  | "OTHER";
+  "LATE_DELIVERY" | "MISSING_ITEM" | "FOOD_QUALITY" | "WRONG_ORDER" | "PAYMENT_ISSUE" | "OTHER";
 
 export type TicketStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "ESCALATED";
 
@@ -172,8 +168,7 @@ export function useCustomerTickets() {
               : statusRaw === "in_progress" || statusRaw === "in-progress"
                 ? "IN_PROGRESS"
                 : "OPEN";
-          const created =
-            nested?.createdAt ?? raw.createdAt ?? raw.created_at ?? cached?.createdAt;
+          const created = nested?.createdAt ?? raw.createdAt ?? raw.created_at ?? cached?.createdAt;
           const createdAt =
             typeof created === "number"
               ? new Date(created).toISOString()
@@ -284,7 +279,9 @@ export function useCustomerTickets() {
           customerPhone: sessionUser?.phone,
           orderId: params.orderId,
           branchId:
-            params.branchId || (activeStore as { partnerBranchId?: string } | null)?.partnerBranchId || "",
+            params.branchId ||
+            (activeStore as { partnerBranchId?: string } | null)?.partnerBranchId ||
+            "",
           category: serverCategory,
           priority:
             params.category === "PAYMENT_ISSUE" || params.category === "WRONG_ORDER"
@@ -295,7 +292,9 @@ export function useCustomerTickets() {
           attachments: photoUrls,
         });
         if (!res.success) {
-          toast.error(res.error.message);
+          // P1-8: raw server messages go to the console, never the toast.
+          console.error("[support] ticket submit failed:", res.error);
+          toast.error(toUserMessage(res));
           return { success: false };
         }
 

@@ -4,6 +4,8 @@ import { TextField } from "@/shared/components/common/TextField";
 import { Text } from "@/shared/components/common/Text";
 import { cn } from "@/lib/utils";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
+import { toUserMessage } from "@/core/errors/userMessages";
+import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import type { Gender, UserProfile } from "@/features/profile/models";
 
 const GENDERS: Array<{ value: Gender; label: string }> = [
@@ -21,7 +23,12 @@ interface Props {
 
 export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
   const [fullName, setFullName] = React.useState(profile.fullName ?? "");
-  const [email, setEmail] = React.useState(profile.email ?? "");
+  // Prefill only a real, customer-visible address (`?? ""` covers null and
+  // absent); a synthetic `<phone>@burgonomics.in` value is never shown as
+  // if the customer entered it.
+  const [email, setEmail] = React.useState(
+    profile.email && !isSyntheticEmail(profile.email) ? profile.email : "",
+  );
   const [dateOfBirth, setDateOfBirth] = React.useState(profile.dateOfBirth ?? "");
   const [gender, setGender] = React.useState<Gender | undefined>(profile.gender);
   const [error, setError] = React.useState<string | null>(null);
@@ -31,15 +38,27 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
     e.preventDefault();
     setError(null);
     setBusy(true);
+    const typedEmail = email.trim();
+    // Email tri-state — never "": a typed address sets it, a synthetic one
+    // (typed or still stored) is erased with null, empty means untouched.
+    let emailValue: string | null | undefined;
+    if (typedEmail) emailValue = isSyntheticEmail(typedEmail) ? null : typedEmail;
+    else emailValue = isSyntheticEmail(profile.email) ? null : undefined;
     const res = await profileRepository.update({
       fullName: fullName.trim(),
-      email: email.trim() || undefined,
+      email: emailValue,
       dateOfBirth: dateOfBirth || undefined,
       gender,
     });
     setBusy(false);
     if (!res.success) {
-      setError(res.error.message);
+      // P1-14: only `profileService`'s curated codes pass through verbatim
+      // (INVALID_PROFILE: "Enter a valid email address."; UNAUTHORIZED).
+      // SERVER_ERROR appends the raw Firestore message, so every other code
+      // is logged and mapped instead.
+      const curated = res.error.code === "INVALID_PROFILE" || res.error.code === "UNAUTHORIZED";
+      if (!curated) console.error("[profile] update failed:", res.error);
+      setError(curated ? res.error.message : toUserMessage(res));
       return;
     }
     onSaved();
@@ -47,20 +66,26 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      {/* Photo placeholder */}
+      {/* Photo placeholder — honest static note (no fake upload affordance) */}
       <div className="flex items-center gap-3">
-        <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary type-headline-medium">
-          {(fullName || profile.phone).slice(0, 1).toUpperCase()}
+        <div
+          aria-hidden
+          className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary-text type-headline-medium font-semibold"
+        >
+          {(fullName || profile.phone)
+            .split(" ")
+            .map((s) => s[0])
+            .filter(Boolean)
+            .slice(0, 2)
+            .join("")
+            .toUpperCase()}
         </div>
         <div className="flex-1">
           <Text variant="titleMedium">Profile photo</Text>
           <Text variant="caption" tone="secondary">
-            Photo uploads are coming soon.
+            Profile photo upload isn't available in the app.
           </Text>
         </div>
-        <AppButton type="button" variant="outlined" size="sm" disabled>
-          Change
-        </AppButton>
       </div>
 
       <TextField
@@ -75,7 +100,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
         label="Mobile number"
         value={`+91 ${profile.phone}`}
         readOnly
-        helper="Changing your number requires OTP verification (coming soon)."
+        helper="Registered numbers can't be changed in the app."
       />
 
       <TextField
@@ -95,9 +120,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
       />
 
       <fieldset>
-        <legend className="type-caption uppercase text-text-secondary mb-2">
-          Gender (optional)
-        </legend>
+        <legend className="type-label-large mb-2 text-text-secondary">Gender (optional)</legend>
         <div className="grid grid-cols-2 gap-2">
           {GENDERS.map((opt) => {
             const active = gender === opt.value;
@@ -108,9 +131,9 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
                 onClick={() => setGender(active ? undefined : opt.value)}
                 aria-pressed={active}
                 className={cn(
-                  "min-h-[44px] rounded-full border px-3 type-label-large transition-colors",
+                  "min-h-11 rounded-full border px-3 type-label-large transition-colors",
                   active
-                    ? "border-primary bg-primary/10 text-primary"
+                    ? "border-primary bg-primary/10 text-primary-text"
                     : "border-divider text-text-secondary hover:border-primary/40",
                 )}
               >
@@ -129,7 +152,8 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
         </div>
       )}
 
-      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
+      {/* Thumb-reach action bar: Save stays visible while editing. */}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sticky bottom-0 bg-background/95 backdrop-blur-sm pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
         <AppButton type="button" variant="outlined" fullWidth onClick={onCancel}>
           Cancel
         </AppButton>

@@ -91,6 +91,14 @@ export function useOrderTracking(
           snapshot: res.data,
           error: null,
         });
+      } else if (res.success && !res.data) {
+        // Order not (or no longer) visible to this account: an honest
+        // terminal state, not an endless spinner to keep re-refreshing.
+        setState((prev) => ({
+          status: "error",
+          snapshot: prev.snapshot,
+          error: "Order not found.",
+        }));
       } else if (!res.success) {
         setState((prev) => ({
           status: "error",

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Bike, Store as StoreIcon, Utensils, Phone, Clock, MapPin, ChevronRight } from "lucide-react";
+import { Bike, Store as StoreIcon, Utensils, Phone, Clock } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { isSafeTelNumber } from "@/shared/utils/urlSafety";
@@ -28,26 +28,35 @@ export function FulfillmentDetailsCard({
   const isDineIn = fulfillment === "dinein";
 
   return (
-    <div className={cn("p-4 sm:p-5 rounded-2xl border border-divider bg-surface space-y-3 shadow-xs", className)}>
-      <div className="flex items-center justify-between border-b border-divider pb-2.5">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#0E4825]/10 text-[#0E4825] dark:text-[#4ADE80] flex items-center justify-center">
+    <div
+      className={cn(
+        "space-y-3 rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-xs sm:p-5",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-divider pb-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary/10 text-primary dark:text-primary-text">
             {isDelivery ? (
-              <Bike className="w-4 h-4" />
+              <Bike className="h-4 w-4" aria-hidden />
             ) : isTakeaway ? (
-              <StoreIcon className="w-4 h-4" />
+              <StoreIcon className="h-4 w-4" aria-hidden />
             ) : (
-              <Utensils className="w-4 h-4" />
+              <Utensils className="h-4 w-4" aria-hidden />
             )}
           </div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-text">
-            {isDelivery ? "1. Delivery Details" : isTakeaway ? "1. Pickup Location" : "1. Dine-In Table Details"}
+          <h4 className="type-title-medium min-w-0 text-text-primary">
+            {isDelivery
+              ? "1. Delivery Details"
+              : isTakeaway
+                ? "1. Pickup Location"
+                : "1. Dine-In Table Details"}
           </h4>
         </div>
 
         <Link
           to="/cart"
-          className="text-xs font-bold text-[#FF6600] hover:underline cursor-pointer"
+          className="-mr-2 inline-flex min-h-[44px] items-center px-2 type-caption font-semibold text-primary-text hover:underline cursor-pointer"
         >
           Change Mode
         </Link>
@@ -56,34 +65,34 @@ export function FulfillmentDetailsCard({
       {isDelivery ? (
         <div className="space-y-2">
           {selectedAddress ? (
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-0.5 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-full bg-[#0E4825]/15 text-[#0E4825] dark:text-[#4ADE80] text-[10px] font-black uppercase">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 type-caption font-semibold text-primary-text">
                     {selectedAddress.customLabel || selectedAddress.label}
                   </span>
-                  <span className="text-xs font-bold text-text truncate">
+                  <span className="type-body font-semibold text-text-primary break-words">
                     {selectedAddress.line1}
                   </span>
                 </div>
-                <p className="text-[11px] text-text-secondary truncate">
+                <p className="type-caption text-text-secondary break-words">
                   {selectedAddress.line2 || selectedAddress.city} • {selectedAddress.pincode}
                 </p>
               </div>
 
               <Link
                 to="/profile/addresses"
-                className="text-xs font-bold text-primary hover:underline shrink-0"
+                className="-mr-2 inline-flex min-h-[44px] items-center px-2 type-caption font-semibold text-primary-text hover:underline shrink-0"
               >
                 Change
               </Link>
             </div>
           ) : (
-            <div className="flex items-center justify-between py-1">
-              <p className="text-xs text-text-secondary">No delivery address selected</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 py-1">
+              <p className="type-body-medium text-text-secondary">No delivery address selected</p>
               <Link
                 to="/profile/addresses"
-                className="text-xs font-bold text-[#FF6600] hover:underline"
+                className="inline-flex min-h-[44px] items-center gap-1 rounded-full bg-primary px-4 type-button-sm text-primary-foreground"
               >
                 + Add Address
               </Link>
@@ -91,21 +100,21 @@ export function FulfillmentDetailsCard({
           )}
         </div>
       ) : isTakeaway ? (
-        <div className="space-y-2">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1 min-w-0">
-              <p className="text-xs sm:text-sm font-bold text-text truncate">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="type-body font-semibold text-text-primary break-words">
                 {store?.name ?? "Burgonomics Outlet"}
               </p>
-              <p className="text-[11px] text-text-secondary">
-                {store?.address ?? "Ahmedabad, Gujarat"}
+              <p className="type-caption text-text-secondary break-words">
+                {store?.address ?? "Outlet address unavailable"}
               </p>
               {store?.phone && isSafeTelNumber(store.phone) && (
                 <a
                   href={`tel:${store.phone}`}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0E4825] dark:text-[#4ADE80] hover:underline pt-0.5"
+                  className="inline-flex min-h-[44px] items-center gap-1 type-caption font-semibold text-primary-text hover:underline"
                 >
-                  <Phone className="w-3 h-3" />
+                  <Phone className="h-4 w-4" aria-hidden />
                   <span>{store.phone}</span>
                 </a>
               )}
@@ -113,54 +122,64 @@ export function FulfillmentDetailsCard({
 
             <Link
               to="/stores"
-              className="text-xs font-bold text-primary hover:underline shrink-0"
+              className="-mr-2 inline-flex min-h-[44px] items-center px-2 type-caption font-semibold text-primary-text hover:underline shrink-0"
             >
               Change Outlet
             </Link>
           </div>
 
-          <div className="flex items-center gap-2 p-2 rounded-xl bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-xs font-medium">
-            <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Ready for self-pickup in ~{store?.pickupEtaMinutes ?? 15} mins after ordering</span>
+          <div className="flex items-start gap-2 rounded-[var(--radius-medium)] bg-success/10 p-3 type-caption text-success">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
+            <span className="min-w-0 break-words">
+              {(store?.pickupEtaMinutes ?? store?.etaMinutes) != null
+                ? `Ready for self-pickup in ~${store?.pickupEtaMinutes ?? store?.etaMinutes} mins after ordering`
+                : "Ready for self-pickup after ordering"}
+            </span>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-0.5 min-w-0">
-              <p className="text-xs sm:text-sm font-bold text-text truncate">
-                {store?.name ?? "Burgonomics Flagship Outlet"}
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="type-body font-semibold text-text-primary break-words">
+                {store?.name ?? "Burgonomics Outlet"}
               </p>
-              <p className="text-[11px] text-text-secondary">
-                {store?.address ?? "Ahmedabad, Gujarat"}
+              <p className="type-caption text-text-secondary break-words">
+                {store?.address ?? "Outlet address unavailable"}
               </p>
             </div>
 
             <Link
               to="/stores"
-              className="text-xs font-bold text-primary hover:underline shrink-0"
+              className="-mr-2 inline-flex min-h-[44px] items-center px-2 type-caption font-semibold text-primary-text hover:underline shrink-0"
             >
               Change Outlet
             </Link>
           </div>
 
           {/* Table Number Input */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-text-secondary">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="dinein-table-number"
+              className="type-caption font-medium text-text-primary"
+            >
               Table / Booth Number (Required for dine-in)
             </label>
             <input
+              id="dinein-table-number"
               type="text"
               placeholder="e.g. Table 4 or Booth B"
               value={tableNumber}
               onChange={(e) => onTableNumberChange?.(e.target.value)}
-              className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-bg-secondary border border-divider text-xs font-medium text-text outline-none focus:border-primary"
+              className="min-h-[44px] w-full rounded-[var(--radius-medium)] border border-border bg-bg-secondary px-3.5 py-2.5 text-base font-medium text-text-primary outline-none transition-colors focus:border-primary"
             />
           </div>
 
-          <div className="flex items-center gap-2 p-2 rounded-xl bg-[#0E4825]/10 text-[#0E4825] dark:text-[#4ADE80] text-xs font-medium">
-            <Utensils className="w-3.5 h-3.5 shrink-0" />
-            <span>Your order will be transmitted directly to the kitchen POS</span>
+          <div className="flex items-start gap-2 rounded-[var(--radius-medium)] bg-primary/10 p-3 type-caption text-primary-text">
+            <Utensils className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span className="min-w-0 break-words">
+              Your order will be transmitted directly to the kitchen POS
+            </span>
           </div>
         </div>
       )}

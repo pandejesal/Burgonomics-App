@@ -11,6 +11,7 @@ import { useCountdown } from "@/features/auth/hooks/useCountdown";
 import { OTP_LENGTH, validateOtp, COUNTRY_CODE } from "@/features/auth/utils/validators";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 import { authService } from "@/features/auth/services/authService";
+import { toUserMessage, userMessageForText } from "@/core/errors/userMessages";
 import { APP } from "@/core/constants/app";
 
 /**
@@ -52,6 +53,10 @@ function OtpScreen() {
   const { remaining, isDone, reset } = useCountdown(challenge?.resendAfterSec ?? 30);
 
   const isVerifying = status === "verifying";
+  // The grid now emits a positional value with a space placeholder for a hole
+  // ("12 456"). Six characters is therefore not six digits, and the old
+  // length-only gate enabled Verify for a code that could never pass.
+  const isCodeComplete = code.length === OTP_LENGTH && /^\d+$/.test(code);
 
   // Guard: if no active challenge and unauthenticated, return to login
   useEffect(() => {
@@ -82,7 +87,9 @@ function OtpScreen() {
       void navigate({ to: redirectTarget, replace: true });
     } else {
       setCode("");
-      toast.error(res.error ?? "Verification failed. Please check the code.");
+      // P1-13: the store keeps the raw Firebase text — map it for the toast.
+      console.error("[auth] OTP verify failed:", res.error);
+      toast.error(toUserMessage(res));
     }
   };
 
@@ -97,7 +104,10 @@ function OtpScreen() {
       setCode("");
       toast.success("New verification code sent via SMS");
     } else {
-      toast.error(res.error ?? "Couldn't resend code. Please try again.");
+      // "Please wait 12s before requesting a new code." is store-authored copy
+      // and passes through; a raw Firebase failure does not (P1-13).
+      console.error("[auth] OTP resend failed:", res.error);
+      toast.error(toUserMessage(res));
     }
   };
 
@@ -155,7 +165,7 @@ function OtpScreen() {
             className="rounded-[var(--radius-medium)] border border-error/40 bg-error/10 px-4 py-3"
           >
             <Text variant="bodyMedium" tone="error">
-              {serverError}
+              {userMessageForText(serverError)}
             </Text>
           </div>
         )}
@@ -165,8 +175,9 @@ function OtpScreen() {
           size="lg"
           variant="cta"
           loading={isVerifying}
-          disabled={code.length !== OTP_LENGTH || isVerifying}
+          disabled={!isCodeComplete || isVerifying}
           onClick={() => void submit(code)}
+          className="rounded-[var(--radius-medium)]"
         >
           Verify & continue
         </AppButton>

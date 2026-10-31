@@ -46,7 +46,10 @@ export const Route = createFileRoute("/order-confirmation/$orderId")({
   head: () => ({
     meta: [
       { title: "Order Confirmed — Burgonomics (100% Pure Veg)" },
-      { name: "description", content: "Your delicious 100% Pure Veg burgers are being prepared fresh." },
+      {
+        name: "description",
+        content: "Your delicious 100% Pure Veg burgers are being prepared fresh.",
+      },
     ],
   }),
   component: OrderConfirmationPage,
@@ -60,8 +63,37 @@ function OrderConfirmationPage() {
 
   const [order, setOrder] = React.useState<Order | null>(cachedOrder);
   const [loading, setLoading] = React.useState(!cachedOrder);
-  const [whatsappOptIn, setWhatsappOptIn] = React.useState(true);
+  // Legacy order documents have no whatsappOptIn field — render those as
+  // off (never assert consent the document does not store); new orders are
+  // stamped with a boolean at creation.
+  const [whatsappOptIn, setWhatsappOptIn] = React.useState(cachedOrder?.whatsappOptIn === true);
+  const [waBusy, setWaBusy] = React.useState(false);
+
+  // Sync the toggle once the order document arrives (cache-miss deep
+  // links): it must reflect the stored opt-in, never a hardcoded default.
+  React.useEffect(() => {
+    if (typeof order?.whatsappOptIn === "boolean") setWhatsappOptIn(order.whatsappOptIn);
+  }, [order?.id, order?.whatsappOptIn]);
   const resetPayment = usePaymentStore((s) => s.reset);
+
+  // Loyalty sync hook lives here (above ALL early returns): it was below the
+  // `!order` return, so cache-miss→data transitions changed this component's
+  // hook count between renders (minified #310 crash for every real order).
+  // Loop 65/120: no local earn. The old effect credited 5% phantom points
+  // per order (celebrated below as wallet credit) with zero server backing —
+  // the server has no purchase-earn program. Refresh converges the display
+  // to ledger truth instead (post-confirm debits included).
+  const syncedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!order || syncedRef.current === order.id) return;
+    syncedRef.current = order.id;
+    try {
+      const uid = useAuthStore.getState().user?.id ?? null;
+      void useLoyaltyStore.getState().refreshFromServer(uid);
+    } catch {
+      // best-effort; wallet screen re-syncs on mount
+    }
+  }, [order]);
 
   // Guarantee cart is cleared and payment state is reset on arrival
   React.useEffect(() => {
@@ -83,7 +115,9 @@ function OrderConfirmationPage() {
       .getOrder(orderId)
       .then((res) => {
         if (cancelled) return;
-        if (res.success) setOrder(res.data);
+        // Preserve the cached order on ok(null): a backend miss/denial must
+        // not masquerade as "not found" nor wipe the just-placed order.
+        if (res.success && res.data) setOrder(res.data);
       })
       .catch(() => {
         // Keep the cached order (or the not-found empty state); the
@@ -107,14 +141,21 @@ function OrderConfirmationPage() {
                 return {
                   ...prev,
                   status: liveData.status ? { ...prev.status, ...liveData.status } : prev.status,
-                  payment: liveData.payment ? { ...prev.payment, ...liveData.payment } : prev.payment,
+                  payment: liveData.payment
+                    ? { ...prev.payment, ...liveData.payment }
+                    : prev.payment,
+                  petpoojaStatus: liveData.petpoojaStatus,
+                  whatsappOptIn:
+                    typeof liveData.whatsappOptIn === "boolean"
+                      ? liveData.whatsappOptIn
+                      : prev.whatsappOptIn,
                 };
               });
             }
           },
           (err) => {
             console.warn("[Firestore onSnapshot] Order listener fell back to cached data:", err);
-          }
+          },
         );
       }
     } catch {
@@ -144,7 +185,7 @@ function OrderConfirmationPage() {
 
   const eta = order.estimatedAt
     ? Math.max(0, Math.round((+new Date(order.estimatedAt) - Date.now()) / 60_000))
-    : 25;
+    : undefined;
 
   const fulfillmentLabel =
     order.fulfillment === "delivery"
@@ -153,21 +194,24 @@ function OrderConfirmationPage() {
         ? "Takeaway"
         : "Dine-in";
 
-  // Loop 65/120: no local earn. The old effect credited 5% phantom points
-  // per order (celebrated below as wallet credit) with zero server backing —
-  // the server has no purchase-earn program. Refresh converges the display
-  // to ledger truth instead (post-confirm debits included).
-  const syncedRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    if (!order || syncedRef.current === order.id) return;
-    syncedRef.current = order.id;
-    try {
-      const uid = useAuthStore.getState().user?.id ?? null;
-      void useLoyaltyStore.getState().refreshFromServer(uid);
-    } catch {
-      // best-effort; wallet screen re-syncs on mount
+  // Persist the opt-in to the order document — never toast before the
+  // write resolves (P0-3: simulated consent). On failure the toggle keeps
+  // its prior state and reports the error honestly.
+  const toggleWhatsappOptIn = async () => {
+    if (waBusy || !order) return;
+    const next = !whatsappOptIn;
+    void HapticService.selection();
+    setWaBusy(true);
+    const res = await orderRepository.setWhatsappOptIn(order.id, next);
+    setWaBusy(false);
+    if (!res.success) {
+      toast.error("Could not save your WhatsApp preference. Please try again.");
+      return;
     }
-  }, [order]);
+    setWhatsappOptIn(next);
+    setOrder((prev) => (prev ? { ...prev, whatsappOptIn: next } : prev));
+    toast.success(next ? "WhatsApp tracking updates enabled!" : "WhatsApp updates turned off");
+  };
 
   const shareOrder = async () => {
     const res = await orderRepository.buildShareMessage(order.id);
@@ -206,9 +250,12 @@ function OrderConfirmationPage() {
 
   return (
     <AppShell title="Order Confirmed" showTabs={false} showTopBar={false}>
-      <div className="mx-auto flex min-h-[100dvh] max-w-[560px] flex-col px-4 sm:px-6 pb-12 pt-8 space-y-5">
+      <div className="mx-auto flex min-h-[100dvh] max-w-[560px] flex-col space-y-5 px-4 pb-12 pt-8 sm:px-6">
         {/* 1. Celebratory Animation & Mascot */}
-        <OrderSuccessCelebration orderNumber={order.shortCode} />
+        <OrderSuccessCelebration
+          orderNumber={order.shortCode}
+          petpoojaStatus={order.petpoojaStatus}
+        />
 
         {/* 2. Real-Time Makeline & Delivery Countdown */}
         <EstimatedDeliveryCountdown
@@ -227,68 +274,68 @@ function OrderConfirmationPage() {
           aria-label="Order Details"
           className="rounded-2xl border border-divider bg-surface p-4 sm:p-5 shadow-xs space-y-4"
         >
-          <div className="flex items-center justify-between border-b border-divider pb-3">
+          <div className="flex items-center justify-between gap-3 border-b border-divider pb-4">
             <div>
-              <span className="text-[10px] uppercase font-bold text-text-secondary">Order Number</span>
-              <p className="font-mono text-base font-black text-text">{order.shortCode}</p>
+              <span className="type-label-medium text-text-secondary">Order number</span>
+              <p className="text-base font-semibold tabular-nums text-text">{order.shortCode}</p>
             </div>
             <OrderStatusBadge status={order.status} />
           </div>
 
           {/* Takeaway Pickup Token Banner */}
           {order.fulfillment === "takeaway" && (
-            <div className="rounded-2xl bg-[#0E4825]/10 border border-[#0E4825]/25 p-3.5 flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4">
               <div>
-                <span className="block text-[10px] font-black uppercase tracking-wider text-[#0E4825] dark:text-[#4ADE80]">
-                  Counter Pickup Token
+                <span className="block type-label-medium text-primary-text">
+                  Counter pickup token
                 </span>
-                <span className="font-mono text-xl font-black text-[#0E4825] dark:text-[#4ADE80]">
+                <span className="text-2xl font-semibold tabular-nums text-primary-text">
                   {order.shortCode.split("-").pop() || order.shortCode}
                 </span>
               </div>
-              <span className="rounded-full bg-[#0E4825] text-white px-3 py-1 text-xs font-bold shadow-xs">
-                Show at Counter
+              <span className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground shadow-xs">
+                Show at counter
               </span>
             </div>
           )}
 
           {/* Dine-In Table Banner */}
           {order.fulfillment === "dinein" && order.tableNumber && (
-            <div className="rounded-2xl bg-[#0E4825]/10 border border-[#0E4825]/25 p-3.5 flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4">
               <div>
-                <span className="block text-[10px] font-black uppercase tracking-wider text-[#0E4825] dark:text-[#4ADE80]">
-                  Dine-In Table
-                </span>
-                <span className="font-mono text-xl font-black text-[#0E4825] dark:text-[#4ADE80]">
+                <span className="block type-label-medium text-primary-text">Dine-in table</span>
+                <span className="text-2xl font-semibold tabular-nums text-primary-text">
                   Table {order.tableNumber}
                 </span>
               </div>
-              <span className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 px-3 py-1 text-xs font-bold">
-                KOT Dispatched ✓
+              <span className="rounded-full bg-success/15 px-3 py-1 text-sm font-semibold text-success">
+                Order sent to kitchen ✓
               </span>
             </div>
           )}
 
-          <div className="space-y-3 pt-1 text-xs">
-            <MetaRow icon={<ShoppingBag className="h-4 w-4" />} label="Fulfillment Mode">
+          <div className="space-y-4 pt-1">
+            <MetaRow icon={<ShoppingBag className="h-4 w-4" />} label="Fulfillment mode">
               {fulfillmentLabel}
             </MetaRow>
 
-            <MetaRow icon={<MapPin className="h-4 w-4" />} label="Branch Outlet">
-              <span className="block font-bold text-text truncate">{order.store.name}</span>
-              <span className="block text-text-secondary truncate">{order.store.address}</span>
+            <MetaRow icon={<MapPin className="h-4 w-4" />} label="Branch outlet">
+              <span className="block font-semibold text-text">{order.store.name}</span>
+              <span className="block leading-relaxed text-text-secondary">
+                {order.store.address}
+              </span>
             </MetaRow>
 
-            <MetaRow icon={<FileText className="h-4 w-4" />} label="Payment Status">
-              <span className="font-bold text-text">
+            <MetaRow icon={<FileText className="h-4 w-4" />} label="Payment status">
+              <span className="font-semibold text-text">
                 {order.payment.label} ·{" "}
                 {order.payment.status === "paid"
                   ? "Paid ✓"
                   : order.payment.status === "CASH_PENDING"
-                  ? "Cash on Delivery (Pending)"
-                  : order.payment.status === "PAY_AT_STORE"
-                  ? "Pay at Counter"
-                  : order.payment.status}
+                    ? "Cash on Delivery (Pending)"
+                    : order.payment.status === "PAY_AT_STORE"
+                      ? "Pay at Counter"
+                      : order.payment.status}
               </span>
             </MetaRow>
           </div>
@@ -297,10 +344,10 @@ function OrderConfirmationPage() {
         {/* 5. Itemized Order Review */}
         <section
           aria-label="Ordered Items"
-          className="rounded-2xl border border-divider bg-surface p-4 sm:p-5 shadow-xs space-y-3"
+          className="space-y-4 rounded-2xl border border-divider bg-surface p-4 sm:p-5 shadow-xs"
         >
-          <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-            Your Ordered Items ({order.items.length} {order.items.length === 1 ? "Item" : "Items"})
+          <h3 className="type-title-large text-text">
+            Your ordered items ({order.items.length} {order.items.length === 1 ? "Item" : "Items"})
           </h3>
           <ReviewItemsList lines={order.items} />
         </section>
@@ -308,44 +355,40 @@ function OrderConfirmationPage() {
         {/* 6. Bill Summary Breakdown */}
         <section
           aria-label="Bill Breakdown"
-          className="rounded-2xl border border-divider bg-surface p-4 sm:p-5 shadow-xs space-y-3"
+          className="space-y-4 rounded-2xl border border-divider bg-surface p-4 sm:p-5 shadow-xs"
         >
-          <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-            Price Breakdown
-          </h3>
+          <h3 className="type-title-large text-text">Price breakdown</h3>
           <OrderPriceSummary totals={order.totals} promo={order.promo} />
         </section>
 
         {/* 7. WhatsApp Updates Toggle */}
-        <section className="rounded-2xl border border-divider bg-surface p-4 shadow-xs flex items-center justify-between gap-3 select-none">
+        <section className="flex items-center justify-between gap-4 rounded-2xl border border-divider bg-surface p-4 shadow-xs select-none">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
-              <MessageSquare className="w-4 h-4" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
+              <MessageSquare className="h-4 w-4" aria-hidden />
             </div>
             <div>
-              <p className="text-xs font-bold text-text">Send updates via WhatsApp</p>
-              <p className="text-[11px] text-text-secondary">
+              <p className="text-sm font-semibold text-text">Send updates via WhatsApp</p>
+              <p className="text-sm leading-relaxed text-text-secondary">
                 Receive live order alerts on your verified mobile number
               </p>
             </div>
           </div>
           <button
             type="button"
+            role="switch"
+            aria-checked={whatsappOptIn}
+            aria-label="Send updates via WhatsApp"
+            disabled={waBusy}
             onClick={() => {
-              void HapticService.selection();
-              setWhatsappOptIn(!whatsappOptIn);
-              toast.success(
-                whatsappOptIn
-                  ? "WhatsApp updates turned off"
-                  : "WhatsApp tracking updates enabled!"
-              );
+              void toggleWhatsappOptIn();
             }}
-            className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer ${
-              whatsappOptIn ? "bg-[#0E4825]" : "bg-neutral-300 dark:bg-neutral-700"
+            className={`flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors cursor-pointer disabled:opacity-60 ${
+              whatsappOptIn ? "bg-primary" : "bg-divider"
             }`}
           >
             <div
-              className={`w-4 h-4 rounded-full bg-white transition-transform ${
+              className={`h-5 w-5 rounded-full bg-white transition-transform ${
                 whatsappOptIn ? "translate-x-5" : "translate-x-0"
               }`}
             />
@@ -353,46 +396,47 @@ function OrderConfirmationPage() {
         </section>
 
         {/* 8. Primary Track Order & Navigation CTAs */}
-        <div className="space-y-2.5 pt-2">
+        <div className="space-y-3 pt-2">
           <button
             type="button"
             onClick={() => {
               void HapticService.impact("medium");
               void navigate({ to: "/orders/$orderId/track", params: { orderId: order.id } });
             }}
-            className="w-full py-4 px-6 min-h-[50px] rounded-2xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all cursor-pointer"
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-base font-semibold text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover active:scale-[0.98] cursor-pointer"
           >
-            <RouteIcon className="w-5 h-5 stroke-[2.5px]" />
-            <span>Track Your Order Live →</span>
+            <RouteIcon className="h-5 w-5 stroke-[2.5px]" aria-hidden />
+            <span>Track your order live</span>
+            <ArrowRight className="h-4 w-4" aria-hidden />
           </button>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => void shareOrder()}
-              className="py-3 px-4 min-h-[44px] rounded-xl border border-divider bg-surface hover:border-primary text-text font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-divider bg-surface px-4 py-3 text-sm font-semibold text-text transition-colors hover:border-primary cursor-pointer"
             >
-              <Share2 className="w-4 h-4" />
-              <span>Share Order</span>
+              <Share2 className="h-4 w-4" aria-hidden />
+              <span>Share order</span>
             </button>
 
             <Link
               to="/support"
               search={{ orderId: order.id }}
-              className="py-3 px-4 min-h-[44px] rounded-xl border border-divider bg-surface hover:border-primary text-text font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-divider bg-surface px-4 py-3 text-sm font-semibold text-text transition-colors hover:border-primary cursor-pointer"
             >
-              <HelpCircle className="w-4 h-4" />
-              <span>Need Help?</span>
+              <HelpCircle className="h-4 w-4" aria-hidden />
+              <span>Need help?</span>
             </Link>
           </div>
 
           <div className="pt-2 text-center">
             <Link
               to="/home"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+              className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary-text hover:underline"
             >
-              <Home className="w-4 h-4" />
-              <span>Back to Home</span>
+              <Home className="h-4 w-4" aria-hidden />
+              <span>Back to home</span>
             </Link>
           </div>
         </div>
@@ -414,10 +458,8 @@ function MetaRow({
     <div className="flex items-start gap-3">
       <span className="mt-0.5 text-text-secondary">{icon}</span>
       <div className="min-w-0 flex-1">
-        <span className="text-[10px] uppercase font-bold text-text-secondary block">
-          {label}
-        </span>
-        <div className="text-xs font-medium text-text mt-0.5">{children}</div>
+        <span className="block type-label-medium text-text-secondary">{label}</span>
+        <div className="mt-0.5 text-sm leading-relaxed text-text">{children}</div>
       </div>
     </div>
   );

@@ -42,14 +42,14 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
         ? "Fast & secure payment via UPI, Cards, NetBanking or Wallets"
         : "Requires internet connection. Please select Pay on Delivery / Counter.",
       Icon: CreditCard,
-      accentClass: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
+      accentClass: "bg-accent/10 text-accent border-accent/20",
     },
     {
       id: "cash" as const,
       title: cashTitle,
       description: cashDesc,
       Icon: Coins,
-      accentClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+      accentClass: "bg-success/10 text-success border-success/20",
     },
   ];
 
@@ -113,12 +113,12 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
                   {title}
                 </Text>
                 {id === "online" && !isOnline && (
-                  <span className="inline-flex items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+                  <span className="inline-flex items-center gap-1 rounded bg-warning/10 px-2 py-0.5 text-sm font-semibold text-warning">
                     Offline
                   </span>
                 )}
               </div>
-              <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-normal text-xs">
+              <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-relaxed">
                 {description}
               </Text>
             </div>

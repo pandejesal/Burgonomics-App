@@ -1,14 +1,5 @@
 import React, { useState } from "react";
-import {
-  AlertCircle,
-  Camera,
-  X,
-  UploadCloud,
-  CheckCircle2,
-  Clock,
-  ShieldAlert,
-  ShoppingBag,
-} from "lucide-react";
+import { Camera, X, Clock } from "lucide-react";
 import { toast } from "sonner";
 import type { TicketCategory } from "../hooks/useCustomerTickets";
 import type { Order } from "@/features/orders";
@@ -19,11 +10,6 @@ interface CreateTicketFormProps {
   initialCategory?: TicketCategory;
   initialDescription?: string;
   isSubmitting?: boolean;
-  /**
-   * Backend-provided response SLA in minutes. The SLA notice renders only
-   * when this is present — never invent response-time promises.
-   */
-  slaMinutes?: number | null;
   onSubmit: (data: {
     orderId?: string;
     orderShortCode?: string;
@@ -50,11 +36,12 @@ export function CreateTicketForm({
   initialCategory,
   initialDescription,
   isSubmitting = false,
-  slaMinutes = null,
   onSubmit,
   onCancel,
 }: CreateTicketFormProps) {
-  const [selectedOrderId, setSelectedOrderId] = useState<string>(preselectedOrderId || (orders[0]?.id || ""));
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(
+    preselectedOrderId || orders[0]?.id || "",
+  );
   const [category, setCategory] = useState<TicketCategory>(initialCategory ?? "FOOD_QUALITY");
   const [description, setDescription] = useState(initialDescription ?? "");
   // Local files only — previews use object URLs, uploads go to Storage via
@@ -133,32 +120,34 @@ export function CreateTicketForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-5 rounded-3xl bg-[#0D0D0D] border border-neutral-800 space-y-4 text-white shadow-xl">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-5 rounded-3xl border border-divider bg-surface p-5 text-text shadow-xl"
+    >
       {/* Header */}
-      <div className="border-b border-neutral-800 pb-3">
-        <h2 className="text-base font-black text-white flex items-center gap-2">
+      <div className="border-b border-divider pb-3">
+        <h2 className="type-title-large flex items-center gap-2 text-text">
           <span>Report an Issue / Support Ticket</span>
         </h2>
-        <p className="text-xs text-neutral-400 mt-0.5">
+        <p className="mt-1 text-sm leading-relaxed text-text-secondary">
           Submit details for rapid resolution with our branch manager
         </p>
       </div>
 
       {/* 1. Order Selector */}
       {orders.length > 0 && (
-        <div className="space-y-1.5">
-          <label className="block text-xs font-bold uppercase text-neutral-400">
-            Select Related Order
-          </label>
+        <div className="space-y-2">
+          <label className="block type-label-large text-text-secondary">Select related order</label>
           <select
             value={selectedOrderId}
             onChange={(e) => setSelectedOrderId(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 text-white text-xs font-semibold focus:outline-none focus:border-[#FF6600]"
+            className="min-h-11 w-full rounded-xl border border-divider bg-bg-secondary px-3 py-2 text-base font-medium text-text focus:border-primary focus:outline-none"
           >
             <option value="">-- No specific order --</option>
             {orders.map((o) => (
               <option key={o.id} value={o.id}>
-                #{o.shortCode || o.id.slice(-6).toUpperCase()} • {o.store?.name || "Burgonomics"} ({o.status?.label || o.status?.code})
+                #{o.shortCode || o.id.slice(-6).toUpperCase()} • {o.store?.name || "Burgonomics"} (
+                {o.status?.label || o.status?.code})
               </option>
             ))}
           </select>
@@ -166,73 +155,82 @@ export function CreateTicketForm({
       )}
 
       {/* 2. Issue Category Grid */}
-      <div className="space-y-1.5">
-        <label className="block text-xs font-bold uppercase text-neutral-400">
-          Issue Category
-        </label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div className="space-y-2">
+        <label className="block type-label-large text-text-secondary">Issue category</label>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {CATEGORIES.map((cat) => (
             <button
               key={cat.code}
               type="button"
               onClick={() => setCategory(cat.code)}
-              className={`p-2.5 rounded-2xl border text-left transition-colors cursor-pointer ${
+              aria-pressed={category === cat.code}
+              className={`min-h-11 rounded-2xl border p-3 text-left transition-colors cursor-pointer ${
                 category === cat.code
-                  ? "bg-[#0E4825] border-emerald-500 text-white shadow-xs"
-                  : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white"
+                  ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                  : "border-divider bg-bg-secondary text-text-secondary hover:text-text"
               }`}
             >
-              <div className="text-base mb-1">{cat.icon}</div>
-              <span className="font-bold text-xs block leading-tight">{cat.label}</span>
+              <div className="mb-1 text-base" aria-hidden>
+                {cat.icon}
+              </div>
+              <span className="block text-sm font-semibold leading-tight">{cat.label}</span>
             </button>
           ))}
         </div>
       </div>
 
       {/* 3. Description Field */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <label className="font-bold uppercase text-neutral-400">
-            Describe the Problem
-          </label>
-          <span className={`text-[11px] ${description.length >= 10 ? "text-emerald-400" : "text-neutral-500"}`}>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <label className="type-label-large text-text-secondary">Describe the problem</label>
+          <span
+            className={`text-sm ${description.length >= 10 ? "text-success" : "text-text-secondary"}`}
+          >
             {description.length}/10 min chars
           </span>
         </div>
         <textarea
-          rows={3}
+          rows={4}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Please share specific details (e.g. burger was cold upon arrival, or missing Peri Peri dip)..."
-          className="w-full px-3 py-2 rounded-2xl bg-neutral-900 border border-neutral-700 text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-[#FF6600]"
+          placeholder="Please share specific details (e.g. burger was cold upon arrival, or missing Peri Peri dip)…"
+          className="w-full rounded-2xl border border-divider bg-bg-secondary px-4 py-3 text-base leading-relaxed text-text placeholder:text-text-secondary focus:border-primary focus:outline-none"
           required
         />
       </div>
 
       {/* 4. Photo Upload Area */}
       <div className="space-y-2">
-        <label className="block text-xs font-bold uppercase text-neutral-400">
-          Attach Photos (Optional, max 3)
+        <label className="block type-label-large text-text-secondary">
+          Attach photos (optional, max 3)
         </label>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {previews.map((src, index) => (
-            <div key={index} className="relative w-16 h-16 rounded-xl overflow-hidden border border-neutral-700 group">
-              <img src={src} alt={`Attachment ${index + 1}`} className="w-full h-full object-cover" />
+            <div
+              key={index}
+              className="group relative h-16 w-16 overflow-hidden rounded-xl border border-divider"
+            >
+              <img
+                src={src}
+                alt={`Attachment ${index + 1}`}
+                className="h-full w-full object-cover"
+              />
               <button
                 type="button"
                 onClick={() => handleRemovePhoto(index)}
-                className="absolute top-1 right-1 p-0.5 rounded-full bg-black/80 text-white hover:bg-red-600 transition-colors cursor-pointer"
+                aria-label={`Remove attachment ${index + 1}`}
+                className="absolute right-1 top-1 rounded-full bg-black/80 p-1 text-white transition-colors hover:bg-error cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
           ))}
 
           {photoFiles.length < 3 && (
-            <label className="w-16 h-16 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/60 hover:bg-neutral-850 flex flex-col items-center justify-center cursor-pointer text-neutral-400 hover:text-white transition-colors">
-              <Camera className="w-5 h-5 mb-0.5" />
-              <span className="text-[9px] font-bold">Add Photo</span>
+            <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-divider bg-bg-secondary text-text-secondary transition-colors hover:bg-surface hover:text-text">
+              <Camera className="mb-0.5 h-5 w-5" aria-hidden />
+              <span className="text-sm font-medium">Add photo</span>
               <input
                 type="file"
                 accept="image/*"
@@ -245,35 +243,25 @@ export function CreateTicketForm({
         </div>
       </div>
 
-      {/* 5. Escalation notice — SLA copy only when backend-provided */}
-      <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs text-emerald-300">
-        <div className="flex items-center gap-1.5 font-bold">
-          <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>
-            {typeof slaMinutes === "number" && Number.isFinite(slaMinutes)
-              ? `Transparent ${slaMinutes}-Min SLA Guarantee`
-              : "How support works"}
-          </span>
+      {/* 5. Support-flow notice — honest generic copy (no unverifiable SLA guarantee) */}
+      <div className="space-y-1.5 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm text-text-secondary">
+        <div className="flex items-center gap-1.5 font-semibold text-text">
+          <Clock className="h-4 w-4 shrink-0 text-primary-text" aria-hidden />
+          <span>How support works</span>
         </div>
-        <p className="text-[11px] text-neutral-300 leading-relaxed">
-          {typeof slaMinutes === "number" && Number.isFinite(slaMinutes) ? (
-            <>
-              Our store manager responds in &lt;{slaMinutes} mins. If unaddressed, your ticket
-              automatically escalates to the Regional Operations Lead.
-            </>
-          ) : (
-            "Our store team is notified as soon as you submit. Track status and responses under Your Tickets below."
-          )}
+        <p className="text-sm leading-relaxed text-text-secondary">
+          Our store team is notified as soon as you submit. Track status and responses under Your
+          Tickets below.
         </p>
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+      <div className="flex items-center justify-end gap-2.5 border-t border-divider pt-3">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-xl bg-neutral-900 text-neutral-300 hover:text-white font-bold text-xs"
+            className="min-h-11 rounded-xl border border-divider bg-bg-secondary px-4 py-2 text-sm font-semibold text-text-secondary hover:text-text"
           >
             Cancel
           </button>
@@ -282,9 +270,9 @@ export function CreateTicketForm({
         <button
           type="submit"
           disabled={isSubmitting || description.trim().length < 10}
-          className="px-5 py-2.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] text-white font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-95 cursor-pointer disabled:opacity-50"
         >
-          {isSubmitting ? "Submitting..." : "Submit Support Ticket"}
+          {isSubmitting ? "Submitting…" : "Submit support ticket"}
         </button>
       </div>
     </form>

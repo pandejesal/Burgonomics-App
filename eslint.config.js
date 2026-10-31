@@ -33,6 +33,17 @@ export default tseslint.config(
         },
       ],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // React Compiler lint rules are advisory here: this app is NOT compiled
+      // with the React Compiler yet, and 50 pre-existing components set state in
+      // effects / read refs during render. They stay visible as warnings so the
+      // backlog is measurable, but they must not block every PR until the
+      // compiler is adopted. `rules-of-hooks` remains an error — it catches real
+      // render-order bugs.
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/refs": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/globals": "warn",
+      "react-hooks/immutability": "warn",
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-explicit-any": "off",
     },

@@ -2,7 +2,7 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { APP } from "@/core/constants/app";
 
 /**
- * Root route ('/') — redirects seamlessly to Home ('/home')
+ * Root route ('/') — branded splash first, then Home ('/home')
  */
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -11,5 +11,5 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: `${APP.name} — ${APP.tagline}` },
     ],
   }),
-  component: () => <Navigate to="/home" replace />,
+  component: () => <Navigate to="/splash" replace />,
 });

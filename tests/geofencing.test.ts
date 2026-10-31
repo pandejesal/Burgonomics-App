@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
 export interface Coordinates {
   latitude: number;
@@ -28,7 +28,7 @@ export function calculateDistanceKm(from: Coordinates, to: Coordinates): number 
 
 export function checkGeofenceDeliverability(
   customerLocation: Coordinates,
-  branch: BranchGeofence
+  branch: BranchGeofence,
 ): { isDeliverable: boolean; distanceKm: number; deliveryFee: number; reason?: string } {
   const distanceKm = calculateDistanceKm(branch.location, customerLocation);
 
@@ -51,17 +51,17 @@ export function checkGeofenceDeliverability(
   };
 }
 
-describe('Customer App Core — Geofence Radius & Distance Fee Engine', () => {
+describe("Customer App Core — Geofence Radius & Distance Fee Engine", () => {
   const branchSurat: BranchGeofence = {
-    id: 'branch_surat_01',
-    name: 'Burgonomics Vesu Flagship',
+    id: "branch_surat_01",
+    name: "Burgonomics Vesu Flagship",
     location: { latitude: 21.1518, longitude: 72.7758 },
     deliveryRadiusKm: 8.0,
   };
 
-  it('accepts customer location well within delivery radius with standard base fee (<=3km)', () => {
+  it("accepts customer location well within delivery radius with standard base fee (<=3km)", () => {
     // ~1.8km away
-    const nearCustomer: Coordinates = { latitude: 21.1620, longitude: 72.7850 };
+    const nearCustomer: Coordinates = { latitude: 21.162, longitude: 72.785 };
     const result = checkGeofenceDeliverability(nearCustomer, branchSurat);
 
     expect(result.isDeliverable).toBe(true);
@@ -69,9 +69,9 @@ describe('Customer App Core — Geofence Radius & Distance Fee Engine', () => {
     expect(result.deliveryFee).toBe(30);
   });
 
-  it('calculates tiered delivery fee for extended distance (>3km and <=8km)', () => {
+  it("calculates tiered delivery fee for extended distance (>3km and <=8km)", () => {
     // ~5.2km away
-    const midCustomer: Coordinates = { latitude: 21.1900, longitude: 72.8050 };
+    const midCustomer: Coordinates = { latitude: 21.19, longitude: 72.805 };
     const result = checkGeofenceDeliverability(midCustomer, branchSurat);
 
     expect(result.isDeliverable).toBe(true);
@@ -81,13 +81,13 @@ describe('Customer App Core — Geofence Radius & Distance Fee Engine', () => {
     expect(result.deliveryFee).toBe(expectedFee);
   });
 
-  it('strictly rejects customer location beyond branch delivery radius (>8km)', () => {
+  it("strictly rejects customer location beyond branch delivery radius (>8km)", () => {
     // ~14.5km away in northern Surat
-    const farCustomer: Coordinates = { latitude: 21.2700, longitude: 72.8600 };
+    const farCustomer: Coordinates = { latitude: 21.27, longitude: 72.86 };
     const result = checkGeofenceDeliverability(farCustomer, branchSurat);
 
     expect(result.isDeliverable).toBe(false);
     expect(result.distanceKm).toBeGreaterThan(8.0);
-    expect(result.reason).toContain('outside 8km delivery zone');
+    expect(result.reason).toContain("outside 8km delivery zone");
   });
 });

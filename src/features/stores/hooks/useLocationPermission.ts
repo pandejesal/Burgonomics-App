@@ -119,7 +119,7 @@ interface InitialLocationState {
 function readInitialLocationState(): InitialLocationState {
   const idle: InitialLocationState = { status: "idle", coords: null, error: null };
   if (typeof window === "undefined") return idle;
-  let saved: string | null = null;
+  let saved: string | null;
   try {
     saved = window.localStorage.getItem(CACHE_KEY);
   } catch {
@@ -157,6 +157,37 @@ function readInitialLocationState(): InitialLocationState {
     coords: null,
     error: "Saved location was invalid and has been cleared.",
   };
+}
+
+/**
+ * Read the last GPS fix from the local cache without touching permission
+ * state. Lets non-React consumers (Zustand guards) apply the same
+ * device/cached-geolocation tier the UI uses. `null` when absent/corrupt.
+ */
+export function readCachedCoords(): Coords | null {
+  if (typeof window === "undefined") return null;
+  // eslint-disable-next-line no-useless-assignment -- initial value is a fallback only
+  let saved: string | null = null;
+  try {
+    saved = window.localStorage.getItem(CACHE_KEY);
+  } catch {
+    return null;
+  }
+  if (!saved) return null;
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      Number.isFinite((parsed as Coords).lat) &&
+      Number.isFinite((parsed as Coords).lng)
+    ) {
+      return { lat: (parsed as Coords).lat, lng: (parsed as Coords).lng };
+    }
+  } catch {
+    // Unparseable cache — treat as "no position".
+  }
+  return null;
 }
 
 export function useLocationPermission() {

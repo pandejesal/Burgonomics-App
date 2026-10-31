@@ -7,6 +7,7 @@ ISOLATION: work ONLY inside this worktree root (core @ post-batch-2 main) — AL
 CONTEXT: Batch 2 wired promo/loyalty/tip into payloads; your auth layer must not re-open what backend closed (guest bonus now server-idempotent — client flag must not mint). Sweep B1–B11 hold.
 
 PLAN: input/PLAN-A.md §Batch 4 (4Y) + input/PLAN-B.md §Batch 3 S2. EXCLUSIVE scope:
+
 - src/features/auth/** + auth.login.tsx + auth.otp.tsx (single OTP delivery default; no channel mismatch)
 - QuickAuthSheet.tsx (guest→earn flow must defer to server bonus; localStorage flag never mints)
 - secureStorage.ts (untrusted-cache documentation; short TTL where tokens cached; no new plaintext secrets; Keychain/Keystore path where feasible, else queued with reason)

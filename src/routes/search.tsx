@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Search as SearchIcon, X, Clock, Tag, Mic, ScanLine, Flame, Sparkles, ShieldCheck } from "lucide-react";
+import { Search as SearchIcon, X, Clock, Tag, Flame, Sparkles, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -18,6 +18,7 @@ import { cartRepository, FloatingCartBar } from "@/features/cart";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import type { Product } from "@/features/menu/models";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { cn } from "@/lib/utils";
 
 interface SearchParamsSchema {
@@ -34,10 +35,20 @@ const DIET_FILTER_TAGS = [
   { id: "protein", label: "High Protein", icon: Tag },
 ];
 
+// Explicit plural labels for the kind tabs — naive `+ "s"` pluralization
+// produced "Categorys". Keep in sync with the kind union below.
+const KIND_PLURAL_LABELS = {
+  product: "Products",
+  combo: "Combos",
+  category: "Categories",
+  offer: "Offers",
+} as const;
+
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchParamsSchema => ({
     q: typeof search.q === "string" && search.q.trim() ? search.q.trim() : undefined,
-    filter: typeof search.filter === "string" && search.filter.trim() ? search.filter.trim() : undefined,
+    filter:
+      typeof search.filter === "string" && search.filter.trim() ? search.filter.trim() : undefined,
     kind: ["all", "product", "combo", "category", "offer"].includes(search.kind as string)
       ? (search.kind as SearchKind)
       : undefined,
@@ -45,7 +56,10 @@ export const Route = createFileRoute("/search")({
   head: () => ({
     meta: [
       { title: "Search — Burgonomics (100% Pure Vegetarian)" },
-      { name: "description", content: "Instant search the 100% Pure Veg Burgonomics menu with diet filters." },
+      {
+        name: "description",
+        content: "Instant search the 100% Pure Veg Burgonomics menu with diet filters.",
+      },
     ],
   }),
   component: SearchPage,
@@ -88,18 +102,28 @@ function SearchPage() {
     inputRef.current?.focus();
   }, []);
 
-  // Sync initial query from URL search params
+  // Sync from URL search params. The URL is the single source of truth for a
+  // deep link: apply every pending param FIRST, then submit once. The previous
+  // ordering submitted with the pre-kind state and the debounced effect
+  // submitted again 300ms later — two repository calls for one intent, two
+  // recent-query writes, and a chance for the stale response to land last.
+  // (`query`/`kind` are read but deliberately not depended on: this effect is
+  // the URL → state direction only, and adding them would let a keystroke's
+  // stale URL value revert what the user just typed.)
   useEffect(() => {
+    let changed = false;
     if (searchParams.q && searchParams.q !== query) {
       setQuery(searchParams.q);
-      void submit(store?.id);
+      changed = true;
     }
     if (searchParams.kind && searchParams.kind !== kind) {
       setKind(searchParams.kind);
+      changed = true;
     }
     if (searchParams.filter && searchParams.filter !== activeFilter) {
       setActiveFilter(searchParams.filter);
     }
+    if (changed) void submit(store?.id);
   }, [searchParams.q, searchParams.kind, searchParams.filter, store?.id]);
 
   // Debounced search (300ms) with search param sync
@@ -112,7 +136,11 @@ function SearchPage() {
       void submit(store?.id);
       void navigate({
         to: "/search",
-        search: (prev: SearchParamsSchema) => ({ ...prev, q, filter: activeFilter !== "all" ? activeFilter : undefined }),
+        search: (prev: SearchParamsSchema) => ({
+          ...prev,
+          q,
+          filter: activeFilter !== "all" ? activeFilter : undefined,
+        }),
         replace: true,
       });
     }, 300);
@@ -120,14 +148,15 @@ function SearchPage() {
     return () => clearTimeout(timer);
   }, [query, store?.id, activeFilter, fetchSuggestions, submit, navigate]);
 
-  const [submitting, setSubmitting] = useState(false);
+  // `submitting` used to shadow the store's own `loading` status — every path
+  // that actually waits already sets it, and the extra flag could only flash a
+  // skeleton over results that were already on screen (or stick forever if the
+  // repository rejected before `finally`). One status drives the skeleton.
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!query.trim()) return;
     void HapticService.impact("light");
-    setSubmitting(true);
     await submit(store?.id);
-    setSubmitting(false);
   };
 
   const runRecent = async (q: string) => {
@@ -159,10 +188,17 @@ function SearchPage() {
     if (activeFilter === "all") return results;
     return results.filter((item) => {
       if (activeFilter === "jain") {
-        return item.name.toLowerCase().includes("jain") || item.description?.toLowerCase().includes("jain");
+        return (
+          item.name.toLowerCase().includes("jain") ||
+          item.description?.toLowerCase().includes("jain")
+        );
       }
       if (activeFilter === "bestseller") {
-        return item.badges?.some((b) => b.label.toLowerCase().includes("special") || b.label.toLowerCase().includes("bestseller"));
+        return item.badges?.some(
+          (b) =>
+            b.label.toLowerCase().includes("special") ||
+            b.label.toLowerCase().includes("bestseller"),
+        );
       }
       if (activeFilter === "spicy") {
         return (
@@ -183,13 +219,13 @@ function SearchPage() {
     });
   }, [results, activeFilter]);
 
-  const handleAdd = (p: Product) => {
+  const handleAdd = async (p: Product) => {
     if (p.customizable) {
       setCustomizingProduct(p);
       return;
     }
     if (!store) return;
-    void cartRepository.addItem({
+    const res = await cartRepository.addItem({
       storeId: store.id,
       productId: p.id,
       name: p.name,
@@ -199,6 +235,12 @@ function SearchPage() {
       unitPrice: p.price,
       quantity: 1,
     });
+    if (!res.success) {
+      toast.error("Couldn't add to cart", {
+        description: toUserMessage(res),
+      });
+      return;
+    }
     void HapticService.impact("medium");
     toast.success(`✓ ${p.name} added to cart`);
   };
@@ -212,7 +254,7 @@ function SearchPage() {
           className="sticky top-0 z-20 bg-surface/95 px-4 py-3 backdrop-blur-md border-b border-divider shadow-xs"
         >
           {/* Input Box */}
-          <label className="flex h-12 items-center gap-2 rounded-2xl border border-divider bg-bg-secondary px-4 focus-within:border-primary focus-within:bg-surface focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+          <label className="search-field flex min-h-12 items-center gap-2 rounded-2xl border border-divider bg-bg-secondary px-4 py-2 focus-within:border-primary focus-within:bg-surface transition-colors">
             <SearchIcon className="h-5 w-5 text-text-secondary shrink-0" aria-hidden />
             <input
               ref={inputRef}
@@ -221,7 +263,7 @@ function SearchPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search smashed burgers, sides, drinks…"
               aria-label="Search the menu"
-              className="flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled"
+              className="min-w-0 flex-1 appearance-none rounded-[inherit] bg-transparent outline-none type-body-large placeholder:text-text-disabled"
             />
             {query && (
               <button
@@ -243,25 +285,8 @@ function SearchPage() {
             )}
           </label>
 
-          {/* Quick Actions & Category Kind Tabs */}
+          {/* Category Kind Tabs */}
           <div className="mt-2.5 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => toast("Voice search will be enabled in next release")}
-              aria-label="Voice search (coming soon)"
-              className="inline-flex items-center gap-1 rounded-xl border border-divider bg-surface px-3 py-1.5 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer"
-            >
-              <Mic className="h-3.5 w-3.5" aria-hidden /> Voice
-            </button>
-            <button
-              type="button"
-              onClick={() => toast("Barcode scanner will be enabled in next release")}
-              aria-label="Scan barcode (coming soon)"
-              className="inline-flex items-center gap-1 rounded-xl border border-divider bg-surface px-3 py-1.5 text-xs text-text-secondary hover:text-primary transition-colors cursor-pointer"
-            >
-              <ScanLine className="h-3.5 w-3.5" aria-hidden /> Scan
-            </button>
-
             <div
               role="tablist"
               aria-label="Filter search by kind"
@@ -279,18 +304,21 @@ function SearchPage() {
                       setKind(k);
                       void navigate({
                         to: "/search",
-                        search: (prev: SearchParamsSchema) => ({ ...prev, kind: k !== "all" ? k : undefined }),
+                        search: (prev: SearchParamsSchema) => ({
+                          ...prev,
+                          kind: k !== "all" ? k : undefined,
+                        }),
                         replace: true,
                       });
                     }}
                     className={cn(
-                      "whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-bold transition-all duration-150 ease-out select-none active:scale-[0.96] cursor-pointer border",
+                      "min-h-11 whitespace-nowrap rounded-xl border px-3.5 py-2 text-sm font-semibold transition-colors select-none active:scale-[0.96] cursor-pointer",
                       active
-                        ? "bg-[#0E4825] text-white border-[#0E4825] shadow-xs"
-                        : "border-divider bg-surface text-text-secondary hover:text-primary"
+                        ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                        : "border-divider bg-surface text-text-secondary hover:text-primary",
                     )}
                   >
-                    {k === "all" ? "All" : k.charAt(0).toUpperCase() + k.slice(1) + "s"}
+                    {k === "all" ? "All" : KIND_PLURAL_LABELS[k]}
                   </button>
                 );
               })}
@@ -308,13 +336,13 @@ function SearchPage() {
                   type="button"
                   onClick={() => handleFilterSelect(tag.id)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all select-none cursor-pointer border",
+                    "inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors select-none cursor-pointer",
                     active
-                      ? "bg-[#FF6600] text-white border-[#FF6600] shadow-xs"
-                      : "bg-surface text-text-secondary border-divider hover:border-primary/40 hover:text-text"
+                      ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                      : "border-divider bg-surface text-text-secondary hover:border-primary/40 hover:text-text",
                   )}
                 >
-                  {Icon && <Icon className="h-3 w-3" />}
+                  {Icon && <Icon className="h-4 w-4" aria-hidden />}
                   <span>{tag.label}</span>
                 </button>
               );
@@ -337,11 +365,13 @@ function SearchPage() {
                         <button
                           type="button"
                           onClick={() => runRecent(s.label)}
-                          className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-bg-secondary select-none transition-all duration-150 ease-out active:scale-[0.98] cursor-pointer"
+                          className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-secondary select-none active:scale-[0.99] cursor-pointer"
                         >
-                          <Tag className="h-4 w-4 text-[#0E4825]" aria-hidden />
+                          <Tag className="h-4 w-4 text-primary-text" aria-hidden />
                           <span className="type-body-large font-medium">{s.label}</span>
-                          <span className="ml-auto text-xs text-text-secondary uppercase font-mono">{s.kind}</span>
+                          <span className="ml-auto text-sm capitalize text-text-secondary">
+                            {s.kind}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -356,7 +386,7 @@ function SearchPage() {
                     variant="titleMedium"
                     className="mb-2 inline-flex items-center gap-1.5 font-bold"
                   >
-                    <Flame className="h-4 w-4 text-[#FF6600]" aria-hidden /> Trending Searches
+                    <Flame className="h-4 w-4 text-accent" aria-hidden /> Trending searches
                   </Text>
                   <ul className="flex flex-wrap gap-2">
                     {trending.map((t) => (
@@ -364,7 +394,7 @@ function SearchPage() {
                         <button
                           type="button"
                           onClick={() => runRecent(t.label)}
-                          className="inline-flex items-center gap-2 rounded-full border border-divider bg-surface px-3.5 py-2 text-xs font-bold text-text select-none transition-all duration-150 ease-out active:scale-[0.96] hover:border-primary/40 hover:text-primary cursor-pointer shadow-xs"
+                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-divider bg-surface px-4 py-2 text-sm font-semibold text-text select-none transition-colors active:scale-[0.96] hover:border-primary/40 hover:text-primary cursor-pointer shadow-xs"
                         >
                           <Tag className="h-3.5 w-3.5 text-text-secondary" aria-hidden />
                           {t.label}
@@ -384,7 +414,7 @@ function SearchPage() {
                     <button
                       type="button"
                       onClick={clearRecent}
-                      className="text-xs font-bold text-[#FF6600] select-none active:opacity-70 transition-opacity cursor-pointer"
+                      className="min-h-11 text-sm font-semibold text-primary-text select-none transition-opacity active:opacity-70 cursor-pointer"
                     >
                       Clear all
                     </button>
@@ -393,12 +423,12 @@ function SearchPage() {
                     {recent.map((q) => (
                       <li
                         key={q}
-                        className="inline-flex items-center gap-1 rounded-full border border-divider bg-surface pl-3 pr-1 select-none transition-all duration-150 ease-out active:scale-[0.96] shadow-xs"
+                        className="inline-flex items-center gap-1 rounded-full border border-divider bg-surface pl-4 pr-1 select-none shadow-xs"
                       >
                         <button
                           type="button"
                           onClick={() => runRecent(q)}
-                          className="inline-flex items-center gap-2 py-1.5 text-xs font-bold text-text cursor-pointer"
+                          className="inline-flex min-h-11 items-center gap-2 py-2 text-sm font-medium text-text cursor-pointer"
                         >
                           <Clock className="h-3.5 w-3.5 text-text-secondary" aria-hidden />
                           {q}
@@ -407,9 +437,9 @@ function SearchPage() {
                           type="button"
                           aria-label={`Remove ${q}`}
                           onClick={() => removeRecent(q)}
-                          className="grid h-6 w-6 place-items-center rounded-full text-text-secondary hover:bg-bg-secondary active:scale-90 transition-transform cursor-pointer"
+                          className="grid h-8 w-8 place-items-center rounded-full text-text-secondary transition-transform hover:bg-bg-secondary active:scale-90 cursor-pointer"
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       </li>
                     ))}
@@ -426,7 +456,7 @@ function SearchPage() {
             </>
           )}
 
-          {(status === "loading" || submitting) && <MenuSkeleton rows={4} />}
+          {status === "loading" && <MenuSkeleton rows={4} />}
 
           {status === "error" && (
             <FailureState title="Search failed" message={error} onRetry={() => handleSubmit()} />
@@ -451,12 +481,12 @@ function SearchPage() {
 
           {status === "ready" && filteredResults.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Text variant="bodyMedium" tone="secondary" className="font-medium text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <Text variant="bodyMedium" tone="secondary" className="font-medium text-sm">
                   {filteredResults.length} result{filteredResults.length === 1 ? "" : "s"} found
                 </Text>
                 {activeFilter !== "all" && (
-                  <span className="text-[11px] font-bold text-[#0E4825] bg-[#0E4825]/10 px-2 py-0.5 rounded-full">
+                  <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-semibold text-primary-text">
                     Filtered by: {DIET_FILTER_TAGS.find((d) => d.id === activeFilter)?.label}
                   </span>
                 )}
