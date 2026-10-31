@@ -663,6 +663,34 @@ describe("D-01 — STORE_NOT_LINKED is shown honestly and is not retryable", () 
     const after = buttonWithText("ONLINE ORDERING UNAVAILABLE");
     expect(after?.disabled).toBe(true);
   });
+
+  it("clears the online refusal when the customer switches to cash", async () => {
+    await mount(CheckoutPage);
+    await act(async () => buttonWithText("PAY")!.click());
+    await act(async () => {});
+    expect(buttonWithText("ONLINE ORDERING UNAVAILABLE")?.disabled).toBe(true);
+
+    // A different payment method is a new path to place the order; the online
+    // refusal must not keep the button dead forever.
+    await act(async () => {
+      usePaymentStore.getState().setMethod("cash");
+    });
+
+    const after = buttonWithText("PAY");
+    expect(after, "PAY should be offered again for cash").toBeDefined();
+    expect(after?.disabled).toBe(false);
+    expect(buttonWithText("ONLINE ORDERING UNAVAILABLE")).toBeUndefined();
+
+    // Switching back to online may re-attempt: the server answers 409 again.
+    await act(async () => {
+      usePaymentStore.getState().setMethod("online");
+    });
+    expect(buttonWithText("PAY")?.disabled).toBe(false);
+    await act(async () => buttonWithText("PAY")!.click());
+    await act(async () => {});
+    expect(fixture.createPaymentOrder).toHaveBeenCalledTimes(2);
+    expect(buttonWithText("ONLINE ORDERING UNAVAILABLE")?.disabled).toBe(true);
+  });
 });
 
 /**

@@ -228,6 +228,14 @@ export function CheckoutPage() {
   // always refuse to create a gateway order. Keep PAY disabled instead of
   // inviting a retry that cannot succeed.
   const [orderingUnavailable, setOrderingUnavailable] = React.useState(false);
+  // D-01 follow-up: the reset inside handlePlaceOrder is unreachable while PAY
+  // is disabled, so a previous STORE_NOT_LINKED refusal used to survive a
+  // switch to cash. A different payment method is a new path to place the
+  // order; clearing keeps cash usable. Switching back to online may re-attempt
+  // and the server simply answers 409 again.
+  React.useEffect(() => {
+    setOrderingUnavailable(false);
+  }, [paymentMethod]);
   const [authSheetOpen, setAuthSheetOpen] = React.useState(false);
   // Kitchen-hours gate: PAY must lock itself at 23:00 IST even if this screen
   // has been sitting open since noon (the hook re-checks on tick + focus).
