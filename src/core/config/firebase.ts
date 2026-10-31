@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, type FirestoreSettings } from "firebase/firestore";
 
 const requiredFirebaseKeys = [
   "VITE_FIREBASE_API_KEY",
@@ -62,7 +62,20 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+/**
+ * CUS-06: orders carry optional leaves that are legitimately `undefined`
+ * (notes, fulfillmentInstructions, tableNumber, payment.transactionId,
+ * payment.paidAt, branchCoordinates — see ordersService.createOrder). With
+ * plain `getFirestore()` the SDK validates the write locally and throws
+ * `invalid-argument` "Unsupported field value: undefined" BEFORE any request,
+ * so every checkout surfaced PERSIST_FAILED and Razorpay never opened.
+ * `ignoreUndefinedProperties` drops those keys instead. Exported so the
+ * regression test (src/features/orders/order-persist-firestore.test.ts) builds
+ * a real Firestore instance with the identical settings.
+ */
+export const firestoreSettings: FirestoreSettings = { ignoreUndefinedProperties: true };
+
+const db = initializeFirestore(app, firestoreSettings);
 
 export { app, auth, db };
 
