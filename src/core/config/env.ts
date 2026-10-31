@@ -28,6 +28,24 @@ const ENV_NAME = (readEnv("VITE_APP_ENV", "development") as AppEnvironment) || "
 const IS_RELEASE_BUILD =
   (import.meta as unknown as { env?: Record<string, unknown> }).env?.PROD === true;
 
+/**
+ * True ONLY for an explicit `--mode staging` build (`npm run build:mobile:staging`
+ * passes `--mode staging`). CUS-08: a staging bundle is a release build
+ * (PROD=true) yet it is the one release target where a Razorpay TEST key is
+ * correct, because staging cannot move real money.
+ *
+ * Deliberately narrow and separate from `IS_RELEASE_BUILD`/`ENV_NAME`:
+ * - `vite build` with no `--mode` flag resolves MODE to "production", and
+ *   `--mode production` obviously is not staging — both keep refusing test
+ *   keys exactly as before.
+ * - `VITE_APP_ENV` is NOT consulted: the production gates intentionally ignore
+ *   it after a past bug skipped them that way.
+ * - Use it ONLY for the publishable-key checks below — never to skip mock,
+ *   demo or any other production guard.
+ */
+const BUILD_MODE = (import.meta as unknown as { env?: Record<string, unknown> }).env?.MODE;
+
+const IS_STAGING_BUILD = BUILD_MODE === "staging";
 export interface AppConfig {
   env: AppEnvironment;
   appName: string;
@@ -114,16 +132,62 @@ export const appConfig: AppConfig = {
 };
 
 // ── Production safety assertions ────────────────────────────────────────
+/**
+ * Publishable-key verdict for one build. Pure (and exported) so the CUS-08
+ * regression test can exercise every build mode without booting a bundle.
+ *
+ * - Explicit staging build (`--mode staging`): a TEST key is correct here —
+ *   staging cannot move real money — and a LIVE key is refused.
+ * - Production gate (`ENV_NAME === "production"` OR any release bundle): a
+ *   test key or no key is refused. Unchanged.
+ */
+export function razorpayKeyVerdict(
+  keyId: string,
+  build: { staging: boolean; productionGate: boolean },
+): { level: "ok" | "warn" | "error"; message?: string } {
+  if (build.staging) {
+    if (!keyId) {
+      return {
+        level: "warn",
+        message:
+          "[burgonomics] Staging build has no Razorpay key configured. " +
+          "Set VITE_RAZORPAY_KEY_ID (rzp_test_*) for staging; online payments fail closed until then.",
+      };
+    }
+    if (keyId.startsWith("rzp_live_")) {
+      return {
+        level: "error",
+        message:
+          "[burgonomics] FATAL: Staging build is using a Razorpay LIVE key. " +
+          "Set VITE_RAZORPAY_KEY_ID to a test key (rzp_test_*) — a live key must never be used on staging.",
+      };
+    }
+    return { level: "ok" };
+  }
+  if (build.productionGate && (!keyId || keyId.startsWith("rzp_test_"))) {
+    return {
+      level: "error",
+      message:
+        "[burgonomics] FATAL: Production build is using a Razorpay TEST key or has no key configured. " +
+        "Set VITE_RAZORPAY_KEY_ID to a live key before shipping.",
+    };
+  }
+  return { level: "ok" };
+}
+
 // Fires for a configured production env OR any release bundle — a shipped
 // build with VITE_APP_ENV unset (the historical default) must not skip it.
-if (ENV_NAME === "production" || IS_RELEASE_BUILD) {
-  const rzpKey = appConfig.integrations.razorpayKeyId;
-  if (!rzpKey || rzpKey.startsWith("rzp_test_")) {
-    console.error(
-      "[burgonomics] FATAL: Production build is using a Razorpay TEST key or has no key configured. " +
-        "Set VITE_RAZORPAY_KEY_ID to a live key before shipping.",
-    );
-  }
+// CUS-08: an explicit `--mode staging` build is exempt from the "live key
+// required" rule because staging legitimately runs on a test key; it gets the
+// mirror-image rule instead (a LIVE key on staging is refused).
+const rzpKeyVerdict = razorpayKeyVerdict(appConfig.integrations.razorpayKeyId, {
+  staging: IS_STAGING_BUILD,
+  productionGate: ENV_NAME === "production" || IS_RELEASE_BUILD,
+});
+if (rzpKeyVerdict.level === "error") {
+  console.error(rzpKeyVerdict.message);
+} else if (rzpKeyVerdict.level === "warn") {
+  console.warn(rzpKeyVerdict.message);
 }
 
 export const isProd = () => appConfig.env === "production";
@@ -131,6 +195,18 @@ export const isStaging = () => appConfig.env === "staging";
 export const isDev = () => appConfig.env === "development";
 /** True for release bundles, regardless of the configured VITE_APP_ENV. */
 export const isReleaseBuild = () => IS_RELEASE_BUILD;
+/**
+ * True only for an explicit `--mode staging` build (see IS_STAGING_BUILD).
+ * Narrow on purpose: used only by the publishable-key gates, never to skip a
+ * mock/demo/production guard. The optional `mode` argument is a test seam; call
+ * sites use the build's own `--mode` value.
+ */
+export const isStagingBuild = (mode: unknown = BUILD_MODE): boolean => mode === "staging";
+/**
+ * The mode Vite resolved for this build (`--mode staging`, `--mode production`,
+ * or "production" when no flag is passed). Exported for diagnostics/tests.
+ */
+export const buildMode = (): unknown => BUILD_MODE;
 
 /**
  * True when the API base URL points at a real backend. The built-in

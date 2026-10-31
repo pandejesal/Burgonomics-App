@@ -6,13 +6,15 @@
  *   - Live mode — when the key is a `rzp_live_*` publishable key, the
  *      Razorpay Checkout script is injected and a real payment modal is
  *      opened.
- *   - Test mode — `rzp_test_*` keys are accepted OUTSIDE production builds
- *      (`isTestRunnerEnv() || import.meta.env.DEV || !isProductionBuild()`:
- *      dev server, staging bundle, Android/iOS debug APK, test runners). The
- *      same SDK + real checkout modal runs against the Razorpay TEST
- *      dashboard, so developers and QA exercise the genuine flow
- *      end-to-end. Production builds reject test keys and fail closed — a
- *      live key is mandatory.
+ *   - Test mode — `rzp_test_*` keys are accepted in a test runner, a dev
+ *      server/debug APK, and an explicit `--mode staging` bundle (CUS-08), or
+ *      anywhere the bundle is NOT a production build
+ *      (`isTestRunnerEnv() || isStagingBuild() || import.meta.env.DEV ||
+ *      !isProductionBuild()`). The same SDK + real checkout modal runs against
+ *      the Razorpay TEST dashboard, so developers and QA exercise the genuine
+ *      flow end-to-end. A plain `vite build` (no `--mode` flag resolves to
+ *      MODE "production") and `--mode production` builds reject test keys and
+ *      fail closed — a live key is mandatory there.
  *   - Zero-charge orders (`amount === 0`, e.g. fully discounted / reward
  *      credits) complete immediately with a sentinel payment envelope —
  *      no SDK load, no Razorpay call, no money moves.
@@ -33,7 +35,7 @@ import type {
   PaymentOrder,
   PaymentResult,
 } from "@/core/integrations/razorpay/types";
-import { appConfig } from "@/core/config/env";
+import { appConfig, isStagingBuild } from "@/core/config/env";
 import { logger } from "@/core/logging/logger";
 
 export interface RazorpayInitInput {
@@ -125,16 +127,42 @@ const isProductionBuild = (): boolean => {
 };
 
 /**
- * Test (`rzp_test_*`) publishable keys are allowed wherever the bundle is
- * NOT a production build: `isTestRunnerEnv() || import.meta.env.DEV ||
- * !isProductionBuild()`. The gate is the BUILD (import.meta.env.PROD), not
- * the configured `VITE_APP_ENV`: a release bundle that forgot to set it
+ * CUS-08: the build/runtime facts the test-key gate depends on. Pure form
+ * exported for the regression test; `allowsTestKeys()` below feeds it the real
+ * values.
+ *
+ * `staging` is the ONE new input: an explicit `--mode staging` bundle
+ * (`npm run build:mobile:staging`) is a release build yet legitimately runs on
+ * a Razorpay TEST key because staging cannot move real money. It does not
+ * loosen `productionBuild` (which stays the gate for mocks/demo paths) — a
+ * plain `vite build` (no flag → MODE "production") keeps refusing test keys.
+ */
+export interface TestKeyGateContext {
+  testRunner: boolean;
+  staging: boolean;
+  dev: boolean;
+  productionBuild: boolean;
+}
+
+export const testKeysAllowedForBuild = (ctx: TestKeyGateContext): boolean =>
+  ctx.testRunner || ctx.staging || ctx.dev || !ctx.productionBuild;
+
+/**
+ * Test (`rzp_test_*`) publishable keys are allowed in a test runner, a dev
+ * server/debug shell, an explicit staging build (CUS-08), or anywhere the
+ * bundle is NOT a production build. The gate is the BUILD (import.meta.env),
+ * not the configured `VITE_APP_ENV`: a release bundle that forgot to set it
  * used to sail through the old `appConfig.env !== "production"` escape
  * hatch and open real checkout with a test key. Production builds still
  * refuse test keys — a live key is mandatory there.
  */
 const allowsTestKeys = (): boolean =>
-  isTestRunnerEnv() || import.meta.env?.DEV === true || !isProductionBuild();
+  testKeysAllowedForBuild({
+    testRunner: isTestRunnerEnv(),
+    staging: isStagingBuild(),
+    dev: import.meta.env?.DEV === true,
+    productionBuild: isProductionBuild(),
+  });
 
 const hasBrowser = (): boolean => typeof window !== "undefined" && typeof document !== "undefined";
 
@@ -144,8 +172,8 @@ const isLiveKey = (keyId?: string): boolean => !!keyId && keyId.startsWith("rzp_
 const isTestKeyId = (keyId?: string): boolean =>
   !!keyId && keyId.startsWith("rzp_test_") && keyId !== PLACEHOLDER_KEY_ID;
 
-/** Key is good enough to initialise the SDK for. */
-const isUsableKeyId = (keyId?: string): boolean => {
+/** Key is good enough to initialise the SDK for. Exported for the key-gate tests. */
+export const isUsableKeyId = (keyId?: string): boolean => {
   if (isLiveKey(keyId)) return true;
   if (isTestKeyId(keyId)) return allowsTestKeys();
   // Placeholder sentinel: only tolerable where no real modal can open.
