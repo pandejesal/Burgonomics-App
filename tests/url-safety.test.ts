@@ -7,10 +7,25 @@ describe('isSafeTrackingUrl (Loop 18/120)', () => {
     expect(isSafeTrackingUrl('https://track.porter.in/o/1')).toBe(true);
   });
 
+  it('allows the hosts the Borzo and Shadowfax adapters return', () => {
+    // borzo.adapter.ts: destination point `tracking_url`, fallback
+    // https://borzo.in/track/<orderId>; vendor domain is borzodelivery.com.
+    expect(isSafeTrackingUrl('https://borzo.in/track/123456')).toBe(true);
+    expect(isSafeTrackingUrl('https://track.borzodelivery.com/o/abc')).toBe(true);
+    expect(isSafeTrackingUrl('https://borzodelivery.com/in/track/1')).toBe(true);
+    // shadowfax.adapter.ts: `track_url` / fallback https://shadowfax.in/track/<id>.
+    expect(isSafeTrackingUrl('https://shadowfax.in/track/SF1')).toBe(true);
+    expect(isSafeTrackingUrl('https://track.shadowfax.in/t/SF1')).toBe(true);
+  });
+
   it('rejects phishing shapes and non-https', () => {
     expect(isSafeTrackingUrl('https://porter.in.evil.com/track/1')).toBe(false);
     expect(isSafeTrackingUrl('https://evil.com/porter.in/track/1')).toBe(false);
+    expect(isSafeTrackingUrl('https://borzo.in.evil.com/track/1')).toBe(false);
+    expect(isSafeTrackingUrl('https://evilborzo.in/track/1')).toBe(false);
+    expect(isSafeTrackingUrl('https://shadowfax.in.attacker.net/t/1')).toBe(false);
     expect(isSafeTrackingUrl('http://porter.in/track/1')).toBe(false);
+    expect(isSafeTrackingUrl('http://borzo.in/track/1')).toBe(false);
     expect(isSafeTrackingUrl('javascript:alert(1)')).toBe(false);
     expect(isSafeTrackingUrl('')).toBe(false);
     expect(isSafeTrackingUrl('https://porter.in/track/1" onmouseover="x')).toBe(false);
