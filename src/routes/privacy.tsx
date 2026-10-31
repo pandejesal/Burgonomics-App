@@ -32,7 +32,7 @@ function PrivacyPage() {
               Privacy Policy
             </Text>
             <Text variant="caption" tone="secondary">
-              Effective Date: August 29, 2026 · Compliant with Digital Personal Data Protection
+              Effective Date: November 1, 2026 · Compliant with Digital Personal Data Protection
               (DPDP) Act, 2023 & IT Rules, 2021
             </Text>
           </div>
@@ -48,7 +48,7 @@ function PrivacyPage() {
                   real values exist — masked X-filler is never shown (see app.ts). */}
               <strong>Data Fiduciary:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad, Gujarat, India – 380015
               {!isUnsetRegistrationValue(APP.cin) && <> (CIN: {APP.cin}{!isUnsetRegistrationValue(APP.gstin) && <> · GSTIN: {APP.gstin}</>})</>}.
-              We process your data only after your <strong>free, specific, informed and unambiguous consent</strong> (DPDP §6). You may withdraw consent or raise a grievance by contacting our Grievance Officer at <strong>{APP.grievanceEmail}</strong>. Withdrawing consent does not affect lawfulness of processing before withdrawal. Processors: <strong>Razorpay</strong> (payments), <strong>Porter</strong> (logistics), <strong>Firebase/Google</strong> (auth, DB), <strong>Petpooja</strong> (POS) — disclosed per Data Safety.
+              We process your data only after your <strong>free, specific, informed and unambiguous consent</strong> (DPDP §6). You may withdraw consent or raise a grievance by contacting our Grievance Officer at <strong>{APP.grievanceEmail}</strong>. Withdrawing consent does not affect lawfulness of processing before withdrawal. Processors: <strong>Razorpay</strong> (payments), <strong>Borzo and Shadowfax</strong> (delivery), <strong>Firebase/Google</strong> (auth, DB), <strong>Petpooja</strong> (POS) — disclosed per Data Safety.
             </Text>
           </section>
 
@@ -81,7 +81,7 @@ function PrivacyPage() {
                 <strong>Photos (optional):</strong> Profile avatar and support ticket attachments you voluntarily upload.
               </li>
               <li>
-                <strong>Location (optional):</strong> Precise/approximate GPS to route to nearest store and deliver (shared with Porter only for delivery).
+                <strong>Location (optional):</strong> Precise/approximate GPS to route to nearest store and deliver (shared with our delivery partners, Borzo and Shadowfax, only for delivery).
               </li>
             </ul>
           </section>
@@ -137,11 +137,11 @@ function PrivacyPage() {
               <Mail className="h-4 w-4 text-primary" /> 6. Grievance Redressal & Nodal Contact (IT Rules, 2021)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Grievance Officer:</strong> [Name], Manager — Legal, Burgonomics Foods Pvt Ltd
+              <strong>Grievance Officer:</strong> Manager — Legal, Burgonomics Foods Pvt Ltd
               <br />
               <strong>Email:</strong> privacy@burgonomics.com
               <br />
-              <strong>Address:</strong> Glassdoors Studio, [Building/Street], Ahmedabad, Gujarat – 380015, India.
+              <strong>Address:</strong> Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.
               <br />
               <strong>Nodal Contact Person:</strong> Same as Grievance Officer (nodal@burgonomics.com) for law-enforcement coordination.
               <br />

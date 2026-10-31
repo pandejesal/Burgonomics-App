@@ -39,7 +39,7 @@ function TermsPage() {
               Terms & Conditions
             </Text>
             <Text variant="caption" tone="secondary">
-              Last updated: August 29, 2026 · Burgonomics Foods Pvt Ltd, India
+              Last updated: November 1, 2026
             </Text>
           </div>
         </div>
@@ -61,7 +61,7 @@ function TermsPage() {
               <Clock className="h-4 w-4 text-primary" /> 2. Pricing, Taxes & Delivery (India)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              All prices are in <strong>Indian Rupees (INR)</strong> and include statutory <strong>GST 5% (CGST 2.5% + SGST 2.5%)</strong>. Checkout shows full breakup: <strong>Subtotal + GST 5% + Packing Fee + Delivery Fee = Payable</strong>. Delivery is <strong>FREE above ₹499</strong>, otherwise a flat delivery fee (as shown at checkout) applies. No international shipping — India only.
+              All prices are in <strong>Indian Rupees (INR)</strong> and already include <strong>GST at 5% (CGST 2.5% + SGST 2.5%)</strong>. GST is shown on your bill for information and is never added on top. Checkout shows the full breakup: <strong>Item Total + Packaging + Delivery Fee = Total to Pay</strong>. The packaging charge is set by the outlet. The delivery fee is a live price from our delivery partner for your address and order, shown before you pay. If no delivery partner can serve your address, delivery is not available for that order. No international shipping — India only.
             </Text>
           </section>
 
