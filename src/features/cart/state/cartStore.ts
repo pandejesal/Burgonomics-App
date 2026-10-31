@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { AppliedPromo, CartLine, CartStatus } from "@/features/cart/models";
 import type { Product } from "@/features/menu/models";
+import { onAuthUidChange } from "@/features/auth/utils/scopedPersistence";
 
 export const PRICE_LOCK_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -303,6 +304,38 @@ export const useCartStore = create<CartState>()(
     },
   ),
 );
+
+// -- Account isolation --------------------------------------------------
+
+/**
+ * CUS-04 — the cart is persisted at the unscoped key `burg.cart`, so it used to
+ * survive a sign-out and land in the NEXT account's cart on a shared device
+ * (items, per-line notes and the promo code all leaked).
+ *
+ * The cart is deliberately NOT re-keyed per uid: a guest who builds a cart and
+ * then signs in mid-flow must keep it ("guest cart preservation" is a product
+ * behaviour with its own test). Instead the cart is dropped exactly when the
+ * signed-in identity is lost or replaced:
+ *   - uid A → null            (sign-out) ................ clear
+ *   - uid A → uid B           (account switch) ........... clear
+ *   - null  → uid A           (guest signs in) ........... keep
+ *   - first observation       (cold start, session alive) . keep
+ * Clearing writes an empty cart back through persist, so the plaintext
+ * `burg.cart` entry is emptied too, not just the in-memory store.
+ */
+let lastCartOwnerUid: string | null | undefined = undefined;
+
+onAuthUidChange((uid) => {
+  const previous = lastCartOwnerUid;
+  lastCartOwnerUid = uid;
+  // Cold start: whatever is persisted belongs to the account that is already
+  // signed in — rehydrating it is the intended behaviour.
+  if (previous === undefined) return;
+  // Guest → signed-in: carry-over must keep working.
+  if (previous === null) return;
+  if (uid === previous) return;
+  useCartStore.getState().clear();
+});
 
 // -- Selectors ---------------------------------------------------------
 
