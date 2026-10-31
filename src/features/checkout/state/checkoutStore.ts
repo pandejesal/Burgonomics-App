@@ -16,7 +16,10 @@
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { SANDBOX_DELIVERY_QUOTE, type DeliveryQuote } from "@/features/checkout/services/deliveryQuoteService";
+import {
+  INITIAL_CHECKOUT_FEES,
+  type CheckoutFeesState,
+} from "@/features/checkout/state/checkoutFeesTypes";
 import {
   scopedNamespacedStorage,
   browserOrMemoryStorage,
@@ -48,12 +51,15 @@ interface CheckoutState {
    * checkout → payment navigation. */
   loyaltyPointsToRedeem: number;
   /**
-   * Live delivery-fee quote for the current order. NOT persisted: a quote is
-   * only valid for the basket it was taken against, so a stale one restored
-   * from localStorage would show a fee the backend will not honour. The
-   * sandbox quote applies until a fresh one arrives.
+   * Server-quoted checkout fees for the current order (R8). NOT persisted: a
+   * quote is only valid for the basket/address it was taken against, so a
+   * stale one restored from localStorage would show a fee the server refuses.
    */
-  deliveryQuote: DeliveryQuote;
+  checkoutFees: CheckoutFeesState;
+  /** Monotonic request id: a stale quote response can never overwrite a newer one. */
+  feesRequestSeq: number;
+  /** Context key the current request/in-flight quote belongs to. */
+  feesKey: string | null;
 
   setOrderNotes: (v: string) => void;
   setDeliveryInstructions: (v: string) => void;
@@ -62,7 +68,11 @@ interface CheckoutState {
   setTableNumber: (v: string) => void;
   setTipAmount: (v: number) => void;
   setLoyaltyPointsToRedeem: (v: number) => void;
-  setDeliveryQuote: (q: DeliveryQuote) => void;
+  /** Starts a quote request, invalidating every in-flight one; returns its token. */
+  beginFeesRequest: (key: string) => number;
+  /** Applies a response only when it still belongs to the newest request. */
+  applyCheckoutFees: (seq: number, key: string, next: CheckoutFeesState) => boolean;
+  resetCheckoutFees: () => void;
   reset: () => void;
 }
 
@@ -74,12 +84,14 @@ const initial = {
   tableNumber: "",
   tipAmount: 0,
   loyaltyPointsToRedeem: 0,
-  deliveryQuote: SANDBOX_DELIVERY_QUOTE,
+  checkoutFees: INITIAL_CHECKOUT_FEES,
+  feesRequestSeq: 0,
+  feesKey: null,
 };
 
 export const useCheckoutStore = create<CheckoutState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initial,
       setOrderNotes: (v) => set({ orderNotes: v.slice(0, 240) }),
       setDeliveryInstructions: (v) => set({ deliveryInstructions: v.slice(0, 160) }),
@@ -93,13 +105,21 @@ export const useCheckoutStore = create<CheckoutState>()(
           loyaltyPointsToRedeem: Number.isFinite(v) ? Math.min(100000, Math.max(0, Math.floor(v))) : 0,
         }),
       // Defensive: a corrupt/negative quote must never price a ₹0 delivery.
-      setDeliveryQuote: (q) =>
-        set({
-          deliveryQuote:
-            q && Number.isFinite(q.fee) && q.fee >= 0
-              ? { ...q, fee: Math.round(q.fee * 100) / 100 }
-              : SANDBOX_DELIVERY_QUOTE,
-        }),
+      beginFeesRequest: (key) => {
+        let seq = 0;
+        set((state) => {
+          seq = state.feesRequestSeq + 1;
+          return { feesRequestSeq: seq, feesKey: key, checkoutFees: { status: "loading" } };
+        });
+        return seq;
+      },
+      applyCheckoutFees: (seq, key, next) => {
+        const state = get();
+        if (seq !== state.feesRequestSeq || key !== state.feesKey) return false;
+        set({ checkoutFees: next });
+        return true;
+      },
+      resetCheckoutFees: () => set({ checkoutFees: INITIAL_CHECKOUT_FEES, feesKey: null }),
       reset: () => set({ ...initial }),
     }),
     {

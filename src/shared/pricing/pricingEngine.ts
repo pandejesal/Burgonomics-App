@@ -40,8 +40,9 @@ export interface PricingConfig {
 export type StorePricingConfig = Partial<PricingConfig>;
 
 /**
- * Flat packaging charge per order (₹). Delivery and takeaway both leave the
- * kitchen sealed in a box/bag (₹20); dine-in is served on the plate (₹0).
+ * Flat packaging charge per order (₹) for CART ESTIMATES only. Checkout shows
+ * the server's `packagingFee` from `POST /checkout/fees`; this estimate is
+ * labelled as such and never used to gate or price a payment.
  */
 export const PACKAGING_FEE_BY_FULFILLMENT: Record<PricingFulfillment, number> = {
   delivery: 20,
@@ -49,31 +50,19 @@ export const PACKAGING_FEE_BY_FULFILLMENT: Record<PricingFulfillment, number> = 
   dinein: 0,
 };
 
-/**
- * Sandbox delivery quote (₹). The live quote service replaces this per order;
- * until it is wired this is the number the customer is shown AND charged, so
- * the two can never disagree.
- */
-export const DEFAULT_DELIVERY_QUOTE_FEE = 35;
-
 /** Delivery-only minimum basket subtotal (₹). Takeaway and dine-in have none. */
 export const DELIVERY_MIN_ORDER_AMOUNT = 149;
 
 /** Customer-facing copy for a sub-minimum delivery basket. */
 export const DELIVERY_MIN_ORDER_MESSAGE = `Minimum order value for delivery is ₹${DELIVERY_MIN_ORDER_AMOUNT}.`;
 
-/** Free delivery threshold (₹) for legacy promo parity. */
-export const FREE_DELIVERY_THRESHOLD = 499;
-/** Flat delivery fee fallback (₹) for legacy tests. */
-export const DELIVERY_FEE_FLAT = 40;
-
-export const DEFAULT_PRICING_CONFIG: PricingConfig & { freeDeliveryThreshold?: number; deliveryFeeFlat?: number } = {
+export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   gstRate: GST_RATE,
   packagingFee: PACKAGING_FEE_BY_FULFILLMENT.delivery,
-  deliveryFee: DEFAULT_DELIVERY_QUOTE_FEE,
+  // R8: there is NO static delivery fee. The live courier quote supplies it;
+  // without one the fee is 0 and checkout refuses to take payment.
+  deliveryFee: 0,
   minOrderAmount: DELIVERY_MIN_ORDER_AMOUNT,
-  freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD,
-  deliveryFeeFlat: DELIVERY_FEE_FLAT,
 };
 
 export interface PricingCustomization {
@@ -189,8 +178,13 @@ export function toPaise(rupees: number): number {
  */
 export function resolvePricingConfig(input?: {
   fulfillment?: PricingFulfillment | string | null;
-  /** Live quote (₹). Falls back to the sandbox quote when absent/invalid. */
+  /**
+   * Live courier quote (₹). NO static fallback: absent/invalid means 0, and a
+   * delivery order may then not take payment until the server quotes it.
+   */
   deliveryQuoteFee?: number | null;
+  /** Server packaging fee from `POST /checkout/fees`. Falls back to the estimate. */
+  packagingFee?: number | null;
   /** Store-doc overrides. Only `minOrderAmount` is honoured from the doc. */
   storeOverride?: { minOrderAmount?: number | null } | null;
 }): PricingConfig {
@@ -198,8 +192,13 @@ export function resolvePricingConfig(input?: {
   const isDelivery = fulfillment === "delivery";
 
   const quote = Number(input?.deliveryQuoteFee);
-  const deliveryFee =
-    isDelivery && Number.isFinite(quote) && quote >= 0 ? round2(quote) : isDelivery ? DEFAULT_DELIVERY_QUOTE_FEE : 0;
+  const deliveryFee = isDelivery && Number.isFinite(quote) && quote >= 0 ? round2(quote) : 0;
+
+  const packagingOverride = Number(input?.packagingFee);
+  const packagingFee =
+    Number.isFinite(packagingOverride) && packagingOverride >= 0
+      ? round2(packagingOverride)
+      : PACKAGING_FEE_BY_FULFILLMENT[fulfillment];
 
   const override = Number(input?.storeOverride?.minOrderAmount);
   const minOrderAmount = isDelivery
@@ -210,7 +209,7 @@ export function resolvePricingConfig(input?: {
 
   return {
     gstRate: GST_RATE,
-    packagingFee: PACKAGING_FEE_BY_FULFILLMENT[fulfillment],
+    packagingFee,
     deliveryFee,
     minOrderAmount,
   };

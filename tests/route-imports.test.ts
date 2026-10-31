@@ -109,11 +109,14 @@ describe("route imports resolve", () => {
 
   it("single pricing schedule constants", async () => {
     const pricing = await import("../src/shared/pricing/pricingEngine");
-    expect(pricing.FREE_DELIVERY_THRESHOLD).toBe(499);
-    expect(pricing.DELIVERY_FEE_FLAT).toBe(40);
-    expect(pricing.DEFAULT_PRICING_CONFIG.freeDeliveryThreshold).toBe(499);
-    expect(pricing.DEFAULT_PRICING_CONFIG.deliveryFeeFlat).toBe(40);
-    // MT-10: packaging is ₹20 for delivery & takeaway, waived for dine-in.
+    // R8 (owner decision 31 Oct 2026): there is no static delivery fee. The
+    // courier quote supplies it; the removed constants must NOT come back.
+    expect("FREE_DELIVERY_THRESHOLD" in pricing).toBe(false);
+    expect("DELIVERY_FEE_FLAT" in pricing).toBe(false);
+    expect("DEFAULT_DELIVERY_QUOTE_FEE" in pricing).toBe(false);
+    expect(pricing.DEFAULT_PRICING_CONFIG.deliveryFee).toBe(0);
+    // MT-10 packaging estimate is cart-only copy; checkout uses the server's
+    // `packagingFee` from POST /checkout/fees.
     expect(pricing.PACKAGING_FEE_BY_FULFILLMENT).toEqual({
       delivery: 20,
       takeaway: 20,

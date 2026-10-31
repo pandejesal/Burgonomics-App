@@ -28,7 +28,7 @@ import type {
 import { calculateTotals } from "@/features/cart/services/cartService";
 import { offerRepository } from "@/features/offers/repositories/OfferRepository";
 import { useAppConfig } from "@/core/state/appConfigStore";
-import { resolvePricingConfig } from "@/shared/pricing/pricingEngine";
+import { asPricingFulfillment, resolvePricingConfig } from "@/shared/pricing/pricingEngine";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 
 /** Default used when the user hasn't chosen a fulfillment method yet. */
@@ -160,10 +160,20 @@ export class CartRepository {
    */
   private pricingConfigFor(fulfillment: Fulfillment = this.getFulfillment()) {
     const store = useStoreSelection.getState().activeStore;
-    const quote = useCheckoutStore.getState().deliveryQuote;
+    const fees = useCheckoutStore.getState().checkoutFees;
+    const quote = fees.status === "ready" ? fees : null;
+    // Delivery fee: server quote only (R8). No quote ⇒ 0, never a static fare;
+    // checkout refuses to take payment until the quote is ready.
+    const deliveryQuoteFee =
+      quote && asPricingFulfillment(fulfillment) === "delivery" ? quote.deliveryFee : null;
+    // Packaging: the server figure whenever it has answered (ready or — for an
+    // unavailable address — its unserviceable response), else a cart estimate.
+    const packagingFee =
+      fees.status === "ready" || fees.status === "unserviceable" ? fees.packagingFee : null;
     return resolvePricingConfig({
       fulfillment,
-      deliveryQuoteFee: quote?.fee,
+      deliveryQuoteFee,
+      packagingFee,
       storeOverride: store?.pricing ?? null,
     });
   }

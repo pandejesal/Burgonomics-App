@@ -1,71 +1,214 @@
 /**
- * DeliveryQuoteService — the dynamic delivery-fee quote.
+ * CheckoutFeesService — the ONLY source of delivery and packaging fees (R8).
  *
- * Delivery fees are quoted per order (distance / surge / partner pricing),
- * not hardcoded per screen. Until the quote endpoint ships, the service
- * returns the published sandbox quote (₹35) so the number the customer is
- * SHOWN is the number the pricing engine CHARGES — a client-side
- * "estimated fee" that disagrees with the bill is a support ticket.
+ * Calls `POST /checkout/fees` on the existing authenticated HTTP client
+ * (`httpClient`, wired with the Firebase ID token by `setupHttpAuth`) and the
+ * App Check token, exactly like the payment transport. The server resolves the
+ * branch, quotes the courier and returns the winner's fare; the client never
+ * invents a fee, never applies a markup, and never falls back to a static
+ * number. A failure is an error state, not a guess.
  *
- * Replacing this with a real quote is a body-only change: callers already
- * consume {@link DeliveryQuote} and never see the source.
+ * Request: `{ storeId?, branchId?, orderType, dropLat?, dropLng? }`.
+ * Delivery responses carry `deliveryQuoteId` + `expiresAt`; non-delivery
+ * responses are `{ packagingFee, deliveryFee: 0 }` with no provider call.
  */
-import { ok, type ApiResult } from "@/core/network/http";
-import { DEFAULT_DELIVERY_QUOTE_FEE } from "@/shared/pricing/pricingEngine";
+import { fail, ok, type ApiResult } from "@/core/network/http";
+import { httpClient } from "@/core/network/httpClient";
+import { logger } from "@/core/logging/logger";
+import type {
+  CheckoutFeesContext,
+  CheckoutOrderType,
+} from "@/features/checkout/state/checkoutFeesTypes";
 
-export type DeliveryQuoteSource = "sandbox" | "api";
+export const CHECKOUT_FEES_PATH = "/checkout/fees";
 
-export interface DeliveryQuote {
-  /** Quoted delivery fee in ₹. Never negative. */
-  fee: number;
-  /**
-   * Where the number came from. Surfaced so the UI can label a sandbox quote
-   * honestly instead of implying a live distance-based quote.
-   */
-  source: DeliveryQuoteSource;
-  quotedAt: number;
+export interface CheckoutFeesRequest {
+  storeId?: string;
+  branchId?: string;
+  orderType: CheckoutOrderType;
+  dropLat?: number;
+  dropLng?: number;
 }
 
-export interface QuoteDeliveryFeeInput {
-  storeId?: string | null;
-  /** Distance from the store, when known. Unused by the sandbox quote. */
-  distanceKm?: number | null;
+export interface ServiceableCheckoutFees {
+  serviceable: true;
+  packagingFee: number;
+  deliveryFee: number;
+  deliveryQuoteId: string | null;
+  provider: string | null;
+  expiresAt: number | null;
 }
 
-/** Published sandbox quote. Stable identity so a default is never "fresh". */
-export const SANDBOX_DELIVERY_QUOTE: DeliveryQuote = Object.freeze({
-  fee: DEFAULT_DELIVERY_QUOTE_FEE,
-  source: "sandbox",
-  quotedAt: 0,
-});
+export interface UnserviceableCheckoutFees {
+  serviceable: false;
+  packagingFee: number;
+  reason: string | null;
+  message: string;
+}
+
+export type CheckoutFees = ServiceableCheckoutFees | UnserviceableCheckoutFees;
+
+export interface CheckoutFeesPostResult {
+  data: unknown;
+}
+
+/** Injectable transport so the wire shape is testable without a network. */
+export interface CheckoutFeesTransport {
+  post(
+    url: string,
+    body: unknown,
+    init?: { headers?: Record<string, string> },
+  ): Promise<CheckoutFeesPostResult>;
+}
+
+const defaultTransport: CheckoutFeesTransport = {
+  post: (url, body, init) => httpClient.post(url, body, init),
+};
+
+/** Best-effort App Check attestation — the endpoint is in the protected list. */
+async function attestationHeaders(): Promise<Record<string, string>> {
+  try {
+    const { getAppCheckToken } = await import("@/core/config/firebase");
+    const token = await getAppCheckToken();
+    return token ? { "X-Firebase-AppCheck": token } : {};
+  } catch (err) {
+    logger.warn("checkout.fees_appcheck_unavailable", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return {};
+  }
+}
+
+function finiteFee(value: unknown): number | null {
+  const n = typeof value === "string" ? Number(value) : typeof value === "number" ? value : NaN;
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/** Epoch-ms expiry from a number (ms or seconds), ISO string or Timestamp. */
+export function parseExpiresAt(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value < 1e12 ? Math.round(value * 1000) : Math.round(value);
+  }
+  if (typeof value === "string") {
+    const t = Date.parse(value);
+    return Number.isFinite(t) ? t : null;
+  }
+  if (value && typeof value === "object") {
+    const o = value as {
+      toMillis?: () => number;
+      _seconds?: number;
+      seconds?: number;
+    };
+    if (typeof o.toMillis === "function") {
+      const ms = Number(o.toMillis());
+      if (Number.isFinite(ms)) return ms;
+    }
+    const seconds = o._seconds ?? o.seconds;
+    if (typeof seconds === "number" && Number.isFinite(seconds)) return Math.round(seconds * 1000);
+  }
+  return null;
+}
 
 /**
- * Quotes the delivery fee for an order.
- *
- * Never fails: a quote we could not fetch must not take the checkout down —
- * the caller falls back to the sandbox quote, which is a real published
- * price, not an invented one.
+ * Parses the endpoint's response. Returns null when a required field is
+ * missing — the caller treats that as an error rather than inventing a fee.
  */
-export async function quoteDeliveryFee(
-  _input: QuoteDeliveryFeeInput = {},
-): Promise<ApiResult<DeliveryQuote>> {
-  return ok({ ...SANDBOX_DELIVERY_QUOTE, quotedAt: Date.now() });
+export function parseCheckoutFees(
+  raw: unknown,
+  orderType: CheckoutOrderType,
+): CheckoutFees | null {
+  if (!raw || typeof raw !== "object") return null;
+  const body = raw as Record<string, unknown>;
+  const packagingFee = finiteFee(body.packagingFee);
+  if (packagingFee === null) return null;
+
+  if (orderType !== "delivery") {
+    return {
+      serviceable: true,
+      packagingFee,
+      deliveryFee: 0,
+      deliveryQuoteId: null,
+      provider: null,
+      expiresAt: null,
+    };
+  }
+
+  if (body.serviceable === false) {
+    return {
+      serviceable: false,
+      packagingFee,
+      reason: typeof body.reason === "string" ? body.reason : null,
+      message: typeof body.message === "string" ? body.message : "",
+    };
+  }
+
+  const deliveryFee = finiteFee(body.deliveryFee);
+  const deliveryQuoteId =
+    typeof body.deliveryQuoteId === "string" && body.deliveryQuoteId.trim()
+      ? body.deliveryQuoteId.trim()
+      : null;
+  const expiresAt = parseExpiresAt(body.expiresAt);
+  // Contract R5: a successful delivery quote ALWAYS carries an id and an
+  // expiry. Without them the payment endpoint would refuse the order, so this
+  // is an error state, never a usable quote.
+  if (deliveryFee === null || !deliveryQuoteId || expiresAt === null) return null;
+
+  return {
+    serviceable: true,
+    packagingFee,
+    deliveryFee,
+    deliveryQuoteId,
+    provider: typeof body.provider === "string" ? body.provider : null,
+    expiresAt,
+  };
 }
 
-/**
- * Normalises any candidate fee into a usable quote. Non-finite / negative
- * values fall back to the sandbox quote rather than pricing a ₹0 delivery.
- */
-export function toDeliveryQuote(
-  fee: unknown,
-  source: DeliveryQuoteSource = "sandbox",
-): DeliveryQuote {
-  const n = Number(fee);
-  if (!Number.isFinite(n) || n < 0) return SANDBOX_DELIVERY_QUOTE;
-  return { fee: Math.round(n * 100) / 100, source, quotedAt: Date.now() };
+/** Maps a context to the request body; pins are sent only for delivery. */
+export function checkoutFeesRequestBody(ctx: CheckoutFeesContext): CheckoutFeesRequest {
+  const body: CheckoutFeesRequest = { orderType: ctx.orderType };
+  if (ctx.storeId) body.storeId = ctx.storeId;
+  if (ctx.branchId) body.branchId = ctx.branchId;
+  if (ctx.orderType === "delivery") {
+    if (ctx.dropLat !== null) body.dropLat = ctx.dropLat;
+    if (ctx.dropLng !== null) body.dropLng = ctx.dropLng;
+  }
+  return body;
+}
+
+export async function requestCheckoutFees(
+  ctx: CheckoutFeesContext,
+  deps: { transport?: CheckoutFeesTransport } = {},
+): Promise<ApiResult<CheckoutFees>> {
+  const transport = deps.transport ?? defaultTransport;
+  try {
+    const res = await transport.post(CHECKOUT_FEES_PATH, checkoutFeesRequestBody(ctx), {
+      headers: await attestationHeaders(),
+    });
+    const parsed = parseCheckoutFees(res.data, ctx.orderType);
+    if (!parsed) {
+      logger.warn("checkout.fees_invalid_response", { orderType: ctx.orderType });
+      return fail(
+        "DELIVERY_QUOTE_INVALID",
+        "We couldn't get a delivery price. Please try again.",
+        true,
+      );
+    }
+    return ok(parsed);
+  } catch (err) {
+    // Never surface provider/transport text: the UI has fixed, honest copy.
+    logger.warn("checkout.fees_request_failed", {
+      orderType: ctx.orderType,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return fail(
+      "DELIVERY_QUOTE_FAILED",
+      "We couldn't get a delivery price. Please try again.",
+      true,
+    );
+  }
 }
 
 export const deliveryQuoteService = {
-  quote: quoteDeliveryFee,
-  sandbox: SANDBOX_DELIVERY_QUOTE,
+  quote: requestCheckoutFees,
 };
