@@ -41,7 +41,7 @@ export function CouponInput({ onSubmit, busy = false, error, success, onClearMes
           autoCapitalize="characters"
           autoCorrect="off"
           spellCheck={false}
-          className="min-h-[44px] flex-1 bg-transparent font-mono tracking-wider outline-none type-body-large placeholder:text-text-disabled placeholder:font-sans placeholder:tracking-normal"
+          className="min-h-[44px] flex-1 bg-transparent font-mono tracking-wider outline-none type-body-large placeholder:text-text-placeholder placeholder:font-sans placeholder:tracking-normal"
         />
         {code && !busy && (
           <button

@@ -46,7 +46,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
             aria-invalid={!!error || undefined}
             aria-describedby={helper || error ? helperId : undefined}
             className={cn(
-              "flex-1 bg-transparent outline-none type-body-large text-text-primary placeholder:text-text-disabled min-w-0 font-medium h-full py-4",
+              "flex-1 bg-transparent outline-none type-body-large text-text-primary placeholder:text-text-placeholder min-w-0 font-medium h-full py-4",
             )}
             {...rest}
           />

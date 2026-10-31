@@ -19,7 +19,7 @@ export const SearchBar = React.forwardRef<HTMLInputElement, SearchBarProps>(
       <input
         ref={ref}
         type="search"
-        className="flex-1 bg-transparent outline-none text-sm placeholder:text-text-disabled"
+        className="flex-1 bg-transparent outline-none text-sm placeholder:text-text-placeholder"
         {...rest}
       />
     </label>

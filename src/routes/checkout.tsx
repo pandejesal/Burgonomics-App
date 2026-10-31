@@ -1031,16 +1031,16 @@ export function CheckoutPage() {
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between text-text-secondary">
               <span>Item Total</span>
-              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.subtotal) : <span className="text-warning">unavailable</span>}</span>
+              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.subtotal) : <span className="text-warning-text">unavailable</span>}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Govt. GST (5% included)</span>
-              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.taxes) : <span className="text-warning">unavailable</span>}</span>
+              <span className="font-mono font-bold text-text">{totals ? formatINR(totals.taxes) : <span className="text-warning-text">unavailable</span>}</span>
             </div>
             <div className="flex justify-between text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="font-mono font-bold text-text">
-                {isDineIn ? <span className="text-[#4ADE80] font-black uppercase">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning">unavailable</span>}
+                {isDineIn ? <span className="text-[#0E4825] dark:text-[#4ADE80] font-black uppercase">FREE</span> : totals ? formatINR(totals.packingFee) : <span className="text-warning-text">unavailable</span>}
               </span>
             </div>
             {/* Delivery Fee — same rule as BillBreakdown: only delivery shows it. */}
@@ -1049,11 +1049,11 @@ export function CheckoutPage() {
                 <span>Delivery Fee</span>
                 <span className="font-mono font-bold text-text">
                   {totals?.deliveryFee === 0 ? (
-                    <span className="font-bold text-[#4ADE80] uppercase text-[10px]">FREE</span>
+                    <span className="font-bold text-[#0E4825] dark:text-[#4ADE80] uppercase text-[10px]">FREE</span>
                   ) : totals ? (
                     formatINR(totals.deliveryFee)
                   ) : (
-                    <span className="text-warning">unavailable</span>
+                    <span className="text-warning-text">unavailable</span>
                   )}
                 </span>
               </div>
@@ -1068,14 +1068,14 @@ export function CheckoutPage() {
             )}
 
             {totals?.promoDiscount ? (
-              <div className="flex justify-between text-[#4ADE80] font-semibold">
+              <div className="flex justify-between text-[#0E4825] dark:text-[#4ADE80] font-semibold">
                 <span>Coupon Discount ({promo?.code ?? "PROMO"})</span>
                 <span className="font-mono font-bold">-{formatINR(totals.promoDiscount)}</span>
               </div>
             ) : null}
 
             {redeemPoints && pointsDiscount > 0 && (
-              <div className="flex justify-between text-[#4ADE80] font-semibold">
+              <div className="flex justify-between text-[#0E4825] dark:text-[#4ADE80] font-semibold">
                 <span>Loyalty Points Redeemed</span>
                 <span className="font-mono font-bold">-{formatINR(pointsDiscount)}</span>
               </div>

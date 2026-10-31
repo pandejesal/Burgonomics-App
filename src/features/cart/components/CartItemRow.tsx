@@ -102,7 +102,7 @@ export const CartItemRow = React.memo(function CartItemRow({
                     >
                       {m.groupName}: {m.name}
                       {m.priceDelta !== 0 && (
-                        <span className="ml-1 text-text-disabled">
+                        <span className="ml-1 text-text-secondary">
                           ({m.priceDelta > 0 ? "+" : "-"}
                           {formatINR(Math.abs(m.priceDelta))})
                         </span>

@@ -138,7 +138,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            className="min-h-[44px] flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled"
+            className="min-h-[44px] flex-1 bg-transparent outline-none type-body-large placeholder:text-text-placeholder"
           />
           <AppButton type="submit" variant="ghost" size="sm" disabled={!code.trim()} loading={busy}>
             Apply

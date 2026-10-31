@@ -141,7 +141,7 @@ function Body() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search favourite ${TABS.find((t) => t.id === tab)?.label.toLowerCase()}…`}
               aria-label="Search favourites"
-              className="flex-1 bg-transparent outline-none text-xs font-medium text-text placeholder:text-text-disabled"
+              className="flex-1 bg-transparent outline-none text-xs font-medium text-text placeholder:text-text-placeholder"
             />
           </label>
         )}

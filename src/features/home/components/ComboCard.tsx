@@ -81,7 +81,7 @@ export function ComboCard({ combo, className }: Props) {
               {formatINR(combo.price)}
             </Text>
             {savings > 0 && (
-              <span className="type-caption text-text-disabled line-through">
+              <span className="type-caption text-text-secondary line-through">
                 {formatINR(combo.originalPrice)}
               </span>
             )}

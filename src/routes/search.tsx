@@ -248,7 +248,7 @@ function SearchPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search smashed burgers, sides, drinks…"
               aria-label="Search the menu"
-              className="flex-1 bg-transparent outline-none type-body-large placeholder:text-text-disabled"
+              className="flex-1 bg-transparent outline-none type-body-large placeholder:text-text-placeholder"
             />
             {query && (
               <button

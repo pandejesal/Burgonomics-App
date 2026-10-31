@@ -73,6 +73,7 @@
   --color-text-tertiary: var(--text-secondary);
   --color-text-inverse: var(--text-inverse);
   --color-text-disabled: var(--text-disabled);
+  --color-text-placeholder: var(--text-placeholder);
 
   --color-surface-variant: var(--surface-elevated);
 
@@ -84,6 +85,7 @@
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
   --color-warning-foreground: var(--warning-foreground);
   --color-error: var(--error);
   --color-error-foreground: var(--error-foreground);
@@ -157,7 +159,10 @@
   --text-primary: #16281D;       /* High-contrast charcoal text */
   --text-secondary: #586B60;     /* Muted sage secondary text */
   --text-inverse: #FFFFFF;
-  --text-disabled: #9CA3AF;
+  --text-disabled: #9CA3AF;      /* Disabled controls only (WCAG-exempt). */
+  /* Informative placeholder copy must clear 4.5:1 on --surface (#FFFFFF)
+     and --bg-secondary (#F0F3F1): #4B5563 = 7.56:1 / 6.76:1. */
+  --text-placeholder: #4B5563;
 
   --divider: #E5EDE7;            /* Subtle dividers and card borders */
   --border: #E5EDE7;
@@ -173,7 +178,8 @@
 
   --success: #16A34A;            /* 100% Pure Veg badge / status */
   --success-foreground: #FFFFFF;
-  --warning: #F59E0B;            /* Price lock timer / warnings */
+  --warning: #F59E0B;            /* Price lock timer / warnings (fill/decoration) */
+  --warning-text: #B45309;       /* Warning TEXT on light surfaces: 5.02:1 on #FFFFFF, 4.61:1 on #F5F5F5 */
   --warning-foreground: #FFFFFF;
   --error: #DC2626;              /* Critical errors / cancellations */
   --error-foreground: #FFFFFF;
@@ -210,6 +216,7 @@
   --text-secondary: #A0A0A0;     /* Muted grey secondary text */
   --text-inverse: #0A0A0A;
   --text-disabled: #666666;
+  --text-placeholder: #9CA3AF;   /* 7.26:1 on --bg-secondary (#141414) */
   --border: #262626;
   --divider: #262626;
   --input: #141414;
@@ -240,6 +247,7 @@
   --success: #22C55E;
   --success-foreground: #FFFFFF;
   --warning: #FBBF24;
+  --warning-text: #FBBF24;       /* 8.10:1 on --surface (#1A1A1A) */
   --warning-foreground: #0A0A0A;
   --error: #EF4444;
   --error-foreground: #FFFFFF;
