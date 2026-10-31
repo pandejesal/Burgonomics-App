@@ -15,12 +15,16 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { httpClient } from "@/core/network/httpClient";
 import { logger } from "@/core/logging/logger";
+import { STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
 import type {
   CheckoutFeesContext,
   CheckoutOrderType,
 } from "@/features/checkout/state/checkoutFeesTypes";
 
 export const CHECKOUT_FEES_PATH = "/checkout/fees";
+
+/** Same honest sentence the payment screen uses for an unlinked outlet. */
+export const STORE_NOT_LINKED_MESSAGE = "This outlet isn't taking online orders yet.";
 
 export interface CheckoutFeesRequest {
   storeId?: string;
@@ -196,6 +200,22 @@ export async function requestCheckoutFees(
     }
     return ok(parsed);
   } catch (err) {
+    // An unlinked outlet (409 STORE_NOT_LINKED) can never quote fees — every
+    // retry fails identically, so say so with no retry affordance instead of a
+    // generic "try again". httpClient preserves the response status/body code
+    // on the mapped error (see mapTransportError).
+    const status = Number((err as { status?: unknown })?.status);
+    const bodyCode = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
+    const code =
+      typeof bodyCode === "string" && bodyCode.trim()
+        ? bodyCode
+        : typeof (err as { code?: unknown })?.code === "string"
+          ? ((err as { code: string }).code ?? "")
+          : "";
+    if (code === STORE_NOT_LINKED || (status === 409 && !code)) {
+      logger.warn("checkout.fees_store_not_linked", { orderType: ctx.orderType });
+      return fail(STORE_NOT_LINKED, STORE_NOT_LINKED_MESSAGE, false);
+    }
     // Never surface provider/transport text: the UI has fixed, honest copy.
     logger.warn("checkout.fees_request_failed", {
       orderType: ctx.orderType,

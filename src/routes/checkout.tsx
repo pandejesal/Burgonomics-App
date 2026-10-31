@@ -932,11 +932,13 @@ export function CheckoutPage() {
               <Lock className="h-4 w-4 stroke-[2.5px]" />
               <span>
                 {!quoteView.payEnabled
-                  ? quoteView.status === "idle" || quoteView.status === "loading"
-                    ? isDelivery
-                      ? "PAY — GETTING DELIVERY PRICE"
-                      : "PAY — GETTING ORDER PRICE"
-                    : "PAY — DELIVERY UNAVAILABLE"
+                  ? quoteView.storeNotLinked
+                    ? "ONLINE ORDERING UNAVAILABLE"
+                    : quoteView.status === "idle" || quoteView.status === "loading"
+                      ? isDelivery
+                        ? "PAY — GETTING DELIVERY PRICE"
+                        : "PAY — GETTING ORDER PRICE"
+                      : "PAY — DELIVERY UNAVAILABLE"
                   : orderingUnavailable
                     ? "ONLINE ORDERING UNAVAILABLE"
                     : reconciliationPending

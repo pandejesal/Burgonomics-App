@@ -60,6 +60,7 @@ const fixture = vi.hoisted(() => {
     expiresAt: 9_999_999_999_999,
     message: null as string | null,
     canRetry: false,
+    storeNotLinked: false,
     takeawaySelectable: true,
   };
   return {
@@ -321,6 +322,7 @@ beforeEach(() => {
   fixture.quote.packagingFee = 20;
   fixture.quote.message = null;
   fixture.quote.canRetry = false;
+  fixture.quote.storeNotLinked = false;
   fixture.quote.takeawaySelectable = true;
   usePaymentStore.getState().reset();
   sessionStorage.clear();
@@ -941,6 +943,28 @@ describe("R8 — payment is gated on a live delivery quote", () => {
 
     expect(fixture.createFromCurrentContext).toHaveBeenCalledTimes(1);
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+  });
+
+  it("shows an unlinked outlet honestly, with no retry or gateway", async () => {
+    fixture.quote.payEnabled = false;
+    fixture.quote.status = "error";
+    fixture.quote.message = "This outlet isn't taking online orders yet.";
+    fixture.quote.canRetry = false;
+    fixture.quote.storeNotLinked = true;
+
+    await mount(CheckoutPage);
+
+    const pay = buttonWithText("ONLINE ORDERING UNAVAILABLE");
+    expect(pay).toBeDefined();
+    expect(pay?.disabled).toBe(true);
+    expect(container.textContent).toContain("This outlet isn't taking online orders yet.");
+    // A retry can never work at an unlinked outlet.
+    expect(buttonWithText("Retry")).toBeUndefined();
+
+    await act(async () => pay!.click());
+    await act(async () => {});
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
   });
 
   it("checkout re-quotes on 409 DELIVERY_QUOTE_REQUIRED and shows the new figure", async () => {

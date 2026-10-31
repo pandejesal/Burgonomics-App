@@ -12,6 +12,8 @@
  * selectable whenever delivery is unavailable.
  */
 import type { PricingFulfillment } from "@/shared/pricing/pricingEngine";
+import { STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
+import { STORE_NOT_LINKED_MESSAGE } from "@/features/checkout/services/deliveryQuoteService";
 import {
   isCheckoutFeesUsable,
   type CheckoutFeesState,
@@ -39,6 +41,12 @@ export interface DeliveryQuoteView {
   /** Banner copy for non-ready states. */
   message: string | null;
   canRetry: boolean;
+  /**
+   * True when the server refused the quote because the outlet is not linked to
+   * a partner branch — no retry can ever succeed, and the payment screen shows
+   * the same sentence ("This outlet isn't taking online orders yet.").
+   */
+  storeNotLinked?: boolean;
   /** Takeaway must remain reachable whenever delivery cannot be quoted. */
   takeawaySelectable: boolean;
 }
@@ -52,6 +60,7 @@ export function deliveryQuoteView(input: {
   const now = input.now ?? Date.now();
   const isDelivery = input.fulfillment === "delivery";
   const state = input.state;
+  const storeNotLinked = state.status === "error" && state.code === STORE_NOT_LINKED;
 
   if (!isDelivery) {
     if (state.status === "ready") {
@@ -93,8 +102,9 @@ export function deliveryQuoteView(input: {
       packagingFee: state.status === "unserviceable" ? state.packagingFee : null,
       deliveryQuoteId: null,
       expiresAt: null,
-      message: FEES_UNAVAILABLE_COPY,
-      canRetry: true,
+      message: storeNotLinked ? STORE_NOT_LINKED_MESSAGE : FEES_UNAVAILABLE_COPY,
+      canRetry: !storeNotLinked,
+      storeNotLinked,
       takeawaySelectable: false,
     };
   }
@@ -161,9 +171,10 @@ export function deliveryQuoteView(input: {
       packagingFee: null,
       deliveryQuoteId: null,
       expiresAt: null,
-      message: DELIVERY_UNAVAILABLE_COPY,
-      canRetry: true,
-      takeawaySelectable,
+      message: storeNotLinked ? STORE_NOT_LINKED_MESSAGE : DELIVERY_UNAVAILABLE_COPY,
+      canRetry: !storeNotLinked,
+      storeNotLinked,
+      takeawaySelectable: storeNotLinked ? false : takeawaySelectable,
     };
   }
 

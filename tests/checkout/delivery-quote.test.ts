@@ -25,6 +25,7 @@ import {
 } from "../../src/features/checkout/services/deliveryQuoteService";
 import { quoteCheckoutFees } from "../../src/features/checkout/services/checkoutQuote";
 import { deliveryQuoteView } from "../../src/features/checkout/utils/deliveryQuoteView";
+import { mapTransportError } from "../../src/core/network/httpClient";
 import { useCheckoutStore } from "../../src/features/checkout/state/checkoutStore";
 import { cartRepository } from "../../src/features/cart/repositories/CartRepository";
 import { useCartStore } from "../../src/features/cart/state/cartStore";
@@ -155,6 +156,66 @@ describe("POST /checkout/fees request", () => {
     );
     expect(res.success).toBe(false);
   });
+
+  // Every real store is currently unlinked, so /checkout/fees answers
+  // 409 STORE_NOT_LINKED. A generic retryable error would invite a retry that
+  // can never work.
+  it("propagates 409 STORE_NOT_LINKED with the payment-screen copy and no retry", async () => {
+    const transport: CheckoutFeesTransport = {
+      post: () => {
+        throw Object.assign(new Error("HTTP 409"), {
+          status: 409,
+          response: {
+            status: 409,
+            data: { code: "STORE_NOT_LINKED", error: "Store is not linked to a partner branch." },
+          },
+        });
+      },
+    };
+    const res = await requestCheckoutFees(
+      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
+      { transport },
+    );
+
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(res.error.code).toBe("STORE_NOT_LINKED");
+    expect(res.error.retryable).toBe(false);
+    expect(res.error.message).toBe("This outlet isn't taking online orders yet.");
+  });
+
+  it("keeps a 503/provider outage retryable", async () => {
+    const transport: CheckoutFeesTransport = {
+      post: () => {
+        throw Object.assign(new Error("HTTP 503"), { status: 503 });
+      },
+    };
+    const res = await requestCheckoutFees(
+      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
+      { transport },
+    );
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(res.error.retryable).toBe(true);
+    expect(res.error.code).toBe("DELIVERY_QUOTE_FAILED");
+  });
+});
+
+describe("httpClient transport metadata", () => {
+  it("keeps the HTTP status, body and server code on the mapped error", () => {
+    const err = Object.assign(new Error("HTTP 409"), {
+      status: 409,
+      response: { status: 409, data: { code: "STORE_NOT_LINKED", error: "unlinked" } },
+    });
+    const mapped = mapTransportError(err) as Error & {
+      status?: number;
+      code?: string;
+      response?: { data?: { code?: string } };
+    };
+    expect(mapped.status).toBe(409);
+    expect(mapped.code).toBe("STORE_NOT_LINKED");
+    expect(mapped.response?.data?.code).toBe("STORE_NOT_LINKED");
+  });
 });
 
 describe("delivery quote state machine", () => {
@@ -252,6 +313,31 @@ describe("delivery quote state machine", () => {
     expect(totals.success).toBe(true);
     if (!totals.success) return;
     expect(totals.data.deliveryFee).toBe(0);
+  });
+
+  it("treats an unlinked outlet as terminal — no retry, honest copy", async () => {
+    const transport: CheckoutFeesTransport = {
+      post: () => {
+        throw Object.assign(new Error("HTTP 409"), {
+          status: 409,
+          response: { status: 409, data: { code: "STORE_NOT_LINKED" } },
+        });
+      },
+    };
+    const state = await quoteCheckoutFees(
+      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
+      { request: (c) => requestCheckoutFees(c, { transport }) },
+    );
+
+    expect(state).toMatchObject({ status: "error", code: "STORE_NOT_LINKED" });
+    const view = deliveryQuoteView({ state, fulfillment: "delivery", hasAddress: true });
+    expect(view.payEnabled).toBe(false);
+    expect(view.message).toBe("This outlet isn't taking online orders yet.");
+    expect(view.canRetry).toBe(false);
+    expect(view.storeNotLinked).toBe(true);
+    // Nothing is orderable at this outlet, so switching fulfillment is not a
+    // useful escape hatch either.
+    expect(view.takeawaySelectable).toBe(false);
   });
 
   it("uses the quoted fee and packaging in the bill once ready", async () => {

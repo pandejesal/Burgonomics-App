@@ -243,8 +243,38 @@ function isTransientError(err: unknown): boolean {
  * Maps low-level transport failures (fetch rejection, HTTP status) into the
  * app's typed error taxonomy. Called from `HttpClient` and available to
  * feature code that wraps third-party SDKs.
+ *
+ * The mapped error keeps the HTTP `status`, the response envelope and the
+ * server's body `code` (when present) as extra properties, so a feature can
+ * tell a permanent 409 refusal (e.g. STORE_NOT_LINKED) apart from a transient
+ * outage without re-implementing the transport. No call site is forced to
+ * read them.
  */
-export const mapTransportError = (err: unknown): Error => {
+export const mapTransportError = (err: unknown): Error =>
+  attachTransportMeta(mapTransportErrorInner(err), err);
+
+function attachTransportMeta(mapped: Error, err: unknown): Error {
+  if (!err || typeof err !== "object") return mapped;
+  const withMeta = mapped as Error & {
+    status?: number;
+    response?: unknown;
+    code?: string;
+  };
+  const status = Number((err as { status?: unknown }).status);
+  if (Number.isFinite(status)) withMeta.status = status;
+  const response = (err as { response?: unknown }).response;
+  if (response && typeof response === "object") {
+    withMeta.response = response;
+    const data = (response as { data?: unknown }).data;
+    if (data && typeof data === "object") {
+      const code = (data as { code?: unknown }).code;
+      if (typeof code === "string" && code.trim()) withMeta.code = code;
+    }
+  }
+  return mapped;
+}
+
+function mapTransportErrorInner(err: unknown): Error {
   if (err instanceof Error && err.name === "AbortError") return new TimeoutError();
   if (typeof navigator !== "undefined" && navigator.onLine === false) return new OfflineError();
   if (err && typeof err === "object" && "status" in err) {
@@ -266,7 +296,7 @@ export const mapTransportError = (err: unknown): Error => {
   }
   if (err instanceof Error) return new NetworkError(err.message, err);
   return new UnknownError();
-};
+}
 
 /** Simple promise-based sleep for backoff delays. */
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

@@ -792,11 +792,13 @@ function PaymentPage() {
               iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
             >
               {!quoteView.payEnabled
-                ? quoteView.status === "idle" || quoteView.status === "loading"
-                  ? isDelivery
-                    ? "Getting delivery price"
-                    : "Getting your order price"
-                  : "Delivery unavailable"
+                ? quoteView.storeNotLinked
+                  ? "Ordering unavailable"
+                  : quoteView.status === "idle" || quoteView.status === "loading"
+                    ? isDelivery
+                      ? "Getting delivery price"
+                      : "Getting your order price"
+                    : "Delivery unavailable"
                 : storeNotLinked
                   ? "Ordering unavailable"
                   : payBlocked

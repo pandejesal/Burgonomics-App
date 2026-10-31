@@ -43,7 +43,9 @@ export async function quoteCheckoutFees(
 
   const res = await request(ctx);
   if (!res.success) {
-    useCheckoutStore.getState().applyCheckoutFees(seq, key, { status: "error" });
+    useCheckoutStore
+      .getState()
+      .applyCheckoutFees(seq, key, { status: "error", code: res.error.code ?? null });
     return useCheckoutStore.getState().checkoutFees;
   }
 

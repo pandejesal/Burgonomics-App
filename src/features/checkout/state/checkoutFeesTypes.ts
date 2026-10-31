@@ -41,7 +41,8 @@ export type CheckoutFeesState =
   | { status: "loading" }
   | CheckoutFeesReady
   | CheckoutFeesUnserviceable
-  | { status: "error" };
+  /** `code` is the server refusal (e.g. STORE_NOT_LINKED) when one was parsed. */
+  | { status: "error"; code: string | null };
 
 export const INITIAL_CHECKOUT_FEES: CheckoutFeesState = { status: "idle" };
 
