@@ -798,7 +798,9 @@ function PaymentPage() {
                     ? isDelivery
                       ? "Getting delivery price"
                       : "Getting your order price"
-                    : "Delivery unavailable"
+                    : isDelivery
+                      ? "Delivery unavailable"
+                      : "Price unavailable"
                 : storeNotLinked
                   ? "Ordering unavailable"
                   : payBlocked

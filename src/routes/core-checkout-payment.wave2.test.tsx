@@ -49,8 +49,7 @@ const fixture = vi.hoisted(() => {
     setLoyaltyPointsToRedeem: vi.fn(),
   };
   const noop = vi.fn();
-  const quote = {
-    status: "ready" as string,
+  const quote = {    status: "ready" as string,
     payEnabled: true,
     showDeliveryFee: true,
     showTotal: true,
@@ -68,6 +67,7 @@ const fixture = vi.hoisted(() => {
     cartState,
     checkoutState,
     quote,
+    fulfillment: "delivery" as "delivery" | "takeaway" | "dinein",
     refreshQuote: vi.fn(async () => checkoutState.checkoutFees),
     createFromCurrentContext: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     cart: {
@@ -203,7 +203,7 @@ vi.mock("@/features/stores/state/storeStore", () => ({
   useStoreSelection: (select: (s: unknown) => unknown) =>
     select({
       activeStore: { id: "store-A", name: "Surat Vesu", lat: 21.15, lng: 72.77 },
-      fulfillment: "delivery",
+      fulfillment: fixture.fulfillment,
       setFulfillment: fixture.setFulfillment,
     }),
 }));
@@ -324,6 +324,7 @@ beforeEach(() => {
   fixture.quote.canRetry = false;
   fixture.quote.storeNotLinked = false;
   fixture.quote.takeawaySelectable = true;
+  fixture.fulfillment = "delivery";
   usePaymentStore.getState().reset();
   sessionStorage.clear();
   container = document.createElement("div");
@@ -965,6 +966,29 @@ describe("R8 — payment is gated on a live delivery quote", () => {
     await act(async () => {});
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
     expect(fixture.openCheckout).not.toHaveBeenCalled();
+  });
+
+  it("words a takeaway fee failure without mentioning delivery", async () => {
+    fixture.fulfillment = "takeaway";
+    fixture.quote.status = "error";
+    fixture.quote.payEnabled = false;
+    fixture.quote.message = "We couldn't load your order price. Please try again.";
+    fixture.quote.canRetry = true;
+    fixture.quote.storeNotLinked = false;
+    fixture.quote.takeawaySelectable = false;
+
+    await mount(CheckoutPage);
+
+    const pay = buttonWithText("PAY — PRICE UNAVAILABLE");
+    expect(pay).toBeDefined();
+    expect(pay?.disabled).toBe(true);
+    expect(pay?.textContent ?? "").not.toMatch(/delivery/i);
+
+    const retry = buttonWithText("Retry");
+    expect(retry).toBeDefined();
+    const banner = retry!.closest('[role="status"]');
+    expect(banner?.textContent).toContain("We couldn't load your order price");
+    expect(banner?.textContent ?? "").not.toMatch(/delivery/i);
   });
 
   it("checkout re-quotes on 409 DELIVERY_QUOTE_REQUIRED and shows the new figure", async () => {

@@ -470,6 +470,24 @@ describe("delivery quote state machine", () => {
   });
 });
 
+describe("fee-failure wording follows the fulfillment", () => {
+  const errorState: CheckoutFeesState = { status: "error", code: "DELIVERY_QUOTE_FAILED" };
+
+  it("a takeaway fee failure talks about the price and keeps Retry", () => {
+    const view = deliveryQuoteView({ state: errorState, fulfillment: "takeaway", hasAddress: true });
+    expect(view.payEnabled).toBe(false);
+    expect(view.canRetry).toBe(true);
+    expect(view.message).toBe("We couldn't load your order price. Please try again.");
+    expect(view.message?.toLowerCase()).not.toContain("delivery");
+  });
+
+  it("a delivery fee failure still says delivery is unavailable", () => {
+    const view = deliveryQuoteView({ state: errorState, fulfillment: "delivery", hasAddress: true });
+    expect(view.message).toBe("Delivery isn't available to this address");
+    expect(view.canRetry).toBe(true);
+  });
+});
+
 describe("parseCheckoutFees expiry normalisation", () => {
   it("accepts ms, seconds and ISO expiries", () => {
     const ms = parseCheckoutFees(

@@ -938,7 +938,9 @@ export function CheckoutPage() {
                       ? isDelivery
                         ? "PAY — GETTING DELIVERY PRICE"
                         : "PAY — GETTING ORDER PRICE"
-                      : "PAY — DELIVERY UNAVAILABLE"
+                      : isDelivery
+                        ? "PAY — DELIVERY UNAVAILABLE"
+                        : "PAY — PRICE UNAVAILABLE"
                   : orderingUnavailable
                     ? "ONLINE ORDERING UNAVAILABLE"
                     : reconciliationPending
