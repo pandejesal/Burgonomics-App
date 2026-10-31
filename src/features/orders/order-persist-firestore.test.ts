@@ -48,7 +48,7 @@ function persistedOrderPayload(): Record<string, unknown> {
   const order: Order = {
     id: "ord_1761800000000_ABCDEF",
     shortCode: "ABCDEF",
-    status: { code: "PLACED", label: "Placed", kind: "order", terminal: false },
+    status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
     fulfillment: "delivery",
     store: {
       id: "str_qa",
