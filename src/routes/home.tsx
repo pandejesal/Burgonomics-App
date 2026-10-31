@@ -1,7 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
+import { Store as StoreIcon } from "lucide-react";
 
 import { AppShell } from "@/shared/layouts/AppShell";
+import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { PetpoojaSyncPlaceholder } from "@/shared/components/feedback/PetpoojaSyncPlaceholder";
 
@@ -97,8 +99,33 @@ function HomePage() {
 
   // Wait for the persisted store before deciding: with isHydrated starting
   // false, the /stores bounce below only fires for a genuine no-store state.
-  if (!isHydrated) return null;
-  if (!store) return null;
+  // UX-01 follow-up: never return null here. A fresh visit rendered a blank
+  // document until the redirect landed (and forever if it did not), so wait
+  // behind a skeleton and then show an honest empty state with a real link.
+  if (!isHydrated) {
+    return (
+      <AppShell title="BURGONOMICS" showTabs showTopBar={false}>
+        <HomeSkeleton />
+      </AppShell>
+    );
+  }
+
+  if (!store) {
+    return (
+      <AppShell title="BURGONOMICS" showTabs showTopBar={false}>
+        <div className="mx-auto max-w-[520px] px-4 py-6">
+          <EmptyState
+            hideMascot
+            icon={<StoreIcon className="h-9 w-9" aria-hidden />}
+            title="Choose a store to start your order"
+            description="We need to know which Burgonomics kitchen is cooking for you before showing live offers and availability."
+            actionLabel="Choose a store"
+            onAction={() => void navigate({ to: "/stores" })}
+          />
+        </div>
+      </AppShell>
+    );
+  }
 
   const isLoading = status === "loading" || (status === "idle" && !bundle);
   const isRefreshing = status === "refreshing";
