@@ -664,3 +664,86 @@ describe("D-01 — STORE_NOT_LINKED is shown honestly and is not retryable", () 
     expect(after?.disabled).toBe(true);
   });
 });
+
+/**
+ * CUS-11 — after accepting the server's reprice the To Pay bar behind the
+ * Razorpay sheet must show the accepted server amount, not the stale client
+ * estimate (live: bar 30.00, Razorpay 26.00).
+ */
+describe("CUS-11 — accepted server amount replaces the stale To Pay bar", () => {
+  const serverOrder = {
+    orderId: "order_rzp_26",
+    razorpayOrderId: "order_rzp_26",
+    amount: 26,
+    currency: "INR" as const,
+    receipt: "rcpt_cus11",
+    keyId: "rzp_test_cus11",
+  };
+
+  beforeEach(() => {
+    fixture.cart.calculateTotals.mockResolvedValue(okTotals(30));
+    fixture.validateForPayment.mockResolvedValue({
+      success: true,
+      data: { valid: true, issues: [] },
+    });
+    fixture.createPaymentOrder.mockResolvedValue({ success: true, data: serverOrder });
+    fixture.openCheckout.mockResolvedValue(undefined);
+  });
+
+  function toPayBar(): HTMLElement | undefined {
+    const label = Array.from(container.querySelectorAll("span")).find(
+      (el) => el.textContent?.trim() === "To Pay",
+    );
+    return label?.parentElement ?? undefined;
+  }
+
+  it("shows the accepted 26.00, not the 30.00 estimate", async () => {
+    await mount(PaymentPage);
+    expect(toPayBar()?.textContent).toContain("30.00");
+
+    const pay = buttonWithText("Pay Online");
+    expect(pay?.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+    expect(document.body.textContent).toContain("Continue with the updated amount?");
+
+    const cont = Array.from(document.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Continue"),
+    );
+    expect(cont).toBeDefined();
+    await act(async () => cont!.click());
+    await act(async () => {});
+
+    expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
+    expect(toPayBar()?.textContent).toContain("26.00");
+    expect(toPayBar()?.textContent).not.toContain("30.00");
+  });
+
+  it("checkout bar also switches to the accepted amount behind Razorpay", async () => {
+    await mount(CheckoutPage);
+    const checkoutBar = () => {
+      const label = Array.from(container.querySelectorAll("p")).find(
+        (el) => el.textContent?.trim() === "To Pay",
+      );
+      return label?.parentElement ?? undefined;
+    };
+    expect(checkoutBar()?.textContent).toContain("30.00");
+
+    const pay = buttonWithText("PAY");
+    expect(pay?.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+    expect(document.body.textContent).toContain("Continue with the updated amount?");
+
+    const cont = Array.from(document.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Continue"),
+    );
+    expect(cont).toBeDefined();
+    await act(async () => cont!.click());
+    await act(async () => {});
+
+    expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
+    expect(checkoutBar()?.textContent).toContain("26.00");
+    expect(checkoutBar()?.textContent).not.toContain("30.00");
+  });
+});

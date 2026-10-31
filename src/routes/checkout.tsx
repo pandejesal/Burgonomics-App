@@ -193,6 +193,10 @@ export function CheckoutPage() {
   // The server total already accepted, so re-entry does not loop on the same
   // difference (the divergence is structural, not a one-off).
   const acceptedServerAmount = React.useRef<number | null>(null);
+  // CUS-11: once the customer accepts the server's repriced total, the page
+  // bars behind Razorpay must show that accepted figure, not the stale client
+  // estimate (display only - the charge amount is always the server's).
+  const [acceptedServerTotal, setAcceptedServerTotal] = React.useState<number | null>(null);
   // Fail-closed billing: when the totals computation fails (e.g. no store
   // pricing available), PAY must stay disabled instead of charging ₹0.
   const [totalsFailed, setTotalsFailed] = React.useState(false);
@@ -277,6 +281,8 @@ export function CheckoutPage() {
     if (res.success) {
       setTotals(res.data);
       setTotalsFailed(false);
+      // A recomputed bill replaces any previously accepted server figure.
+      setAcceptedServerTotal(null);
     } else {
       // M3 fail-closed: a stale bill priced for the previous fulfillment /
       // promo must not stay on screen behind a live PAY. Log the raw failure
@@ -326,7 +332,8 @@ export function CheckoutPage() {
   // The delivery tip is a real charge: the server reprices with the same
   // `tipAmount` this screen reads, so it must already sit inside To Pay —
   // otherwise checkout quotes less than the gateway collects.
-  const finalPayable = Math.max(0, rawGrandTotal + persistedTip - pointsDiscount);
+  const finalPayable =
+    acceptedServerTotal ?? Math.max(0, rawGrandTotal + persistedTip - pointsDiscount);
 
   // Hoisted so the ref-sync effect also runs safely on the initial skeleton
   // render, which returns before the checkout body is initialized.
@@ -1152,6 +1159,7 @@ export function CheckoutPage() {
         onConfirm={() => {
           if (!repricePrompt) return;
           acceptedServerAmount.current = repricePrompt.authoritative;
+          setAcceptedServerTotal(repricePrompt.authoritative);
           setRepricePrompt(null);
           void handlePlaceOrderRef.current();
         }}

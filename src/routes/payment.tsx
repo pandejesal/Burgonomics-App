@@ -157,6 +157,9 @@ function PaymentPage() {
     displayed: number;
     authoritative: number;
   } | null>(null);
+  // CUS-11: the accepted server total is what the To Pay bar must show while
+  // Razorpay is open (display only; the gateway already has this amount).
+  const [acceptedServerTotal, setAcceptedServerTotal] = React.useState<number | null>(null);
   // The exact server total already accepted, so the structural display/charge
   // divergence does not prompt again on re-entry.
   const acceptedServerAmount = React.useRef<number | null>(null);
@@ -672,7 +675,7 @@ function PaymentPage() {
     fulfillment === "delivery"
       ? activeStore?.etaMinutes
       : (activeStore?.pickupEtaMinutes ?? activeStore?.etaMinutes);
-  const grandTotal = totals?.grandTotal ?? 0;
+  const grandTotal = acceptedServerTotal ?? totals?.grandTotal ?? 0;
 
   const instructions =
     fulfillment === "delivery"
@@ -1083,6 +1086,7 @@ function PaymentPage() {
           // already exists (CUS-09): the internal `orders/{id}` document and
           // this Razorpay order. No place-order re-run, no second write.
           acceptedServerAmount.current = repricePrompt.authoritative;
+          setAcceptedServerTotal(repricePrompt.authoritative);
           pendingGatewayOrder.current = null; // consumed: one open per order
           setRepricePrompt(null);
           payInFlight.current = true;
