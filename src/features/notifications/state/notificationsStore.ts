@@ -1,5 +1,11 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import {
+  scopedNamespacedStorage,
+  browserOrMemoryStorage,
+  onAuthUidChange,
+  readScopedPersisted,
+} from "@/features/auth/utils/scopedPersistence";
 
 export type NotificationCategory = "offer" | "order" | "general";
 
@@ -64,26 +70,36 @@ export const useNotificationsStore = create<NotificationsState>()(
     {
       name: "burg.notifications",
       version: 1,
-      storage: createJSONStorage(() => {
-        if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
-        const memoryStorage = new Map<string, string>();
-        return {
-          getItem: (key: string) => memoryStorage.get(key) ?? null,
-          setItem: (key: string, value: string) => {
-            memoryStorage.set(key, value);
-          },
-          removeItem: (key: string) => {
-            memoryStorage.delete(key);
-          },
-          clear: () => {
-            memoryStorage.clear();
-          },
-          length: memoryStorage.size,
-          key: (index: number) => Array.from(memoryStorage.keys())[index] ?? null,
-        } as Storage;
-      }),
+      storage: createJSONStorage(() => scopedNamespacedStorage(browserOrMemoryStorage())),
       skipHydration: true,
       partialize: (s) => ({ items: s.items, unreadCount: s.unreadCount }),
     },
   ),
 );
+
+// Loop 36/120 (finding 6): the tray is per-user. On identity change the
+// in-memory list resets and rehydrates from the new scope — signed-in user
+// B must never see user A's notifications on a shared device. STRICT
+// scoping: the legacy key may hold another account's rows, so no fallback.
+interface ScopedNotifications {
+  items: AppNotification[];
+  unreadCount: number;
+}
+
+const NOTIFICATIONS_EMPTY: ScopedNotifications = { items: [], unreadCount: 0 };
+
+function readNotificationsScope(uid: string | null): ScopedNotifications {
+  return readScopedPersisted<ScopedNotifications>(
+    "burg.notifications",
+    uid,
+    (state) => {
+      const items = Array.isArray(state.items) ? (state.items as AppNotification[]) : [];
+      return { items, unreadCount: recount(items) };
+    },
+    NOTIFICATIONS_EMPTY,
+  );
+}
+
+onAuthUidChange((uid) => {
+  useNotificationsStore.setState(readNotificationsScope(uid));
+});

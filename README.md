@@ -302,7 +302,7 @@ npm run build:mobile
 
 ### Native App Store & Play Store Release
 See [`RELEASE_AND_INTEGRATION_GUIDE.md`](file:///c:/Users/DELL/Desktop/Burgonomics/RELEASE_AND_INTEGRATION_GUIDE.md) and [`STORE_SUBMISSION_GUIDE.md`](file:///c:/Users/DELL/Desktop/Burgonomics/STORE_SUBMISSION_GUIDE.md) for full publication instructions:
-- **Package / Bundle ID**: `com.glassdoorsstudio.burgonomics`
+- **Package / Bundle ID**: `com.burgonomics`
 - **Android Release AAB**: `npm run build:mobile && npx cap sync android && cd android && ./gradlew bundleRelease`
 - **iOS Xcode Archive**: Run `./mac-build.sh` on macOS and upload via TestFlight / App Store Connect.
 

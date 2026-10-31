@@ -2,6 +2,7 @@ import {
   menuService,
   type MenuCategory,
   type MenuItem,
+  type MenuSearchOptions,
 } from "@/features/menu/services/menuService";
 import type {
   CustomizationGroup,
@@ -47,8 +48,8 @@ export class MenuRepository {
   listFeatured(storeId?: string): Promise<ApiResult<Product[]>> {
     return this.service.listFeatured(storeId);
   }
-  search(storeId: string | undefined, query: string, page = 1, pageSize = 20) {
-    return this.service.search(storeId, query, page, pageSize);
+  search(storeId: string | undefined, query: string, opts?: MenuSearchOptions) {
+    return this.service.search(storeId, query, opts);
   }
   suggest(storeId: string | undefined, query: string): Promise<ApiResult<SearchSuggestion[]>> {
     return this.service.suggest(storeId, query);

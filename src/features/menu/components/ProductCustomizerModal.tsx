@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState, useMemo, useEffect } from "react";
-import { X, Plus, Minus, Check, Flame, Clock, Sparkles, ShieldCheck, RotateCcw } from "lucide-react";
+import { X, Plus, Minus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
@@ -11,7 +11,8 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { formatINR } from "@/core/utils/format";
 import type { Product, ProductDetails, CustomizationGroup } from "../models";
 import { ModifierGroupSelector, type ModifierSelections } from "./ModifierGroupSelector";
-import { AddonUpsellSection } from "./AddonUpsellSection";
+import { NutritionAllergenPanel } from "./NutritionAllergenPanel";
+import { VegIndicator } from "@/shared/components/common/VegIndicator";
 
 interface ProductCustomizerModalProps {
   product: ProductDetails | Product;
@@ -22,7 +23,7 @@ interface ProductCustomizerModalProps {
 
 /**
  * ProductCustomizerModal — Bottom sheet on mobile (<768px) / centered modal on desktop (>768px).
- * Provides mandatory modifier validation, optional multi-select toppings, combo meal upgrades,
+ * Provides mandatory modifier validation, optional multi-select toppings,
  * nutritional transparency, repeat last customization prompt, and real-time dynamic price calculation.
  */
 export function ProductCustomizerModal({
@@ -35,9 +36,11 @@ export function ProductCustomizerModal({
   const cartLines = useCartStore((s) => s.lines);
   const [qty, setQty] = useState(1);
   const [selections, setSelections] = useState<ModifierSelections>({});
-  const [selectedComboId, setSelectedComboId] = useState<string | null>(null);
 
   const groups: CustomizationGroup[] = (product as ProductDetails).customizations || [];
+  // 86ed products can still be opened from search / deep links — the sheet must
+  // refuse to add them, not just the menu row.
+  const isOutOfStock = product.inStock === false;
 
   // Check if product already exists in cart with previous customizations
   const existingCustomizedLines = useMemo(() => {
@@ -92,19 +95,15 @@ export function ProductCustomizerModal({
 
     void HapticService.impact("medium");
     const restored: ModifierSelections = {};
-    let restoredCombo: string | null = null;
 
     lastLine.modifiers.forEach((m) => {
-      if (m.groupId === "meal_combo") {
-        restoredCombo = m.optionId;
-      } else {
-        if (!restored[m.groupId]) restored[m.groupId] = [];
-        restored[m.groupId].push(m.optionId);
-      }
+      // Legacy "meal_combo" upgrade modifiers no longer map to a group — skip them.
+      if (m.groupId === "meal_combo") return;
+      if (!restored[m.groupId]) restored[m.groupId] = [];
+      restored[m.groupId].push(m.optionId);
     });
 
     setSelections(restored);
-    setSelectedComboId(restoredCombo);
     toast.success("Applied your previous customization!");
   };
 
@@ -123,12 +122,8 @@ export function ProductCustomizerModal({
       });
     });
 
-    // Add combo upsell
-    if (selectedComboId === "combo_upgrade_regular") price += 99;
-    if (selectedComboId === "combo_upgrade_premium") price += 149;
-
     return Math.max(0, price);
-  }, [product.price, groups, selections, selectedComboId]);
+  }, [product.price, groups, selections]);
 
   const totalPrice = unitPrice * qty;
 
@@ -146,6 +141,11 @@ export function ProductCustomizerModal({
   const handleAddToCart = async () => {
     if (!store) {
       toast.error("Please select a store first");
+      return;
+    }
+
+    if (isOutOfStock) {
+      toast.error(`${product.name} is out of stock right now.`);
       return;
     }
 
@@ -174,31 +174,13 @@ export function ProductCustomizerModal({
       });
     });
 
-    if (selectedComboId === "combo_upgrade_regular") {
-      modifiersList.push({
-        groupId: "meal_combo",
-        groupName: "Combo Upgrade",
-        optionId: "combo_upgrade_regular",
-        name: "Regular Meal: Fries + Drink",
-        priceDelta: 99,
-      });
-    } else if (selectedComboId === "combo_upgrade_premium") {
-      modifiersList.push({
-        groupId: "meal_combo",
-        groupName: "Combo Upgrade",
-        optionId: "combo_upgrade_premium",
-        name: "Gourmet Meal: Loaded Fries + Shake",
-        priceDelta: 149,
-      });
-    }
-
     await cartRepository.addItem({
       storeId: store.id,
       productId: product.id,
       name: product.name,
       unitPrice,
       quantity: qty,
-      veg: product.veg ?? true,
+      veg: product.veg,
       imageUrl: product.imageUrl,
       fallbackImageUrl: product.fallbackImageUrl,
       modifiers: modifiersList,
@@ -223,12 +205,9 @@ export function ProductCustomizerModal({
         {/* Modal Header */}
         <div className="p-4 sm:p-5 border-b border-divider flex items-center justify-between gap-3 bg-surface sticky top-0 z-10">
           <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="w-5 h-5 rounded-[3px] border-2 border-emerald-600 bg-emerald-950/20 flex items-center justify-center shrink-0"
-              aria-label="100% Pure Vegetarian"
-            >
-              <div className="w-2 h-2 rounded-full bg-emerald-600" />
-            </div>
+            {typeof product.veg === "boolean" && (
+              <VegIndicator veg={product.veg} className="w-5 h-5 shrink-0" />
+            )}
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-black text-text truncate">
                 Customize {product.name}
@@ -275,30 +254,12 @@ export function ProductCustomizerModal({
             </p>
           )}
 
-          {/* Nutritional & Allergen Transparency Box */}
-          <div className="rounded-2xl border border-divider bg-bg-secondary/50 p-3.5 space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-text">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Nutritional & Allergen Highlights</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="bg-surface rounded-xl p-2 border border-divider/60">
-                <span className="text-[10px] text-text-secondary block">Energy</span>
-                <span className="font-mono font-bold text-text">380 kcal</span>
-              </div>
-              <div className="bg-surface rounded-xl p-2 border border-divider/60">
-                <span className="text-[10px] text-text-secondary block">Protein</span>
-                <span className="font-mono font-bold text-text">14g</span>
-              </div>
-              <div className="bg-surface rounded-xl p-2 border border-divider/60">
-                <span className="text-[10px] text-text-secondary block">Dietary</span>
-                <span className="font-bold text-emerald-600">Pure Veg</span>
-              </div>
-            </div>
-            <p className="text-[10px] text-text-secondary leading-tight pt-0.5">
-              <strong>Allergen Notice:</strong> Contains gluten and dairy. Prepared in a dedicated 100% vegetarian kitchen facility.
-            </p>
-          </div>
+          {/* Nutritional & Allergen Transparency Box — real product data only */}
+          <NutritionAllergenPanel
+            veg={product.veg}
+            nutrition={(product as ProductDetails).nutrition}
+            className="p-3.5 space-y-2"
+          />
 
           {/* Modifier Groups */}
           {groups.map((group) => (
@@ -309,14 +270,6 @@ export function ProductCustomizerModal({
               onToggleOption={handleToggleOption}
             />
           ))}
-
-          {/* Combo Meal Upsell */}
-          <AddonUpsellSection
-            selectedComboId={selectedComboId}
-            onToggleCombo={(id) =>
-              setSelectedComboId((prev) => (prev === id ? null : id))
-            }
-          />
         </div>
 
         {/* Sticky Bottom Action Bar */}
@@ -355,15 +308,21 @@ export function ProductCustomizerModal({
           <button
             type="button"
             onClick={handleAddToCart}
-            disabled={!isValidationPassed}
+            disabled={isOutOfStock || !isValidationPassed}
             className={cn(
               "flex-1 py-3.5 px-5 rounded-xl text-white font-bold text-xs sm:text-sm flex items-center justify-between shadow-lg transition-all active:scale-[0.98] cursor-pointer",
-              isValidationPassed
+              !isOutOfStock && isValidationPassed
                 ? "bg-[#FF6600] hover:bg-[#e05a00]"
                 : "bg-zinc-700 opacity-60 cursor-not-allowed"
             )}
           >
-            <span>{isValidationPassed ? "Add to Cart" : "Choose Required Options"}</span>
+            <span>
+              {isOutOfStock
+                ? "Out of Stock"
+                : isValidationPassed
+                  ? "Add to Cart"
+                  : "Choose Required Options"}
+            </span>
             <span className="font-mono font-black">{formatINR(totalPrice)}</span>
           </button>
         </div>

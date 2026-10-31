@@ -20,6 +20,7 @@ import type {
   ProductPage,
   SearchSuggestion,
 } from "@/features/menu/models";
+import { resolveItemImage } from "./menuImageMap";
 
 export type MenuCategory = MenuCategoryModel & { itemCount: number };
 export type MenuItem = Product;
@@ -50,6 +51,38 @@ function fuzzyMatch(text: string, query: string): boolean {
   return words.every((qw) => t.includes(qw));
 }
 
+/**
+ * Search scope tabs. The `products` payload carries no `kind` field, so each
+ * tab is answered from data the docs really have:
+ * - `product` / `all` — plain text match (`all` additionally keeps combo
+ *   bundles in the result set);
+ * - `combo` — items in the POS combo category (`Combos` / `cat_combos`);
+ * - `offer` — items carrying a real discount signal;
+ * - `category` — items whose category matches the query.
+ */
+export type MenuSearchKind = "all" | "product" | "combo" | "category" | "offer";
+
+export interface MenuSearchOptions {
+  page?: number;
+  pageSize?: number;
+  kind?: MenuSearchKind;
+}
+
+function categoryHaystack(p: Product): string {
+  return `${p.categoryName ?? ""} ${p.categoryId ?? ""}`;
+}
+
+function isComboItem(p: Product): boolean {
+  return /combo/i.test(categoryHaystack(p));
+}
+
+function isOfferItem(p: Product): boolean {
+  if (typeof p.discountPercentage === "number" && p.discountPercentage > 0) return true;
+  if (typeof p.compareAtPrice === "number" && p.compareAtPrice > p.price) return true;
+  const signal = [...(p.tags ?? []), ...(p.badges ?? []).map((b) => b.label)].join(" ");
+  return /(offer|deal|bogo|discount)/i.test(signal);
+}
+
 function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((group) => {
@@ -76,7 +109,17 @@ function mapToCustomizationGroups(raw: any[]): CustomizationGroup[] {
   });
 }
 
-function mapProductDoc(data: any, docId: string): Product {
+/**
+ * P1-12: prep time is a fact from the POS doc or nothing at all. A doc that
+ * omits the field (or carries a non-positive/garbage value) yields `undefined`
+ * so the card/meta renderer can hide the badge instead of an invented "15m".
+ */
+function toPrepMinutes(value: unknown): number | undefined {
+  const n = typeof value === "string" ? Number(value.trim()) : value;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+export function mapProductDoc(data: any, docId: string): Product {
   const veg =
     data.isVeg !== undefined
       ? Boolean(data.isVeg)
@@ -86,8 +129,10 @@ function mapProductDoc(data: any, docId: string): Product {
 
   const customizations = mapToCustomizationGroups(data.customizations || []);
 
-  const imageUrl =
+  const rawImageUrl =
     data.imageUrl || data.image || data.image_url || data.itemimage_url || undefined;
+  const productName = data.name || data.itemname || "Product";
+  const imageUrl = resolveItemImage(productName, rawImageUrl);
 
   const badges = Array.isArray(data.badges) ? [...data.badges] : [];
   if (
@@ -128,16 +173,26 @@ function mapProductDoc(data: any, docId: string): Product {
     imageUrls: data.imageUrls || (imageUrl ? [imageUrl] : []),
     fallbackImageUrl: data.fallbackImageUrl,
     inStock:
+      // Consumer truth signal, so it fails CLOSED. A doc with no availability
+      // field must never render as sellable: nothing downstream re-checks
+      // (the payments pricing engine never reads inStock, and the cart's only
+      // gate is this boolean), so "we do not know" would become "order it".
+      // Strict `=== true` also closes the truthiness trap where a string
+      // "false" from a bad writer used to become available.
       data.inStock !== undefined
-        ? Boolean(data.inStock)
+        ? data.inStock === true
         : data.isAvailable !== undefined
-          ? Boolean(data.isAvailable)
-          : true,
+          ? data.isAvailable === true
+          : false,
     customizable: customizations.length > 0 || Boolean(data.customizable),
-    prepTimeMinutes: data.prepTimeMinutes || 15,
+    prepTimeMinutes: toPrepMinutes(data.prepTimeMinutes),
     badges,
     tags: data.tags || [],
-    unavailableReason: data.unavailableReason,
+    unavailableReason:
+      data.unavailableReason ??
+      (data.inStock === undefined && data.isAvailable === undefined
+        ? "Availability unknown"
+        : undefined),
   };
 }
 
@@ -238,7 +293,7 @@ export const menuService = {
     storeId: string | undefined,
     categoryId: string | undefined,
     page = 1,
-    pageSize = 20,
+    pageSize = 100,
   ): Promise<ApiResult<ProductPage>> {
     try {
       const restId = await resolveRestId(storeId);
@@ -332,19 +387,42 @@ export const menuService = {
   async search(
     storeId: string | undefined,
     searchQuery: string,
-    page = 1,
-    pageSize = 20,
+    opts: MenuSearchOptions = {},
   ): Promise<ApiResult<ProductPage>> {
+    const page = opts.page ?? 1;
+    const pageSize = opts.pageSize ?? 20;
+    const kind: MenuSearchKind = opts.kind ?? "all";
     try {
       const term = searchQuery.trim().toLowerCase();
       if (!term) return ok({ items: [], page, pageSize, total: 0 });
 
       const restId = await resolveRestId(storeId);
       const all = await fetchStoreProductsCached(restId);
-      const hits = all.filter((p) => {
-        const haystack = [p.name, p.description ?? "", ...(p.tags ?? [])].join(" ");
-        return fuzzyMatch(haystack, term);
-      });
+
+      // `kind` is a real scope over the one payload we have: every doc carries
+      // its category, so combos are the POS "Combos" category and offers are
+      // the items carrying an actual discount. `all` keeps the original
+      // name/description/tag matching untouched.
+      let scoped = all;
+      if (kind === "product") scoped = all.filter((p) => !isComboItem(p));
+      else if (kind === "combo") scoped = all.filter(isComboItem);
+      else if (kind === "offer") scoped = all.filter(isOfferItem);
+
+      const hits =
+        kind === "category"
+          ? all.filter((p) => fuzzyMatch(categoryHaystack(p), term))
+          : scoped.filter((p) => {
+              const haystack = [
+                p.name,
+                p.description ?? "",
+                // Scoped kinds also match their category name, so a "combo"
+                // query reaches bundles whose names never say combo.
+                ...(kind === "combo" || kind === "offer" ? [categoryHaystack(p)] : []),
+                ...(p.tags ?? []),
+              ].join(" ");
+              return fuzzyMatch(haystack, term);
+            });
+
       return ok({ items: paginate(hits, page, pageSize), page, pageSize, total: hits.length });
     } catch (e: any) {
       return fail("MENU_SEARCH_FAILED", "Search failed.");
@@ -355,7 +433,7 @@ export const menuService = {
     storeId: string | undefined,
     searchQuery: string,
   ): Promise<ApiResult<SearchSuggestion[]>> {
-    const page = await this.search(storeId, searchQuery, 1, 6);
+    const page = await this.search(storeId, searchQuery, { page: 1, pageSize: 6 });
     if (!page.success) return ok([]);
     return ok(
       page.data.items.map((p) => ({
@@ -367,12 +445,48 @@ export const menuService = {
     );
   },
 
-  async listTrending(_storeId?: string): Promise<ApiResult<SearchSuggestion[]>> {
-    return ok(
-      ["Classic Veggie Burger", "Spicy Paneer Blast", "Salted Fries", "Chocolate Shake"].map(
-        (label, i) => ({ id: `tr_${i}`, label, kind: "product" as const }),
-      ),
-    );
+  /**
+   * "Trending" seeds the search screen's chips — so they must be real product
+   * names from the store's `products` collection (a fabricated chip that
+   * matches nothing is a dead tap). Ranked bestseller-first, in-stock only;
+   * empty when the menu can't be read, so the section simply hides.
+   */
+  async listTrending(storeId?: string): Promise<ApiResult<SearchSuggestion[]>> {
+    try {
+      const restId = await resolveRestId(storeId);
+      const products = await fetchStoreProductsCached(restId);
+      const candidates = products.filter((p) => p.inStock !== false);
+      if (candidates.length === 0) return ok([]);
+
+      const rank = (p: Product): number => {
+        const signals = [
+          ...(p.badges ?? []).map((b) => b.label),
+          ...(p.tags ?? []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (signals.includes("bestseller") || signals.includes("best seller")) return 0;
+        if (signals.includes("chef") || signals.includes("special")) return 1;
+        if (signals.includes("new")) return 2;
+        return 3;
+      };
+
+      const ranked = candidates
+        .map((product, index) => ({ product, index }))
+        .sort((a, b) => rank(a.product) - rank(b.product) || a.index - b.index)
+        .slice(0, 6);
+
+      return ok(
+        ranked.map(({ product }) => ({
+          id: `tr_${product.id}`,
+          label: product.name,
+          kind: "product" as const,
+          targetId: product.id,
+        })),
+      );
+    } catch {
+      return ok([]);
+    }
   },
 
   async listItems(categoryId?: string): Promise<ApiResult<MenuItem[]>> {

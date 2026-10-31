@@ -5,9 +5,24 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * BURGONOMICS Design System.
- * Palette: Primary Green #023020, Secondary Green #004225, Accent Orange #EF6124.
- * Typography: Poppins across the board. All component styling references tokens.
+ * BURGONOMICS Design System — semantic token source of truth (B01-synced).
+ *
+ * Strict 60-30-10, resolved values actually shipped below:
+ *   60% canvas  #F5F5F5 (light) / #0A0A0A (dark)
+ *   30% brand   #0E4825 Forest Green (both themes)
+ *   10% accent  #C2410C Vibrant Orange (both themes) = --accent (CTA fill)
+ *
+ * READABLE CTA vs DECORATIVE ORANGE — do not mix these two families:
+ *   Readable/CTA (text-bearing, AA-verified in tests/token-accessibility):
+ *     --accent + --accent-foreground  (fill + label painted on it)
+ *     --accent-text                   (orange text painted on a surface)
+ *     --ring                          (focus indicator, 3:1 non-text)
+ *   Decorative / legacy brand orange — NEVER text, NEVER a white-label fill:
+ *     #FF6600 brand mark (2.94:1 on white), #EF6124 (legacy spec header),
+ *     gradient stops #CC5200/#B34700/#9A3412 in --gradient-orange.
+ *
+ * Typography: Montserrat (UI) + MonstroSolid (display). Raw hex appears only
+ * for non-text decoration; components reference tokens.
  */
 
 @theme inline {
@@ -48,6 +63,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-text: var(--accent-text);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
 
@@ -131,9 +147,10 @@
   --primary-text: #0E4825;       /* Green text on light surface */
   --secondary: #FFFFFF;
   --secondary-foreground: #0E4825;
-  --accent: #C2410C;             /* 10% Accent — AA Vibrant Orange (was #FF6600) */
-  --accent-hover: #9A3412;
-  --accent-foreground: #FFFFFF;  /* White text on accent */
+  --accent: #C2410C;             /* 10% Accent — CTA fill: white label on it = 5.18:1 */
+  --accent-hover: #9A3412;       /* Hover fill: white label on it = 7.31:1 */
+  --accent-foreground: #FFFFFF;  /* On-accent label: 5.18:1 on --accent (AA text) */
+  --accent-text: #C2410C;        /* Orange TEXT on light surfaces: 4.64-5.18:1 (AA text) */
   --brand: #0E4825;
   --brand-foreground: #FFFFFF;
 
@@ -145,7 +162,7 @@
   --divider: #E5EDE7;            /* Subtle dividers and card borders */
   --border: #E5EDE7;
   --input: #F0F3F1;
-  --ring: #C2410C;               /* Focus ring */
+  --ring: #C2410C;               /* Focus ring: 4.64-5.18:1 on light surfaces (needs 3:1) */
 
   --card: #FFFFFF;
   --card-foreground: #16281D;
@@ -182,7 +199,8 @@
 }
 
 .dark {
-  /* Dark Mode: 60% Black #0A0A0A / 30% Dark Green #0E4825 / 10% Deep Orange #CC5200 */
+  /* Dark Mode: 60% Canvas #0A0A0A / 30% Forest Green #0E4825 / 10% Accent Orange #C2410C
+     (#FF802B = readable orange TEXT on dark; #CC5200 = focus ring / decorative only) */
   --background: #0A0A0A;         /* 60% Canvas — Deep black */
   --foreground: #F3F5F4;         /* High-contrast near-white text */
   --surface: #1A1A1A;            /* Dark cards and containers */
@@ -203,11 +221,20 @@
   --secondary: #1A1A1A;
   --secondary-foreground: #F3F5F4;
 
-  --accent: #CC5200;             /* 10% Accent — Deep Orange for dark bg */
-  --accent-hover: #B34700;
-  --accent-foreground: #FFFFFF;
+  /* 10% Accent in dark keeps the SAME orange identity as light (#C2410C).
+     #CC5200 was dropped as the CTA fill: white on it is 4.40:1 (<4.5:1 AA), and
+     no foreground can rescue it — white is already the best case. #C2410C gives
+     the white on-accent label 5.18:1. Orange TEXT on dark surfaces cannot share
+     this token (3.36:1 on --surface); use --accent-text (#FF802B, 6.34-7.90:1). */
+  --accent: #C2410C;             /* 10% Accent — CTA fill: white label on it = 5.18:1 */
+  --accent-hover: #B34700;       /* Hover fill: white label on it = 5.50:1 */
+  --accent-foreground: #FFFFFF;  /* On-accent label: 5.18:1 on --accent (AA text) */
+  --accent-text: #FF802B;        /* Orange TEXT on dark surfaces: 6.34-7.90:1 (AA text) */
   --brand: #0E4825;
   --brand-foreground: #FFFFFF;
+  /* Focus ring stays #CC5200 (not #C2410C): 3.62-4.50:1 across every dark
+     surface incl. --surface-elevated, and it also clears 3:1 on white. Decorative
+     orange only — 3.96:1 on --surface is below AA for text, so never paint copy. */
   --ring: #CC5200;
 
   --success: #22C55E;
@@ -235,12 +262,19 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Global focus-visible ring for keyboard accessibility, overriding any outline-none utilities on desktop */
-  @media (hover: hover) and (pointer: fine) {
-    *:focus-visible {
-      outline: 2px solid var(--color-ring) !important;
-      outline-offset: 2px !important;
-    }
+  /* Global focus-visible ring for keyboard accessibility.
+     Deliberately NOT gated behind `@media (hover: hover) and (pointer: fine)`.
+     A phone or tablet paired with a hardware/bluetooth keyboard is a real
+     keyboard workflow and must get the same indicator — SC 2.4.7 (visible
+     focus) has no pointer exception — and `:focus-visible` itself already
+     suppresses the ring for plain touch/mouse activation of buttons.
+     `!important` overrides `outline-none` / `focus-visible:outline-none`
+     utilities so components cannot silently delete the indicator.
+     Ring contrast is a token property, not a component one: --ring is
+     4.64-5.18:1 on light surfaces and 3.62-4.50:1 on dark ones (3:1 min, SC 1.4.11). */
+  *:focus-visible {
+    outline: 2px solid var(--color-ring) !important;
+    outline-offset: 2px !important;
   }
 
   button,
@@ -263,8 +297,9 @@
   html,
   body {
     min-height: 100%;
-    /* Avoid horizontal scrolling from stray overflow at any breakpoint. */
-    overflow-x: hidden;
+    /* Clip stray horizontal overflow without creating a body scrollport that
+       steals sticky positioning from the viewport (overflow:hidden does). */
+    overflow-x: clip;
     /* Disable web text selection globally for native app experience */
     -webkit-user-select: none;
     user-select: none;
@@ -633,13 +668,18 @@
   position: relative;
 }
 
+/* fill-mode `none`: once the 300/250ms run finishes the keyframe transform is
+   NOT retained, so the element stops being the containing block for
+   position: fixed descendants (05-02). `will-change` stays for the duration of
+   the run only — ConsumerRouteTransition drops this class on animationend /
+   animationcancel, which is what clears the will-change containing block. */
 .route-transition-push {
-  animation: nativeRoutePush 300ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: nativeRoutePush 300ms cubic-bezier(0.32, 0.72, 0, 1) none;
   will-change: transform, opacity;
 }
 
 .route-transition-pop {
-  animation: nativeRoutePop 250ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: nativeRoutePop 250ms cubic-bezier(0.32, 0.72, 0, 1) none;
   will-change: transform, opacity;
 }
 
@@ -652,10 +692,15 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  /* Reduced motion never runs the animation, so no animationend fires and the
+     JS cleanup cannot clear `will-change`. Kill it here too: a lingering
+     `will-change: transform` still turns the container into the containing
+     block for fixed-position children (05-02). */
   .route-transition-push,
   .route-transition-pop {
     animation: none !important;
     transform: none !important;
+    will-change: auto !important;
   }
   .skeleton {
     animation: none !important;

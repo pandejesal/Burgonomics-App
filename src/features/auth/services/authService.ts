@@ -1,5 +1,6 @@
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
+import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import { auth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
@@ -169,7 +170,12 @@ export const authService = {
         } else {
           const profile = userSnap.data();
           returnedUser.name = profile?.fullName || profile?.name;
-          returnedUser.email = profile?.email;
+          // P1-4: legacy docs may carry the fabricated `<phone>@burgonomics.in`
+          // address — never let it into the persisted auth user (it feeds the
+          // Razorpay prefill + secureStorage cache).
+          if (!isSyntheticEmail(profile?.email)) {
+            returnedUser.email = profile?.email;
+          }
         }
       } catch (dbError) {
         console.warn("[Auth] Firestore user profile sync warning:", dbError);

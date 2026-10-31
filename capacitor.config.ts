@@ -9,7 +9,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * `webDir` points at that folder so `npx cap sync` succeeds.
  */
 const config: CapacitorConfig = {
-  appId: "com.glassdoorsstudio.burgonomics",
+  appId: "com.burgonomics",
   appName: "BURGONOMICS",
   webDir: "dist/mobile",
   bundledWebRuntime: false,

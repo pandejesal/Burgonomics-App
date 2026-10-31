@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Leaf, ExternalLink } from "lucide-react";
+import { Leaf } from "lucide-react";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
 import { AppBadge } from "@/shared/components/common/AppBadge";
@@ -71,12 +71,11 @@ function Page() {
                 className="inline-flex items-center gap-1 rounded-full border border-divider bg-bg-secondary px-3 py-1 type-caption text-text-secondary"
               >
                 {s}
-                <ExternalLink className="h-3 w-3" aria-hidden />
               </span>
             ))}
           </div>
           <Text variant="caption" tone="secondary" className="mt-2">
-            Social channels launching alongside our next store.
+            Social channels aren't linked in the app yet.
           </Text>
         </AppCard>
 
@@ -102,7 +101,7 @@ function Page() {
         </AppCard>
 
         <Text variant="caption" tone="secondary" className="text-center">
-          {APP.name} v1.0.0 · Made with ♥ in India
+          {APP.name} v{APP.version} · Made with ♥ in India
         </Text>
       </div>
     </AppShell>

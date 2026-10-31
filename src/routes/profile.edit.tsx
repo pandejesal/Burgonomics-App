@@ -37,14 +37,13 @@ function Body() {
           id: authUser.id,
           phone: authUser.phone,
           fullName: authUser.name || "Burger Lover",
-          email: `${authUser.phone}@burgonomics.in`,
-          membershipTier: "silver" as const,
-          createdAt: new Date().toISOString(),
+          // email / membershipTier / createdAt omitted on purpose: the edit
+          // form must never prefill values the backend never stored.
         }
       : null);
 
   return (
-    <AppShell title="Edit profile" backTo="/profile" showTabs showTopBar>
+    <AppShell title="Edit profile" backTo="/profile" showTabs={false} showTopBar>
       <div className="mx-auto max-w-[520px] px-4 py-4">
         {activeProfile ? (
           <EditProfileForm

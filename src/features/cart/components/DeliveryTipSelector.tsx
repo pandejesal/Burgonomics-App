@@ -79,7 +79,7 @@ export function DeliveryTipSelector({
               type="button"
               onClick={() => handleTipClick(amount)}
               className={cn(
-                "flex-1 py-2 px-3 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer select-none text-center min-h-[38px]",
+                "flex-1 py-2 px-3 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer select-none text-center min-h-[44px]",
                 isSelected
                   ? "border-[#0E4825] bg-[#0E4825] text-white shadow-xs"
                   : "border-divider bg-bg-secondary text-text hover:border-primary/40"
@@ -94,7 +94,7 @@ export function DeliveryTipSelector({
           type="button"
           onClick={() => setCustomActive(true)}
           className={cn(
-            "py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer select-none whitespace-nowrap min-h-[38px]",
+            "py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer select-none whitespace-nowrap min-h-[44px]",
             customActive || (selectedTip > 0 && !TIP_OPTIONS.includes(selectedTip))
               ? "border-[#0E4825] bg-[#0E4825] text-white"
               : "border-divider bg-bg-secondary text-text-secondary hover:text-text"

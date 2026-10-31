@@ -44,6 +44,8 @@ export function BillBreakdown({
   const actualDeliveryFee = isDelivery ? deliveryFee : 0;
 
   // GST is passed post-discount from the engine — never recompute here.
+  // MT-09: display-only. The bill shows the tax component that already sits
+  // inside the GST-inclusive item total; it is never added to the payable.
   const calculatedGST = gstAmount;
   const cgst = (calculatedGST / 2).toFixed(1);
   const sgst = (calculatedGST / 2).toFixed(1);
@@ -51,10 +53,13 @@ export function BillBreakdown({
   // Total Savings
   const totalSavings = discountAmount + coinsRedeemed;
 
-  // Total "To Pay"
+  // Total "To Pay".
+  // MT-09: menu prices are GST-INCLUSIVE (CGST 2.5% + SGST 2.5% already sit
+  // inside `subtotal`), so `gstAmount` is display-only here. Adding it on top
+  // of the item total double-charges the 5% GST the customer already paid.
   const toPay = Math.max(
     0,
-    subtotal - discountAmount - coinsRedeemed + calculatedGST + actualPackagingFee + actualDeliveryFee + tipAmount
+    subtotal - discountAmount - coinsRedeemed + actualPackagingFee + actualDeliveryFee + tipAmount
   );
 
   return (
@@ -67,7 +72,7 @@ export function BillBreakdown({
           </h4>
         </div>
         <span className="text-[10px] text-text-secondary font-medium">
-          Inclusive of all applicable taxes
+          Inclusive of all taxes (5% GST)
         </span>
       </div>
 
@@ -101,9 +106,9 @@ export function BillBreakdown({
         <div className="flex items-center justify-between text-text-secondary">
           <span
             className="cursor-help flex items-center gap-1 hover:text-text"
-            title={`2.5% CGST (₹${cgst}) + 2.5% SGST (₹${sgst})`}
+            title={`2.5% CGST (₹${cgst}) + 2.5% SGST (₹${sgst}) — already part of Item Total`}
           >
-            <span>Govt. GST (5%)</span>
+            <span>Govt. GST (5% included)</span>
             <Info className="w-3 h-3 opacity-60" />
           </span>
           <span className="font-mono font-bold">{formatINR(calculatedGST)}</span>

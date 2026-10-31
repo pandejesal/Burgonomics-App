@@ -21,21 +21,26 @@ const STAGES = [
 export function EstimatedDeliveryCountdown({
   fulfillment,
   status,
-  estimatedMinutes = 25,
+  estimatedMinutes,
   className,
 }: EstimatedDeliveryCountdownProps) {
-  const [remainingSeconds, setRemainingSeconds] = React.useState(estimatedMinutes * 60);
+  // P1-3: no fabricated default — an unknown estimate renders as
+  // "Estimate unavailable" instead of a confident ticking countdown.
+  const hasEstimate =
+    typeof estimatedMinutes === "number" && Number.isFinite(estimatedMinutes) && estimatedMinutes >= 0;
+  const [remainingSeconds, setRemainingSeconds] = React.useState(hasEstimate ? (estimatedMinutes as number) * 60 : 0);
 
   React.useEffect(() => {
-    setRemainingSeconds(estimatedMinutes * 60);
-  }, [estimatedMinutes]);
+    setRemainingSeconds(hasEstimate ? (estimatedMinutes as number) * 60 : 0);
+  }, [estimatedMinutes, hasEstimate]);
 
   React.useEffect(() => {
+    if (!hasEstimate) return;
     const timer = setInterval(() => {
       setRemainingSeconds((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [hasEstimate]);
 
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
@@ -71,12 +76,20 @@ export function EstimatedDeliveryCountdown({
         </div>
 
         <div className="text-right">
-          <span className="font-mono text-xl sm:text-2xl font-black text-[#FF6600]">
-            {formattedCountdown}
-          </span>
-          <span className="block text-[10px] uppercase font-bold text-text-secondary">
-            Mins Remaining
-          </span>
+          {hasEstimate ? (
+            <>
+              <span className="font-mono text-xl sm:text-2xl font-black text-[#FF6600]">
+                {formattedCountdown}
+              </span>
+              <span className="block text-[10px] uppercase font-bold text-text-secondary">
+                Mins Remaining
+              </span>
+            </>
+          ) : (
+            <span className="text-[11px] font-bold text-text-secondary">
+              Estimate unavailable
+            </span>
+          )}
         </div>
       </div>
 

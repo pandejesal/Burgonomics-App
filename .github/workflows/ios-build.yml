@@ -1,3 +1,25 @@
+# iOS Build (Capacitor) — credential-free simulator CI + unsigned archive scaffold.
+#
+# A07 readiness upgrade (2026-10-14), Xcode 26 / iOS SDK 26 policy:
+#   - Runners: macOS 14 images are deprecated (removal 2026-11-02), so both jobs
+#     now use macos-26 (GA since 2026-02-26; default Xcode 26.x with iOS 26 SDKs
+#     per actions/runner-images). macos-15 also carries Xcode 26.0.1–26.3 and
+#     remains a valid label; the script discovers whichever toolchain qualifies.
+#   - No Xcode hardpin: the previous `/Applications/Xcode_15.4.app` selection is
+#     REMOVED. scripts/select-xcode-toolchain.sh enumerates every installed
+#     Xcode, and FAILS the job unless one candidate meets BOTH floors: Xcode
+#     major >= 26 AND iOS SDK major >= 26 (Apple requires both versions), then
+#     picks the best compatible pair. Exact installed versions are discovered
+#     at run time, never guessed or pinned here.
+#   - Safety posture unchanged: no Apple signing, no store upload, no secrets.
+#     All xcodebuild invocations keep CODE_SIGNING_ALLOWED=NO; artifacts are
+#     unsigned simulator .app / .xcarchive only.
+#   - scripts/patch-ios-spm.js still runs after `cap sync ios` in every job that
+#     syncs iOS: the SPM graph (capacitor-swift-pm exact 8.5.2 vs
+#     @capacitor/push-notifications exact 8.5.0) does not resolve without it.
+#     The pin is retained pending a dependency decision — do not delete it.
+#   - Static guard (no build/network/CI needed):
+#       node --test scripts/validate-ios-workflow.test.cjs
 name: iOS Build (Capacitor)
 
 on:
@@ -7,16 +29,28 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-ios:
     name: Build & Export iOS Simulator App
-    runs-on: macos-14
+    runs-on: macos-26
     env:
       GIT_CONFIG_PARAMETERS: "'safe.directory=*'"
 
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
+
+      - name: 🛠️ Discover Xcode toolchain (require iOS SDK >= 26)
+        # Fail fast, before the expensive npm/build steps, when the runner has
+        # no qualifying toolchain. Discovers the best installed Xcode; never
+        # hardpins an exact version.
+        run: bash scripts/select-xcode-toolchain.sh
+        env:
+          MIN_XCODE_MAJOR: "26"
+          MIN_IOS_SDK_MAJOR: "26"
 
       - name: 🛠️ Configure Git Safe Directories
         run: |
@@ -37,18 +71,9 @@ jobs:
           npm run build:mobile
           npx cap sync ios
 
-      - name: 🛠️ Setup Xcode Version
-        run: |
-          if [ -d "/Applications/Xcode_15.4.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-          elif ls -d /Applications/Xcode_15*.app >/dev/null 2>&1; then
-            sudo xcode-select -s "$(ls -d /Applications/Xcode_15*.app | head -n 1)/Contents/Developer"
-          else
-            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          fi
-          xcodebuild -version
-
       - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
+        # Order is load-bearing: cap sync regenerates CapApp-SPM/Package.swift
+        # with exact 8.5.2; the patch reconciles it with the plugin pins.
         run: node scripts/patch-ios-spm.js
 
       - name: 🏗️ Build iOS Simulator App
@@ -123,3 +148,47 @@ jobs:
           path: Burgonomics-iOS-Simulator-App.zip
           if-no-files-found: error
           retention-days: 14
+
+  ios-archive:
+    name: iOS Archive (unsigned scaffold)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Discover Xcode toolchain (require iOS SDK >= 26)
+        run: bash scripts/select-xcode-toolchain.sh
+        env:
+          MIN_XCODE_MAJOR: "26"
+          MIN_IOS_SDK_MAJOR: "26"
+
+      - name: 🟢 Setup Node.js (v22)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: 📦 Install Node Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: ⚡ Build Web Bundle & Sync Capacitor iOS
+        run: |
+          npm run build:mobile
+          npx cap sync ios
+
+      - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
+        # Was missing here while present in build-ios: without the patch this
+        # job hands Xcode a Package.swift whose exact pins do not intersect
+        # (8.5.2 vs 8.5.0) and archive fails at SPM resolution.
+        run: node scripts/patch-ios-spm.js
+
+      - name: 🏗️ Archive iOS App (unsigned)
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath build/App.xcarchive CODE_SIGNING_ALLOWED=NO archive
+
+      - name: 📤 Upload Unsigned iOS Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-unsigned-xcarchive
+          path: build/App.xcarchive
+          if-no-files-found: error

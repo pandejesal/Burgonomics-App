@@ -1,24 +1,15 @@
 import * as React from "react";
-import { Coins, ChevronRight, Award } from "lucide-react";
+import { Coins, Award } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 import { formatINR } from "@/core/utils/format";
-import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
+import { useLoyaltyStore, tierFor } from "@/features/loyalty/state/loyaltyStore";
 
 interface GrillCoinsWalletCardProps {
   balance?: number;
   tier?: string;
   className?: string;
-}
-
-// Loop 65/120: tier derives from the server-verified balance, not the
-// retired local lifetime counter (phantom 250 + local mints inflated every
-// fresh user toward Silver). Thresholds unchanged; queue a server lifetime
-// field if product wants tenure-based tiers.
-function tierFor(balance: number): string {
-  if (balance >= 700) return "Gold";
-  if (balance >= 300) return "Silver";
-  return "Bronze";
 }
 
 /**
@@ -34,10 +25,11 @@ export function GrillCoinsWalletCard({
   const balance = balanceProp ?? storeBalance;
   const tier = tierProp ?? tierFor(balance);
   return (
-    <div
+    <Link
+      to="/offers"
       onClick={() => void HapticService.selection()}
       className={cn(
-        "p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-[#0E4825] to-[#082a16] text-white border border-[#0E4825]/40 shadow-md relative overflow-hidden select-none cursor-pointer",
+        "block p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-[#0E4825] to-[#082a16] text-white border border-[#0E4825]/40 shadow-md relative overflow-hidden select-none cursor-pointer",
         className
       )}
     >
@@ -76,13 +68,11 @@ export function GrillCoinsWalletCard({
             <Award className="w-3.5 h-3.5" />
             <span>{tier} Tier</span>
           </div>
-          <span className="text-[10px] text-emerald-200/80 font-bold flex items-center gap-1">
-            <span>2x Earn Rate</span>
-            <ChevronRight className="w-3 h-3" />
-          </span>
+          {/* P1-10: "2x Earn Rate" + chevron removed — no earn-rate program
+              exists server-side; the card itself now links to /offers. */}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

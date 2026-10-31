@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { LayoutGrid, List as ListIcon, Search } from "lucide-react";
 import { toast } from "sonner";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 
 import { AppShell } from "@/shared/layouts/AppShell";
 import { Text } from "@/shared/components/common/Text";
@@ -15,18 +16,63 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { cartRepository, FloatingCartBar } from "@/features/cart";
 import { useMenuStore } from "@/features/menu/state/menuStore";
 import { CategoryNavRail } from "@/features/menu/components/CategoryNavRail";
+import { attachCategorySwipe } from "@/features/menu/utils/categorySwipe";
+import type { MenuCategoryModel } from "@/features/menu/models";
 import { MenuProductCard } from "@/features/menu/components/MenuProductCard";
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
 import { ProductCustomizerModal } from "@/features/menu/components/ProductCustomizerModal";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
+import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
 import { useAppConfig } from "@/core/state/appConfigStore";
-import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll";
+// import { useDirectionalScroll } from "@/shared/hooks/useDirectionalScroll"; // REMOVED 2026-10-06: blocked native swipe
 import type { Product } from "@/features/menu/models";
 import { cn } from "@/lib/utils";
 
 interface MenuSearchSchema {
   category?: string;
   view?: "list" | "grid";
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Resolve `?category=` against the categories actually loaded for this store.
+ *
+ * Home's category pills and the Explore grid send shortcut ids (`beverages`,
+ * `sides`, `cat_burgers`, …) that may not exist in the menu store's id space.
+ * The old exact-id match dropped those silently, so the menu opened on
+ * whatever category happened to be first and the tap looked dead. Matching
+ * by id still wins; name/slug matching is the fallback.
+ */
+function resolveCategoryId(
+  param: string | undefined,
+  categories: { id: string; name: string }[],
+): string | undefined {
+  if (!param) return undefined;
+  const raw = param.trim().toLowerCase();
+  if (!raw) return undefined;
+
+  const byId = categories.find((c) => c.id.toLowerCase() === raw);
+  if (byId) return byId.id;
+
+  const target = slugify(raw);
+  if (!target) return undefined;
+
+  const byName = categories.find((c) => slugify(c.name) === target);
+  if (byName) return byName.id;
+
+  const targetTokens = new Set(target.split(" "));
+  const byToken = categories.find((c) =>
+    slugify(c.name)
+      .split(" ")
+      .some((token) => targetTokens.has(token)),
+  );
+  return byToken?.id;
 }
 
 /**
@@ -91,14 +137,15 @@ function MenuPage() {
     return () => unsub();
   }, [isHydrated, store, load, subscribeToLiveMenu, navigate]);
 
-  // Sync category from URL search params into store if provided
+  // Sync category from URL search params into store if provided.
+  // `resolveCategoryId` (id → name → slug token) keeps shortcut ids coming
+  // from Home pills landing on a real category instead of being discarded.
   useEffect(() => {
-    if (searchParams.category && categories.some((c) => c.id === searchParams.category)) {
-      if (activeCategoryId !== searchParams.category) {
-        setActiveCategory(searchParams.category);
-      }
+    const resolved = resolveCategoryId(searchParams.category, categories);
+    if (resolved && useMenuStore.getState().activeCategoryId !== resolved) {
+      setActiveCategory(resolved);
     }
-  }, [searchParams.category, categories, activeCategoryId, setActiveCategory]);
+  }, [searchParams.category, categories, setActiveCategory]);
 
   // Sync viewMode from URL search params if provided
   useEffect(() => {
@@ -133,54 +180,62 @@ function MenuPage() {
     [setViewMode, navigate],
   );
 
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const isProgrammaticScroll = useRef(false);
-  useDirectionalScroll(scrollerRef as React.RefObject<HTMLElement | null>);
+  /**
+   * Horizontal swipe on the product list switches category.
+   *
+   * MT-28: the old nested pager (a snap-x `scrollerRef` panel row with its own
+   * `overflow-y-auto` sections and a 550ms `isProgrammaticScroll` lock) made
+   * the two axes fight each other, dropping touch events and freezing both
+   * directions. Products render in natural page flow, with native vertical
+   * momentum and a direction-locked horizontal gesture listener.
+   *
+   * The native listeners are bound once per DOM node, not per render:
+   * - The node is held in state through a stable callback ref, so the binding
+   *   attaches whenever the list mounts late (store hydration, cached menu
+   *   rendering after a failed refresh) and detaches when it unmounts. A plain
+   *   `ref` read inside an effect never re-ran for those mounts, leaving the
+   *   list without a gesture listener.
+   * - Live POS snapshots replace `categories` with a new array on every sync
+   *   (R23 dropped `status` but left `categories` in the deps), which re-bound
+   *   the listeners mid-gesture and threw away the in-flight touch start.
+   * - `activeCategoryId` is read from the store at gesture time, so a pill tap
+   *   is visible to the very next swipe instead of the category captured when
+   *   the listener happened to bind.
+   */
+  const [swipeElement, setSwipeElement] = React.useState<HTMLDivElement | null>(null);
+  const bindProductList = React.useCallback((el: HTMLDivElement | null) => setSwipeElement(el), []);
 
-  // Keep CategoryNavRail and horizontal pager in sync — tap rail scrolls pager, swipe pager updates rail.
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el || categories.length === 0) return;
-    let raf: number | null = null;
-    const onScroll = () => {
-      if (isProgrammaticScroll.current) return;
-      if (raf !== null) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const idx = Math.round(el.scrollLeft / el.clientWidth);
-        const cat = categories[idx];
-        if (cat && cat.id !== activeCategoryId) {
-          setActiveCategory(cat.id);
-          void navigate({
-            to: "/menu",
-            search: (prev: MenuSearchSchema) => ({ ...prev, category: cat.id }),
-            replace: true,
-          });
-        }
-      });
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (raf !== null) cancelAnimationFrame(raf);
-    };
-  }, [categories, activeCategoryId, setActiveCategory, navigate]);
+  const selectCategoryRef = React.useRef(handleCategorySelect);
+  React.useEffect(() => {
+    selectCategoryRef.current = handleCategorySelect;
+  }, [handleCategorySelect]);
 
   useEffect(() => {
-    if (!activeCategoryId || !scrollerRef.current) return;
-    const idx = categories.findIndex((c) => c.id === activeCategoryId);
-    if (idx < 0) return;
-    const el = scrollerRef.current;
-    const targetLeft = idx * el.clientWidth;
-    if (Math.abs(el.scrollLeft - targetLeft) < 4) return;
-    isProgrammaticScroll.current = true;
-    el.scrollTo({ left: targetLeft, behavior: "smooth" });
-    const t = window.setTimeout(() => {
-      isProgrammaticScroll.current = false;
-    }, 550);
-    return () => window.clearTimeout(t);
-  }, [activeCategoryId, categories]);
+    if (!swipeElement) return;
+    return attachCategorySwipe(swipeElement, (direction) => {
+      const live = useMenuStore.getState();
+      const idx = live.categories.findIndex((c) => c.id === live.activeCategoryId);
+      if (idx < 0) return false;
+      const target = live.categories[idx + direction];
+      if (!target) return false;
+      selectCategoryRef.current(target.id);
+      return true;
+    });
+  }, [swipeElement]);
+
+  // A category can become active without ever having a bucket (deep link,
+  // live category subscription, store switch). The list sentinel below only
+  // renders once `buckets[activeCategoryId]` exists, so without priming the
+  // panel stayed blank — the tap looked dead.
+  useEffect(() => {
+    if (!activeCategoryId) return;
+    if (!buckets[activeCategoryId]) void loadMore(activeCategoryId);
+  }, [activeCategoryId, buckets, loadMore]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // `buckets` is a dependency so the observer re-attaches when the sentinel
+  // first mounts (the bucket arrives asynchronously) — without it the sentinel
+  // could render with no observer and pagination would stall.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !activeCategoryId) return;
@@ -194,16 +249,16 @@ function MenuPage() {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [activeCategoryId, loadMore]);
+  }, [activeCategoryId, loadMore, buckets]);
 
   const handleAdd = React.useCallback(
-    (p: Product) => {
+    async (p: Product) => {
       if (p.customizable) {
         setCustomizingProduct(p);
         return;
       }
       if (!store) return;
-      void cartRepository.addItem({
+      const res = await cartRepository.addItem({
         storeId: store.id,
         productId: p.id,
         name: p.name,
@@ -213,6 +268,12 @@ function MenuPage() {
         unitPrice: p.price,
         quantity: 1,
       });
+      if (!res.success) {
+        toast.error("Couldn't add to cart", {
+          description: toUserMessage(res),
+        });
+        return;
+      }
 
       void HapticService.impact("medium");
 
@@ -231,11 +292,8 @@ function MenuPage() {
 
   if (!store) return null;
 
-  const activeIdx = Math.max(
-    0,
-    categories.findIndex((c) => c.id === activeCategoryId)
-  );
   const bucket = activeCategoryId ? buckets[activeCategoryId] : undefined;
+  const activeCategory = categories.find((c) => c.id === activeCategoryId);
   const initialLoading = status === "loading" && categories.length === 0;
 
   return (
@@ -253,7 +311,7 @@ function MenuPage() {
         </Link>
       }
     >
-      <div className="mx-auto max-w-[720px] pb-32">
+      <div className="mx-auto max-w-[720px] pb-36">
         {!online && (
           <div className="px-4 pt-3">
             <div
@@ -283,6 +341,10 @@ function MenuPage() {
           </div>
         )}
 
+        {/* Kitchen closed (11:00–23:00 IST): menu browsing stays open — the
+            cart/checkout gates do the ordering. Renders nothing while open. */}
+        <KitchenClosedBanner className="mx-4 mt-3" />
+
         {initialLoading ? (
           <MenuSkeleton />
         ) : status === "error" && !categories.length ? (
@@ -292,13 +354,19 @@ function MenuPage() {
             onRetry={() => load(store.id, { refresh: true })}
           />
         ) : status === "empty" || categories.length === 0 ? (
-          <PetpoojaSyncPlaceholder storeId={store.id} />
+          <PetpoojaSyncPlaceholder
+            storeId={store.id}
+            onRetry={() => load(store.id, { refresh: true })}
+          />
         ) : (
           <>
-            {/* Sticky Category Nav Rail + View Toggle */}
+            {/* Sticky Category Nav Rail + View Toggle — pins below the top bar while the page scrolls */}
             <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 backdrop-blur-md shadow-sm border-b border-divider">
               <CategoryNavRail
-                categories={categories}
+                categories={categories.map((cat) => ({
+                  ...cat,
+                  itemCount: buckets[cat.id]?.items.length ?? cat.itemCount ?? 0,
+                }))}
                 activeCategoryId={activeCategoryId}
                 onSelectCategory={handleCategorySelect}
               />
@@ -339,86 +407,62 @@ function MenuPage() {
               </div>
             </div>
 
-            {/* Horizontal swipe pager — each category is a full-width snap panel */}
+            {/* Active category products — natural vertical page flow.
+                Vertical scrolling is native momentum scroll; a horizontal
+                 swipe on this container switches category. */}
             <div
-              ref={scrollerRef}
-              className="flex w-full overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar overscroll-x-contain touch-pan-y"
-              style={{ WebkitOverflowScrolling: "touch" }}
+              className="px-4 py-3 touch-pan-y"
+              ref={bindProductList}
             >
-              {categories.map((cat, idx) => {
-                const b = buckets[cat.id];
-                // Windowed pager: only the active panel + immediate neighbours
-                // mount cards. The old code mounted EVERY category's cards
-                // (200 cards × ~4 motion nodes ≈ 800 animated nodes) — scroll
-                // jank on low-end WebViews. Off-window panels keep an empty
-                // full-width section so snap math (idx × width) still holds.
-                if (Math.abs(idx - activeIdx) > 1) {
-                  return (
-                    <section
-                      key={cat.id}
-                      aria-hidden
-                      className="w-full shrink-0 snap-start snap-always"
-                    />
-                  );
-                }
-                return (
-                  <section
-                    key={cat.id}
-                    aria-label={cat.name}
-                    className="w-full shrink-0 snap-start snap-always px-4 py-4"
-                  >
-                    <h2 className="sr-only">{cat.name}</h2>
-                    {b?.loading && !b.items.length ? (
-                      <MenuSkeleton rows={5} />
-                    ) : b?.error && !b.items.length ? (
-                      <FailureState
-                        title="We couldn't load this category"
-                        message={b.error}
-                        onRetry={() => loadMore(cat.id)}
+              <h2 className="sr-only">{activeCategory?.name ?? "Menu items"}</h2>
+              {bucket?.error && !bucket.items.length ? (
+                <FailureState
+                  title="We couldn't load this category"
+                  message={bucket.error}
+                  onRetry={() => {
+                    if (activeCategoryId) void loadMore(activeCategoryId);
+                  }}
+                />
+              ) : bucket && bucket.items.length > 0 ? (
+                <>
+                  <div className={cn(viewMode === "grid" ? "grid grid-cols-2 gap-3.5" : "space-y-3")}>
+                    {bucket.items.map((p) => (
+                      <MenuProductCard
+                        key={p.id}
+                        product={p}
+                        layout={viewMode === "grid" ? "grid" : "row"}
+                        onAdd={handleAdd}
                       />
-                    ) : b && b.items.length === 0 ? (
-                      <EmptyState
-                        title="Nothing here yet"
-                        description="This category has no available items right now."
-                        actionLabel="Try another category"
-                        onAction={() => {
-                          const next = categories.find((c) => (buckets[c.id]?.items.length ?? 0) > 0);
-                          if (next) handleCategorySelect(next.id);
-                        }}
-                      />
-                    ) : (
-                      <div className={cn(viewMode === "grid" ? "grid grid-cols-2 gap-3.5" : "space-y-3")}>
-                        {b?.items.map((p) => (
-                          <MenuProductCard
-                            key={p.id}
-                            product={p}
-                            layout={viewMode === "grid" ? "grid" : "row"}
-                            onAdd={handleAdd}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {cat.id === activeCategoryId && b?.hasMore && (
-                      <div ref={sentinelRef} className="py-6 text-center">
-                        <span className="type-caption text-text-secondary">
-                          {b.loading ? "Loading more items…" : "Scroll for more"}
-                        </span>
-                      </div>
-                    )}
-                    {cat.id === activeCategoryId && b && !b.hasMore && b.items.length > 0 && (
-                      <p className="py-6 text-center type-caption text-text-secondary">
-                        You've reached the end of this category.
-                      </p>
-                    )}
-                    {/* Preload next category hint */}
-                    {cat.id !== activeCategoryId && b && b.items.length === 0 && !b.loading && (
-                      <p className="py-4 text-center type-caption text-text-secondary">Swipe to load {cat.name}</p>
-                    )}
-                  </section>
-                );
-              })}
+                    ))}
+                  </div>
+                  {/* Pagination sentinel — observing this loads the next page */}
+                  {bucket.hasMore ? (
+                    <div ref={sentinelRef} className="py-6 text-center">
+                      <span className="type-caption text-text-secondary">
+                        {bucket.loading ? "Loading more items…" : "Scroll for more"}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="py-6 text-center type-caption text-text-secondary">
+                      You've reached the end of this category.
+                    </p>
+                  )}
+                </>
+              ) : bucket && !bucket.loading ? (
+                <EmptyState
+                  title="Nothing here yet"
+                  description="This category has no available items right now."
+                  actionLabel="Try another category"
+                  onAction={() => {
+                    const next = categories.find((c) => (buckets[c.id]?.items.length ?? 0) > 0);
+                    if (next) handleCategorySelect(next.id);
+                  }}
+                />
+              ) : (
+                <MenuSkeleton rows={5} />
+              )}
             </div>
-            <p className="px-4 pb-2 text-center text-[10px] text-text-secondary">Swipe left/right to switch category • Tap pills above to jump</p>
+            <p className="px-4 py-1 text-center text-[10px] text-text-secondary">Swipe left/right to switch category • Tap pills above to jump</p>
           </>
         )}
       </div>

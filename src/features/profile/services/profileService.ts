@@ -6,10 +6,33 @@
  */
 import { delay, fail, ok, type ApiResult } from "@/core/network/http";
 import type { ProfileInput, UserProfile } from "@/features/profile/models";
+import { isSyntheticEmail } from "@/features/profile/state/profileStore";
+
+/**
+ * P1-4 read-boundary filter: legacy Firestore docs may carry the fabricated
+ * `<phone>@burgonomics.in` address. Anything read back through me()/refresh()
+ * is sanitized here so the synthetic value can never reach the UI or the
+ * store (null = the documented "erase" semantics).
+ */
+export function sanitizeProfileDoc<
+  T extends { email?: string | null } | null | undefined,
+>(profile: T): T {
+  if (profile && isSyntheticEmail(profile.email)) {
+    return { ...profile, email: null };
+  }
+  return profile;
+}
 
 function validate(patch: ProfileInput): string | null {
   if (patch.fullName !== undefined && !patch.fullName.trim()) return "Full name is required.";
-  if (patch.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.email))
+  // Email tri-state: string = set, null = erase (skip format check),
+  // undefined = untouched. "" is never valid — callers must send
+  // undefined instead, so an empty string can never reach Firestore.
+  if (
+    patch.email !== null &&
+    patch.email !== undefined &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.email)
+  )
     return "Enter a valid email address.";
   if (patch.dateOfBirth) {
     const d = new Date(patch.dateOfBirth);
@@ -32,7 +55,9 @@ export const profileService = {
 
       const userRef = doc(db, "users", user.uid);
 
-      // Firestore does not support undefined values, so we filter them out.
+      // Firestore rejects undefined values, so we filter them out — but
+      // null is KEPT deliberately: `email: null` must reach the document
+      // to erase the stored address (undefined = don't touch, null = erase).
       const cleanPatch = Object.fromEntries(
         Object.entries(patch).filter(([_, v]) => v !== undefined),
       );
@@ -135,7 +160,7 @@ export const profileService = {
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
         const data = userSnap.data();
-        return ok(data as UserProfile);
+        return ok(sanitizeProfileDoc(data as UserProfile));
       }
       return ok(null);
     } catch (error) {

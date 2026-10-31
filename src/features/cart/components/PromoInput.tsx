@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { Text } from "@/shared/components/common/Text";
 import { formatINR } from "@/core/utils/format";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import type { AppliedPromo } from "@/features/cart/models";
 
@@ -12,6 +13,31 @@ interface Props {
   onChanged: () => void;
   /** Show a "Browse offers" link. Defaults to true. */
   showBrowseLink?: boolean;
+}
+
+/**
+ * P1-14 (mirrors `routes/offers.tsx`): `offersService` returns copy written
+ * for customers — including the dynamic parts (the quoted code, the ₹
+ * shortfall to unlock a minimum) that generic text would lose — while
+ * `CartRepository.applyPromo`'s catch wraps raw exception text in
+ * `PRICING_CALCULATION_ERROR`. Only the curated codes below pass through
+ * verbatim; every other code is logged and mapped.
+ */
+const CURATED_PROMO_CODES = new Set([
+  "INVALID_CODE",
+  "COUPON_NOT_FOUND",
+  "COUPON_INACTIVE",
+  "COUPON_EXPIRED",
+  "MIN_ORDER_NOT_MET",
+  "OFFER_INELIGIBLE",
+  "OFFER_NOT_FOUND",
+  "OFFER_ERROR",
+]);
+
+function promoFailureMessage(error: { code: string; message: string }): string {
+  if (CURATED_PROMO_CODES.has(error.code)) return error.message;
+  console.error("[promo] apply failed:", error);
+  return toUserMessage(error);
 }
 
 /**
@@ -57,7 +83,7 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
     const res = await cartRepository.applyPromo(code);
     setBusy(false);
     if (!res.success) {
-      setError(res.error.message);
+      setError(promoFailureMessage(res.error));
       return;
     }
     setCode("");

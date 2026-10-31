@@ -65,7 +65,8 @@ export const STATUS_CATALOG: Record<string, Omit<OrderStatusMeta, "code">> = {
 };
 
 export function resolveStatus(code: OrderStatusCode): OrderStatusMeta {
-  const known = STATUS_CATALOG[code as string];
+  const normalizedKey = (code as string)?.toUpperCase();
+  const known = STATUS_CATALOG[normalizedKey];
   if (known) return { code, ...known };
   return { code, label: "Update in progress", kind: "unknown", terminal: false };
 }

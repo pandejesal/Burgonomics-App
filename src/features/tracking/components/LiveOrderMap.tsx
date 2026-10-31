@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import {
   MapPin,
   Bike,
@@ -6,15 +6,118 @@ import {
   Navigation,
   ExternalLink,
   WifiOff,
-  Sparkles,
 } from "lucide-react";
 import type { PorterTrackingState } from "../hooks/usePorterLiveTracking";
 import { isSafeTrackingUrl } from "@/shared/utils/urlSafety";
+import { getDirectionsUrl } from "@/features/stores/utils/navigation";
+
+// Leaflet styles and components
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 
 interface LiveOrderMapProps {
   tracking: PorterTrackingState;
   storeName?: string;
   customerAddressText?: string;
+}
+
+/** Real coordinates only — missing / non-finite values fail closed. */
+function hasCoords(c: { lat: number; lng: number } | null): c is { lat: number; lng: number } {
+  return c != null && Number.isFinite(c.lat) && Number.isFinite(c.lng);
+}
+
+// Custom Green Pin for Store
+const storeMarkerHtml = `
+  <div style="
+    background-color: #0E4825;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    box-shadow: 0 4px 10px rgba(14, 72, 37, 0.4);
+    border: 2px solid white;
+  ">
+    <div style="width: 12px; height: 12px; background: #4ADE80; border-radius: 50%;"></div>
+  </div>
+`;
+
+// Custom Orange Pin for Delivery Destination
+const dropMarkerHtml = `
+  <div style="
+    background-color: #FF6600;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    box-shadow: 0 4px 10px rgba(255, 102, 0, 0.4);
+    border: 2px solid white;
+  ">
+    <div style="width: 12px; height: 12px; background: white; border-radius: 50%;"></div>
+  </div>
+`;
+
+// Custom Cyan Pin for Live Courier
+const riderMarkerHtml = `
+  <div style="
+    background-color: #06B6D4;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.5);
+    border: 2px solid white;
+    animation: pulse 2s infinite;
+  ">
+    <div style="width: 16px; height: 16px; background: white; border-radius: 50%;"></div>
+  </div>
+`;
+
+const storeIcon = L.divIcon({
+  html: storeMarkerHtml,
+  className: "custom-leaflet-marker border-none bg-transparent",
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
+});
+
+const dropIcon = L.divIcon({
+  html: dropMarkerHtml,
+  className: "custom-leaflet-marker border-none bg-transparent",
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
+});
+
+const riderIcon = L.divIcon({
+  html: riderMarkerHtml,
+  className: "custom-leaflet-marker border-none bg-transparent",
+  iconSize: [38, 38],
+  iconAnchor: [19, 19],
+});
+
+function MapBoundsAdjuster({ points }: { points: [number, number][] }) {
+  const map = useMap();
+  // Coordinate-derived key: `points` is a fresh array on every parent render,
+  // so depend on the coordinate values instead. Otherwise fitBounds/setView
+  // would run on each unrelated re-render (e.g. a 1s countdown tick) and
+  // reset the user's pan/zoom.
+  const pointsKey = points.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join(";");
+  useEffect(() => {
+    if (points.length === 1) {
+      map.setView(points[0], 16);
+    } else if (points.length > 1) {
+      const bounds = L.latLngBounds(points);
+      map.fitBounds(bounds, { padding: [35, 35] });
+    }
+  }, [map, pointsKey]);
+  return null;
 }
 
 export function LiveOrderMap({
@@ -26,52 +129,101 @@ export function LiveOrderMap({
     storeLocation,
     dropLocation,
     riderLocation,
+    riderName,
+    riderPhone,
+    riderVehicleNumber,
     currentStage,
     isTakeawayOrDineIn,
     trackingUrl,
     isReconnecting,
   } = tracking;
 
-  // Loop 18/120: tracking URLs come from order docs (staff-entered values
-  // included) — render only porter.in links, never arbitrary hrefs.
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const safeTrackingUrl =
     trackingUrl && isSafeTrackingUrl(trackingUrl) ? trackingUrl : undefined;
 
-  // Normalized coordinate projection for SVG viewport (400x260)
-  const mapCoords = useMemo(() => {
-    // Map bounds encompassing store, drop, and rider
-    const storeX = 70;
-    const storeY = 190;
-    const dropX = 330;
-    const dropY = 60;
+  const hasRouteCoords = hasCoords(storeLocation) && hasCoords(dropLocation);
+  const hasCourierDetails = Boolean(riderName || riderPhone || riderVehicleNumber);
+  const courierUnconfirmed =
+    currentStage === 3 && !isTakeawayOrDineIn && !hasCourierDetails;
+  const hasRiderGps = riderLocation != null && hasCoords(riderLocation) && !isTakeawayOrDineIn;
 
-    // Rider position interpolated or default to 60% along the path
-    let riderX = storeX + (dropX - storeX) * 0.58;
-    let riderY = storeY + (dropY - storeY) * 0.58;
+  // Memoized geometry: recomputed only when the underlying location data
+  // changes (storeLocation / dropLocation / riderLocation / fulfillment /
+  // GPS availability), so re-renders from countdown ticks or live order
+  // updates reuse the same array references instead of rebuilding them —
+  // which in turn keeps MapBoundsAdjuster's fit effect from re-firing.
+  const storeLatLng = useMemo<[number, number] | null>(
+    () => (hasCoords(storeLocation) ? [storeLocation.lat, storeLocation.lng] : null),
+    [storeLocation],
+  );
+  const dropLatLng = useMemo<[number, number] | null>(
+    () => (hasCoords(dropLocation) ? [dropLocation.lat, dropLocation.lng] : null),
+    [dropLocation],
+  );
+  const riderLatLng = useMemo<[number, number] | null>(
+    () => (hasRiderGps && riderLocation ? [riderLocation.lat, riderLocation.lng] : null),
+    [hasRiderGps, riderLocation],
+  );
+  const mapPoints = useMemo<[number, number][] | null>(() => {
+    if (!storeLatLng || !dropLatLng) return null;
+    if (isTakeawayOrDineIn) return [storeLatLng];
+    return riderLatLng ? [storeLatLng, dropLatLng, riderLatLng] : [storeLatLng, dropLatLng];
+  }, [isTakeawayOrDineIn, storeLatLng, dropLatLng, riderLatLng]);
+  const mapCenter = useMemo<[number, number] | null>(() => {
+    if (!storeLatLng || !dropLatLng) return null;
+    if (isTakeawayOrDineIn) return storeLatLng;
+    return [(storeLatLng[0] + dropLatLng[0]) / 2, (storeLatLng[1] + dropLatLng[1]) / 2];
+  }, [isTakeawayOrDineIn, storeLatLng, dropLatLng]);
 
-    if (riderLocation && storeLocation && dropLocation) {
-      const latSpan = dropLocation.lat - storeLocation.lat || 0.01;
-      const lngSpan = dropLocation.lng - storeLocation.lng || 0.01;
-      const progress = Math.min(
-        Math.max((riderLocation.lat - storeLocation.lat) / latSpan, 0.1),
-        0.9
-      );
-      riderX = storeX + (dropX - storeX) * progress;
-      riderY = storeY + (dropY - storeY) * progress;
-    }
+  // Directions URL: ORIGIN = the kitchen branch pickup coordinates,
+  // DESTINATION = the customer's delivery address — the same direction the
+  // store → drop polyline above is drawn, so the link and the map agree.
+  // Takeaway / dine-in have no separate drop point (origin === destination
+  // would be a degenerate route), so no origin is sent and Google Maps
+  // starts from the device location with the outlet as the destination.
+  const routeOrigin = !isTakeawayOrDineIn && hasCoords(storeLocation) ? storeLocation : null;
+  const googleMapsUrl =
+    hasRouteCoords && hasCoords(dropLocation)
+      ? getDirectionsUrl(dropLocation.lat, dropLocation.lng, routeOrigin?.lat, routeOrigin?.lng)
+      : null;
 
-    return { storeX, storeY, dropX, dropY, riderX, riderY };
-  }, [storeLocation, dropLocation, riderLocation]);
-
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${storeLocation.lat},${storeLocation.lng}&destination=${dropLocation.lat},${dropLocation.lng}`;
+  // Fail closed: no real endpoint coordinates means no map at all (the
+  // memoized geometry mirrors the same coordinates, so it fails closed too).
+  if (
+    !hasRouteCoords ||
+    !storeLocation ||
+    !dropLocation ||
+    !storeLatLng ||
+    !dropLatLng ||
+    !mapPoints ||
+    !mapCenter
+  ) {
+    return null;
+  }
 
   return (
-    <div className="relative rounded-3xl border border-neutral-800 bg-[#080808] overflow-hidden shadow-xl">
+    <div className="relative rounded-3xl border border-divider bg-surface overflow-hidden shadow-xl">
       {/* Map Header Overlay */}
-      <div className="absolute top-3 left-3 right-3 z-20 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/80 backdrop-blur-md border border-neutral-700 text-[11px] font-bold text-white shadow-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span>{isTakeawayOrDineIn ? "Outlet Directions Map" : "Live Porter Courier GPS"}</span>
+      <div className="absolute top-3 left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/90 backdrop-blur-md border border-divider text-[11px] font-bold text-text shadow-md">
+          {hasRiderGps && (
+            <span
+              className="rider-pin w-2 h-2 rounded-full bg-emerald-400 animate-ping"
+              data-testid="rider-pin"
+            />
+          )}
+          <span>
+            {hasRiderGps
+              ? "Live Porter Courier GPS"
+              : isTakeawayOrDineIn
+                ? "Outlet Directions Map"
+                : "Route overview"}
+          </span>
         </div>
 
         {isReconnecting && (
@@ -82,135 +234,80 @@ export function LiveOrderMap({
         )}
       </div>
 
-      {/* SVG Canvas Map Graphic */}
-      <div className="w-full h-64 sm:h-72 bg-[#0c120f] relative overflow-hidden">
-        {/* Stylized Road Grid Background */}
-        <svg
-          viewBox="0 0 400 260"
-          className="w-full h-full object-cover"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          <defs>
-            <linearGradient id="routeGradient" x1="0%" y1="100%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#0E4825" />
-              <stop offset="50%" stopColor="#FF6600" />
-              <stop offset="100%" stopColor="#4ADE80" />
-            </linearGradient>
-
-            {/* Grid Pattern */}
-            <pattern id="roadGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#14241b" strokeWidth="1" />
-            </pattern>
-          </defs>
-
-          {/* Grid background */}
-          <rect width="400" height="260" fill="url(#roadGrid)" opacity="0.6" />
-
-          {/* Secondary streets */}
-          <path
-            d="M 20 220 Q 180 200 380 140 M 100 20 Q 150 140 220 240 M 240 10 Q 280 100 370 200"
-            fill="none"
-            stroke="#1c3325"
-            strokeWidth="3"
-            strokeDasharray="6,4"
-          />
-
-          {/* Main Delivery Route Polyline */}
-          <path
-            d={`M ${mapCoords.storeX} ${mapCoords.storeY} Q 190 140 ${mapCoords.dropX} ${mapCoords.dropY}`}
-            fill="none"
-            stroke="url(#routeGradient)"
-            strokeWidth="4"
-            strokeLinecap="round"
-          />
-
-          {/* Flowing animated dash layer */}
-          <path
-            d={`M ${mapCoords.storeX} ${mapCoords.storeY} Q 190 140 ${mapCoords.dropX} ${mapCoords.dropY}`}
-            fill="none"
-            stroke="#ffffff"
-            strokeWidth="2"
-            strokeDasharray="6,8"
-            className="animate-pulse"
-            opacity="0.8"
-          />
-
-          {/* Store Pin */}
-          <g transform={`translate(${mapCoords.storeX}, ${mapCoords.storeY})`}>
-            <circle r="16" fill="#0E4825" stroke="#4ADE80" strokeWidth="2" />
-            <circle r="24" fill="#0E4825" opacity="0.2" className="animate-ping" />
-          </g>
-
-          {/* Drop Pin */}
-          <g transform={`translate(${mapCoords.dropX}, ${mapCoords.dropY})`}>
-            <circle r="16" fill="#FF6600" stroke="#FFFFFF" strokeWidth="2" />
-            <circle r="22" fill="#FF6600" opacity="0.25" className="animate-pulse" />
-          </g>
-
-          {/* Rider Pin (if stage 3) */}
-          {currentStage === 3 && !isTakeawayOrDineIn && (
-            <g transform={`translate(${mapCoords.riderX}, ${mapCoords.riderY})`}>
-              <circle r="18" fill="#06B6D4" stroke="#FFFFFF" strokeWidth="2" />
-              <circle r="28" fill="#06B6D4" opacity="0.3" className="animate-ping" />
-            </g>
-          )}
-        </svg>
-
-        {/* HTML Markers Positioned over SVG Canvas */}
-        {/* 1. Store Marker Tooltip */}
-        <div
-          className="absolute z-10 -translate-x-1/2 -translate-y-full mb-1 pointer-events-none"
-          style={{ left: `${(mapCoords.storeX / 400) * 100}%`, top: `${(mapCoords.storeY / 260) * 100}%` }}
-        >
-          <div className="px-2 py-1 rounded-lg bg-[#0E4825] border border-emerald-500 text-[10px] font-black text-white whitespace-nowrap shadow-lg flex items-center gap-1">
-            <Store className="w-3 h-3 text-emerald-300" />
-            <span>{storeName}</span>
-          </div>
-        </div>
-
-        {/* 2. Destination Marker Tooltip */}
-        <div
-          className="absolute z-10 -translate-x-1/2 -translate-y-full mb-1 pointer-events-none"
-          style={{ left: `${(mapCoords.dropX / 400) * 100}%`, top: `${(mapCoords.dropY / 260) * 100}%` }}
-        >
-          <div className="px-2 py-1 rounded-lg bg-[#FF6600] border border-white/40 text-[10px] font-black text-white whitespace-nowrap shadow-lg flex items-center gap-1">
-            <MapPin className="w-3 h-3" />
-            <span className="truncate max-w-[120px]">{customerAddressText}</span>
-          </div>
-        </div>
-
-        {/* 3. Rider Marker Tooltip */}
-        {currentStage === 3 && !isTakeawayOrDineIn && (
-          <div
-            className="absolute z-10 -translate-x-1/2 -translate-y-full mb-1 pointer-events-none"
-            style={{ left: `${(mapCoords.riderX / 400) * 100}%`, top: `${(mapCoords.riderY / 260) * 100}%` }}
+      {/* Real Interactive Leaflet Map */}
+      <div className="w-full h-64 sm:h-72 relative" style={{ zIndex: 0 }}>
+        {isClient ? (
+          <MapContainer
+            center={mapCenter}
+            zoom={isTakeawayOrDineIn ? 16 : 14}
+            zoomControl={false}
+            style={{ height: "100%", width: "100%" }}
           >
-            <div className="px-2 py-1 rounded-lg bg-cyan-600 border border-white text-[10px] font-black text-white whitespace-nowrap shadow-lg flex items-center gap-1 animate-bounce">
-              <Bike className="w-3.5 h-3.5" />
-              <span>Porter En-Route</span>
-            </div>
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+
+            {/* Store Pin */}
+            <Marker position={storeLatLng} icon={storeIcon} />
+
+            {/* Drop Pin (if delivery) */}
+            {!isTakeawayOrDineIn && (
+              <>
+                <Marker position={dropLatLng} icon={dropIcon} />
+                <Polyline
+                  positions={[storeLatLng, dropLatLng]}
+                  color="#FF6600"
+                  weight={4}
+                  dashArray="6, 8"
+                  opacity={0.8}
+                />
+              </>
+            )}
+
+            {/* Courier Pin (if live GPS) */}
+            {riderLatLng && (
+              <Marker position={riderLatLng} icon={riderIcon} />
+            )}
+
+            <MapBoundsAdjuster points={mapPoints} />
+          </MapContainer>
+        ) : (
+          <div className="w-full h-full bg-bg-secondary flex items-center justify-center text-xs text-text-secondary">
+            Loading live map...
+          </div>
+        )}
+
+        {/* Courier unconfirmed badge */}
+        {courierUnconfirmed && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] px-3 py-1.5 rounded-full bg-surface/90 backdrop-blur-md border border-divider text-[11px] font-bold text-text-secondary whitespace-nowrap shadow-md pointer-events-none">
+            Out for delivery — courier details appear after dispatch
           </div>
         )}
       </div>
 
       {/* Map Action Bar Footer */}
-      <div className="p-3 bg-neutral-900/90 border-t border-neutral-800 flex items-center justify-between text-xs">
-        <a
-          href={googleMapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
-        >
-          <Navigation className="w-3.5 h-3.5" />
-          <span>Open in Google Maps</span>
-        </a>
+      <div className="p-3 bg-surface border-t border-divider flex items-center justify-between text-xs">
+        {googleMapsUrl ? (
+          <a
+            href={googleMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-bold text-primary hover:text-primary-hover transition-colors"
+          >
+            <Navigation className="w-3.5 h-3.5" />
+            <span>Open in Google Maps</span>
+          </a>
+        ) : (
+          <span className="text-[11px] text-text-secondary italic">Directions unavailable</span>
+        )}
 
-        {safeTrackingUrl && !isTakeawayOrDineIn && (
+        {safeTrackingUrl && hasRiderGps && !isTakeawayOrDineIn && (
           <a
             href={safeTrackingUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 font-bold text-orange-400 hover:text-orange-300 transition-colors"
+            className="inline-flex items-center gap-1 font-bold text-accent hover:text-accent-hover transition-colors"
           >
             <span>Porter Live Radar</span>
             <ExternalLink className="w-3 h-3" />

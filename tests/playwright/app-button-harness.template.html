@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>B02 — AppButton native submit harness</title>
+  </head>
+  <body>
+    <!--
+      Offline harness for the AppButton submit repair (B02).
+      The real component (no mocks) is bundled into this page by
+      build-harness.mjs and loaded over file:// by the Playwright spec —
+      no dev server, no ports (A02 owns 4175; root config owns 5173/5174).
+    -->
+
+    <!-- Case: sticky footer — the form OUTSIDE the button's React subtree. -->
+    <form id="footer-form" style="margin-bottom: 24px">
+      <p>external footer form</p>
+    </form>
+    <div id="mount-footer" style="margin-bottom: 24px"></div>
+
+    <div id="mount-inside" style="margin-bottom: 24px"></div>
+    <div id="mount-prevented" style="margin-bottom: 24px"></div>
+    <div id="mount-loading" style="margin-bottom: 24px"></div>
+    <div id="mount-normal" style="margin-bottom: 24px"></div>
+    <div id="mount-keyboard" style="margin-bottom: 24px"></div>
+
+    <script>
+      // Counters the spec reads back. Reset per navigation.
+      window.__B02__ = {
+        inside: { submits: 0, clicks: 0 },
+        footer: { submits: 0, clicks: 0 },
+        prevented: { submits: 0, clicks: 0 },
+        loading: { submits: 0, clicks: 0 },
+        normal: { submits: 0, clicks: 0 },
+        keyboard: { submits: 0 },
+      };
+      // The footer form is plain DOM outside every React tree; the design-
+      // system button reaches it only through native form="" association.
+      document.getElementById("footer-form").addEventListener("submit", (e) => {
+        e.preventDefault(); // stay on the harness page
+        window.__B02__.footer.submits += 1;
+      });
+    </script>
+    <script>
+      /*__B02_BUNDLE__*/
+    </script>
+  </body>
+</html>

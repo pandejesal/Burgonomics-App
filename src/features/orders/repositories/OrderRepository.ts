@@ -153,16 +153,23 @@ export class OrderRepository {
             city: address.city,
             state: address.state ?? "",
             pincode: address.pincode,
+            lat: address.lat,
+            lng: address.lng,
           }
         : undefined;
 
     const isCash = opts.paymentMethod === "cash";
+    // A payment-pending order (created BEFORE Razorpay opens, per
+    // PAYMENTS_CONTRACT_SPEC §3) is not paid — it must not carry a paidAt
+    // timestamp or a "Paid Online" label.
+    const displayStatus: PaymentDisplayStatus =
+      opts.paymentStatus ?? (isCash ? "CASH_PENDING" : "paid");
     const payment: OrderPaymentInfo = {
       method: isCash ? "cod" : opts.paymentMethod,
       label: opts.paymentLabel ?? paymentMethodLabel[opts.paymentMethod] ?? "Payment",
-      status: opts.paymentStatus ?? (isCash ? "CASH_PENDING" : "paid"),
+      status: displayStatus,
       transactionId: opts.transactionId,
-      paidAt: isCash ? undefined : new Date().toISOString(),
+      paidAt: displayStatus === "paid" ? new Date().toISOString() : undefined,
     };
 
     const input: CreateOrderInput = {
@@ -174,6 +181,7 @@ export class OrderRepository {
       tipAmount: checkout.tipAmount,
       loyaltyPointsRedeemed: checkout.loyaltyPointsToRedeem,
       address: addressSnapshot,
+      deliveryAddress: addressSnapshot,
       notes: checkout.orderNotes,
       fulfillmentInstructions,
       tableNumber: sel.fulfillment === "dinein" ? checkout.tableNumber : undefined,
@@ -189,11 +197,62 @@ export class OrderRepository {
     return res;
   }
 
+  /**
+   * R24 — paid-order finalization (read-only, server truth).
+   *
+   * After backend verify confirms the pending `orders/{id}` doc, callers
+   * must land HERE — not back in `createFromCurrentContext`, whose full
+   * `setDoc` on the same confirmed id is an UPDATE that `firestore.rules`
+   * denies for customers (and, where a rule allowed it, would overwrite
+   * server-owned payment/status/totals with client-minted values).
+   *
+   * Delegates to `ordersService.finalizePaidOrder`, which reads the doc
+   * fresh from the server and validates owner binding + server-paid state
+   * + the expected transaction id. This layer only hydrates the UI store
+   * from that SERVER-truth result: failures never touch the store and
+   * never mint a placeholder order (no false order, no new id).
+   */
+  async finalizePaidOrder(opts: {
+    confirmedOrderId?: string;
+    transactionId?: string;
+  }): Promise<ApiResult<Order>> {
+    const res = await this.service.finalizePaidOrder({
+      confirmedOrderId: opts.confirmedOrderId ?? "",
+      expectedTransactionId: opts.transactionId,
+    });
+    if (res.success && res.data) {
+      useOrdersStore.getState().upsert(res.data);
+      useOrdersStore.getState().setActiveOrderId(res.data.id);
+    }
+    return res;
+  }
+
   // -- Actions ---------------------------------------------------------
+
+  /**
+   * Persist the WhatsApp order-alert opt-in (P0-3). Upserts the store on
+   * success so readers converge without a refetch.
+   */
+  async setWhatsappOptIn(id: string, optIn: boolean): Promise<ApiResult<Order>> {
+    const res = await this.service.setWhatsappOptIn(id, optIn);
+    if (res.success) useOrdersStore.getState().upsert(res.data);
+    return res;
+  }
 
   async cancelOrder(id: string): Promise<ApiResult<Order | null>> {
     const res = await this.service.cancelOrder(id);
     if (res.success && res.data) useOrdersStore.getState().upsert(res.data);
+    return res;
+  }
+
+  /**
+   * PAYMENTS_CONTRACT_SPEC §3: an order created BEFORE the gateway opened is
+   * "payment pending" — a failed verification must mark it failed (never
+   * leave a phantom pending order, and never mark it paid client-side).
+   */
+  async markPaymentFailed(id: string): Promise<ApiResult<Order>> {
+    const res = await this.service.markPaymentFailed(id);
+    if (res.success) useOrdersStore.getState().upsert(res.data);
     return res;
   }
 
@@ -275,6 +334,18 @@ export class OrderRepository {
         if (res.data.status.terminal) return; // stop polling
       } else if (!res.success) {
         options.onError?.(res.error);
+      } else {
+        // success with NO data: the order is not (or no longer) visible to
+        // this account — deleted doc, wrong id, or another user's order. Map
+        // results used to fall through BOTH branches, which polled forever
+        // with the UI stuck at the loading state. Treat not-found as
+        // terminal: surface it once and stop the poll; the Firestore
+        // listener below remains for a doc that reappears.
+        options.onError?.({
+          code: "TRACKING_NOT_FOUND",
+          message: "Order not found.",
+        });
+        return; // stop polling
       }
       timer = setTimeout(fetchOnce, intervalMs);
     };

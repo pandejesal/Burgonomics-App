@@ -2,6 +2,7 @@ import * as React from "react";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { AddressForm } from "@/features/addresses/components/AddressForm";
+import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { useAddressStore, selectAddresses } from "@/features/addresses/state/addressStore";
 import { toast } from "sonner";
 import type { Address } from "@/features/addresses/models";
@@ -23,6 +24,14 @@ export const Route = createFileRoute("/addresses/create")({
 });
 
 function AddressCreatePage() {
+  return (
+    <ProtectedRoute>
+      <AddressCreateBody />
+    </ProtectedRoute>
+  );
+}
+
+function AddressCreateBody() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/addresses/create" });
   const addresses = useAddressStore(selectAddresses);

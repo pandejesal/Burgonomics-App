@@ -376,9 +376,8 @@ def create_presentation():
          "• Dynamic search & instant filtering by price or dietary tags.\n"
          "• High-resolution food photography tailored to stimulate appetite."),
         
-        ("DEEP CUSTOMIZER", "Burger Modifiers & Meal Combos",
+        ("DEEP CUSTOMIZER", "Burger Modifiers & Customizations",
          "• Multi-tier add-on sheets: Extra Cheese Slice (+₹25), Spicy Mayo (+₹15), Double Patty (+₹60).\n"
-         "• One-tap 'Upgrade to Meal' (Fries + Cold Beverage combo for +₹99).\n"
          "• Special cooking instructions / Jain preparation notes support.\n"
          "• Instant real-time subtotal calculation inside modifier sheet.")
     ]

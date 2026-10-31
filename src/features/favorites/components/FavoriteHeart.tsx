@@ -74,13 +74,16 @@ export function FavoriteHeart({
       animate={favorited ? { scale: [1, 1.3, 1] } : { scale: 1 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       className={cn(
-        "grid h-9 w-9 place-items-center rounded-full bg-surface/90 backdrop-blur",
-        "border border-divider",
+        // B04: 44px hit target (SC 2.5.5 aim) around the unchanged 36px
+        // disc — only transparent padding grows, the glyph stays h-4 w-4.
+        "grid h-11 w-11 place-items-center rounded-full",
         favorited ? "text-error" : "text-text-secondary hover:text-error",
         className,
       )}
     >
-      <Heart className={cn("h-4 w-4 transition-all", favorited && "fill-current")} aria-hidden />
+      <span className="grid h-9 w-9 place-items-center rounded-full bg-surface/90 backdrop-blur border border-divider">
+        <Heart className={cn("h-4 w-4 transition-all", favorited && "fill-current")} aria-hidden />
+      </span>
     </motion.button>
   );
 }

@@ -34,8 +34,10 @@ function Page() {
 function Body() {
   const settings = useSettingsStore();
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   const requestDelete = async () => {
+    setActionError(null);
     const res = await profileRepository.requestAccountDeletion();
     if (res.success) {
       toast.success("Account deleted. Order history anonymized, all personal data removed.");
@@ -44,7 +46,9 @@ function Body() {
         await useAuthStore.getState().logout();
       }, 1000);
     } else {
-      toast.error(res.error.message);
+      // Raw exception goes to the console only — never to the customer.
+      console.error("Account deletion request failed:", res.error.message);
+      setActionError("Couldn't delete your account. Please try again.");
     }
   };
 
@@ -111,14 +115,14 @@ function Body() {
           </h4>
           <ToggleRow
             label="Product analytics"
-            description="Helps us optimize menu loading. No personal data is shared."
+            description="Saved on this device only; no analytics data is currently collected or shared."
             value={settings.analyticsOptIn}
             onChange={(v) => void settingsRepository.update({ analyticsOptIn: v })}
           />
           <div className="pt-2 border-t border-divider">
             <ToggleRow
               label="Personalised recommendations"
-              description="Suggest burgers and combos based on your taste profile."
+              description="Saved on this device only; no personalisation data is currently collected or shared."
               value={settings.personalizedAdsOptIn}
               onChange={(v) => void settingsRepository.update({ personalizedAdsOptIn: v })}
             />
@@ -140,10 +144,15 @@ function Body() {
           <p className="text-[11px] text-text-secondary">
             Permanently deletes your account and removes personal profile data. Order records are anonymized for tax compliance.
           </p>
+          {actionError && (
+            <p role="alert" className="text-[11px] font-medium text-red-500">
+              {actionError}
+            </p>
+          )}
         </div>
 
         <p className="text-[11px] text-text-secondary text-center">
-          {APP.name} v1.0.0 • 100% Pure Vegetarian
+          {APP.name} v{APP.version} • 100% Pure Vegetarian
         </p>
       </div>
 

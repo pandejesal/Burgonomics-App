@@ -8,30 +8,68 @@ import { collection, getDocs, doc, getDoc, query, limit } from "firebase/firesto
 // unbounded (same class as the Loop 3 partner fix).
 const DIRECTORY_LIMIT = 100;
 
-function mapStoreDoc(data: any, id: string): Store {
-  const lat = data.lat ?? data.latitude ?? 23.0225;
-  const lng = data.lng ?? data.longitude ?? 72.5714;
+// P1-3: NO fabricated measurements. Every number below is either read from
+// the store doc or null/absent — never a hardcoded stand-in. Docs without
+// finite coordinates are dropped entirely (fail closed) so no consumer can
+// inherit invented lat/lng.
+function toFiniteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "string" ? Number(value.trim()) : value;
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
+}
+
+// Exported for honesty unit tests (tests/stores-service-honesty.test.ts).
+export function mapStoreDoc(data: any, id: string): Store | null {
+  const lat = toFiniteNumber(data.lat ?? data.latitude);
+  const lng = toFiniteNumber(data.lng ?? data.longitude);
+  if (lat === null || lng === null) {
+    console.warn(`storesService: dropping store "${id}" — missing or non-finite coordinates`);
+    return null;
+  }
+  const hours =
+    data.hours &&
+    typeof data.hours === "object" &&
+    typeof data.hours.open === "string" &&
+    typeof data.hours.close === "string"
+      ? { open: data.hours.open, close: data.hours.close }
+      : null;
   return {
     id: id,
     name: data.name || "Burgonomics Store",
     address: data.address || "",
-    city: data.city || "Ahmedabad",
-    area: data.area || data.city || "Ahmedabad",
+    city: data.city || "",
+    area: data.area || data.city || "",
     lat,
     lng,
-    phone: data.phone || "+91 79 4000 0000",
+    phone: data.phone || "",
     imageUrl: data.imageUrl || null,
-    hours: data.hours || { open: "11:00", close: "23:00" },
-    isOpen: data.isOpen !== false && data.status !== "CLOSED",
+    hours,
+    // Unknown open-state stays unknown: only an explicit boolean, or the
+    // doc's own CLOSED status, may be reported. A doc that says nothing is
+    // never rendered as "Open now".
+    isOpen:
+      typeof data.isOpen === "boolean"
+        ? data.isOpen
+        : data.status === "CLOSED"
+          ? false
+          : undefined,
     isBusy: Boolean(data.isBusy),
     isRecentlyOpened: Boolean(data.isRecentlyOpened),
-    supports: data.supports || { delivery: true, takeaway: true, dineIn: true },
-    etaMinutes: data.etaMinutes || data.minPrepMinutes || 25,
-    pickupEtaMinutes: data.pickupEtaMinutes || 15,
-    deliveryFee: data.pricing?.deliveryFeeFlat ?? data.deliveryFee ?? 40,
+    // Deny by default: a fulfillment mode is offered only when the doc grants
+    // it. A doc without `supports` (or with a partial one) grants nothing.
+    supports: {
+      delivery: data.supports?.delivery === true,
+      takeaway: data.supports?.takeaway === true,
+      dineIn: data.supports?.dineIn === true,
+    },
+    etaMinutes: data.etaMinutes || data.minPrepMinutes || null,
+    pickupEtaMinutes: data.pickupEtaMinutes || null,
+    deliveryFee: data.pricing?.deliveryFeeFlat ?? data.deliveryFee,
     petpoojaRestId: data.petpoojaRestId || null,
     partnerBranchId: data.partnerBranchId || null,
-    deliveryRadiusKm: data.deliveryRadiusKm ?? 7,
+    // null when the doc has no radius — geofence/PAY logic falls back to
+    // DEFAULT_DELIVERY_RADIUS_KM at read time; UI must not show it as fact.
+    deliveryRadiusKm: toFiniteNumber(data.deliveryRadiusKm),
     pricing: data.pricing || null,
   };
 }
@@ -52,7 +90,11 @@ async function fetchFirestoreStores(): Promise<Store[]> {
     const storesSnap = await getDocs(query(collection(db, "stores"), limit(DIRECTORY_LIMIT)));
     if (!storesSnap.empty) {
       const stores: Store[] = [];
-      storesSnap.forEach((d) => stores.push(mapStoreDoc(d.data(), d.id)));
+      storesSnap.forEach((d) => {
+        // Fail closed: docs without finite coords are dropped (with a warn).
+        const store = mapStoreDoc(d.data(), d.id);
+        if (store) stores.push(store);
+      });
       return stores;
     }
 
@@ -60,7 +102,10 @@ async function fetchFirestoreStores(): Promise<Store[]> {
     const adminStoresSnap = await getDocs(query(collection(db, "admin_stores"), limit(DIRECTORY_LIMIT)));
     if (!adminStoresSnap.empty) {
       const stores: Store[] = [];
-      adminStoresSnap.forEach((d) => stores.push(mapStoreDoc(d.data(), d.id)));
+      adminStoresSnap.forEach((d) => {
+        const store = mapStoreDoc(d.data(), d.id);
+        if (store) stores.push(store);
+      });
       return stores;
     }
   } catch (err) {
@@ -87,11 +132,15 @@ export const storesService = {
     try {
       const snap = await getDoc(doc(db, "stores", id));
       if (snap.exists()) {
-        return ok(mapStoreDoc(snap.data(), snap.id));
+        // Fail closed: a doc without finite coords yields null, never a
+        // store positioned at invented coordinates.
+        const store = mapStoreDoc(snap.data(), snap.id);
+        if (store) return ok(store);
       }
       const adminSnap = await getDoc(doc(db, "admin_stores", id));
       if (adminSnap.exists()) {
-        return ok(mapStoreDoc(adminSnap.data(), adminSnap.id));
+        const store = mapStoreDoc(adminSnap.data(), adminSnap.id);
+        if (store) return ok(store);
       }
     } catch {
       // fallback

@@ -8,7 +8,7 @@
 # ── Capacitor / WebView keep rules ──────────────────────────────────────
 # Keep the Capacitor bridge and plugin classes so native ↔ JS communication works.
 -keep class com.getcapacitor.** { *; }
--keep class com.glassdoorsstudio.burgonomics.** { *; }
+-keep class com.burgonomics.** { *; }
 
 # Keep JavaScript interface methods for WebView bridge.
 -keepclassmembers class * {

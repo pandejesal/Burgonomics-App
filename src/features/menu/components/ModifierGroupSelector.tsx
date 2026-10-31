@@ -68,17 +68,27 @@ export function ModifierGroupSelector({
         </div>
       )}
 
-      <div className="space-y-2">
+      {/* Real buttons, not clickable divs: each option is focusable by Tab and
+          activated by Enter/Space, and reports its own selection state. */}
+      <div
+        role={isSingle ? "radiogroup" : "group"}
+        aria-label={group.name}
+        className="space-y-2"
+      >
         {group.options.map((opt) => {
           const isSelected = selectedOptionIds.includes(opt.id);
           const isOutOfStock = !!opt.outOfStock;
 
           return (
-            <div
+            <button
               key={opt.id}
+              type="button"
+              role={isSingle ? "radio" : "checkbox"}
+              aria-checked={isSelected}
+              disabled={isOutOfStock}
               onClick={() => handleOptionClick(opt)}
               className={cn(
-                "flex items-center justify-between gap-3 p-3.5 rounded-xl border transition-all select-none cursor-pointer",
+                "w-full text-left flex items-center justify-between gap-3 p-3.5 rounded-xl border transition-all select-none cursor-pointer",
                 isSelected
                   ? "border-[#0E4825] bg-[#0E4825]/10 shadow-xs"
                   : "border-divider bg-surface hover:border-primary/40",
@@ -121,7 +131,7 @@ export function ModifierGroupSelector({
                   ? `- ₹${Math.abs(opt.priceDelta)}`
                   : "Free"}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

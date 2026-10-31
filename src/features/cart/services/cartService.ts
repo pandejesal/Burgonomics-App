@@ -1,11 +1,12 @@
 /**
  * CartService — Pure pricing calculation engine and cart validation logic.
  *
- * Encapsulates all line item calculations, fee additions, GST taxes,
- * packing charges, and promo evaluation via the canonical pricing engine.
+ * Encapsulates all line item calculations, order-level fees, the GST already
+ * embedded in menu prices, and promo evaluation via the canonical pricing
+ * engine. Fee schedules are never built here — they come from
+ * `resolvePricingConfig` (see CartRepository), so the cart, the checkout
+ * screen and the gateway all charge the same numbers.
  */
-import type { ApiResult } from "@/core/network/http";
-import { ok } from "@/core/network/http";
 import type {
   AppliedPromo,
   CartLine,
@@ -16,8 +17,8 @@ import {
   calculateOrderTotals,
   computeItemUnitPrice,
   computeItemLineTotal,
+  resolvePricingConfig,
   type PricingConfig,
-  type StorePricingConfig,
 } from "@/shared/pricing/pricingEngine";
 
 /**
@@ -38,15 +39,36 @@ export interface CalculateInput {
   lines: CartLine[];
   fulfillment: Fulfillment;
   promo?: AppliedPromo | null;
-  pricingConfig: PricingConfig | StorePricingConfig;
+  /**
+   * Resolved pricing schedule (fees + GST rate + minimum). Built by
+   * `resolvePricingConfig`; when omitted it is derived from the launch
+   * schedule with the sandbox delivery quote.
+   */
+  pricingConfig?: PricingConfig;
+  /** Store-level overrides, e.g. a per-outlet minimum order amount. */
+  storePricingOverride?: { minOrderAmount?: number | null } | null;
+  /** Live delivery quote (₹). Ignored for takeaway / dine-in. */
+  deliveryQuoteFee?: number | null;
 }
 
 /**
- * Calculates complete order totals breakdown (subtotal, discounts, GST, fees, grand total).
- * Strict mode: Throws if pricingConfig is missing, ensuring no invented numbers on the client.
+ * Calculates the complete order breakdown (subtotal, discounts, embedded GST,
+ * packaging, delivery, grand total).
+ *
+ * GST-inclusive: `taxes`/`cgst`/`sgst` describe money contained in
+ * `subtotal` and are never added to the total.
  */
 export function calculateTotals(input: CalculateInput): CartTotals {
-  const { lines = [], fulfillment, promo, pricingConfig } = input;
+  const { lines = [], fulfillment, promo, storePricingOverride, deliveryQuoteFee } = input;
+
+  const pricingConfig =
+    input.pricingConfig ??
+    resolvePricingConfig({
+      fulfillment,
+      deliveryQuoteFee,
+      storeOverride: storePricingOverride,
+    });
+
   if (!pricingConfig) {
     throw new Error(
       "PRICING_CONFIG_UNAVAILABLE: Store pricing configuration is required to calculate totals.",
@@ -65,8 +87,11 @@ export function calculateTotals(input: CalculateInput): CartTotals {
     itemDiscount: totals.itemDiscount,
     promoDiscount: totals.promoDiscount,
     taxes: totals.taxes,
+    cgst: totals.cgst,
+    sgst: totals.sgst,
+    gstRate: totals.gstRate,
     deliveryFee: totals.deliveryFee,
-    packingFee: totals.packingFee,
+    packingFee: totals.packagingFee,
     grandTotal: totals.grandTotal,
     currency: "INR",
   };

@@ -2,7 +2,10 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useCartStore } from "@/features/cart/state/cartStore";
+import { menuRepository } from "@/features/menu/repositories/MenuRepository";
 import { HapticService } from "@/core/services/haptics";
+import type { Product } from "@/features/menu/models";
+import { validateReorderItems, type ReorderItemRef } from "../utils/reorderValidation";
 import type { Order } from "../models";
 import type { CartLine } from "@/features/cart/models";
 
@@ -10,6 +13,15 @@ export interface ReorderResult {
   success: boolean;
   addedCount: number;
   outOfStockItems: string[];
+}
+
+/** Snapshot items are frozen cart lines — a reorder line is that shape with a fresh id and target store. */
+function orderItemToCartLine(item: Order["items"][number], targetStoreId: string): CartLine {
+  return {
+    ...(item as object),
+    id: `line_reorder_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    storeId: targetStoreId,
+  } as CartLine;
 }
 
 export function useReorderItems() {
@@ -21,10 +33,13 @@ export function useReorderItems() {
     isOpen: boolean;
     unavailableItems: string[];
     availableLines: CartLine[];
+    /** Live catalog the surfaced lines were validated against (for re-adds). */
+    catalog: Product[];
   }>({
     isOpen: false,
     unavailableItems: [],
     availableLines: [],
+    catalog: [],
   });
 
   const reorder = useCallback(
@@ -37,67 +52,81 @@ export function useReorderItems() {
           return { success: false, addedCount: 0, outOfStockItems: [] };
         }
 
-        // Loop: addLine rejects cross-store lines one by one while the old
-        // code still counted them as added and navigated to /cart (fake
-        // success, wrong cart). Fail loud before touching anything.
+        const targetStoreId = order.store?.id || (order as any).storeId || "store_default";
         const cartState = useCartStore.getState();
         if (
           cartState.lines.length > 0 &&
           cartState.storeId &&
-          cartState.storeId !== order.store.id
+          cartState.storeId !== targetStoreId
         ) {
-          toast.error("Your cart has items from another store — clear it or check out first, then reorder.");
-          return { success: false, addedCount: 0, outOfStockItems: [] };
+          // Reset cart to new store so 1-tap reorder can proceed cleanly
+          resetCart(targetStoreId);
+        } else if (!cartState.storeId) {
+          resetCart(targetStoreId);
         }
 
         if (options?.clearExistingCart) {
-          resetCart(order.store.id);
+          resetCart(targetStoreId);
         }
 
-        const outOfStock: string[] = [];
-        const available: CartLine[] = [];
-
-        for (const item of order.items) {
-          // Check if item is marked out-of-stock in order metadata or 86 list
-          const isUnavailable = (item as any).inStock === false || (item as any).is86ed === true;
-          if (isUnavailable) {
-            outOfStock.push(item.name);
-          } else {
-            // Generate unique line ID and preserve exact customizations
-            const lineToAdd: CartLine = {
-              ...item,
-              id: `line_reorder_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              storeId: order.store.id,
-            };
-            available.push(lineToAdd);
-          }
+        // Reorder lines come from a frozen order snapshot: what was in stock
+        // at purchase time says nothing about the outlet's 86-board NOW.
+        // Availability is therefore confirmed against the store's LIVE catalog
+        // before anything lands in the cart — fail-closed, the same contract
+        // the menu itself applies. A failed catalog fetch means we cannot
+        // verify anything, so nothing is added.
+        const catalogRes = await menuRepository.listProducts(targetStoreId, undefined, 1, 1000);
+        if (!catalogRes.success) {
+          toast.error(
+            "Could not verify what is available right now. Please add items from the menu.",
+          );
+          return { success: false, addedCount: 0, outOfStockItems: [] };
         }
+        const liveCatalog = catalogRes.data.items;
 
-        if (outOfStock.length > 0 && available.length > 0) {
-          // Trigger out of stock confirmation modal
+        // Pair each snapshot item with the cart line we WOULD add, so the
+        // validator (pure, product-id based) stays free of store types.
+        const refsWithLines: { ref: ReorderItemRef; line: CartLine }[] = order.items.map(
+          (item) => ({
+            ref: {
+              productId:
+                (item as { productId?: string }).productId ??
+                (item as Order["items"][number] & { id: string }).id,
+              name: item.name,
+            },
+            line: orderItemToCartLine(item, targetStoreId),
+          }),
+        );
+        const { unavailableItems, reOrderable } = validateReorderItems(
+          refsWithLines.map((pair) => pair.ref),
+          liveCatalog,
+        );
+        const availableLines = refsWithLines
+          .filter((pair) => reOrderable.includes(pair.ref))
+          .map((pair) => pair.line);
+
+        if (unavailableItems.length > 0) {
           setOutOfStockModal({
             isOpen: true,
-            unavailableItems: outOfStock,
-            availableLines: available,
+            unavailableItems,
+            availableLines,
+            catalog: liveCatalog,
           });
           return {
             success: false,
             addedCount: 0,
-            outOfStockItems: outOfStock,
+            outOfStockItems: unavailableItems,
           };
         }
 
-        // Add all available lines to cart
-        for (const line of available) {
-          addLine(line);
-        }
+        addLinesAndPushToCart(useCartStore.getState(), availableLines, liveCatalog);
 
         void HapticService.notification("success");
         void navigate({ to: "/cart" });
 
         return {
-          success: true,
-          addedCount: available.length,
+          success: availableLines.length > 0,
+          addedCount: availableLines.length,
           outOfStockItems: [],
         };
       } finally {
@@ -108,16 +137,22 @@ export function useReorderItems() {
   );
 
   const confirmReorderRemaining = useCallback(() => {
-    for (const line of outOfStockModal.availableLines) {
-      addLine(line);
-    }
-    setOutOfStockModal({ isOpen: false, unavailableItems: [], availableLines: [] });
+    const { availableLines, catalog } = outOfStockModal;
+    const store = useCartStore.getState();
+    addLinesAndPushToCart(
+      store,
+      availableLines,
+      // The modal's catalog is seconds old, but the cart may have changed
+      // while the dialog was open — revalidation is what keeps stock and
+      // pricing claims honest right after the added lines land.
+      catalog,
+    );
     void HapticService.notification("success");
     void navigate({ to: "/cart" });
   }, [addLine, outOfStockModal, navigate]);
 
   const dismissOutOfStockModal = useCallback(() => {
-    setOutOfStockModal({ isOpen: false, unavailableItems: [], availableLines: [] });
+    setOutOfStockModal({ isOpen: false, unavailableItems: [], availableLines: [], catalog: [] });
   }, []);
 
   return {
@@ -127,6 +162,24 @@ export function useReorderItems() {
     confirmReorderRemaining,
     dismissOutOfStockModal,
   };
+}
+
+function addLinesAndPushToCart(
+  store: ReturnType<typeof useCartStore.getState>,
+  lines: CartLine[],
+  liveCatalog: Product[],
+): void {
+  for (const line of lines) {
+    store.addLine(line);
+  }
+  // The freshly added lines are snapshot-priced by definition — validate them
+  // against the live catalog we JUST verified availability against, so the
+  // re-added lock can't defer the price/stock truth the cart would otherwise
+  // catch only minutes later.
+  const validation = store.revalidateWithProducts(liveCatalog);
+  if (validation.messages.length > 0) {
+    toast.info(validation.messages.slice(0, 2).join(" "));
+  }
 }
 
 export default useReorderItems;

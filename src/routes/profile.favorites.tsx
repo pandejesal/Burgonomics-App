@@ -11,8 +11,10 @@ import { cn } from "@/lib/utils";
 import { useFavoritesStore } from "@/features/favorites/state/favoritesStore";
 import { favoritesRepository } from "@/features/favorites/repositories/FavoritesRepository";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
+import { menuRepository } from "@/features/menu/repositories/MenuRepository";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { HapticService } from "@/core/services/haptics";
+import { toUserMessage } from "@/core/errors/userMessages";
 import type { FavoriteKind, Favorite } from "@/features/favorites/models";
 import { toast } from "sonner";
 
@@ -58,16 +60,43 @@ function Body() {
       return;
     }
     void HapticService.impact("light");
-    await cartRepository.addItem({
+
+    // Purchasing eligibility and price truth come ONLY from the store-scoped
+    // live catalog (the products list is restId-filtered to this store). The
+    // stored `priceLabel` is display metadata from the day the favourite was
+    // saved — it never decides eligibility or the charged price, and no
+    // single-product lookup is used here because that getter is not
+    // store-scoped (a cross-outlet favourite would otherwise resolve another
+    // branch's document and read as "verified").
+    const catalogRes = await menuRepository.listProducts(store.id, undefined, 1, 1000);
+    const product = catalogRes.success
+      ? catalogRes.data.items.find((p) => p.id === fav.refId)
+      : null;
+    if (!product || product.inStock !== true || !(product.price > 0)) {
+      toast.error(`${fav.name} is not available right now — please add it from the menu.`);
+      return;
+    }
+
+    const veg = product.veg ?? fav.kind === "product";
+    const imageUrl = product.imageUrl ?? fav.imageUrl;
+    const fallbackImageUrl = product.fallbackImageUrl ?? fav.fallbackImageUrl;
+
+    const res = await cartRepository.addItem({
       storeId: store.id,
       productId: fav.refId,
       name: fav.name,
-      unitPrice: fav.priceLabel ? parseInt(fav.priceLabel.replace(/\D/g, ""), 10) || 199 : 199,
+      unitPrice: product.price,
       quantity: 1,
-      veg: true,
-      imageUrl: fav.imageUrl,
-      fallbackImageUrl: fav.fallbackImageUrl,
+      veg,
+      imageUrl,
+      fallbackImageUrl,
     });
+    if (!res.success) {
+      toast.error("Couldn't add to cart", {
+        description: toUserMessage(res),
+      });
+      return;
+    }
     toast.success(`Added ${fav.name} to basket`);
   };
 
@@ -169,6 +198,7 @@ function Body() {
                     {fav.kind === "product" && (
                       <button
                         type="button"
+                        data-testid={`quick-add-${fav.id}`}
                         onClick={() => void handleQuickAdd(fav)}
                         className="px-3.5 py-1.5 min-h-[38px] rounded-xl bg-[#FF6600] text-white text-xs font-bold hover:bg-[#e05a00] active:scale-95 transition-all shadow-xs cursor-pointer flex items-center gap-1"
                       >

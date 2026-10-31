@@ -16,6 +16,7 @@
  */
 import type { ApiResult } from "@/core/network/http";
 import { fail, ok } from "@/core/network/http";
+import { logger } from "@/core/logging/logger";
 import { paymentsService } from "@/features/payments/services/paymentsService";
 import type {
   PaymentOrder,
@@ -31,6 +32,8 @@ import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authS
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
+import { orderRepository } from "@/features/orders/repositories/OrderRepository";
+import { usePaymentStore, loadPaymentReconciliation } from "@/features/payments/state/paymentStore";
 import { toStoreSnapshot } from "@/features/orders/models";
 
 export class PaymentRepository {
@@ -133,7 +136,17 @@ export class PaymentRepository {
 
   async createPaymentOrder(opts?: {
     loyaltyPointsToRedeem?: number;
+    internalOrderId?: string;
   }): Promise<ApiResult<PaymentOrder>> {
+    const uid = useAuthStore.getState().user?.id ?? null;
+    const pendingRecon = loadPaymentReconciliation(uid);
+    if (pendingRecon || usePaymentStore.getState().reconciliationPending) {
+      return fail(
+        "PAYMENT_RECONCILIATION_PENDING",
+        "Payment already received — order sync pending. Do not pay again.",
+        false
+      );
+    }
     const totalsRes = await cartRepository.calculateTotals();
     if (!totalsRes.success) return totalsRes;
 
@@ -193,6 +206,22 @@ export class PaymentRepository {
     const prep = await cartRepository.prepareCheckout();
     const checkoutToken = prep.success ? prep.data.checkoutToken : undefined;
 
+    // PAYMENTS_CONTRACT_SPEC §3: an internal `orders/{id}` doc MUST exist
+    // before the gateway opens, so the Razorpay order binds to a real, unpaid
+    // order the server can price and hand to the kitchen. Creating it here
+    // (rather than per screen) means no caller can open Razorpay without that
+    // binding. The id lives in the payment store so retries re-create the
+    // SAME doc instead of a second order for one checkout.
+    const pending = await orderRepository.createFromCurrentContext({
+      confirmedOrderId:
+        opts?.internalOrderId ?? usePaymentStore.getState().internalOrderId ?? undefined,
+      paymentMethod: "online",
+      paymentStatus: "pending",
+      paymentLabel: "Pay Online",
+    });
+    if (!pending.success) return pending;
+    usePaymentStore.getState().setInternalOrderId(pending.data.id);
+
     // Server reprices authoritatively from items + store pricing; the client
     // amount below is display-only. Loyalty/coupon/tip/branch are sent as
     // inputs (resolved above from opts with fallback to persisted checkout
@@ -204,12 +233,20 @@ export class PaymentRepository {
       loyaltyPointsToRedeem || 0,
       tipAmount || 0,
     ]);
-    return this.service.createOrder({
+    const orderRes = await this.service.createOrder({
       amount: totalsRes.data.grandTotal,
       currency: "INR",
       receipt: `rcpt_${Date.now()}`,
       storeId: sel.activeStore.id,
+      // PAYMENTS_CONTRACT_SPEC §1: `orderType` is canonical (server enum is
+      // delivery | takeaway | dinein — the app's Fulfillment maps 1:1).
+      // `fulfillment` stays as the legacy alias for pre-contract servers.
+      orderType: sel.fulfillment,
       fulfillment: sel.fulfillment,
+      // PAYMENTS_CONTRACT_SPEC §1/§3: the internal order id above, so the
+      // server can refuse to charge for an already-paid or foreign order.
+      orderId: pending.data.id,
+      branchId: sel.activeStore.partnerBranchId ?? undefined,
       items: cart.lines.map((l) => ({
         id: l.productId,
         productId: l.productId,
@@ -227,10 +264,52 @@ export class PaymentRepository {
       checkoutToken,
       checkoutSnapshot,
     });
+    if (orderRes.success) {
+      // Bind the gateway order to the pending internal order in one place so
+      // verification can require the same gateway order (A3).
+      usePaymentStore
+        .getState()
+        .setGatewayOrderId(orderRes.data.razorpayOrderId ?? orderRes.data.orderId ?? null);
+    } else {
+      // Flip the pending internal order to failed ONLY when the failure is
+      // provably pre-gateway: `INVALID_AMOUNT` is refused by the transport
+      // before any HTTP request, and no gateway order is bound to this
+      // checkout. Every transport/HTTP failure may have minted the gateway
+      // order (the idempotent 503-retry path exists for exactly that) and an
+      // earlier attempt may already have captured — marking failed there
+      // poisons the local order while the server keeps it pending (A08 B2),
+      // so those stay untouched and honest (`paymentStatus: pending`) for the
+      // server-owned `payment.failed` webhook to resolve.
+      const provenPreflight =
+        orderRes.error.code === "INVALID_AMOUNT" &&
+        !usePaymentStore.getState().gatewayOrderId;
+      if (provenPreflight) {
+        await orderRepository.markPaymentFailed(pending.data.id).catch(() => undefined);
+      } else {
+        logger.warn("payments.create_order_failed_unproven_noncapture", {
+          code: orderRes.error.code,
+          internalOrderId: pending.data.id,
+        });
+      }
+    }
+    return orderRes;
   }
 
   verifyPayment(result: PaymentResult): Promise<ApiResult<PaymentVerification>> {
-    return this.service.verify(result);
+    // checkout opens the gateway without stamping the pending internal order
+    // id onto `PaymentResult`. Attach it centrally here (from the payment
+    // store) so verification always binds to the internal order instead of
+    // the gateway id. Do not require every screen to remember this.
+    const store = usePaymentStore.getState();
+    const gatewayBound =
+      !store.gatewayOrderId || store.gatewayOrderId === result.orderId;
+    const pendingInternal =
+      result.internalOrderId || !gatewayBound ? undefined : store.internalOrderId ?? undefined;
+    const enriched: PaymentResult =
+      result.internalOrderId || !pendingInternal
+        ? result
+        : { ...result, internalOrderId: pendingInternal };
+    return this.service.verify(enriched);
   }
 
   cancelPayment(orderId: string): Promise<ApiResult<null>> {

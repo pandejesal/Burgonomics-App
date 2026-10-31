@@ -8,6 +8,7 @@ import { logger } from "@/core/logging/logger";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { isDev } from "@/core/config/env";
+import { configureAuthUidSource } from "@/features/auth/utils/scopedPersistence";
 
 export type AuthStatus =
   | "idle" // initial, pre-bootstrap
@@ -288,6 +289,16 @@ export const selectIsAuthenticated = (s: AuthState) =>
   s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone;
 
 export const selectIsGuest = (s: AuthState) => s.status !== "authenticated";
+
+// Loop 36/120 (finding 6): publish the uid source to the shared scoping
+// helper (which deliberately does NOT import this module — see its header
+// for the import-cycle rationale). Every user-owned persisted store
+// (orders / notifications / checkout / loyalty) keys its storage by the
+// uid reported here and re-scopes on change.
+configureAuthUidSource({
+  getUid: () => useAuthStore.getState().user?.id ?? null,
+  subscribe: (listener) => useAuthStore.subscribe(listener as (s: AuthState) => void),
+});
 
 if (typeof window !== "undefined" && isDev()) {
   (window as any).useAuthStore = useAuthStore;

@@ -29,7 +29,10 @@ export function CategoryGrid({ categories, className }: Props) {
               onClick={() => {
                 void HapticService.selection();
                 setActiveCategory(c.id);
-                void navigate({ to: "/menu" });
+                void navigate({
+                  to: "/menu",
+                  search: { category: c.id },
+                });
               }}
               aria-label={`Browse ${c.name}, ${c.itemCount} items`}
               className={cn(

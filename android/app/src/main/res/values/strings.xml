@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">BURGONOMICS</string>
     <string name="title_activity_main">BURGONOMICS</string>
-    <string name="package_name">com.glassdoorsstudio.burgonomics</string>
-    <string name="custom_url_scheme">com.glassdoorsstudio.burgonomics</string>
+    <string name="package_name">com.burgonomics</string>
+    <string name="custom_url_scheme">com.burgonomics</string>
 </resources>

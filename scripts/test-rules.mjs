@@ -29,7 +29,10 @@ const result = spawnSync(
     'firestore',
     '--project',
     'burgonomics-test-rules',
-    '"npx vitest run tests/rules --reporter=verbose --hookTimeout=120000"',
+    // Lane 07: the rules dir now holds more than one file. Every rules test
+    // calls clearFirestore() in beforeEach, so parallel files wipe each
+    // other's seeds mid-test; run them sequentially (deterministic gate).
+    '"npx vitest run tests/rules --reporter=verbose --hookTimeout=120000 --fileParallelism=false"',
   ],
   {
     env,

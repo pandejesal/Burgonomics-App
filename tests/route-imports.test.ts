@@ -113,5 +113,11 @@ describe("route imports resolve", () => {
     expect(pricing.DELIVERY_FEE_FLAT).toBe(40);
     expect(pricing.DEFAULT_PRICING_CONFIG.freeDeliveryThreshold).toBe(499);
     expect(pricing.DEFAULT_PRICING_CONFIG.deliveryFeeFlat).toBe(40);
+    // MT-10: packaging is ₹20 for delivery & takeaway, waived for dine-in.
+    expect(pricing.PACKAGING_FEE_BY_FULFILLMENT).toEqual({
+      delivery: 20,
+      takeaway: 20,
+      dinein: 0,
+    });
   }, 60000);
 });

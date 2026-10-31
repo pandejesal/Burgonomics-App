@@ -14,11 +14,20 @@ export type PaymentStatus =
   "idle" | "preparing" | "waiting" | "success" | "failed" | "cancelled" | "retrying" | "error";
 
 export interface PaymentOrder {
-  /** Backend-issued order id. Will be `order_XXXX` from Razorpay in prod. */
+  /**
+   * Razorpay gateway order id (`order_XXXX`). Kept as `orderId` for the
+   * existing adapter/checkout contract; `razorpayOrderId` mirrors it under
+   * the canonical PAYMENTS_CONTRACT_SPEC §1 name.
+   */
   orderId: string;
+  /** Canonical gateway order id (alias of `orderId`). */
+  razorpayOrderId?: string;
   /** Razorpay key id (publishable, safe to ship to the client). */
   keyId: string;
+  /** Gateway amount in rupees (server reprices authoritatively). */
   amount: Money;
+  /** Gateway amount in paise — canonical per PAYMENTS_CONTRACT_SPEC §1. */
+  amountPaise?: number;
   currency: "INR";
   receipt: string;
   /** Opaque metadata the backend attaches (checkoutToken, store, fulfillment). */
@@ -26,16 +35,31 @@ export interface PaymentOrder {
 }
 
 export interface PaymentResult {
+  /** Razorpay gateway order id (`order_XXXX`). */
   orderId: string;
   paymentId: string;
   signature: string;
   method: PaymentMethod;
+  /**
+   * Internal Firestore order id created BEFORE the gateway opened
+   * (PAYMENTS_CONTRACT_SPEC §3). Verification binds the gateway payment to
+   * this order, not to the gateway id.
+   */
+  internalOrderId?: string;
 }
 
 export interface PaymentVerification {
   verified: boolean;
   /** Final backend order id, ready to be shown on the confirmation screen. */
   confirmedOrderId: string;
+  /** Gateway order id that was verified (when the server echoes it). */
+  razorpayOrderId?: string;
+  /** Captured Razorpay payment id (handover/support reference). */
+  paymentId?: string;
+  /** Delivery handover OTP plaintext returned by the server (verify path only). */
+  deliveryOtp?: string;
+  /** Route split outcome when present. */
+  transfer?: unknown;
 }
 
 export interface PaymentFailure {

@@ -3,6 +3,7 @@ import { Text } from "@/shared/components/common/Text";
 import { AppBadge } from "@/shared/components/common/AppBadge";
 import { SafeImage } from "@/shared/components/common/SafeImage";
 import { CompletionRing } from "./CompletionRing";
+import { useLoyaltyTier } from "@/features/loyalty/state/loyaltyStore";
 import type { UserProfile, ProfileCompletion } from "@/features/profile/models";
 
 interface Props {
@@ -11,6 +12,10 @@ interface Props {
 }
 
 export function ProfileHeader({ profile, completion }: Props) {
+  // Tier always derives from the live loyalty balance (same source as the
+  // wallet card) — never the static profile field, so the two can never
+  // contradict each other.
+  const tier = useLoyaltyTier();
   const initials = (profile.fullName || profile.phone)
     .split(" ")
     .map((s) => s[0])
@@ -49,11 +54,9 @@ export function ProfileHeader({ profile, completion }: Props) {
             <h3 className="text-base font-black text-text truncate">
               {profile.fullName || "Burger Connoisseur"}
             </h3>
-            {profile.membershipTier && (
-              <span className="px-2 py-0.5 rounded-full bg-[#0E4825]/15 text-[#0E4825] dark:text-[#4ADE80] text-[10px] font-black uppercase">
-                {profile.membershipTier}
-              </span>
-            )}
+            <span className="px-2 py-0.5 rounded-full bg-[#0E4825]/15 text-[#0E4825] dark:text-[#4ADE80] text-[10px] font-black uppercase">
+              {tier}
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-text-secondary">

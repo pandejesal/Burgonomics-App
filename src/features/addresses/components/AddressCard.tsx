@@ -32,6 +32,16 @@ export function AddressCard({ address, selected, onClick, actionSlot }: Props) {
     .filter(Boolean)
     .join(", ");
 
+  // Only ever render contact details the doc actually carries: a missing
+  // number must not leave a stray "+91 ", and an absent name must not print
+  // "undefined".
+  const contact = [
+    address.contactName,
+    address.contactPhone ? `+91 ${address.contactPhone}` : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+
   const Wrapper = onClick ? "button" : "div";
   return (
     <Wrapper
@@ -67,9 +77,11 @@ export function AddressCard({ address, selected, onClick, actionSlot }: Props) {
           <Text variant="bodyMedium" tone="secondary" className="mt-0.5 line-clamp-2">
             {line}
           </Text>
-          <Text variant="caption" tone="secondary" className="mt-1 block">
-            {address.contactName} · +91 {address.contactPhone}
-          </Text>
+          {contact && (
+            <Text variant="caption" tone="secondary" className="mt-1 block">
+              {contact}
+            </Text>
+          )}
           {actionSlot && <div className="mt-2">{actionSlot}</div>}
         </div>
       </div>

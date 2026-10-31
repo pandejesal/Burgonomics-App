@@ -11,18 +11,28 @@ export interface UserProfile {
 }
 
 export const userService = {
+  // Offline/denied/misconfigured reads degrade to null instead of throwing —
+  // callers already handle null (toggleFavorite no-ops, profile falls back).
   async getUserProfile(userId: string): Promise<UserProfile | null> {
-    const docRef = doc(db, "users", userId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as UserProfile;
+    try {
+      const docRef = doc(db, "users", userId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data() as UserProfile;
+      }
+      return null;
+    } catch {
+      return null;
     }
-    return null;
   },
 
   async updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<void> {
-    const docRef = doc(db, "users", userId);
-    await updateDoc(docRef, data);
+    try {
+      const docRef = doc(db, "users", userId);
+      await updateDoc(docRef, data);
+    } catch {
+      // Best-effort profile write; callers treat absence as failure via re-read.
+    }
   },
 
   async toggleFavorite(userId: string, productId: string, isFavorite: boolean): Promise<void> {

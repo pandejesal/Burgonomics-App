@@ -15,7 +15,7 @@ export interface OTPInputGridProps {
 }
 
 /**
- * Enterprise 6-digit OTP input grid matching Domino's / La Pino'z UX parity:
+ * Enterprise 6-digit OTP input grid:
  * - Auto-forward cursor advance
  * - Backspace retreat
  * - Arrow navigation

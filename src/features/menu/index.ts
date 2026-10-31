@@ -7,5 +7,4 @@ export { CategoryNavRail } from "./components/CategoryNavRail";
 export { MenuProductCard } from "./components/MenuProductCard";
 export { MenuSkeleton } from "./components/MenuSkeleton";
 export { ModifierGroupSelector } from "./components/ModifierGroupSelector";
-export { AddonUpsellSection } from "./components/AddonUpsellSection";
 export { ProductCustomizerModal } from "./components/ProductCustomizerModal";

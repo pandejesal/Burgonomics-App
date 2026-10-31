@@ -4,7 +4,7 @@
     "details": [
       {
         "appIDs": [
-          "GLASSDOORS.com.glassdoorsstudio.burgonomics"
+          "TEAMID.com.burgonomics"
         ],
         "components": [
           {
@@ -25,7 +25,7 @@
   },
   "webcredentials": {
     "apps": [
-      "GLASSDOORS.com.glassdoorsstudio.burgonomics"
+      "TEAMID.com.burgonomics"
     ]
   }
 }
