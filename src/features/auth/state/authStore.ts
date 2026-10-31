@@ -99,6 +99,45 @@ async function clearPersistedSession() {
 
 import { notificationsService } from "@/features/notifications/services/notificationsService";
 
+/**
+ * CUS-05 — hard cap on the pre-sign-out FCM unlink. The unregister call needs
+ * the CURRENT auth token, so it must finish before `auth.signOut()` tears the
+ * session down (it used to be fire-and-forget and raced the sign-out, losing
+ * the token and leaving the device linked to the account that just left).
+ * A dead network must never trap the user in a signed-in state, so sign-out
+ * proceeds after this many ms regardless of the unlink result.
+ */
+export const DEVICE_UNLINK_TIMEOUT_MS = 2_000;
+
+/**
+ * Unlinks the device token from `userId` before credentials are dropped,
+ * bounded by {@link DEVICE_UNLINK_TIMEOUT_MS}. Never throws and never rejects:
+ * failing to unregister is logged and sign-out still completes.
+ */
+async function unlinkDeviceTokenBeforeSignOut(userId?: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve(notificationsService.unlinkUserFromDeviceToken(userId)).then(
+        () => undefined,
+        (e: unknown) =>
+          logger.warn("auth.device_unlink_failed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, DEVICE_UNLINK_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (e: unknown) {
+    logger.warn("auth.device_unlink_failed", {
+      message: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "idle",
   user: null,
@@ -261,7 +300,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   async logout() {
     const { refreshToken, user: currentUser } = get();
-    void notificationsService.unlinkUserFromDeviceToken(currentUser?.id).catch((e: unknown) => logger.warn("auth.device_unlink_failed", { message: e instanceof Error ? e.message : String(e) }));
+    // CUS-05: await the unlink BEFORE sign-out so the unregister call still
+    // holds a valid auth token (fire-and-forget raced the sign-out and lost
+    // it). Bounded by DEVICE_UNLINK_TIMEOUT_MS so a dead network cannot trap
+    // the user signed in; a failed/timed-out unlink never blocks sign-out.
+    await unlinkDeviceTokenBeforeSignOut(currentUser?.id);
     await authRepository.logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();
