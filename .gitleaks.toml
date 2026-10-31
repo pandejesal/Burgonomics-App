@@ -1,0 +1,14 @@
+# gitleaks configuration — narrow allowlist for non-credential false positives.
+#
+# `src/features/loyalty/state/loyaltyStore.ts` stores the local cache namespace
+# `burgonomics.loyalty.v1` in a constant named BASE_STORAGE_KEY. The generic
+# `api-key` heuristic matches `KEY = "…"`, but this is a localStorage key, not a
+# credential, and it is already present in git history. The allowlist is scoped
+# to that file and that exact string; nothing else is exempted.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Local storage namespace constant, not a credential"
+paths = ['''src/features/loyalty/state/loyaltyStore\.ts''']
+regexes = ['''burgonomics\.loyalty\.v1''']
