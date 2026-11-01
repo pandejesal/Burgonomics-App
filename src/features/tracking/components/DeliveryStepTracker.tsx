@@ -19,7 +19,25 @@ export function DeliveryStepTracker({ tracking, onAdvanceDevStatus }: DeliverySt
     riderName,
     riderPhone,
     riderVehicleNumber,
+    paymentState,
   } = tracking;
+
+  // CUS-16 follow-up: an online order exists before Razorpay opens, so an
+  // abandoned payment leaves a PLACED order nobody has paid for. Step 1 used
+  // to read "Placed / Confirmed" and render as the current stage, which told
+  // the customer (and anyone reading the screen) the order was confirmed when
+  // the kitchen had never received it. While the payment is unconfirmed the
+  // stepper names the payment itself and marks NO stage done or current.
+  const paymentUnresolved = paymentState === "unpaid" || paymentState === "confirming";
+  const stepOneTitle = paymentUnresolved ? "Payment" : "Placed";
+  const stepOneSub = paymentUnresolved
+    ? paymentState === "confirming"
+      ? "Confirming"
+      : "Pending"
+    : "Confirmed";
+  // 0 means "no stage is current": the progress fill stays empty and every
+  // step renders as future until the server records the payment.
+  const displayStage = paymentUnresolved ? 0 : currentStage;
 
   if (isCancelled) {
     return (
@@ -47,8 +65,8 @@ export function DeliveryStepTracker({ tracking, onAdvanceDevStatus }: DeliverySt
   const steps = [
     {
       stage: 1,
-      title: "Placed",
-      sub: "Confirmed",
+      title: stepOneTitle,
+      sub: stepOneSub,
       icon: Check,
     },
     {
@@ -116,18 +134,18 @@ export function DeliveryStepTracker({ tracking, onAdvanceDevStatus }: DeliverySt
         {/* Background connector bar */}
         <div className="absolute left-6 right-6 top-[26px] -z-0 h-1 rounded-full bg-divider" />
 
-        {/* Active progress fill */}
+        {/* Active progress fill — empty while no stage is current (unpaid). */}
         <div
           className="absolute left-6 top-[26px] -z-0 h-1 rounded-full bg-primary transition-all duration-500"
           style={{
-            width: `calc(${((currentStage - 1) / 3) * 100}% * (100% - 48px) / 100)`,
+            width: `calc(${(Math.max(0, displayStage - 1) / 3) * 100}% * (100% - 48px) / 100)`,
           }}
         />
 
         <div className="relative z-10 grid grid-cols-4 gap-2">
           {steps.map((step) => {
-            const isCompleted = step.stage < currentStage;
-            const isActive = step.stage === currentStage;
+            const isCompleted = displayStage > 0 && step.stage < displayStage;
+            const isActive = displayStage > 0 && step.stage === displayStage;
             const Icon = step.icon;
 
             return (

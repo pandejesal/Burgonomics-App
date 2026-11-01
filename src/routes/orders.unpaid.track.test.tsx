@@ -206,6 +206,22 @@ describe("CUS-16 — tracking derives status from the real payment state", () =>
     expect(container.querySelector('[data-testid="cancel-unpaid-order"]')).not.toBeNull();
   });
 
+  it("the progress stepper never reads as confirmed on an unpaid order", async () => {
+    // Live (3515da9): the stepper still showed a "Confirmed" sub-label on an
+    // unpaid order, and step 1 rendered as the current (highlighted) stage.
+    // An order the kitchen never received has not been confirmed.
+    fixture.order = serverOrder();
+    await mount();
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("Payment not completed");
+    expect(text).not.toContain("Confirmed");
+
+    // No step is done or current before the server records the payment.
+    const current = container.querySelectorAll('[aria-current="step"]');
+    expect(current.length).toBe(0);
+  });
+
   it("the payment race shows confirming, never a failure, right after paying", async () => {
     fixture.order = serverOrder({ placedAt: new Date().toISOString() });
     await mount();
