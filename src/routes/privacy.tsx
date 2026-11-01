@@ -76,7 +76,7 @@ function PrivacyPage() {
             <ul className="list-disc pl-5 space-y-1 text-sm text-text-secondary">
               <li>
                 <strong>Contact Information:</strong> Mobile phone number (for OTP login and order
-                status SMS).
+                status SMS) and optional email address when you add it to your profile.
               </li>
               <li>
                 <strong>Profile Information:</strong> Name, delivery address, and dietary
@@ -91,8 +91,8 @@ function PrivacyPage() {
                 notification tokens.
               </li>
               <li>
-                <strong>Photos (optional):</strong> Profile avatar and support ticket attachments
-                you voluntarily upload.
+                <strong>Support information:</strong> Messages and order details you submit
+                when asking for help.
               </li>
               <li>
                 <strong>Location (optional):</strong> Precise/approximate GPS to route to nearest
