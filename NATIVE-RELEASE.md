@@ -14,3 +14,5 @@ ASC_API_KEY_BASE64 (base64 .p8), ASC_KEY_ID, ASC_ISSUER_ID, APPLE_TEAM_ID, IOS_C
 
 ## Apple web association
 Set build environment TEAM_ID to the real Apple application-identifier prefix. Native CI maps APPLE_TEAM_ID secret to TEAM_ID. Every npm production/mobile build generates AASA; unset omits it, invalid fails and removes stale output. Host generated JSON without redirects; merge both app entries when sharing a host. No placeholder document is committed.
+
+Simulator jobs use an explicit macOS-only non-live fixture and --mode staging to compile without account credentials. These jobs never archive/export a store artifact. Production Android and Apple archive jobs still require all production configuration secrets and fail clearly if absent. Do not submit simulator artifacts.

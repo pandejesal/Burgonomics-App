@@ -69,15 +69,13 @@ jobs:
       - name: 📦 Install Node Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Prepare native production configuration
-        run: node scripts/prepare-native-config.mjs ios
+      - name: Prepare simulator-only compile fixture
+        run: node scripts/prepare-simulator-config.mjs
         env:
-          MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
-          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-
+          CI_SIMULATOR_ONLY: 'true'
       - name: ⚡ Build Web Bundle & Sync Capacitor iOS
         run: |
-          npm run build:mobile
+          npm run build:mobile -- --mode staging
           npx cap sync ios
           node scripts/configure-ios-firebase.mjs
 
