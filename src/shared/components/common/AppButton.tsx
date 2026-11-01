@@ -21,7 +21,9 @@ const variants: Record<Variant, string> = {
   outlined: "bg-transparent text-primary-text border-2 border-primary hover:bg-primary/5",
   ghost: "bg-transparent text-primary-text hover:bg-primary/5",
   danger: "bg-error text-white shadow-[var(--shadow-low)] hover:brightness-110",
-  cta: "bg-accent text-accent-foreground shadow-[var(--shadow-brand)] hover:brightness-110",
+  // `cta` is the strongest call to action on a screen, so it carries the
+  // primary green. Orange is reserved for sparse highlights and badges.
+  cta: "bg-primary text-primary-foreground shadow-[var(--shadow-brand)] hover:brightness-110",
 };
 
 const sizes: Record<Size, string> = {

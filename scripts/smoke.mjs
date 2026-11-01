@@ -54,7 +54,9 @@ if (adminRefFound) {
 }
 
 // 4. DON'T WANTs Check
-process.stdout.write("\n[STEP] Architecture Prohibitions (kitchen_orders|walletBalance|ioredis|bull|socket.io) ... ");
+process.stdout.write(
+  "\n[STEP] Architecture Prohibitions (kitchen_orders|walletBalance|ioredis|bull|socket.io) ... ",
+);
 const forbiddenPatterns = [/walletBalance/, /kitchen_orders/, /ioredis/, /\bbull\b/, /socket\.io/];
 let forbiddenFound = false;
 for (const file of srcFiles) {

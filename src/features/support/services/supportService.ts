@@ -90,9 +90,7 @@ function normalizeTicketNumber(raw: BackendTicketResponse, fallback: string): st
   );
 }
 
-function normalizeStatus(
-  raw: BackendTicketResponse,
-): SupportTicket["status"] {
+function normalizeStatus(raw: BackendTicketResponse): SupportTicket["status"] {
   const nested = raw.ticket;
   const s = (nested?.status ?? raw.status ?? "open").toLowerCase();
   if (s === "in_progress" || s === "in-progress" || s === "progress") return "in_progress";
@@ -253,7 +251,10 @@ export const supportService = {
       return fail("INVALID_TICKET", "Please add a subject and a short message.");
     }
     if (!isLiveApiBaseUrl()) {
-      return fail("BACKEND_UNAVAILABLE", "Support backend is not connected yet. Please try again later.");
+      return fail(
+        "BACKEND_UNAVAILABLE",
+        "Support backend is not connected yet. Please try again later.",
+      );
     }
     try {
       const res = await httpClient.post<BackendTicketResponse>(
@@ -269,9 +270,7 @@ export const supportService = {
       );
       const raw = (res.data ?? {}) as BackendTicketResponse;
       const fallbackId =
-        typeof raw.id === "string" && raw.id
-          ? raw.id
-          : `tkt_${Date.now().toString(36)}`;
+        typeof raw.id === "string" && raw.id ? raw.id : `tkt_${Date.now().toString(36)}`;
       return ok({
         id: normalizeTicketId(raw, fallbackId),
         subject: input.subject.trim(),
@@ -314,8 +313,7 @@ export const supportService = {
       }
       return ok(urls);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Photo upload failed. Please try again.";
+      const message = err instanceof Error ? err.message : "Photo upload failed. Please try again.";
       return fail("EVIDENCE_UPLOAD_FAILED", message, true);
     }
   },
@@ -325,7 +323,10 @@ export const supportService = {
       return fail("INVALID_RATING", "Please select a rating between 1 and 5.");
     }
     if (!isLiveApiBaseUrl()) {
-      return fail("BACKEND_UNAVAILABLE", "Support backend is not connected yet. Please try again later.");
+      return fail(
+        "BACKEND_UNAVAILABLE",
+        "Support backend is not connected yet. Please try again later.",
+      );
     }
     try {
       const res = await httpClient.post<{ id?: string; createdAt?: number }>(
@@ -360,7 +361,9 @@ export const supportService = {
    * createTicketSchema server-side; failures are honest (no local ticket
    * fabrication — the caller keeps its own draft UX).
    */
-  async submitTicketToLiveBackend(input: LiveTicketSubmitInput): Promise<
+  async submitTicketToLiveBackend(
+    input: LiveTicketSubmitInput,
+  ): Promise<
     ApiResult<{ id: string; ticketNumber?: string; status?: string; createdAt?: string | number }>
   > {
     try {
@@ -389,7 +392,10 @@ export const supportService = {
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        return fail("TICKET_SUBMIT_FAILED", `Ticket service refused the request (HTTP ${res.status}): ${text}`);
+        return fail(
+          "TICKET_SUBMIT_FAILED",
+          `Ticket service refused the request (HTTP ${res.status}): ${text}`,
+        );
       }
       const data = (await res.json()) as {
         id?: string;
@@ -407,7 +413,8 @@ export const supportService = {
         createdAt: data.createdAt,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not reach support. Please try again.";
+      const message =
+        err instanceof Error ? err.message : "Could not reach support. Please try again.";
       return fail("TICKET_SUBMIT_FAILED", message, true);
     }
   },

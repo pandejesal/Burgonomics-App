@@ -12,6 +12,16 @@ function toPayAmount(html: string): string {
 }
 
 describe("MT-09: Tax-Inclusive Pricing Display Suite", () => {
+  it("presents the same bill as a flat section, not another nested card", () => {
+    const html = renderToStaticMarkup(<BillBreakdown subtotal={418} gstAmount={20.9} />);
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    expect(container.firstElementChild?.classList.contains("border-t")).toBe(true);
+    expect(container.firstElementChild?.classList.contains("border")).toBe(false);
+    expect(container.firstElementChild?.className).not.toContain("shadow");
+    expect(toPayAmount(html)).toBe(formatINR(418));
+  });
+
   describe("1. 5% GST is inclusive — never added on top of the subtotal", () => {
     it("leaves To Pay at the GST-inclusive item total when no fees apply", () => {
       // Menu prices already carry 5% GST (2.5% CGST + 2.5% SGST inside ₹349).

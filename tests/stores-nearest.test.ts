@@ -38,17 +38,14 @@ describe("Prompt 08: Store Locator, Geofencing & Branch Switching Suite", () => 
   describe("1. Haversine Distance Precision", () => {
     it("computes accurate distance in kilometers between two GPS coordinates", () => {
       // User near Adajan Gam (21.2000, 72.8000) to Surat Store (21.1959, 72.7933)
-      const dist = haversineKm(
-        { lat: 21.2000, lng: 72.8000 },
-        { lat: 21.1959, lng: 72.7933 }
-      );
+      const dist = haversineKm({ lat: 21.2, lng: 72.8 }, { lat: 21.1959, lng: 72.7933 });
       expect(dist).toBeGreaterThan(0.5);
       expect(dist).toBeLessThan(1.5);
       expect(parseFloat(dist.toFixed(1))).toBe(0.8);
     });
 
     it("ranks nearest store accurately when sorted", () => {
-      const userCoords = { lat: 21.2000, lng: 72.8000 }; // Surat
+      const userCoords = { lat: 21.2, lng: 72.8 }; // Surat
 
       const sorted = [...sampleStores].sort((a, b) => {
         const distA = haversineKm(userCoords, { lat: a.lat, lng: a.lng });

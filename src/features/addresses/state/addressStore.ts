@@ -160,11 +160,11 @@ interface ScopedAddresses {
 // plus the legacy-key fallback for first-login handoff).
 function readScope(uid: string | null): ScopedAddresses {
   const empty: ScopedAddresses = { addresses: [], selectedId: null };
-  if (typeof window === 'undefined') return empty;
+  if (typeof window === "undefined") return empty;
   try {
     const raw =
-      window.localStorage.getItem(addressStorageKey('burg.addresses', uid)) ??
-      window.localStorage.getItem('burg.addresses');
+      window.localStorage.getItem(addressStorageKey("burg.addresses", uid)) ??
+      window.localStorage.getItem("burg.addresses");
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as {
       state?: { addresses?: unknown; selectedId?: unknown };
@@ -173,7 +173,7 @@ function readScope(uid: string | null): ScopedAddresses {
       ? (parsed.state.addresses as Address[])
       : [];
     const selectedId =
-      typeof parsed?.state?.selectedId === 'string' ? parsed.state.selectedId : null;
+      typeof parsed?.state?.selectedId === "string" ? parsed.state.selectedId : null;
     return { addresses, selectedId };
   } catch {
     return empty;

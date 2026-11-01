@@ -11,7 +11,9 @@ import { onAuthUidChange } from "@/features/auth/utils/scopedPersistence";
 
 // Local-only mock: never complete a pending mutation in another account.
 let authRevision = 0;
-onAuthUidChange(() => { authRevision += 1; });
+onAuthUidChange(() => {
+  authRevision += 1;
+});
 
 async function localResult<T>(data: T, milliseconds: number): Promise<ApiResult<T>> {
   const revision = authRevision;

@@ -69,7 +69,9 @@ describe("menuImageMap — mapping integrity", () => {
       if (publicFileSet.has(rel)) continue;
       const caseHit = publicFilesByLower.get(rel.toLowerCase());
       broken.push(
-        caseHit ? `${name} → ${value} (case mismatch, actual: /${caseHit})` : `${name} → ${value} (missing)`,
+        caseHit
+          ? `${name} → ${value} (case mismatch, actual: /${caseHit})`
+          : `${name} → ${value} (missing)`,
       );
     }
     expect(broken).toEqual([]);

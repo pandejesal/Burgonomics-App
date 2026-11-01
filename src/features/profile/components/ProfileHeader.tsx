@@ -27,13 +27,13 @@ export function ProfileHeader({ profile, completion }: Props) {
   return (
     <section
       aria-label="Your profile"
-      className="rounded-2xl border border-divider bg-surface p-4 shadow-xs"
+      className="rounded-2xl border border-divider bg-surface p-5 shadow-xs"
     >
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
           <div
             aria-hidden
-            className="grid h-16 w-16 place-items-center rounded-full bg-[#0E4825]/10 text-[#0E4825] dark:text-[#4ADE80] font-black"
+            className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary-text font-semibold"
           >
             {profile.photoUrl ? (
               <SafeImage
@@ -42,32 +42,32 @@ export function ProfileHeader({ profile, completion }: Props) {
                 className="h-16 w-16 rounded-full object-cover"
               />
             ) : initials ? (
-              <span className="text-lg font-black">{initials}</span>
+              <span className="text-lg font-semibold">{initials}</span>
             ) : (
               <User className="h-7 w-7" />
             )}
           </div>
         </div>
 
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <h3 className="text-base font-black text-text truncate">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="type-title-large text-text">
               {profile.fullName || "Burger Connoisseur"}
             </h3>
-            <span className="px-2 py-0.5 rounded-full bg-[#0E4825]/15 text-[#0E4825] dark:text-[#4ADE80] text-[10px] font-black uppercase">
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-sm font-semibold text-primary-text">
               {tier}
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-            <span className="font-mono font-medium">+91 {profile.phone}</span>
+          <div className="flex flex-wrap items-center gap-1.5 text-sm text-text-secondary">
+            <span className="tabular-nums">+91 {profile.phone}</span>
             <span title="Verified Mobile Number" className="inline-flex items-center">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden />
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden />
             </span>
           </div>
 
           {profile.email && (
-            <p className="text-[11px] text-text-secondary truncate">
+            <p className="text-sm leading-relaxed text-text-secondary break-words">
               {profile.email}
             </p>
           )}
@@ -79,8 +79,8 @@ export function ProfileHeader({ profile, completion }: Props) {
       </div>
 
       {completion.percent < 100 && completion.missing.length > 0 && (
-        <div className="mt-3 rounded-xl bg-[#0E4825]/5 border border-[#0E4825]/10 px-3 py-2">
-          <p className="text-[11px] text-text-secondary">
+        <div className="mt-4 rounded-xl border border-primary/10 bg-primary/5 px-4 py-3">
+          <p className="text-sm leading-relaxed text-text-secondary">
             Complete your profile — add {completion.missing.slice(0, 2).join(", ").toLowerCase()}.
           </p>
         </div>

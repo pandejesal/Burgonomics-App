@@ -3,6 +3,7 @@ export * from "./repositories/CartRepository";
 export * from "./services/cartService";
 export * from "./state/cartStore";
 export { CartItemRow } from "./components/CartItemRow";
+export { CookingInstructionsSection } from "./components/CookingInstructionsSection";
 export { CartItemList } from "./components/CartItemList";
 export { BillBreakdown } from "./components/BillBreakdown";
 export { GrillCoinsRedemption, LoyaltyPointsRedemption } from "./components/GrillCoinsRedemption";

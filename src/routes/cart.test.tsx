@@ -55,10 +55,7 @@ describe("Cart Route & Financial Calculations Specification Suite", () => {
       // MT-09: menu prices are GST-inclusive (5% already sits inside the 400),
       // so the tax must NOT be added on top — that double-charges it. The old
       // additive formula billed 310 for this basket.
-      const toPay = Math.max(
-        0,
-        subtotal - discount - coins + packaging + delivery + tip
-      );
+      const toPay = Math.max(0, subtotal - discount - coins + packaging + delivery + tip);
 
       // 400 - 50 - 100 + 20 + 0 + 20 = 290
       expect(toPay).toBe(290);

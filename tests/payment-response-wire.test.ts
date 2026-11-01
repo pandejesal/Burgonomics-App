@@ -66,9 +66,7 @@ function responseFor(payload: unknown, status = 200, headers: Record<string, str
 }
 
 function stubFetch(payload: unknown, status = 200, headers: Record<string, string> = {}) {
-  const fetchMock = vi.fn(async (...args: FetchCall) =>
-    responseFor(payload, status, headers)
-  );
+  const fetchMock = vi.fn(async (...args: FetchCall) => responseFor(payload, status, headers));
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -201,7 +199,7 @@ describe("paymentsService.verify â€” real backend wire (R01)", () => {
     const fetchMock = stubFetch(
       { error: "Transfer in progress elsewhere", code: "TRANSFER_IN_PROGRESS" },
       202,
-      { "Retry-After": "2" }
+      { "Retry-After": "2" },
     );
 
     const res = await paymentsService.verify({
@@ -287,11 +285,9 @@ describe("PaymentRepository.verifyPayment â€” central pending id attachment
   it("passes pending transfer failures through as typed pending results from the repository", async () => {
     usePaymentStore.getState().setInternalOrderId("ord_pending_202");
 
-    stubFetch(
-      { error: "Transfer in progress elsewhere", code: "TRANSFER_IN_PROGRESS" },
-      202,
-      { "Retry-After": "2" }
-    );
+    stubFetch({ error: "Transfer in progress elsewhere", code: "TRANSFER_IN_PROGRESS" }, 202, {
+      "Retry-After": "2",
+    });
 
     const res = await paymentRepository.verifyPayment({
       orderId: "order_rzp_gateway_202",
@@ -307,18 +303,15 @@ describe("PaymentRepository.verifyPayment â€” central pending id attachment
   });
 });
 
-
 describe("paymentsService.verify — bounded retry & error mapping (R01 correction)", () => {
   it("polls a 202 then a 200 to a verified success without minting a new payment", async () => {
     let n = 0;
     const fetchMock = vi.fn(async () => {
       n += 1;
       if (n === 1) {
-        return responseFor(
-          { error: "in progress", code: "TRANSFER_IN_PROGRESS" },
-          202,
-          { "Retry-After": "0" }
-        );
+        return responseFor({ error: "in progress", code: "TRANSFER_IN_PROGRESS" }, 202, {
+          "Retry-After": "0",
+        });
       }
       return responseFor({
         success: true,
@@ -345,11 +338,9 @@ describe("paymentsService.verify — bounded retry & error mapping (R01 correcti
 
   it("returns typed pending (not throw) after exhausting 202 retries", async () => {
     const fetchMock = vi.fn(async () =>
-      responseFor(
-        { error: "in progress", code: "TRANSFER_IN_PROGRESS" },
-        202,
-        { "Retry-After": "0" }
-      )
+      responseFor({ error: "in progress", code: "TRANSFER_IN_PROGRESS" }, 202, {
+        "Retry-After": "0",
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -437,7 +428,6 @@ describe("paymentsService.verify — bounded retry & error mapping (R01 correcti
   });
 });
 
-
 describe("paymentsService.verify — R01 terminal/reconciliation preservation", () => {
   it("preserves ORDER_TERMINAL from an HTTP 200 legacy envelope instead of collapsing to malformed", async () => {
     stubFetch({
@@ -511,11 +501,12 @@ describe("paymentsService.verify — R01 terminal/reconciliation preservation", 
   });
 });
 
-
 describe("PaymentRepository.createPaymentOrder — reconciliation entry guard", () => {
   it("refuses to mint a new payable order while reconciliation is pending (no fetch)", async () => {
     const uid = "cust_wire_1";
-    usePaymentStore.getState().setReconciliation(true, "PAYMENT_SYNC_PENDING", "ord_pending", "order_rzp_pending");
+    usePaymentStore
+      .getState()
+      .setReconciliation(true, "PAYMENT_SYNC_PENDING", "ord_pending", "order_rzp_pending");
 
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -528,7 +519,6 @@ describe("PaymentRepository.createPaymentOrder — reconciliation entry guard", 
   });
 });
 
-
 // C01 (A08 B1) - signature codes no longer prove "uncaptured".
 // INVALID_SIGNATURE/VERIFICATION_FAILED/SIGNATURE_MISMATCH only prove an HMAC
 // mismatch: a genuinely captured payment whose callback was truncated or
@@ -537,19 +527,28 @@ describe("PaymentRepository.createPaymentOrder — reconciliation entry guard", 
 // non-capture codes keep the mark-failed path.
 describe("C01 - signature codes no longer prove uncaptured (A08 B1 wire regression)", () => {
   it.each([
-    "INVALID_SIGNATURE", "VERIFICATION_FAILED", "SIGNATURE_MISMATCH",
-    "AMOUNT_MISMATCH", "CURRENCY_MISMATCH", "ORDER_MISMATCH", "ORDER_NOT_FOUND",
-    "ORDER_NOT_OWNED", "NOT_OWNER", "NO_CAPTURED_PAYMENT", "CAPTURE_FAILED", "CAPTURE_NOT_FOUND",
-  ])(
-    "classifies %s as NOT uncaptured",
-    (code) => {
-      expect(isUncapturedPaymentError(code)).toBe(false);
-      expect(resolveVerifyOutcome({
+    "INVALID_SIGNATURE",
+    "VERIFICATION_FAILED",
+    "SIGNATURE_MISMATCH",
+    "AMOUNT_MISMATCH",
+    "CURRENCY_MISMATCH",
+    "ORDER_MISMATCH",
+    "ORDER_NOT_FOUND",
+    "ORDER_NOT_OWNED",
+    "NOT_OWNER",
+    "NO_CAPTURED_PAYMENT",
+    "CAPTURE_FAILED",
+    "CAPTURE_NOT_FOUND",
+  ])("classifies %s as NOT uncaptured", (code) => {
+    expect(isUncapturedPaymentError(code)).toBe(false);
+    expect(
+      resolveVerifyOutcome({
         verify: { success: false, error: { code, message: "Verification refused" } },
-        internalOrderId: "ord_reconcile", paymentId: "pay_reconcile",
-      }).kind).toBe("reconciliation");
-    },
-  );
+        internalOrderId: "ord_reconcile",
+        paymentId: "pay_reconcile",
+      }).kind,
+    ).toBe("reconciliation");
+  });
 
   it("routes a real 401 INVALID_SIGNATURE wire response to reconciliation, never mark-failed", async () => {
     stubFetch({ error: "Signature mismatch", code: "INVALID_SIGNATURE" }, 401);
@@ -602,7 +601,9 @@ describe("C01 - signature codes no longer prove uncaptured (A08 B1 wire regressi
 
   it("routes an exhausted 202 (bounded same-request retry) to TRANSFER_IN_PROGRESS reconciliation", async () => {
     const fetchMock = vi.fn(async () =>
-      responseFor({ error: "in progress", code: "TRANSFER_IN_PROGRESS" }, 202, { "Retry-After": "0" }),
+      responseFor({ error: "in progress", code: "TRANSFER_IN_PROGRESS" }, 202, {
+        "Retry-After": "0",
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
 

@@ -54,10 +54,10 @@ export function ModifierGroupSelector({
               ? "1 selected"
               : "Choose 1"
             : group.maxSelect
-            ? `Up to ${group.maxSelect}${selectedCount > 0 ? ` (${selectedCount} selected)` : ""}`
-            : selectedCount > 0
-            ? `${selectedCount} selected`
-            : "Optional"}
+              ? `Up to ${group.maxSelect}${selectedCount > 0 ? ` (${selectedCount} selected)` : ""}`
+              : selectedCount > 0
+                ? `${selectedCount} selected`
+                : "Optional"}
         </span>
       </legend>
 
@@ -70,11 +70,7 @@ export function ModifierGroupSelector({
 
       {/* Real buttons, not clickable divs: each option is focusable by Tab and
           activated by Enter/Space, and reports its own selection state. */}
-      <div
-        role={isSingle ? "radiogroup" : "group"}
-        aria-label={group.name}
-        className="space-y-2"
-      >
+      <div role={isSingle ? "radiogroup" : "group"} aria-label={group.name} className="space-y-2">
         {group.options.map((opt) => {
           const isSelected = selectedOptionIds.includes(opt.id);
           const isOutOfStock = !!opt.outOfStock;
@@ -92,7 +88,8 @@ export function ModifierGroupSelector({
                 isSelected
                   ? "border-[#0E4825] bg-[#0E4825]/10 shadow-xs"
                   : "border-divider bg-surface hover:border-primary/40",
-                isOutOfStock && "opacity-50 cursor-not-allowed pointer-events-none bg-bg-secondary/40"
+                isOutOfStock &&
+                  "opacity-50 cursor-not-allowed pointer-events-none bg-bg-secondary/40",
               )}
             >
               {/* Left Option Radio / Checkbox & Name */}
@@ -100,12 +97,10 @@ export function ModifierGroupSelector({
                 <div
                   className={cn(
                     "flex items-center justify-center shrink-0 transition-all",
-                    isSingle
-                      ? "w-5 h-5 rounded-full border-2"
-                      : "w-5 h-5 rounded-md border-2",
+                    isSingle ? "w-5 h-5 rounded-full border-2" : "w-5 h-5 rounded-md border-2",
                     isSelected
                       ? "border-[#0E4825] bg-[#0E4825] text-white"
-                      : "border-divider bg-surface"
+                      : "border-divider bg-surface",
                   )}
                 >
                   {isSelected && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
@@ -128,8 +123,8 @@ export function ModifierGroupSelector({
                 {opt.priceDelta > 0
                   ? `+ ₹${opt.priceDelta}`
                   : opt.priceDelta < 0
-                  ? `- ₹${Math.abs(opt.priceDelta)}`
-                  : "Free"}
+                    ? `- ₹${Math.abs(opt.priceDelta)}`
+                    : "Free"}
               </span>
             </button>
           );

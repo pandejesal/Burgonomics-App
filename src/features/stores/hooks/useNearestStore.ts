@@ -1,11 +1,11 @@
-import { useMemo, useCallback } from 'react';
-import { useStoreSelection } from '../state/storeStore';
-import { useLocationPermission } from './useLocationPermission';
-import { haversineKm } from '../utils/distance';
-import { isStoreInDeliveryArea } from '../utils/serviceArea';
-import type { Store } from '../models/Store';
-import { useCartStore, selectHasItems } from '@/features/cart';
-import { useAddressStore, selectSelectedAddress } from '@/features/addresses/state/addressStore';
+import { useMemo, useCallback } from "react";
+import { useStoreSelection } from "../state/storeStore";
+import { useLocationPermission } from "./useLocationPermission";
+import { haversineKm } from "../utils/distance";
+import { isStoreInDeliveryArea } from "../utils/serviceArea";
+import type { Store } from "../models/Store";
+import { useCartStore, selectHasItems } from "@/features/cart";
+import { useAddressStore, selectSelectedAddress } from "@/features/addresses/state/addressStore";
 
 export interface NearestStoreResult {
   store: Store;
@@ -20,19 +20,19 @@ export interface NearestStoreResult {
  */
 export function isStoreOpenAtTime(
   hours: { open: string; close: string },
-  currentDate: Date = new Date()
+  currentDate: Date = new Date(),
 ): { isOpen: boolean; statusText: string } {
   if (!hours?.open || !hours?.close) {
-    return { isOpen: true, statusText: 'Open Now' };
+    return { isOpen: true, statusText: "Open Now" };
   }
 
   const parseTimeToMinutes = (timeStr: string): number => {
     // Supports "11:00", "11:00 AM", "23:30", "11:30 PM"
     const cleaned = timeStr.trim().toUpperCase();
-    const isPM = cleaned.includes('PM');
-    const isAM = cleaned.includes('AM');
-    const timePart = cleaned.replace(/[^0-9:]/g, '');
-    const [hStr, mStr] = timePart.split(':');
+    const isPM = cleaned.includes("PM");
+    const isAM = cleaned.includes("AM");
+    const timePart = cleaned.replace(/[^0-9:]/g, "");
+    const [hStr, mStr] = timePart.split(":");
     let h = parseInt(hStr, 10) || 0;
     const m = parseInt(mStr, 10) || 0;
 
@@ -46,7 +46,7 @@ export function isStoreOpenAtTime(
   const closeMinutes = parseTimeToMinutes(hours.close);
   const currentMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();
 
-  let isOpen = false;
+  let isOpen: boolean;
 
   if (closeMinutes > openMinutes) {
     // Normal same-day schedule (e.g. 11:00 to 23:30)
@@ -72,13 +72,7 @@ export function isStoreOpenAtTime(
 }
 
 export function useNearestStore() {
-  const {
-    stores,
-    activeStore,
-    setActiveStore,
-    coords,
-    fulfillment,
-  } = useStoreSelection();
+  const { stores, activeStore, setActiveStore, coords, fulfillment } = useStoreSelection();
 
   const permission = useLocationPermission();
   const selectedAddress = useAddressStore(selectSelectedAddress);
@@ -86,7 +80,7 @@ export function useNearestStore() {
   // User position precedence: (a) selected delivery address with lat/lng,
   // (b) device/cached GPS, (c) null -> nothing gets ranked or blocked.
   const activeCoords = useMemo(() => {
-    if (typeof selectedAddress?.lat === 'number' && typeof selectedAddress?.lng === 'number') {
+    if (typeof selectedAddress?.lat === "number" && typeof selectedAddress?.lng === "number") {
       return { lat: selectedAddress.lat, lng: selectedAddress.lng };
     }
     return coords ?? permission.coords ?? null;
@@ -103,59 +97,63 @@ export function useNearestStore() {
 
     // Filter out-of-area stores when fulfillment is delivery and we have coords
     if (fulfillment === "delivery" && activeCoords) {
-      filteredStores = stores.filter((store) => isStoreInDeliveryArea(store, activeCoords.lat, activeCoords.lng));
+      filteredStores = stores.filter((store) =>
+        isStoreInDeliveryArea(store, activeCoords.lat, activeCoords.lng),
+      );
     }
 
-    return filteredStores.map((store: Store) => {
-      let distanceKm = 0;
-      if (activeCoords && store.lat && store.lng) {
-        distanceKm = parseFloat(
-          haversineKm(
-            { lat: activeCoords.lat, lng: activeCoords.lng },
-            { lat: store.lat, lng: store.lng }
-          ).toFixed(1)
-        );
-      }
+    return filteredStores
+      .map((store: Store) => {
+        let distanceKm = 0;
+        if (activeCoords && store.lat && store.lng) {
+          distanceKm = parseFloat(
+            haversineKm(
+              { lat: activeCoords.lat, lng: activeCoords.lng },
+              { lat: store.lat, lng: store.lng },
+            ).toFixed(1),
+          );
+        }
 
-      // P1-3: hours is null when the store doc carries no schedule — never
-      // invent one. Fall back to the doc's own `isOpen` field instead, which
-      // is `undefined` when the doc never said — unknown must not be spoken
-      // of as open OR as closed.
-      const { isOpen, statusText } = store.hours
-        ? isStoreOpenAtTime(store.hours)
-        : {
-            isOpen: store.isOpen,
-            statusText:
-              store.isOpen === true
-                ? "Open Now"
-                : store.isOpen === false
-                  ? "Closed"
-                  : "Hours unavailable",
-          };
+        // P1-3: hours is null when the store doc carries no schedule — never
+        // invent one. Fall back to the doc's own `isOpen` field instead, which
+        // is `undefined` when the doc never said — unknown must not be spoken
+        // of as open OR as closed.
+        const { isOpen, statusText } = store.hours
+          ? isStoreOpenAtTime(store.hours)
+          : {
+              isOpen: store.isOpen,
+              statusText:
+                store.isOpen === true
+                  ? "Open Now"
+                  : store.isOpen === false
+                    ? "Closed"
+                    : "Hours unavailable",
+            };
 
-      return {
-        store: {
-          ...store,
-          distanceKm: distanceKm > 0 ? distanceKm : undefined,
+        return {
+          store: {
+            ...store,
+            distanceKm: distanceKm > 0 ? distanceKm : undefined,
+            isOpen,
+          },
+          distanceKm,
           isOpen,
-        },
-        distanceKm,
-        isOpen,
-        closingStatusText: statusText,
-      };
-    }).sort((a: NearestStoreResult, b: NearestStoreResult) => {
-      if (activeCoords) {
-        return a.distanceKm - b.distanceKm;
-      }
-      return a.store.name.localeCompare(b.store.name);
-    });
+          closingStatusText: statusText,
+        };
+      })
+      .sort((a: NearestStoreResult, b: NearestStoreResult) => {
+        if (activeCoords) {
+          return a.distanceKm - b.distanceKm;
+        }
+        return a.store.name.localeCompare(b.store.name);
+      });
   }, [stores, activeCoords, fulfillment]);
 
   // Never hand back an out-of-area store while DELIVERY is active: an empty
   // (all-filtered) ranking must resolve to null rather than a far-away kitchen.
   const activeStoreAllowed =
     !activeStore ||
-    fulfillment !== 'delivery' ||
+    fulfillment !== "delivery" ||
     !activeCoords ||
     isStoreInDeliveryArea(activeStore, activeCoords.lat, activeCoords.lng);
 
@@ -164,7 +162,7 @@ export function useNearestStore() {
   const switchStoreSafely = useCallback(
     async (
       targetStore: Store,
-      onConfirmRequired?: (mismatchWarning: string) => Promise<boolean>
+      onConfirmRequired?: (mismatchWarning: string) => Promise<boolean>,
     ) => {
       const needsCartClear = hasCartItems && cartStoreId && cartStoreId !== targetStore.id;
       if (needsCartClear) {
@@ -186,7 +184,7 @@ export function useNearestStore() {
       if (needsCartClear) clearCart();
       return true;
     },
-    [hasCartItems, cartStoreId, clearCart, setActiveStore]
+    [hasCartItems, cartStoreId, clearCart, setActiveStore],
   );
 
   return {

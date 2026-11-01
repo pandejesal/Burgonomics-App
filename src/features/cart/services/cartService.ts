@@ -7,12 +7,7 @@
  * `resolvePricingConfig` (see CartRepository), so the cart, the checkout
  * screen and the gateway all charge the same numbers.
  */
-import type {
-  AppliedPromo,
-  CartLine,
-  CartTotals,
-  Fulfillment,
-} from "@/features/cart/models";
+import type { AppliedPromo, CartLine, CartTotals, Fulfillment } from "@/features/cart/models";
 import {
   calculateOrderTotals,
   computeItemUnitPrice,

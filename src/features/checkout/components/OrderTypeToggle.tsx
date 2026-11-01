@@ -27,10 +27,19 @@ interface Option {
 const OPTIONS: Option[] = [
   { id: "delivery", label: "Delivery", emoji: "🛵", Icon: Bike, hint: "₹149 min • prepaid only" },
   { id: "takeaway", label: "Takeaway", emoji: "🛍️", Icon: ShoppingBag, hint: "Pick up at counter" },
-  { id: "dinein", label: "Dine-In", emoji: "🍽️", Icon: UtensilsCrossed, hint: "Served to your table" },
+  {
+    id: "dinein",
+    label: "Dine-In",
+    emoji: "🍽️",
+    Icon: UtensilsCrossed,
+    hint: "Served to your table",
+  },
 ];
 
-function supportsMode(supports: StoreSupport | null | undefined, mode: PricingFulfillment): boolean {
+function supportsMode(
+  supports: StoreSupport | null | undefined,
+  mode: PricingFulfillment,
+): boolean {
   if (!supports) return true;
   if (mode === "delivery") return !!supports.delivery;
   if (mode === "takeaway") return !!supports.takeaway;
@@ -65,24 +74,21 @@ export function OrderTypeToggle({
     <section
       aria-labelledby="order-type-heading"
       className={cn(
-        "rounded-2xl border border-divider bg-surface p-4 shadow-xs space-y-3",
+        "space-y-3 rounded-[var(--radius-large)] border border-divider bg-surface p-4 shadow-xs sm:p-5",
         className,
       )}
     >
-      <div className="flex items-center gap-2">
-        <h2
-          id="order-type-heading"
-          className="text-xs font-bold uppercase tracking-wider text-text"
-        >
+      <div className="space-y-0.5">
+        <h2 id="order-type-heading" className="type-title-medium text-text-primary">
           Order Type
         </h2>
-        <span className="text-[10px] text-text-secondary">Changes your fees &amp; payment options</span>
+        <p className="type-caption text-text-secondary">Changes your fees &amp; payment options</p>
       </div>
 
       <div
         role="radiogroup"
         aria-label="Order type"
-        className="grid grid-cols-3 gap-2 rounded-2xl bg-bg-secondary p-1.5 border border-divider"
+        className="grid grid-cols-1 gap-2 rounded-[var(--radius-large)] border border-divider bg-bg-secondary p-1.5 min-[380px]:grid-cols-3"
       >
         {OPTIONS.map((opt) => {
           const isSelected = active === opt.id;
@@ -100,22 +106,24 @@ export function OrderTypeToggle({
                 onChange(opt.id);
               }}
               className={cn(
-                "flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 transition-all",
+                "flex min-h-[104px] flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] px-2 py-3 transition-colors",
                 isSelected
-                  ? "bg-[#0E4825] text-white shadow-sm"
+                  ? "bg-primary text-primary-foreground shadow-sm"
                   : enabled
-                    ? "text-text-secondary hover:bg-surface hover:text-text cursor-pointer"
-                    : "text-text-secondary opacity-40 cursor-not-allowed",
+                    ? "bg-surface text-text-primary hover:bg-surface/80 cursor-pointer"
+                    : "bg-surface text-text-secondary opacity-50 cursor-not-allowed",
               )}
             >
-              <span className="flex items-center gap-1 text-xs font-black leading-tight">
+              <span className="flex items-center gap-1 type-body font-semibold leading-tight">
                 <span aria-hidden>{opt.emoji}</span>
-                <span className={cn(isSelected ? "text-white" : "text-text")}>{opt.label}</span>
+                <span className={cn(isSelected ? "text-primary-foreground" : "text-text-primary")}>
+                  {opt.label}
+                </span>
               </span>
               <span
                 className={cn(
-                  "text-[9px] font-medium leading-tight text-center",
-                  isSelected ? "text-white/75" : "text-text-secondary",
+                  "type-caption text-center leading-snug break-words",
+                  isSelected ? "text-primary-foreground/85" : "text-text-secondary",
                 )}
               >
                 {enabled ? opt.hint : "Unavailable"}
@@ -128,10 +136,10 @@ export function OrderTypeToggle({
       {deliveryShortfall && !deliveryShortfall.met && deliveryShortfall.message && (
         <p
           role="status"
-          className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] font-semibold text-amber-800 dark:text-amber-200"
+          className="flex items-start gap-2 rounded-[var(--radius-medium)] border border-warning/40 bg-warning/10 px-3 py-2 type-caption font-medium text-warning"
         >
-          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span>{deliveryShortfall.message}</span>
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+          <span className="min-w-0 break-words">{deliveryShortfall.message}</span>
         </p>
       )}
     </section>

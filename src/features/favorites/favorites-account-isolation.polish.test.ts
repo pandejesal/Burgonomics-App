@@ -9,14 +9,21 @@ let uid: string | null = null;
 let notify: (state: { user: { id: string } | null }) => void;
 configureAuthUidSource({
   getUid: () => uid,
-  subscribe: (listener) => { notify = listener; return () => {}; },
+  subscribe: (listener) => {
+    notify = listener;
+    return () => {};
+  },
 });
 function authenticate(nextUid: string | null) {
   uid = nextUid;
   notify({ user: uid ? { id: uid } : null });
 }
 const favorite: Favorite = {
-  id: "fav-a", kind: "product", refId: "product-a", name: "A's favorite", addedAt: 1,
+  id: "fav-a",
+  kind: "product",
+  refId: "product-a",
+  name: "A's favorite",
+  addedAt: 1,
 };
 
 beforeEach(() => {
@@ -39,7 +46,10 @@ describe("device-local favorites account isolation", () => {
   });
 
   it("ignores ownerless legacy favorites and has no cross-device hydration", async () => {
-    localStorage.setItem("burg.favorites", JSON.stringify({ state: { items: [favorite] }, version: 1 }));
+    localStorage.setItem(
+      "burg.favorites",
+      JSON.stringify({ state: { items: [favorite] }, version: 1 }),
+    );
     authenticate("account-a");
     await useFavoritesStore.persist.rehydrate();
     expect(useFavoritesStore.getState().items).toEqual([]);

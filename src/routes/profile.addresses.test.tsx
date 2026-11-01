@@ -101,8 +101,8 @@ vi.mock("@/features/addresses/repositories/AddressRepository", () => ({
 import { Route } from "./profile.addresses";
 import { addressRepository } from "@/features/addresses/repositories/AddressRepository";
 
-const Page = (Route as unknown as { options: { component: React.ComponentType } })
-  .options.component;
+const Page = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 async function mount() {
   const container = document.createElement("div");

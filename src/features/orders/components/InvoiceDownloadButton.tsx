@@ -54,7 +54,7 @@ export function InvoiceDownloadButton({
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right;">${formatINR(item.unitPrice || 0)}</td>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right; font-weight: bold;">${formatINR((item.unitPrice || 0) * (item.quantity || 1))}</td>
         </tr>
-      `
+      `,
       )
       .join("");
 
@@ -62,6 +62,7 @@ export function InvoiceDownloadButton({
     // Document class: this is an ORDER RECEIPT, never a GST tax invoice.
     // "Paid" is a claim about money — only the payment state may make it.
     const isPaid = order.payment?.status === "paid";
+    // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
     // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
     // component backs OUT of the food value, never 5% on top. R1: the inclusive
     // share is `netFood * 0.05 / 1.05` and fees are outside the GST base.
@@ -186,9 +187,9 @@ export function InvoiceDownloadButton({
         onClick={handleDownloadInvoice}
         disabled={isGenerating}
         title="Download order receipt"
-        className={`p-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text transition-colors cursor-pointer disabled:opacity-50 ${className}`}
+        className={`grid h-11 w-11 place-items-center rounded-xl border border-divider bg-surface text-text transition-colors hover:bg-bg-secondary cursor-pointer disabled:opacity-50 ${className}`}
       >
-        <Download className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+        <Download className="h-4 w-4 text-primary-text" aria-hidden />
       </button>
     );
   }
@@ -198,9 +199,9 @@ export function InvoiceDownloadButton({
       type="button"
       onClick={handleDownloadInvoice}
       disabled={isGenerating}
-      className={`px-3.5 py-2 rounded-xl bg-surface hover:bg-bg-secondary border border-divider text-text text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 ${className}`}
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-divider bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:bg-bg-secondary cursor-pointer disabled:opacity-50 ${className}`}
     >
-      <FileText className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+      <FileText className="h-3.5 w-3.5 text-primary-text" aria-hidden />
       <span>{isGenerating ? "Preparing Invoice..." : "Download Invoice"}</span>
     </button>
   );

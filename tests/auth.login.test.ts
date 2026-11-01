@@ -30,7 +30,9 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
       expect(validatePhone("98250").valid).toBe(false);
       expect(validatePhone("98250123456").valid).toBe(false);
       expect(validatePhone("982501234").error).toBe(`Enter a ${PHONE_LENGTH}-digit mobile number.`);
-      expect(validatePhone("1234567890").error).toBe("Please enter a valid 10-digit Indian mobile number.");
+      expect(validatePhone("1234567890").error).toBe(
+        "Please enter a valid 10-digit Indian mobile number.",
+      );
     });
 
     it("sanitizes spaces, dashes, and +91 country prefixes cleanly", () => {

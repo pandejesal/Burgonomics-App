@@ -40,7 +40,9 @@ describe("tracking state truth — FAILED / refund claims / pickup reference", (
 
   it("cancelled copy claims a refund ONLY on a server-written refunded marker", () => {
     const unRefunded = getTrackingStateFromOrder(
-      order({ status: { code: "CANCELLED", label: "Cancelled", kind: "cancelled", terminal: true } }),
+      order({
+        status: { code: "CANCELLED", label: "Cancelled", kind: "cancelled", terminal: true },
+      }),
     );
     expect(unRefunded.stageName).toBe("Order Cancelled");
     expect(unRefunded.stageDescription).not.toContain("Refund");
@@ -59,7 +61,12 @@ describe("tracking state truth — FAILED / refund claims / pickup reference", (
       order({
         fulfillment: "takeaway",
         shortCode: "REF42",
-        status: { code: "READY_FOR_PICKUP", label: "Ready for pickup", kind: "in_progress", terminal: false },
+        status: {
+          code: "READY_FOR_PICKUP",
+          label: "Ready for pickup",
+          kind: "in_progress",
+          terminal: false,
+        },
       }),
     );
     expect(s.stageDescription).toContain("#REF42");
@@ -71,7 +78,12 @@ describe("tracking state truth — FAILED / refund claims / pickup reference", (
         fulfillment: "takeaway",
         shortCode: "SC01",
         orderNumber: "200341",
-        status: { code: "READY_FOR_PICKUP", label: "Ready for pickup", kind: "in_progress", terminal: false },
+        status: {
+          code: "READY_FOR_PICKUP",
+          label: "Ready for pickup",
+          kind: "in_progress",
+          terminal: false,
+        },
       }),
     );
     expect(s2.stageDescription).toContain("#200341");
@@ -80,7 +92,12 @@ describe("tracking state truth — FAILED / refund claims / pickup reference", (
   it("positive control: a live pickup delivery still reaches stage 3 normally", () => {
     const s = getTrackingStateFromOrder(
       order({
-        status: { code: "OUT_FOR_DELIVERY", label: "Out for delivery", kind: "in_progress", terminal: false },
+        status: {
+          code: "OUT_FOR_DELIVERY",
+          label: "Out for delivery",
+          kind: "in_progress",
+          terminal: false,
+        },
       }),
     );
     expect(s.currentStage).toBe(3);

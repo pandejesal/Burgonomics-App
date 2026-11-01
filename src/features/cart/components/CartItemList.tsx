@@ -32,7 +32,12 @@ export function CartItemList({ className }: CartItemListProps) {
   if (!lines || lines.length === 0) return null;
 
   return (
-    <div className={cn("divide-y divide-divider rounded-2xl bg-surface border border-divider overflow-hidden shadow-xs", className)}>
+    <div
+      className={cn(
+        "divide-y divide-divider rounded-2xl bg-surface border border-divider overflow-hidden shadow-xs",
+        className,
+      )}
+    >
       {lines.map((line) => {
         const lineTotal = line.unitPrice * line.quantity;
         return (
@@ -47,15 +52,16 @@ export function CartItemList({ className }: CartItemListProps) {
               )}
 
               <div className="space-y-1 min-w-0">
-                <h4 className="text-xs sm:text-sm font-bold text-text truncate">
-                  {line.name}
-                </h4>
+                <h4 className="text-xs sm:text-sm font-bold text-text truncate">{line.name}</h4>
 
                 {/* Modifiers List */}
                 {line.modifiers && line.modifiers.length > 0 && (
                   <div className="space-y-0.5">
                     {line.modifiers.map((m, idx) => (
-                      <p key={`${m.groupId ?? "g"}-${m.optionId ?? m.name}-${idx}`} className="text-[11px] text-text-secondary leading-tight line-clamp-1">
+                      <p
+                        key={`${m.groupId ?? "g"}-${m.optionId ?? m.name}-${idx}`}
+                        className="text-[11px] text-text-secondary leading-tight line-clamp-1"
+                      >
                         • {m.name} {m.priceDelta > 0 ? `(+₹${m.priceDelta})` : ""}
                       </p>
                     ))}
@@ -104,9 +110,7 @@ export function CartItemList({ className }: CartItemListProps) {
                 </button>
               </div>
 
-              <span className="text-xs font-mono font-black text-text">
-                {formatINR(lineTotal)}
-              </span>
+              <span className="text-xs font-mono font-black text-text">{formatINR(lineTotal)}</span>
             </div>
           </div>
         );

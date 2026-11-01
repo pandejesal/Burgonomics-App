@@ -196,14 +196,7 @@ export function AddressFormModal({
       if (token !== geocodeTokenRef.current) return;
 
       if (data && data.address) {
-        const {
-          road,
-          house_number,
-          city: fetchedCity,
-          town,
-          village,
-          postcode,
-        } = data.address;
+        const { road, house_number, city: fetchedCity, town, village, postcode } = data.address;
 
         const bestCity = fetchedCity || town || village;
         if (!cityEditedRef.current && bestCity) setCity(bestCity);
@@ -262,8 +255,7 @@ export function AddressFormModal({
       setCity(addressToEdit.city);
       setPincode(addressToEdit.pincode);
       setIsDefault(addressToEdit.isDefault);
-      const hasCoords =
-        Number.isFinite(addressToEdit.lat) && Number.isFinite(addressToEdit.lng);
+      const hasCoords = Number.isFinite(addressToEdit.lat) && Number.isFinite(addressToEdit.lng);
       setPinPlaced(hasCoords);
       setMapCenter({
         lat: hasCoords ? (addressToEdit.lat as number) : DEFAULT_CENTER.lat,
@@ -310,7 +302,13 @@ export function AddressFormModal({
   }, [isOpen, addressToEdit?.lat, requestLocation]);
 
   React.useEffect(() => {
-    if (isOpen && !Number.isFinite(addressToEdit?.lat) && locationStatus === "granted" && userCoords && !autoLocatedRef.current) {
+    if (
+      isOpen &&
+      !Number.isFinite(addressToEdit?.lat) &&
+      locationStatus === "granted" &&
+      userCoords &&
+      !autoLocatedRef.current
+    ) {
       autoLocatedRef.current = true;
       setMapCenter(userCoords);
       setPinPlaced(true);
@@ -336,12 +334,15 @@ export function AddressFormModal({
     }
   }, [reverseGeocode]);
 
-  const handleMapClick = React.useCallback((lat: number, lng: number) => {
-    autoLocatedRef.current = true;
-    setMapCenter({ lat, lng });
-    setPinPlaced(true);
-    void reverseGeocode(lat, lng);
-  }, [reverseGeocode]);
+  const handleMapClick = React.useCallback(
+    (lat: number, lng: number) => {
+      autoLocatedRef.current = true;
+      setMapCenter({ lat, lng });
+      setPinPlaced(true);
+      void reverseGeocode(lat, lng);
+    },
+    [reverseGeocode],
+  );
 
   // --- Unsaved-changes guard ------------------------------------------------
   // The sheet captures a baseline of its values when it opens; a close attempt
@@ -512,8 +513,7 @@ export function AddressFormModal({
       const first = items[0];
       const last = items[items.length - 1];
       const active = document.activeElement;
-      const activeInside =
-        active instanceof HTMLElement && dialog.contains(active);
+      const activeInside = active instanceof HTMLElement && dialog.contains(active);
       if (e.shiftKey) {
         if (!activeInside || active === first || active === dialog) {
           e.preventDefault();
@@ -606,7 +606,9 @@ export function AddressFormModal({
         ? await addressRepository.update(addressToEdit.id, payload)
         : await addressRepository.create(payload);
       if (res.success) {
-        toast.success(addressToEdit ? "Address updated successfully" : "Address saved successfully");
+        toast.success(
+          addressToEdit ? "Address updated successfully" : "Address saved successfully",
+        );
         onSuccess?.();
         onClose();
       } else {
@@ -657,17 +659,17 @@ export function AddressFormModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="shrink-0 p-4 sm:p-5 border-b border-divider flex items-center justify-between bg-surface sticky top-0 z-10">
-          <h3 id="address-modal-title" className="text-base sm:text-lg font-black text-text">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-divider bg-surface p-4 sm:p-5">
+          <h3 id="address-modal-title" className="type-headline-medium text-text">
             {addressToEdit ? "Edit Address" : "Add Delivery Address"}
           </h3>
           <button
             type="button"
             onClick={requestClose}
             aria-label="Close modal"
-            className="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full bg-bg-secondary hover:bg-divider flex items-center justify-center text-text-secondary hover:text-text transition-colors cursor-pointer"
+            className="grid h-11 w-11 place-items-center rounded-full bg-bg-secondary text-text-secondary transition-colors hover:bg-divider hover:text-text cursor-pointer"
           >
-            <X className="w-5 h-5" aria-hidden />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
 
@@ -688,11 +690,11 @@ export function AddressFormModal({
               focusedFieldRef.current = null;
             }
           }}
-          className="min-h-0 flex-1 p-4 sm:p-6 space-y-4 overflow-y-auto no-scrollbar"
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 no-scrollbar sm:p-6"
         >
-          {/* Map pin — drag the orange pin to set the exact delivery location */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+          {/* Map pin — drag the pin to set the exact delivery location */}
+          <div className="space-y-2">
+            <p className="type-label-large text-text-secondary">
               Tap map or drag pin to set location
             </p>
             <div
@@ -734,9 +736,12 @@ export function AddressFormModal({
                     }
                   }}
                   disabled={isLocating}
-                  className="flex items-center gap-1.5 rounded-full bg-accent px-4 py-2.5 min-h-[44px] shadow-lg shadow-accent/40 hover:bg-accent/90 text-white text-xs font-bold transition-all border-2 border-white cursor-pointer disabled:opacity-50"
+                  className="flex min-h-11 items-center gap-1.5 rounded-full border-2 border-white bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover cursor-pointer disabled:opacity-50"
                 >
-                  <Navigation className={cn("h-3.5 w-3.5", isLocating && "animate-spin")} aria-hidden />
+                  <Navigation
+                    className={cn("h-3.5 w-3.5", isLocating && "animate-spin")}
+                    aria-hidden
+                  />
                   {isLocating ? "Locating..." : "Locate Me"}
                 </button>
               </div>
@@ -744,18 +749,16 @@ export function AddressFormModal({
             {(locationStatus === "denied" ||
               locationStatus === "blocked" ||
               locationStatus === "unavailable") && (
-              <p role="status" className="text-[11px] text-text-secondary text-center">
-                Location unavailable — drag the pin manually, or enable location in your
-                browser settings and tap Locate Me.
+              <p role="status" className="text-center text-sm leading-relaxed text-text-secondary">
+                Location unavailable — drag the pin manually, or enable location in your browser
+                settings and tap Locate Me.
               </p>
             )}
           </div>
 
           {/* Label Type Selector */}
           <fieldset className="space-y-1.5 border-0 p-0 m-0">
-            <legend className="text-xs font-bold text-text-secondary uppercase tracking-wider p-0">
-              Save As
-            </legend>
+            <legend className="type-label-large p-0 text-text-secondary">Save As</legend>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
@@ -765,10 +768,10 @@ export function AddressFormModal({
                 }}
                 aria-pressed={label === "home"}
                 className={cn(
-                  "py-2.5 px-3 min-h-[44px] rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer",
+                  "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors cursor-pointer",
                   label === "home"
-                    ? "border-[#0E4825] bg-[#0E4825] text-white shadow-xs"
-                    : "border-divider bg-bg-secondary text-text hover:border-primary/40"
+                    ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                    : "border-divider bg-bg-secondary text-text hover:border-primary/40",
                 )}
               >
                 <Home className="w-4 h-4" aria-hidden />
@@ -783,10 +786,10 @@ export function AddressFormModal({
                 }}
                 aria-pressed={label === "work"}
                 className={cn(
-                  "py-2.5 px-3 min-h-[44px] rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer",
+                  "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors cursor-pointer",
                   label === "work"
-                    ? "border-[#0E4825] bg-[#0E4825] text-white shadow-xs"
-                    : "border-divider bg-bg-secondary text-text hover:border-primary/40"
+                    ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                    : "border-divider bg-bg-secondary text-text hover:border-primary/40",
                 )}
               >
                 <Briefcase className="w-4 h-4" aria-hidden />
@@ -801,10 +804,10 @@ export function AddressFormModal({
                 }}
                 aria-pressed={label === "other"}
                 className={cn(
-                  "py-2.5 px-3 min-h-[44px] rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all cursor-pointer",
+                  "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors cursor-pointer",
                   label === "other"
-                    ? "border-[#0E4825] bg-[#0E4825] text-white shadow-xs"
-                    : "border-divider bg-bg-secondary text-text hover:border-primary/40"
+                    ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                    : "border-divider bg-bg-secondary text-text hover:border-primary/40",
                 )}
               >
                 <MapPin className="w-4 h-4" aria-hidden />
@@ -818,7 +821,7 @@ export function AddressFormModal({
             <div className="space-y-1">
               <label
                 htmlFor="address-modal-nickname"
-                className="text-xs font-bold text-text-secondary"
+                className="type-label-large text-text-secondary"
               >
                 Nickname / Tag
               </label>
@@ -829,17 +832,14 @@ export function AddressFormModal({
                 placeholder="e.g. Friends House, Gym"
                 value={customLabel}
                 onChange={(e) => setCustomLabel(e.target.value.slice(0, 30))}
-                className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-bg-secondary border border-divider text-xs font-medium text-text outline-none focus:border-primary"
+                className="w-full min-h-11 rounded-xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-base font-medium text-text outline-none focus:border-primary"
               />
             </div>
           )}
 
           {/* Flat / Building */}
           <div className="space-y-1">
-            <label
-              htmlFor="address-modal-line1"
-              className="text-xs font-bold text-text-secondary"
-            >
+            <label htmlFor="address-modal-line1" className="type-label-large text-text-secondary">
               Flat / House / Building *
             </label>
             <input
@@ -852,16 +852,13 @@ export function AddressFormModal({
                 setLine1(e.target.value);
                 line1EditedRef.current = true;
               }}
-              className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-bg-secondary border border-divider text-xs font-medium text-text outline-none focus:border-primary"
+              className="w-full min-h-11 rounded-xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-base font-medium text-text outline-none focus:border-primary"
             />
           </div>
 
           {/* Area / Street */}
           <div className="space-y-1">
-            <label
-              htmlFor="address-modal-line2"
-              className="text-xs font-bold text-text-secondary"
-            >
+            <label htmlFor="address-modal-line2" className="type-label-large text-text-secondary">
               Area / Street
             </label>
             <input
@@ -870,7 +867,7 @@ export function AddressFormModal({
               placeholder="e.g. Linking Road, Bandra West"
               value={line2}
               onChange={(e) => setLine2(e.target.value)}
-              className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-bg-secondary border border-divider text-xs font-medium text-text outline-none focus:border-primary"
+              className="w-full min-h-11 rounded-xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-base font-medium text-text outline-none focus:border-primary"
             />
           </div>
 
@@ -879,7 +876,7 @@ export function AddressFormModal({
             <div className="space-y-1">
               <label
                 htmlFor="address-modal-landmark"
-                className="text-xs font-bold text-text-secondary"
+                className="type-label-large text-text-secondary"
               >
                 Landmark
               </label>
@@ -889,14 +886,14 @@ export function AddressFormModal({
                 placeholder="e.g. Near Metro Station"
                 value={landmark}
                 onChange={(e) => setLandmark(e.target.value)}
-                className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-bg-secondary border border-divider text-xs font-medium text-text outline-none focus:border-primary"
+                className="w-full min-h-11 rounded-xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-base font-medium text-text outline-none focus:border-primary"
               />
             </div>
 
             <div className="space-y-1">
               <label
                 htmlFor="address-modal-pincode"
-                className="text-xs font-bold text-text-secondary"
+                className="type-label-large text-text-secondary"
               >
                 Pincode *
               </label>
@@ -912,17 +909,14 @@ export function AddressFormModal({
                   setPincode(e.target.value.replace(/\D/g, ""));
                   pincodeEditedRef.current = true;
                 }}
-                className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-bg-secondary border border-divider text-xs font-mono font-bold text-text outline-none focus:border-primary"
+                className="w-full min-h-11 rounded-xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-base font-semibold tabular-nums text-text outline-none focus:border-primary"
               />
             </div>
           </div>
 
           {/* City */}
           <div className="space-y-1">
-            <label
-              htmlFor="address-modal-city"
-              className="text-xs font-bold text-text-secondary"
-            >
+            <label htmlFor="address-modal-city" className="type-label-large text-text-secondary">
               City *
             </label>
             <input
@@ -935,54 +929,49 @@ export function AddressFormModal({
                 setCity(e.target.value);
                 cityEditedRef.current = true;
               }}
-              className="w-full px-3.5 py-2.5 min-h-[44px] rounded-xl bg-bg-secondary border border-divider text-xs font-medium text-text outline-none focus:border-primary"
+              className="w-full min-h-11 rounded-xl border border-divider bg-bg-secondary px-3.5 py-2.5 text-base font-medium text-text outline-none focus:border-primary"
             />
           </div>
 
           {/* Inline save-validation copy — announced via role="alert" */}
           {validationError && (
-            <div
-              role="alert"
-              className="p-3 rounded-xl bg-error/10 border border-error/20"
-            >
-              <p className="text-xs font-semibold text-error text-center">
-                {validationError}
-              </p>
+            <div role="alert" className="p-3 rounded-xl bg-error/10 border border-error/20">
+              <p className="text-center text-sm font-semibold text-error">{validationError}</p>
             </div>
           )}
 
           {/* Default Toggle */}
-          <label className="flex items-center gap-3 pt-2 min-h-[44px] cursor-pointer select-none">
+          <label className="flex min-h-11 cursor-pointer select-none items-center gap-3 pt-2">
             <input
               type="checkbox"
               checked={isDefault}
               onChange={(e) => setIsDefault(e.target.checked)}
-              className="w-4 h-4 accent-[#0E4825] rounded-sm cursor-pointer"
+              className="h-5 w-5 cursor-pointer rounded-sm accent-primary"
             />
-            <span className="text-xs font-bold text-text">
-              Set as default delivery address
-            </span>
+            <span className="text-sm font-medium text-text">Set as default delivery address</span>
           </label>
-
         </form>
-          {/* Keep the save action outside the scrolling fields.
-              R26 contrast: the primary CTA fills with the semantic accent pair
-              (accent bg + accent-foreground label) instead of the legacy
-              #FF6600/white pair, which was 2.94:1. Light rests at 5.18:1 and
-              hovers to --accent-hover (7.31:1). Dark rests on --accent-hover
-              (5.50:1) because --accent #CC5200 tops out at 4.40:1 against any
-              text colour; its hover only brightens, which still clears 4.5:1. */}
-          <div className="shrink-0 border-t border-divider p-4 pb-[calc(16px+env(safe-area-inset-bottom,0px))]">
-            <button
-              type="submit"
-              form={formId}
-              disabled={submitting || saveBlocked}
-              aria-disabled={submitting || saveBlocked}
-              className="w-full min-h-[44px] py-3 px-4 rounded-xl bg-accent dark:bg-[var(--accent-hover)] text-accent-foreground hover:bg-[var(--accent-hover)] dark:hover:brightness-110 text-xs sm:text-sm font-bold shadow-md transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
-            >
-              {submitting ? "Saving..." : saveBlocked ? "Reopen to retry" : addressToEdit ? "Update Address" : "Save Address"}
-            </button>
-          </div>
+        {/* Keep the save action outside the scrolling fields. The primary CTA
+              uses the semantic primary pair (primary bg + primary-foreground
+              label) rather than a raw orange fill, so it inherits the theme's
+              contrast guarantees in both light and dark. */}
+        <div className="shrink-0 border-t border-divider p-4 pb-[calc(16px+env(safe-area-inset-bottom,0px))]">
+          <button
+            type="submit"
+            form={formId}
+            disabled={submitting || saveBlocked}
+            aria-disabled={submitting || saveBlocked}
+            className="min-h-12 w-full rounded-xl bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover active:scale-[0.98] cursor-pointer disabled:opacity-50"
+          >
+            {submitting
+              ? "Saving..."
+              : saveBlocked
+                ? "Reopen to retry"
+                : addressToEdit
+                  ? "Update Address"
+                  : "Save Address"}
+          </button>
+        </div>
 
         {/* Discard confirmation — inline step so Escape/backdrop/X never
             silently drop typed input. Focus lands on the safe action and the
@@ -999,10 +988,10 @@ export function AddressFormModal({
               aria-describedby="address-discard-desc"
               className="w-full max-w-[380px] rounded-2xl border border-divider bg-surface p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
             >
-              <h4 id="address-discard-title" className="text-sm font-black text-text">
+              <h4 id="address-discard-title" className="type-title-large text-text">
                 Discard changes?
               </h4>
-              <p id="address-discard-desc" className="text-xs font-medium text-text-secondary">
+              <p id="address-discard-desc" className="text-sm leading-relaxed text-text-secondary">
                 Your unsaved changes to this address will be lost.
               </p>
               <div className="flex gap-2">
@@ -1010,14 +999,14 @@ export function AddressFormModal({
                   type="button"
                   autoFocus
                   onClick={cancelDiscard}
-                  className="flex-1 min-h-[44px] rounded-xl border border-divider bg-bg-secondary text-xs font-bold text-text hover:border-primary/40 transition-colors cursor-pointer"
+                  className="min-h-11 flex-1 rounded-xl border border-divider bg-bg-secondary text-sm font-semibold text-text transition-colors hover:border-primary/40 cursor-pointer"
                 >
                   Keep editing
                 </button>
                 <button
                   type="button"
                   onClick={discardAndClose}
-                  className="flex-1 min-h-[44px] rounded-xl bg-error text-white text-xs font-bold hover:brightness-110 transition-all cursor-pointer"
+                  className="min-h-11 flex-1 rounded-xl bg-error text-sm font-semibold text-white transition-colors hover:brightness-110 cursor-pointer"
                 >
                   Discard
                 </button>
@@ -1026,7 +1015,8 @@ export function AddressFormModal({
           </div>
         )}
       </div>
-    </div>, document.body
+    </div>,
+    document.body,
   );
 }
 

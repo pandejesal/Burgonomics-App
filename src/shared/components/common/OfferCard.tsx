@@ -33,20 +33,20 @@ export function OfferCard({ code, title, description, onApply, className }: Offe
         <Text
           variant="bodyMedium"
           tone="secondary"
-          className="mt-1 line-clamp-2 text-xs leading-normal"
+          className="mt-1 line-clamp-2 text-sm leading-relaxed"
         >
           {description}
         </Text>
-        <div className="mt-3 flex items-center justify-between">
-          <span className="rounded-lg bg-accent/5 border border-dashed border-accent/40 px-2.5 py-1 type-caption text-accent font-bold">
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <span className="rounded-lg border border-dashed border-accent/40 bg-accent/5 px-2.5 py-1 type-caption font-semibold text-accent">
             {code}
           </span>
           <button
             type="button"
             onClick={() => onApply?.(code)}
-            className="rounded-full bg-accent text-accent-foreground px-4 py-1.5 text-xs font-bold shadow-sm hover:brightness-110 active:scale-95 transition-all duration-200"
+            className="min-h-11 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover active:scale-95"
           >
-            APPLY
+            Apply
           </button>
         </div>
       </div>

@@ -64,18 +64,18 @@ export function validateOtp(raw: string): ValidationResult {
  * Returns true if token appears valid and not expired.
  */
 export function isJwtExpired(token: string | null | undefined): boolean {
-  if (!token || typeof token !== 'string') return true;
-  
-  const parts = token.split('.');
+  if (!token || typeof token !== "string") return true;
+
+  const parts = token.split(".");
   if (parts.length !== 3) return true;
-  
+
   try {
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    if (!payload.exp || typeof payload.exp !== 'number') return true;
-    
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (!payload.exp || typeof payload.exp !== "number") return true;
+
     const now = Math.floor(Date.now() / 1000);
     // Add 30 second buffer for clock skew
-    return payload.exp < (now + 30);
+    return payload.exp < now + 30;
   } catch {
     return true;
   }

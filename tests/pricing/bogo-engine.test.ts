@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 
 export interface BogoItem {
   id: string;
@@ -19,8 +19,8 @@ export interface BogoResult {
  * La Pino'z style BOGO Engine:
  * For every 2 qualifying items in the cart, the cheaper item is free.
  */
-export function calculateBogoDiscount(items: BogoItem[], promoCode = 'BOGO'): BogoResult {
-  if (promoCode !== 'BOGO') {
+export function calculateBogoDiscount(items: BogoItem[], promoCode = "BOGO"): BogoResult {
+  if (promoCode !== "BOGO") {
     const rawSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     return {
       qualifyingItemCount: 0,
@@ -62,12 +62,12 @@ export function calculateBogoDiscount(items: BogoItem[], promoCode = 'BOGO'): Bo
   };
 }
 
-describe('Customer App Core — La Pino\'z BOGO (Buy 1 Get 1) Engine', () => {
-  it('gives 0 discount for a single item in cart', () => {
+describe("Customer App Core — La Pino'z BOGO (Buy 1 Get 1) Engine", () => {
+  it("gives 0 discount for a single item in cart", () => {
     const items: BogoItem[] = [
-      { id: '1', name: 'Classic Truffle Burger', price: 299, quantity: 1, category: 'Burgers' },
+      { id: "1", name: "Classic Truffle Burger", price: 299, quantity: 1, category: "Burgers" },
     ];
-    const res = calculateBogoDiscount(items, 'BOGO');
+    const res = calculateBogoDiscount(items, "BOGO");
 
     expect(res.qualifyingItemCount).toBe(1);
     expect(res.freeItemCount).toBe(0);
@@ -75,12 +75,12 @@ describe('Customer App Core — La Pino\'z BOGO (Buy 1 Get 1) Engine', () => {
     expect(res.finalSubtotal).toBe(299);
   });
 
-  it('makes the lower-priced item free when 2 items with different prices are ordered', () => {
+  it("makes the lower-priced item free when 2 items with different prices are ordered", () => {
     const items: BogoItem[] = [
-      { id: '1', name: 'Signature Double Melt', price: 349, quantity: 1, category: 'Burgers' },
-      { id: '2', name: 'Classic Truffle Burger', price: 249, quantity: 1, category: 'Burgers' },
+      { id: "1", name: "Signature Double Melt", price: 349, quantity: 1, category: "Burgers" },
+      { id: "2", name: "Classic Truffle Burger", price: 249, quantity: 1, category: "Burgers" },
     ];
-    const res = calculateBogoDiscount(items, 'BOGO');
+    const res = calculateBogoDiscount(items, "BOGO");
 
     expect(res.qualifyingItemCount).toBe(2);
     expect(res.freeItemCount).toBe(1);
@@ -88,16 +88,16 @@ describe('Customer App Core — La Pino\'z BOGO (Buy 1 Get 1) Engine', () => {
     expect(res.finalSubtotal).toBe(349);
   });
 
-  it('makes 1 item free when 3 items are in cart, charging the 2 most expensive items', () => {
+  it("makes 1 item free when 3 items are in cart, charging the 2 most expensive items", () => {
     const items: BogoItem[] = [
-      { id: '1', name: 'Supreme Burger', price: 399, quantity: 1, category: 'Burgers' },
-      { id: '2', name: 'Double Melt', price: 349, quantity: 1, category: 'Burgers' },
-      { id: '3', name: 'Classic Burger', price: 199, quantity: 1, category: 'Burgers' },
+      { id: "1", name: "Supreme Burger", price: 399, quantity: 1, category: "Burgers" },
+      { id: "2", name: "Double Melt", price: 349, quantity: 1, category: "Burgers" },
+      { id: "3", name: "Classic Burger", price: 199, quantity: 1, category: "Burgers" },
     ];
     // Pair 1: 399 & 349 -> 349 free
     // Leftover: 199 -> paid
     // Final: 399 + 199 = 598
-    const res = calculateBogoDiscount(items, 'BOGO');
+    const res = calculateBogoDiscount(items, "BOGO");
 
     expect(res.qualifyingItemCount).toBe(3);
     expect(res.freeItemCount).toBe(1);
@@ -105,17 +105,17 @@ describe('Customer App Core — La Pino\'z BOGO (Buy 1 Get 1) Engine', () => {
     expect(res.finalSubtotal).toBe(598);
   });
 
-  it('makes 2 items free when 4 items are in cart', () => {
+  it("makes 2 items free when 4 items are in cart", () => {
     const items: BogoItem[] = [
-      { id: '1', name: 'Supreme Burger', price: 400, quantity: 2, category: 'Burgers' },
-      { id: '2', name: 'Classic Burger', price: 200, quantity: 2, category: 'Burgers' },
+      { id: "1", name: "Supreme Burger", price: 400, quantity: 2, category: "Burgers" },
+      { id: "2", name: "Classic Burger", price: 200, quantity: 2, category: "Burgers" },
     ];
     // Units: [400, 400, 200, 200]
     // Pair 1: [400, 400] -> 400 free
     // Pair 2: [200, 200] -> 200 free
     // Total discount = 600
     // Final subtotal = 600
-    const res = calculateBogoDiscount(items, 'BOGO');
+    const res = calculateBogoDiscount(items, "BOGO");
 
     expect(res.qualifyingItemCount).toBe(4);
     expect(res.freeItemCount).toBe(2);

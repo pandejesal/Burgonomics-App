@@ -9,6 +9,7 @@ interface HomeState {
   bundle: HomeBundle | null;
   error: string | null;
   lastLoadedStoreId: string | null;
+  lastLoadedUserId: string | null;
   lastFetchedAt: number | null;
 
   load: (storeId: string, userId?: string, opts?: { refresh?: boolean }) => Promise<void>;
@@ -26,6 +27,9 @@ const EMPTY_BUNDLE: HomeBundle = {
   quickReorder: [],
 };
 
+/** Latest request wins; reset also advances this to strand in-flight results. */
+let requestSequence = 0;
+
 function isBundleEmpty(b: HomeBundle) {
   return (
     b.banners.length === 0 &&
@@ -42,42 +46,60 @@ export const useHomeStore = create<HomeState>((set, get) => ({
   bundle: null,
   error: null,
   lastLoadedStoreId: null,
+  lastLoadedUserId: null,
   lastFetchedAt: null,
 
   async load(storeId, userId, opts) {
     const refresh = opts?.refresh === true;
+    const scopedUserId = userId ?? null;
     const current = get();
-    if (
-      !refresh &&
-      current.status === "ready" &&
-      current.lastLoadedStoreId === storeId &&
-      current.bundle
-    ) {
+    const sameScope =
+      current.lastLoadedStoreId === storeId && current.lastLoadedUserId === scopedUserId;
+    if (!refresh && current.status === "ready" && sameScope && current.bundle) {
       return;
     }
+
+    const retainsCachedBundle = refresh && sameScope && current.bundle !== null;
+    const requestId = ++requestSequence;
+    // Cross-store/user loads must not expose the previous scope before the await.
     set({
-      status: refresh ? "refreshing" : "loading",
+      status: retainsCachedBundle ? "refreshing" : "loading",
+      bundle: retainsCachedBundle ? current.bundle : null,
       error: null,
+      lastLoadedStoreId: retainsCachedBundle ? current.lastLoadedStoreId : null,
+      lastLoadedUserId: retainsCachedBundle ? current.lastLoadedUserId : null,
+      lastFetchedAt: retainsCachedBundle ? current.lastFetchedAt : null,
     });
     const res = await homeRepository.getHome(storeId, userId);
+    if (requestId !== requestSequence) return;
     if (!res.success) {
-      set({ status: "error", error: res.error.message });
+      set({
+        status: "error",
+        error: res.error.message,
+        bundle: null,
+        lastLoadedStoreId: null,
+        lastLoadedUserId: null,
+        lastFetchedAt: null,
+      });
       return;
     }
     set({
       status: isBundleEmpty(res.data) ? "empty" : "ready",
       bundle: res.data,
       lastLoadedStoreId: storeId,
+      lastLoadedUserId: scopedUserId,
       lastFetchedAt: Date.now(),
     });
   },
 
   reset() {
+    requestSequence += 1;
     set({
       status: "idle",
       bundle: null,
       error: null,
       lastLoadedStoreId: null,
+      lastLoadedUserId: null,
       lastFetchedAt: null,
     });
   },

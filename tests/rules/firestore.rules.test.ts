@@ -50,7 +50,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       // emulator job must run — fail hard instead of skipping.
       if (process.env.CI === "true") {
         throw new Error(
-          "Firestore emulator unavailable in CI — the rules job must start it (see .github/workflows/ci.yml `rules` job)."
+          "Firestore emulator unavailable in CI — the rules job must start it (see .github/workflows/ci.yml `rules` job).",
         );
       }
       context.skip();
@@ -195,7 +195,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         orderId: "order_501",
         branchId: "branch_01",
         discrepancy: 50,
-      })
+      }),
     );
   });
 
@@ -257,7 +257,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(
       updateDoc(doc(custDb, "customers", "cust_100"), {
         loyaltyPoints: 99999,
-      })
+      }),
     );
   });
 
@@ -272,7 +272,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         paymentStatus: "Pending",
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         totals: { grandTotal: 499 },
-      })
+      }),
     );
   });
 
@@ -313,7 +313,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(
       updateDoc(doc(branch1Db, "orders", "order_501"), {
         totals: { grandTotal: 9999 },
-      })
+      }),
     );
   });
 
@@ -329,7 +329,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         city: "Ahmedabad",
         status: "upcoming",
         expectedOpenDate: "2026-11-01",
-      })
+      }),
     );
   });
 
@@ -340,7 +340,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         name: "Burgonomics Rogue Store",
         city: "Ahmedabad",
         status: "upcoming",
-      })
+      }),
     );
   });
 
@@ -356,7 +356,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         senderId: "branch_owner_1",
         text: "Stock delivered for today",
         createdAt: new Date().toISOString(),
-      })
+      }),
     );
 
     const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
@@ -381,7 +381,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         resolution: "Looking into it",
         "assignedTo.tier": "branch",
         timeline: [{ action: "message_added" }],
-      })
+      }),
     );
   });
 
@@ -391,7 +391,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       updateDoc(doc(branch1Db, "support_tickets", "tkt_rules_01"), {
         status: "resolved",
         refundAmount: 99,
-      })
+      }),
     );
   });
 
@@ -432,7 +432,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(
       updateDoc(doc(branch1Db, "orders", "ord_deliver_01"), {
         status: { kind: "completed", code: "DELIVERED" },
-      })
+      }),
     );
   });
 
@@ -441,7 +441,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(
       updateDoc(doc(branch1Db, "orders", "ord_takeaway_01"), {
         status: { kind: "completed", code: "DELIVERED" },
-      })
+      }),
     );
   });
 
@@ -456,7 +456,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       setDoc(doc(branch1Db, "broadcasts", "bc_rules_evil"), {
         title: "Fake",
         successCount: 99999,
-      })
+      }),
     );
   });
 
@@ -466,7 +466,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       updateDoc(doc(custDb, "orders", "order_501"), {
         whatsappOptIn: false,
         updatedAt: new Date().toISOString(),
-      })
+      }),
     );
   });
 
@@ -476,7 +476,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       updateDoc(doc(custDb, "orders", "order_501"), {
         totals: { grandTotal: 1 },
         whatsappOptIn: false,
-      })
+      }),
     );
   });
 
@@ -494,7 +494,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         branchId: "branch_01",
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         totals: { grandTotal: 1 },
-      })
+      }),
     );
   });
 
@@ -506,7 +506,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         userId: "victim_999",
         branchId: "branch_01",
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
-      })
+      }),
     );
   });
 
@@ -524,7 +524,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         pricing: { grandTotal: 1 },
         petpoojaOrderId: "PP-FAKE-1",
         dispatchStatus: "booked",
-      })
+      }),
     );
   });
 
@@ -536,7 +536,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         userId: "cust_100",
         branchId: "branch_01",
         status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
-      })
+      }),
     );
   });
 
@@ -548,8 +548,12 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       branchId: "branch_01",
       status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
     };
-    await assertFails(setDoc(doc(custDb, "orders", "ord_evil_5a"), { ...base, paymentStatus: "paid" }));
-    await assertFails(setDoc(doc(custDb, "orders", "ord_evil_5b"), { ...base, paymentStatus: "completed" }));
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_5a"), { ...base, paymentStatus: "paid" }),
+    );
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_5b"), { ...base, paymentStatus: "completed" }),
+    );
   });
 
   it("34. [ORDERS-CREATE-WALKIN-ALLOW] Branch staff CAN birth a POS walk-in order (customerId 'cust_walkin' + staff userId + own branch, born completed)", async () => {
@@ -563,7 +567,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         paymentStatus: "completed",
         total: 349,
-      })
+      }),
     );
   });
 
@@ -576,7 +580,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         branchId: "branch_01",
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         paymentStatus: "completed",
-      })
+      }),
     );
   });
 
@@ -589,7 +593,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         branchId: "branch_01",
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         paymentStatus: "completed",
-      })
+      }),
     );
   });
 
@@ -603,7 +607,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
         paymentStatus: "completed",
         deliveryOtp: "999999",
-      })
+      }),
     );
   });
 
@@ -618,7 +622,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       setDoc(doc(custDb, "users", "cust_100", "orders", "shadow_1"), {
         totals: { grandTotal: 99999 },
         status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
-      })
+      }),
     );
   });
 
@@ -628,7 +632,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       setDoc(doc(newCustDb, "customers", "cust_new"), {
         customerId: "cust_new",
         fullName: "New User",
-      })
+      }),
     );
   });
 
@@ -640,7 +644,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         role: "brand_owner",
         isAdmin: true,
         loyaltyPoints: 99999,
-      })
+      }),
     );
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
     await assertFails(
@@ -649,28 +653,22 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         phone: "+919999999999",
         email: "spoof@evil.test",
         createdAt: new Date().toISOString(),
-      })
+      }),
     );
   });
 
   it("41. [CUSTOMERS-UPDATE-ESCALATION-DENY] Customer update cannot write escalation/PII projection fields", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertFails(updateDoc(doc(custDb, "customers", "cust_100"), { phone: "+919999999999" }));
+    await assertFails(updateDoc(doc(custDb, "customers", "cust_100"), { isAdmin: true }));
     await assertFails(
-      updateDoc(doc(custDb, "customers", "cust_100"), { phone: "+919999999999" })
-    );
-    await assertFails(
-      updateDoc(doc(custDb, "customers", "cust_100"), { isAdmin: true })
-    );
-    await assertFails(
-      updateDoc(doc(custDb, "customers", "cust_100"), { createdAt: new Date().toISOString() })
+      updateDoc(doc(custDb, "customers", "cust_100"), { createdAt: new Date().toISOString() }),
     );
   });
 
   it("42. [CUSTOMERS-CLEAN-UPDATE-ALLOW] Customer can update their own non-privileged profile fields", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
-    await assertSucceeds(
-      updateDoc(doc(custDb, "customers", "cust_100"), { fullName: "Rahul P." })
-    );
+    await assertSucceeds(updateDoc(doc(custDb, "customers", "cust_100"), { fullName: "Rahul P." }));
   });
 
   it("43. [CHATS-REPLY-ALLOW] Participant can update reply metadata on their thread", async () => {
@@ -681,7 +679,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         lastMessageSender: "Navrangpura Operator",
         lastMessageAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      })
+      }),
     );
   });
 
@@ -690,12 +688,12 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     await assertFails(
       updateDoc(doc(branch1Db, "chats", "branch_01_brand_owner_1"), {
         participantIds: ["branch_owner_1", "brand_owner_1", "victim_999"],
-      })
+      }),
     );
     await assertFails(
       updateDoc(doc(branch1Db, "chats", "branch_01_brand_owner_1"), {
         participantNames: { branch_owner_1: "Hijacked" },
-      })
+      }),
     );
   });
 
@@ -713,7 +711,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         branchId: "branch_01",
         inStock: true,
         isCombo: true,
-      })
+      }),
     );
   });
 
@@ -725,13 +723,13 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       branchId: "branch_01",
     };
     await assertFails(
-      setDoc(doc(branch1Db, "products", "prod_evil_1"), { ...base, costPrice: 500 })
+      setDoc(doc(branch1Db, "products", "prod_evil_1"), { ...base, costPrice: 500 }),
     );
     await assertFails(
-      setDoc(doc(branch1Db, "products", "prod_evil_2"), { ...base, discountPercentage: 99 })
+      setDoc(doc(branch1Db, "products", "prod_evil_2"), { ...base, discountPercentage: 99 }),
     );
     await assertFails(
-      setDoc(doc(branch1Db, "products", "prod_evil_3"), { ...base, petpoojaItemId: "PP-BRG-101" })
+      setDoc(doc(branch1Db, "products", "prod_evil_3"), { ...base, petpoojaItemId: "PP-BRG-101" }),
     );
   });
 
@@ -743,7 +741,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         price: 129,
         costPrice: 60,
         branchId: "branch_01",
-      })
+      }),
     );
   });
 
@@ -756,7 +754,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         branchId: "branch_01",
         status: "open",
         subject: "Printer jam",
-      })
+      }),
     );
   });
 
@@ -769,7 +767,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         status: "open",
         subject: "Queue jump",
         priority: "urgent",
-      })
+      }),
     );
     await assertFails(
       setDoc(doc(branch1Db, "tickets", "tkt_evil_02"), {
@@ -778,7 +776,84 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         status: "open",
         subject: "Self-assign",
         assignedTo: { tier: "developer_team" },
-      })
+      }),
+    );
+  });
+
+  // =========================================================================
+  // 8. TENANT / SERVER-OWNED FIELD MASKS (30 Oct hardening regressions)
+  // =========================================================================
+
+  it("50. [USERS-CREATE-TENANT-DENY] Customer cannot birth their user doc with tenant or lifecycle authority", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    for (const planted of [
+      { branchIds: ["branch_01"] },
+      { cityIds: ["ahmedabad"] },
+      { active: true },
+      { isDeleted: false },
+    ]) {
+      await assertFails(setDoc(doc(custDb, "users", "cust_100"), { name: "Customer", ...planted }));
+    }
+  });
+
+  it("51. [USERS-UPDATE-TENANT-DENY] Customer cannot grant themselves tenant scope or self-reactivate a deleted profile", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "cust_100"), { name: "Customer" });
+    });
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    for (const planted of [
+      { branchIds: ["branch_01"] },
+      { cityIds: ["ahmedabad"] },
+      { active: true },
+      { isDeleted: false },
+      { deletedAt: null },
+    ]) {
+      await assertFails(updateDoc(doc(custDb, "users", "cust_100"), planted));
+    }
+  });
+
+  it("52. [USERS-UPDATE-CLEAN-ALLOW] Customer can still update their own ordinary profile fields", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "cust_100"), { name: "Customer" });
+    });
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(updateDoc(doc(custDb, "users", "cust_100"), { name: "Renamed Customer" }));
+  });
+
+  it("53. [BRAND-ORDER-REFUND-LEDGER-DENY] Brand owner cannot plant refund accounting the rules now reserve for the server", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    for (const planted of [
+      { refundLedger: { captured: 349 } },
+      { refundedTotalPaise: 34900 },
+      { refundOverCapturedPaise: 1000 },
+      { refundNeedsReview: true },
+    ]) {
+      await assertFails(updateDoc(doc(brandDb, "orders", "order_501"), planted));
+    }
+  });
+
+  it("54. [BRAND-OTP-UPDATE-DENY] Brand owner cannot rewrite delivery OTP proof fields on an update", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), { deliveryOtp: "000000" }),
+    );
+  });
+
+  it("55. [BRAND-DIRECT-DELIVERED-DENY] Brand owner cannot flip a delivery order to DELIVERED without OTP proof", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), {
+        status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
+      }),
+    );
+  });
+
+  it("56. [BRAND-WORKFLOW-UPDATE-ALLOW] Brand owner can still advance a delivery order through a non-terminal workflow status", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), {
+        status: { code: "READY_FOR_PICKUP", label: "Ready", kind: "in_progress", terminal: false },
+      }),
     );
   });
 

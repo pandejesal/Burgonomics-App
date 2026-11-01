@@ -41,7 +41,14 @@ interface StoreCardProps {
   fulfillment?: "delivery" | "takeaway" | "dinein" | null;
 }
 
-export function StoreCard({ store, selected, onSelect, className, outOfArea, fulfillment }: StoreCardProps) {
+export function StoreCard({
+  store,
+  selected,
+  onSelect,
+  className,
+  outOfArea,
+  fulfillment,
+}: StoreCardProps) {
   const [showDetail, setShowDetail] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const closingSoon = store.isOpen && store.hours != null && closesSoon(store.hours.close);
@@ -193,7 +200,9 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                   as="h3"
                   variant="titleMedium"
                   className={cn(
-                    "truncate font-bold text-[14px] leading-tight tracking-tight",
+                    // Outlet names are how a customer tells two nearby branches
+                    // apart, so they wrap to two lines instead of truncating.
+                    "line-clamp-2 min-w-0 break-words font-bold text-[14px] leading-tight tracking-tight",
                     outOfArea || isPickupTooFar ? "text-text-secondary" : "text-text-primary",
                   )}
                 >
@@ -334,7 +343,9 @@ export function StoreCard({ store, selected, onSelect, className, outOfArea, ful
                 <span>Operating Hours</span>
               </div>
               <p className="mt-1 text-sm font-semibold text-text-primary">
-                {store.hours ? `${store.hours.open} – ${store.hours.close}` : "Opening hours unavailable"}
+                {store.hours
+                  ? `${store.hours.open} – ${store.hours.close}`
+                  : "Opening hours unavailable"}
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">
                 {store.isOpen === true

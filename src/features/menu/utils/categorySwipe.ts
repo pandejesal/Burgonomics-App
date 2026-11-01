@@ -13,7 +13,10 @@ export function attachCategorySwipe(
   let start: { x: number; y: number; id: number } | null = null;
   let axis: "x" | "y" | null = null;
   let swiped = false;
-  const reset = () => { start = null; axis = null; };
+  const reset = () => {
+    start = null;
+    axis = null;
+  };
   const begin = (event: TouchEvent) => {
     reset();
     swiped = false;
@@ -23,7 +26,10 @@ export function attachCategorySwipe(
     }
   };
   const move = (event: TouchEvent) => {
-    if (event.touches.length !== 1) { reset(); return; }
+    if (event.touches.length !== 1) {
+      reset();
+      return;
+    }
     const touch = event.touches[0];
     if (!start || !touch || touch.identifier !== start.id) return;
     const dx = Math.abs(touch.clientX - start.x);
@@ -48,7 +54,11 @@ export function attachCategorySwipe(
   };
   // A swipe over a product link/Add button must not also activate that control.
   const click = (event: MouseEvent) => {
-    if (swiped) { event.preventDefault(); event.stopPropagation(); swiped = false; }
+    if (swiped) {
+      event.preventDefault();
+      event.stopPropagation();
+      swiped = false;
+    }
   };
   element.addEventListener("touchstart", begin, { passive: true });
   element.addEventListener("touchmove", move, { passive: false });

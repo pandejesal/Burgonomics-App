@@ -36,13 +36,10 @@ vi.mock("@/features/favorites/components/FavoriteHeart", () => ({
 // is under test here, not zustand itself.
 vi.mock("@/features/cart/state/cartStore", () => {
   const state: { lines: Array<Record<string, unknown>> } = { lines: [] };
-  const useCartStore = Object.assign(
-    (selector: (s: typeof state) => unknown) => selector(state),
-    {
-      getState: () => state,
-      setState: (patch: Partial<typeof state>) => Object.assign(state, patch),
-    },
-  );
+  const useCartStore = Object.assign((selector: (s: typeof state) => unknown) => selector(state), {
+    getState: () => state,
+    setState: (patch: Partial<typeof state>) => Object.assign(state, patch),
+  });
   return { useCartStore };
 });
 vi.mock("@/features/cart/repositories/CartRepository", () => ({
@@ -206,14 +203,28 @@ describe("B04: MenuProductCard touch floors, roles and reflow tokens", () => {
     expect(add.parentElement!.className).toContain("min-h-[44px]");
   });
 
-  it("price row wraps instead of overflowing (320px reflow) and price is never squeezed", () => {
-    for (const layout of ["grid", "row"] as const) {
-      const host = render(<MenuProductCard product={product} layout={layout} />);
-      const add = addButton(host);
-      const priceRow = add.parentElement!.parentElement!;
-      expect(priceRow.className).toContain("flex-wrap");
-      expect(priceRow.firstElementChild!.className).toContain("shrink-0");
-    }
+  it("row price row wraps instead of overflowing (320px reflow) and price is never squeezed", () => {
+    const host = render(<MenuProductCard product={product} layout="row" />);
+    const add = addButton(host);
+    const priceRow = add.parentElement!.parentElement!;
+    expect(priceRow.className).toContain("flex-wrap");
+    expect(priceRow.firstElementChild!.className).toContain("shrink-0");
+  });
+
+  it("grid price is a photo plate, so the action row never shares width with it", () => {
+    // Compact-grid design (owner + parent, 2026-10-29): the price moved onto
+    // the image, which removes the price/stepper wrap that cost 28px on a
+    // filled 360px card. The row layout keeps the wrap contract asserted above.
+    const host = render(<MenuProductCard product={product} layout="grid" />);
+    const plate = host.querySelector('[data-testid="product-price-badge"]')!;
+    expect(plate.textContent).toContain("₹299.00");
+    const add = addButton(host)!;
+    const actionRow = add.parentElement!.parentElement!;
+    expect(actionRow.textContent).toBe("Add");
+    expect(actionRow.className).not.toContain("flex-wrap");
+    // The ADD keeps its 44px floor either way.
+    expect(add.className).toContain("min-h-[44px]");
+    expect(add.className).toContain("min-w-[50px]");
   });
 
   it("sold out disables ADD and names the state instead of the action", () => {
@@ -221,7 +232,7 @@ describe("B04: MenuProductCard touch floors, roles and reflow tokens", () => {
     const soldOut = host.querySelector<HTMLButtonElement>("button[disabled]")!;
     expect(soldOut).not.toBeNull();
     expect(soldOut.getAttribute("aria-label")).toBe("Classic Smash Burger is sold out");
-    expect(soldOut.textContent).toBe("Sold Out");
+    expect(soldOut.textContent).toBe("Sold out");
     // Non-colour signal + accessible card name both carry the state.
     expect(host.textContent).toContain("Sold Out");
     expect(host.querySelector("a")!.getAttribute("aria-label")).toBe(
@@ -231,21 +242,28 @@ describe("B04: MenuProductCard touch floors, roles and reflow tokens", () => {
 
   it("card link exposes the full title and price in its accessible name", () => {
     const host = render(<MenuProductCard product={product} layout="row" />);
-    expect(host.querySelector("a")!.getAttribute("aria-label")).toBe("Classic Smash Burger, ₹299.00");
+    expect(host.querySelector("a")!.getAttribute("aria-label")).toBe(
+      "Classic Smash Burger, ₹299.00",
+    );
   });
 
-  it("long titles/descriptions stay clamped but keep their full text available", () => {
+  it("long titles/descriptions wrap without hiding their full text", () => {
     const name = "Classic Smash Burger With An Unreasonably Long Menu Title That Never Fits";
-    const description = "A very long description that the card clamps to two lines for layout reasons.";
-    const host = render(<MenuProductCard product={{ ...product, name, description }} layout="grid" />);
+    const description =
+      "A very long description that the card clamps to two lines for layout reasons.";
+    const host = render(
+      <MenuProductCard product={{ ...product, name, description }} layout="grid" />,
+    );
 
-    const title = Array.from(host.querySelectorAll("h5")).find((h) => h.textContent === name)!;
-    expect(title.className).toContain("truncate");
+    const title = Array.from(host.querySelectorAll("h3")).find((h) => h.textContent === name)!;
+    expect(title.className).not.toContain("truncate");
+    expect(title.className).toContain("break-words");
     expect(title.getAttribute("title")).toBe(name);
     expect(host.querySelector("a")!.getAttribute("aria-label")).toBe(`${name}, ₹299.00`);
 
-    const desc = Array.from(host.querySelectorAll("p")).find((p) => p.className.includes("line-clamp-2"))!;
+    const desc = Array.from(host.querySelectorAll("p")).find((p) => p.textContent === description)!;
     expect(desc).toBeDefined();
+    expect(desc.className).not.toContain("line-clamp");
     expect(desc.textContent).toBe(description);
   });
 
@@ -255,8 +273,12 @@ describe("B04: MenuProductCard touch floors, roles and reflow tokens", () => {
 
     expect(addButton(host)).toBeNull();
 
-    const minus = host.querySelector<HTMLButtonElement>('button[aria-label="Decrease quantity of Classic Smash Burger"]')!;
-    const plus = host.querySelector<HTMLButtonElement>('button[aria-label="Increase quantity of Classic Smash Burger"]')!;
+    const minus = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Decrease quantity of Classic Smash Burger"]',
+    )!;
+    const plus = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Increase quantity of Classic Smash Burger"]',
+    )!;
     expect(minus).not.toBeNull();
     expect(plus).not.toBeNull();
     expect(minus.className).toContain("min-h-[44px]");
@@ -267,29 +289,36 @@ describe("B04: MenuProductCard touch floors, roles and reflow tokens", () => {
     expect(host.textContent).toContain("3");
   });
 
-  it("in-cart grid stepper: 32px +/- targets inside a 32px pill on the 44px row", () => {
+  it("in-cart grid stepper keeps 44px +/- targets as the price row wraps", () => {
     useCartStore.setState({ lines: [line(1)] });
     const host = render(<MenuProductCard product={product} layout="grid" />);
 
-    const minus = host.querySelector<HTMLButtonElement>('button[aria-label="Decrease quantity of Classic Smash Burger"]')!;
+    const minus = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Decrease quantity of Classic Smash Burger"]',
+    )!;
     expect(minus).not.toBeNull();
-    expect(minus.className).toContain("min-h-[32px]");
-    expect(minus.className).toContain("min-w-[32px]");
-    expect(minus.parentElement!.className).toContain("h-8");
+    expect(minus.className).toContain("min-h-[44px]");
+    expect(minus.className).toContain("min-w-[44px]");
+    expect(minus.parentElement!.className).toContain("h-11");
     expect(minus.parentElement!.parentElement!.className).toContain("min-h-[44px]");
     expect(host.textContent).toContain("1");
   });
 
-  it("keeps the R26 accent-token ADD pair and the MT-04 overlay badge untouched", () => {
+  it("uses green primary tokens for Add and retains the real series badge", () => {
     const host = render(
       <MenuProductCard product={{ ...product, name: "Big Bang Firehouse Burger" }} layout="grid" />,
     );
-    const add = host.querySelector<HTMLButtonElement>('button[aria-label="Add Big Bang Firehouse Burger to cart"]')!;
+    const add = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Add Big Bang Firehouse Burger to cart"]',
+    )!;
     expect(add).not.toBeNull();
-    expect(add.className).toContain("border-accent");
-    expect(add.className).toContain("dark:text-accent-foreground");
+    expect(add.className).toContain("bg-primary");
+    expect(add.className).toContain("text-primary-foreground");
+    expect(add.className).not.toContain("bg-accent");
     expect(add.className).not.toContain("#FF6600");
-    expect(host.querySelector('[data-testid="product-image-badge"]')!.textContent).toBe("Big Bang Series");
+    expect(host.querySelector('[data-testid="product-image-badge"]')!.textContent).toBe(
+      "Big Bang Series",
+    );
   });
 });
 
@@ -326,7 +355,9 @@ describe("P1-12: prep-time meta renders only for a real positive value", () => {
     );
 
   it("renders '<n>m' when the product carries a positive prep time", () => {
-    const host = render(<MenuProductCard product={{ ...base, prepTimeMinutes: 20 }} layout="row" />);
+    const host = render(
+      <MenuProductCard product={{ ...base, prepTimeMinutes: 20 }} layout="row" />,
+    );
     expect(prepBadge(host)?.textContent?.trim()).toBe("20m");
   });
 
@@ -337,7 +368,9 @@ describe("P1-12: prep-time meta renders only for a real positive value", () => {
 
   it("renders no prep badge for a non-positive value (no invented 15m/0m)", () => {
     for (const value of [0, -5, Number.NaN]) {
-      const host = render(<MenuProductCard product={{ ...base, prepTimeMinutes: value }} layout="grid" />);
+      const host = render(
+        <MenuProductCard product={{ ...base, prepTimeMinutes: value }} layout="grid" />,
+      );
       expect(prepBadge(host)).toBeUndefined();
     }
   });

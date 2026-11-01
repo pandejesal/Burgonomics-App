@@ -83,9 +83,8 @@ export const notificationsService = {
       const uid = auth.currentUser?.uid;
       if (!uid) return ok(null);
       const { db } = await import("@/core/config/firebase");
-      const { collection, getDocs, writeBatch, serverTimestamp } = await import(
-        "firebase/firestore"
-      );
+      const { collection, getDocs, writeBatch, serverTimestamp } =
+        await import("firebase/firestore");
       const snap = await getDocs(collection(db, "users", uid, "notifications"));
       const batch = writeBatch(db);
       snap.docs.forEach((d) => {

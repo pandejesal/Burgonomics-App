@@ -112,11 +112,11 @@ function Body() {
 
   return (
     <AppShell title="Saved Addresses" backTo="/profile" showTabs showTopBar>
-      <div className="mx-auto max-w-[520px] space-y-3 px-4 py-4">
+      <div className="mx-auto max-w-[520px] space-y-4 px-4 py-4">
         {actionError && (
           <p
             role="alert"
-            className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300"
+            className="rounded-xl border border-error/30 bg-error/10 px-3.5 py-2.5 text-sm font-medium text-error"
           >
             {actionError}
           </p>
@@ -124,13 +124,13 @@ function Body() {
         {loadError && (
           <p
             role="alert"
-            className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300"
+            className="rounded-xl border border-error/30 bg-error/10 px-3.5 py-2.5 text-sm font-medium text-error"
           >
             {loadError}
           </p>
         )}
         {seeding && addresses.length === 0 ? (
-          <p role="status" className="py-6 text-center text-xs font-medium text-text-secondary">
+          <p role="status" className="py-6 text-center text-sm text-text-secondary">
             Loading your saved addresses…
           </p>
         ) : addresses.length === 0 ? (
@@ -155,7 +155,7 @@ function Body() {
                           <button
                             type="button"
                             onClick={() => void handleSetDefault(a.id)}
-                            className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-bold text-[#0E4825] dark:text-[#4ADE80] hover:bg-[#0E4825]/10 cursor-pointer transition-colors"
+                            className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2.5 type-label-large text-primary-text transition-colors hover:bg-primary/10 cursor-pointer"
                           >
                             <Star className="h-3.5 w-3.5" aria-hidden />
                             <span>Set default</span>
@@ -164,7 +164,7 @@ function Body() {
                         <button
                           type="button"
                           onClick={() => handleEditAddress(a)}
-                          className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-medium text-text-secondary hover:text-text hover:bg-bg-secondary cursor-pointer transition-colors"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2.5 type-label-large text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text cursor-pointer"
                         >
                           <Pencil className="h-3.5 w-3.5" aria-hidden />
                           <span>Edit</span>
@@ -172,7 +172,7 @@ function Body() {
                         <button
                           type="button"
                           onClick={() => setPendingDelete(a)}
-                          className="inline-flex items-center gap-1 min-h-[36px] px-2 py-1 rounded-lg text-xs font-medium text-text-secondary hover:text-red-500 hover:bg-red-500/10 cursor-pointer transition-colors"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2.5 type-label-large text-text-secondary transition-colors hover:bg-error/10 hover:text-error cursor-pointer"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden />
                           <span>Delete</span>
@@ -188,9 +188,9 @@ function Body() {
               <button
                 type="button"
                 onClick={handleAddAddress}
-                className="w-full min-h-[48px] py-3 px-4 rounded-2xl border-2 border-dashed border-divider hover:border-primary text-text font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all hover:bg-surface cursor-pointer"
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-divider px-4 py-3 text-sm font-semibold text-text transition-colors hover:border-primary hover:bg-surface cursor-pointer"
               >
-                <Plus className="h-4 w-4 text-primary" />
+                <Plus className="h-4 w-4 text-primary-text" aria-hidden />
                 <span>Add new address</span>
               </button>
             </div>

@@ -227,7 +227,11 @@ function OffersPage() {
         success: applied.data.savingsLabel ?? `${applied.data.description ?? code} applied.`,
       });
     } catch {
-      setCoupon({ busy: false, error: "Could not apply the coupon. Please try again.", success: null });
+      setCoupon({
+        busy: false,
+        error: "Could not apply the coupon. Please try again.",
+        success: null,
+      });
     }
   };
 
@@ -371,7 +375,10 @@ function OffersPage() {
 
         {/* Empty */}
         {status === "empty" && (
-          <PetpoojaSyncPlaceholder storeId={storeId || undefined} onRetry={() => void onRefresh()} />
+          <PetpoojaSyncPlaceholder
+            storeId={storeId || undefined}
+            onRetry={() => void onRefresh()}
+          />
         )}
 
         {/* Sections */}
@@ -400,7 +407,7 @@ function OffersPage() {
                       onRemove={() => void removeOffer()}
                       onViewTerms={openTerms}
                     />
-                  )
+                  ),
                 )}
               </div>
             </section>

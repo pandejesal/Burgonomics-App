@@ -5,7 +5,11 @@ import { describe, it, expect } from "vitest";
 import { isJwtExpired } from "../src/features/auth/utils/validators";
 
 const b64url = (s: string) =>
-  Buffer.from(s, "utf-8").toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  Buffer.from(s, "utf-8")
+    .toString("base64")
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 
 function generateTestJwt(payload: object): string {
   const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));

@@ -34,7 +34,7 @@ describe("Prompt 18: Order Confirmation & Loyalty Rewards Screen Suite", () => {
       const estimatedAt = new Date(Date.now() + 25 * 60_000).toISOString();
       const remainingMinutes = Math.max(
         0,
-        Math.round((+new Date(estimatedAt) - Date.now()) / 60_000)
+        Math.round((+new Date(estimatedAt) - Date.now()) / 60_000),
       );
 
       expect(remainingMinutes).toBeGreaterThanOrEqual(24);

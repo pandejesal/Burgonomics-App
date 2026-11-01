@@ -53,6 +53,10 @@ function OtpScreen() {
   const { remaining, isDone, reset } = useCountdown(challenge?.resendAfterSec ?? 30);
 
   const isVerifying = status === "verifying";
+  // The grid now emits a positional value with a space placeholder for a hole
+  // ("12 456"). Six characters is therefore not six digits, and the old
+  // length-only gate enabled Verify for a code that could never pass.
+  const isCodeComplete = code.length === OTP_LENGTH && /^\d+$/.test(code);
 
   // Guard: if no active challenge and unauthenticated, return to login
   useEffect(() => {
@@ -171,7 +175,7 @@ function OtpScreen() {
           size="lg"
           variant="cta"
           loading={isVerifying}
-          disabled={code.length !== OTP_LENGTH || isVerifying}
+          disabled={!isCodeComplete || isVerifying}
           onClick={() => void submit(code)}
           className="rounded-[var(--radius-medium)]"
         >

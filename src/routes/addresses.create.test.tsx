@@ -48,14 +48,13 @@ vi.mock("@/features/addresses/components/AddressForm", () => ({
 
 vi.mock("@/features/addresses/state/addressStore", () => ({
   selectAddresses: (s: { items: unknown }) => s.items,
-  useAddressStore: (selector: (s: { items: unknown[] }) => unknown) =>
-    selector({ items: [] }),
+  useAddressStore: (selector: (s: { items: unknown[] }) => unknown) => selector({ items: [] }),
 }));
 
 import { Route } from "./addresses.create";
 
-const Page = (Route as unknown as { options: { component: React.ComponentType } })
-  .options.component;
+const Page = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 async function mount() {
   const container = document.createElement("div");

@@ -20,11 +20,7 @@ interface NutritionAllergenPanelProps {
  * allergen line ("contains gluten and dairy") can send someone with an
  * allergy straight to hospital — or worse, make us look like we checked.
  */
-export function NutritionAllergenPanel({
-  veg,
-  nutrition,
-  className,
-}: NutritionAllergenPanelProps) {
+export function NutritionAllergenPanel({ veg, nutrition, className }: NutritionAllergenPanelProps) {
   const facts = (nutrition ?? []).filter((f) => f?.label && f?.value).slice(0, 5);
   const hasNutrition = facts.length > 0;
 
@@ -55,7 +51,9 @@ export function NutritionAllergenPanel({
         {veg !== undefined && (
           <div className="rounded-xl bg-surface p-2.5 border border-divider/60">
             <span className="text-[10px] font-medium text-text-secondary block">Dietary</span>
-            <p className="text-xs font-bold text-emerald-600 mt-0.5">{veg ? "Pure Veg" : "Non-Veg"}</p>
+            <p className="text-xs font-bold text-emerald-600 mt-0.5">
+              {veg ? "Pure Veg" : "Non-Veg"}
+            </p>
           </div>
         )}
       </div>

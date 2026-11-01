@@ -5,24 +5,11 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * BURGONOMICS Design System — semantic token source of truth (B01-synced).
- *
- * Strict 60-30-10, resolved values actually shipped below:
- *   60% canvas  #F5F5F5 (light) / #0A0A0A (dark)
- *   30% brand   #0E4825 Forest Green (both themes)
- *   10% accent  #C2410C Vibrant Orange (both themes) = --accent (CTA fill)
- *
- * READABLE CTA vs DECORATIVE ORANGE — do not mix these two families:
- *   Readable/CTA (text-bearing, AA-verified in tests/token-accessibility):
- *     --accent + --accent-foreground  (fill + label painted on it)
- *     --accent-text                   (orange text painted on a surface)
- *     --ring                          (focus indicator, 3:1 non-text)
- *   Decorative / legacy brand orange — NEVER text, NEVER a white-label fill:
- *     #FF6600 brand mark (2.94:1 on white), #EF6124 (legacy spec header),
- *     gradient stops #CC5200/#B34700/#9A3412 in --gradient-orange.
- *
- * Typography: Montserrat (UI) + MonstroSolid (display). Raw hex appears only
- * for non-text decoration; components reference tokens.
+ * BURGONOMICS Design System.
+ * Palette: white/black canvas, forest green primary, sparse accessible orange
+ * highlights. Typography: MonstroSolid headings, bold Montserrat subheads,
+ * regular Montserrat content; all fonts are self-hosted.
+ * Components consume the semantic tokens below — never raw colours.
  */
 
 @theme inline {
@@ -57,11 +44,13 @@
   --color-bg-secondary: var(--bg-secondary);
 
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-text: var(--primary-text);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-text: var(--accent-text);
   --color-brand: var(--brand);
@@ -85,7 +74,6 @@
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
-  --color-warning-text: var(--warning-text);
   --color-warning-foreground: var(--warning-foreground);
   --color-error: var(--error);
   --color-error-foreground: var(--error-foreground);
@@ -105,14 +93,24 @@
 
   /* Elevation - Spatial Depth Tokens */
   --shadow-flat: none;
-  --shadow-low: 0 4px 12px -2px rgba(14, 72, 37, 0.05), 0 2px 4px -2px rgba(14, 72, 37, 0.03);
-  --shadow-medium: 0 16px 32px -4px rgba(14, 72, 37, 0.1), 0 8px 16px -4px rgba(14, 72, 37, 0.05);
-  --shadow-high: 0 32px 64px -12px rgba(14, 72, 37, 0.15), 0 16px 32px -8px rgba(14, 72, 37, 0.08);
-  --shadow-brand: 0 16px 32px -8px rgba(194, 65, 12, 0.3);
+  --shadow-low: 0 4px 12px -2px rgb(15 18 16 / 0.06), 0 2px 4px -2px rgb(15 18 16 / 0.04);
+  --shadow-medium: 0 16px 32px -4px rgb(15 18 16 / 0.12), 0 8px 16px -4px rgb(15 18 16 / 0.06);
+  --shadow-high: 0 32px 64px -12px rgb(15 18 16 / 0.18), 0 16px 32px -8px rgb(15 18 16 / 0.1);
+  --shadow-brand: 0 16px 32px -8px rgb(15 18 16 / 0.22);
 
-  /* Typography families — Montserrat and MonstroSolid */
-  --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: "MonstroSolid", "Lilita One", "Montserrat", sans-serif;
+  /*
+   * Owner's updated roles: MonstroSolid for brand/page/section headings;
+   * Montserrat for bold subheads and regular content. Keep Inter's original
+   * asset/licence intact, but do not use it for the current interface roles.
+   */
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "MonstroSolid", "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-brand: "MonstroSolid", "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Montserrat", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Brand field + ceremonial accent (deck language, not app body colours). */
+  --color-brand-field: var(--brand-field);
+  --color-gold: var(--gold);
 
   /* Motion */
   --ease-out-quad: cubic-bezier(0.25, 1, 0.5, 1);
@@ -126,142 +124,172 @@
 }
 
 @font-face {
+  font-family: "Inter";
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Montserrat";
+  src: url("/fonts/MontserratVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Brand display face (owner's deck), a single static weight. */
+@font-face {
   font-family: "MonstroSolid";
   src:
-    local("MonstroSolid"),
-    local("Monstro Solid"),
     url("/fonts/MonstroSolid.woff2") format("woff2"),
     url("/fonts/MonstroSolid.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
   font-display: swap;
 }
 
 :root {
-  /* Default = 60% Canvas #F5F5F5 / 30% Forest Green #0E4825 / 10% Accent Orange #C2410C (AA, was #FF6600) */
-  --background: #F5F5F5;         /* 60% Canvas — clean light grey */
-  --foreground: #16281D;         /* High-contrast charcoal near-black text */
-  --surface: #FFFFFF;            /* Cards, modals, sheets */
-  --surface-elevated: #FFFFFF;   /* Dropdowns, tooltips, popovers */
-  --bg-secondary: #F0F3F1;       /* Secondary card background / input fill */
+  color-scheme: light;
 
-  --primary: #0E4825;            /* 30% Brand — Forest Green */
-  --primary-hover: #0A371C;
-  --primary-foreground: #FFFFFF; /* Crisp white text on green */
-  --primary-text: #0E4825;       /* Green text on light surface */
-  --secondary: #FFFFFF;
-  --secondary-foreground: #0E4825;
-  --accent: #C2410C;             /* 10% Accent — CTA fill: white label on it = 5.18:1 */
-  --accent-hover: #9A3412;       /* Hover fill: white label on it = 7.31:1 */
-  --accent-foreground: #FFFFFF;  /* On-accent label: 5.18:1 on --accent (AA text) */
-  --accent-text: #C2410C;        /* Orange TEXT on light surfaces: 4.64-5.18:1 (AA text) */
-  --brand: #0E4825;
-  --brand-foreground: #FFFFFF;
+  /* Light canvas is pure white; green carries brand, orange stays a highlight. */
+  --background: #ffffff;
+  --foreground: #111311;
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --bg-secondary: #f4f6f4; /* Quiet grouping / input fill, not a grey canvas */
 
-  --text-primary: #16281D;       /* High-contrast charcoal text */
-  --text-secondary: #586B60;     /* Muted sage secondary text */
-  --text-inverse: #FFFFFF;
-  --text-disabled: #9CA3AF;      /* Disabled controls only (WCAG-exempt). */
-  /* Informative placeholder copy must clear 4.5:1 on --surface (#FFFFFF)
-     and --bg-secondary (#F0F3F1): #4B5563 = 7.56:1 / 6.76:1. */
-  --text-placeholder: #4B5563;
+  --primary: #0e4825; /* Forest Green — CTAs, active navigation */
+  --primary-hover: #0a371c;
+  --primary-foreground: #ffffff;
+  --primary-text: #0e4825; /* Green text on light surfaces (10.4:1) */
+  --secondary: #ffffff;
+  --secondary-foreground: #0e4825;
+  --accent: #c2410c; /* Sparse orange highlight, AA on white */
+  --accent-hover: #9a3412;
+  --accent-foreground: #ffffff;
+  --accent-text: #c2410c; /* Orange TEXT on light surfaces: 4.64:1+ (AA) */
+  --brand: #0e4825;
+  --brand-foreground: #ffffff;
 
-  --divider: #E5EDE7;            /* Subtle dividers and card borders */
-  --border: #E5EDE7;
-  --input: #F0F3F1;
-  --ring: #C2410C;               /* Focus ring: 4.64-5.18:1 on light surfaces (needs 3:1) */
+  --text-primary: #111311; /* 18.9:1 on white */
+  --text-secondary: #4e5d53; /* 7.1:1 on white — metadata stays readable */
+  --text-inverse: #ffffff;
+  --text-disabled: #8a948d;
+  --text-placeholder: #4b5563; /* Informative placeholder: 7.56:1 on white */
 
-  --card: #FFFFFF;
-  --card-foreground: #16281D;
-  --popover: #FFFFFF;
-  --popover-foreground: #16281D;
-  --muted: #F0F3F1;
-  --muted-foreground: #586B60;
+  --divider: #e4e8e4;
+  --border: #dde3dd;
+  --input: #f4f6f4;
+  --ring: #0e4825; /* 10.4:1 focus indicator against white */
 
-  --success: #16A34A;            /* 100% Pure Veg badge / status */
-  --success-foreground: #FFFFFF;
-  --warning: #F59E0B;            /* Price lock timer / warnings (fill/decoration) */
-  --warning-text: #B45309;       /* Warning TEXT on light surfaces: 5.02:1 on #FFFFFF, 4.61:1 on #F5F5F5 */
-  --warning-foreground: #FFFFFF;
-  --error: #DC2626;              /* Critical errors / cancellations */
-  --error-foreground: #FFFFFF;
-  --disabled: #E5E7EB;
+  --card: #ffffff;
+  --card-foreground: #111311;
+  --popover: #ffffff;
+  --popover-foreground: #111311;
+  --muted: #f4f6f4;
+  --muted-foreground: #4e5d53;
 
-  --veg: #16A34A;
-  --nonveg: #DC2626;
+  --success: #15803d; /* 4.9:1 text on white */
+  --success-foreground: #ffffff;
+  --warning: #b45309; /* 4.8:1 text on white */
+  --warning-foreground: #ffffff;
+  --error: #b91c1c; /* 5.9:1 text on white */
+  --error-foreground: #ffffff;
+  --disabled: #e5e7eb;
 
-  --chart-1: #0E4825;
-  --chart-2: #C2410C;
-  --chart-3: #16A34A;
-  --chart-4: #F59E0B;
-  --chart-5: #586B60;
+  --veg: #15803d;
+  --nonveg: #b91c1c;
 
-  --sidebar: #0E4825;
-  --sidebar-foreground: #FFFFFF;
-  --sidebar-primary: #C2410C;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #175E33;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #1B5934;
-  --sidebar-ring: #C2410C;
+  --chart-1: #0e4825;
+  --chart-2: #c2410c;
+  --chart-3: #15803d;
+  --chart-4: #b45309;
+  --chart-5: #4e5d53;
+
+  --sidebar: #0e4825;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0e4825;
+  --sidebar-accent: #175e33;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1b5934;
+  --sidebar-ring: #7cd99b;
+
+  /* Awards field, from the franchise deck. White text measures ~14:1 on it. */
+  --brand-field: #0b2e1d;
+  /* Ceremony accent: rule + year marks only, never prose. */
+  --gold: #e9b949;
 }
 
 .dark {
-  /* Dark Mode: 60% Canvas #0A0A0A / 30% Forest Green #0E4825 / 10% Accent Orange #C2410C
-     (#FF802B = readable orange TEXT on dark; #CC5200 = focus ring / decorative only) */
-  --background: #0A0A0A;         /* 60% Canvas — Deep black */
-  --foreground: #F3F5F4;         /* High-contrast near-white text */
-  --surface: #1A1A1A;            /* Dark cards and containers */
-  --surface-elevated: #222222;   /* Elevated sheets / modals */
-  --bg-secondary: #141414;       /* Dark input fill */
-  --text-primary: #F3F5F4;       /* High-contrast near-white text */
-  --text-secondary: #A0A0A0;     /* Muted grey secondary text */
-  --text-inverse: #0A0A0A;
-  --text-disabled: #666666;
-  --text-placeholder: #9CA3AF;   /* 7.26:1 on --bg-secondary (#141414) */
-  --border: #262626;
-  --divider: #262626;
-  --input: #141414;
+  color-scheme: dark;
 
-  --primary: #0E4825;            /* 30% Brand Forest Green anchor */
+  /* Dark canvas is pure black; elevated surfaces step up in small increments. */
+  --background: #000000;
+  --foreground: #f4f6f4;
+  --surface: #121212;
+  --surface-elevated: #1a1a1a;
+  --bg-secondary: #0c0c0c;
+
+  --primary: #1b6b3a; /* Green CTA stays legible on black */
   --primary-hover: #145830;
-  --primary-foreground: #FFFFFF;
-  --primary-text: #4ADE80;       /* WCAG AAA Emerald text on dark surface */
-  --secondary: #1A1A1A;
-  --secondary-foreground: #F3F5F4;
+  --primary-foreground: #ffffff;
+  --primary-text: #7cd99b; /* 10.5:1 on black */
+  --secondary: #121212;
+  --secondary-foreground: #f4f6f4;
 
-  /* 10% Accent in dark keeps the SAME orange identity as light (#C2410C).
-     #CC5200 was dropped as the CTA fill: white on it is 4.40:1 (<4.5:1 AA), and
-     no foreground can rescue it — white is already the best case. #C2410C gives
-     the white on-accent label 5.18:1. Orange TEXT on dark surfaces cannot share
-     this token (3.36:1 on --surface); use --accent-text (#FF802B, 6.34-7.90:1). */
-  --accent: #C2410C;             /* 10% Accent — CTA fill: white label on it = 5.18:1 */
-  --accent-hover: #B34700;       /* Hover fill: white label on it = 5.50:1 */
-  --accent-foreground: #FFFFFF;  /* On-accent label: 5.18:1 on --accent (AA text) */
-  --accent-text: #FF802B;        /* Orange TEXT on dark surfaces: 6.34-7.90:1 (AA text) */
-  --brand: #0E4825;
-  --brand-foreground: #FFFFFF;
-  /* Focus ring stays #CC5200 (not #C2410C): 3.62-4.50:1 across every dark
-     surface incl. --surface-elevated, and it also clears 3:1 on white. Decorative
-     orange only — 3.96:1 on --surface is below AA for text, so never paint copy. */
-  --ring: #CC5200;
+  --accent: #c2410c; /* Orange badges keep AA white text */
+  --accent-hover: #9a3412;
+  --accent-foreground: #ffffff;
+  --accent-text: #ff802b; /* Orange TEXT on dark surfaces: 6.34:1+ (AA) */
+  --brand: #1b6b3a;
+  --brand-foreground: #ffffff;
+  --ring: #7cd99b; /* 10.5:1 focus indicator against black */
 
-  --success: #22C55E;
-  --success-foreground: #FFFFFF;
-  --warning: #FBBF24;
-  --warning-text: #FBBF24;       /* 8.10:1 on --surface (#1A1A1A) */
-  --warning-foreground: #0A0A0A;
-  --error: #EF4444;
-  --error-foreground: #FFFFFF;
+  --text-primary: #f4f6f4;
+  --text-secondary: #b9c2bb; /* 12.6:1 on black */
+  --text-inverse: #000000;
+  --text-disabled: #6b746e;
+  --text-placeholder: #9ca3af; /* 7.26:1 on dark surfaces */
+
+  --border: #2a2e2b;
+  --divider: #232724;
+  --input: #0c0c0c;
+
+  --success: #4ade80;
+  --success-foreground: #052e16;
+  --warning: #fbbf24;
+  --warning-foreground: #1a1400;
+  --error: #f87171; /* 7.6:1 text on black */
+  --error-foreground: #1a0505;
   --disabled: #333333;
 
-  --veg: #22C55E;
-  --nonveg: #EF4444;
+  --veg: #4ade80;
+  --nonveg: #f87171;
 
-  --card: #1A1A1A;
-  --card-foreground: #F3F5F4;
-  --popover: #222222;
-  --popover-foreground: #F3F5F4;
-  --muted: #141414;
-  --muted-foreground: #A0A0A0;
+  --card: #121212;
+  --card-foreground: #f4f6f4;
+  --popover: #1a1a1a;
+  --popover-foreground: #f4f6f4;
+  --muted: #0c0c0c;
+  --muted-foreground: #b9c2bb;
+
+  /* Dark canvas keeps the same ceremonial field, slightly deeper. */
+  --brand-field: #082415;
+  --gold: #e9b949;
+}
+
+/*
+ * Pre-JS canvas fallback. The stored preference is applied by the root theme
+ * bootstrap before React paints; this only stops a white flash while the
+ * bundle loads for customers whose OS is already dark.
+ */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    background-color: #000000;
+  }
 }
 
 @layer base {
@@ -270,19 +298,16 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Global focus-visible ring for keyboard accessibility.
-     Deliberately NOT gated behind `@media (hover: hover) and (pointer: fine)`.
-     A phone or tablet paired with a hardware/bluetooth keyboard is a real
-     keyboard workflow and must get the same indicator — SC 2.4.7 (visible
-     focus) has no pointer exception — and `:focus-visible` itself already
-     suppresses the ring for plain touch/mouse activation of buttons.
-     `!important` overrides `outline-none` / `focus-visible:outline-none`
-     utilities so components cannot silently delete the indicator.
-     Ring contrast is a token property, not a component one: --ring is
-     4.64-5.18:1 on light surfaces and 3.62-4.50:1 on dark ones (3:1 min, SC 1.4.11). */
+  /* Global focus indicator: green on light, mint on dark (both > 3:1). */
   *:focus-visible {
     outline: 2px solid var(--color-ring) !important;
     outline-offset: 2px !important;
+  }
+
+  /* Same layer as the important fallback: the rounded parent owns focus here. */
+  .search-field input:focus-visible {
+    outline: none !important;
+    outline-offset: 0 !important;
   }
 
   button,
@@ -305,9 +330,8 @@
   html,
   body {
     min-height: 100%;
-    /* Clip stray horizontal overflow without creating a body scrollport that
-       steals sticky positioning from the viewport (overflow:hidden does). */
-    overflow-x: clip;
+    /* Avoid horizontal scrolling from stray overflow at any breakpoint. */
+    overflow-x: hidden;
     /* Disable web text selection globally for native app experience */
     -webkit-user-select: none;
     user-select: none;
@@ -348,11 +372,43 @@
   }
 
   body {
+    /* overflow-x:hidden implicitly makes overflow-y:auto, creating a body
+       scroll container that prevents viewport-sticky headers from sticking.
+       The root still contains horizontal overflow; clip does not trap scroll. */
+    overflow-x: clip;
+    overflow-y: visible;
     font-family: var(--font-sans);
+    /* QSR body copy: 16px minimum with generous leading for scanning. */
+    font-size: 16px;
+    line-height: 1.6;
+    font-weight: 400;
+    letter-spacing: 0;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     /* Respect notches / status bar on native shells. */
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 
   /* Keyboard-open: drop bottom safe-area padding so inputs stay visible. */
@@ -368,129 +424,157 @@
   }
 }
 
-/* Typography utilities — Montserrat and MonstroSolid */
+/* Heading display / bold subhead / regular content roles. */
 .type-hero {
   font-family: var(--font-display);
-  font-size: 36px;
-  line-height: 1.2;
-  font-weight: 800;
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 400;
   letter-spacing: -0.02em;
 }
 .type-display {
   font-family: var(--font-display);
   font-size: 28px;
-  line-height: 1.25;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  line-height: 1.2;
+  font-weight: 400;
+  letter-spacing: -0.015em;
 }
 .type-display-large {
   font-family: var(--font-display);
-  font-size: 28px;
-  line-height: 1.25;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 400;
+  letter-spacing: -0.02em;
 }
 .type-display-medium {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1.3;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: -0.01em;
 }
 .type-headline-large {
   font-family: var(--font-display);
-  font-size: 24px;
-  line-height: 1.3;
-  font-weight: 700;
+  font-size: 22px;
+  line-height: 1.35;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 .type-headline-medium {
   font-family: var(--font-display);
   font-size: 20px;
-  line-height: 1.35;
-  font-weight: 700;
+  line-height: 1.4;
+  font-weight: 400;
 }
 .type-title-large {
   font-family: var(--font-sans);
   font-size: 18px;
-  line-height: 1.4;
+  line-height: 1.45;
   font-weight: 700;
 }
 .type-title {
   font-family: var(--font-sans);
   font-size: 17px;
-  line-height: 1.4;
+  line-height: 1.45;
   font-weight: 700;
 }
 .type-title-medium {
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.4;
-  font-weight: 600;
+  line-height: 1.5;
+  font-weight: 700;
+}
+.type-subheading {
+  font-family: var(--font-sans);
+  font-weight: 700;
 }
 .type-body-large {
   font-family: var(--font-sans);
   font-size: 17px;
-  line-height: 1.45;
-  font-weight: 600;
+  line-height: 1.6;
+  font-weight: 400;
 }
 .type-body {
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.45;
-  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 400;
 }
 .type-body-medium {
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.45;
-  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 400;
 }
 .type-body-sm {
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 1.55;
   font-weight: 400;
 }
 .type-label-large {
   font-family: var(--font-sans);
   font-size: 14px;
-  line-height: 1.4;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  line-height: 1.45;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 .type-label-medium {
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.4;
-  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 700;
 }
 .type-caption {
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.5;
   font-weight: 400;
 }
 .type-caption-sm {
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.5;
   font-weight: 400;
 }
 .type-button {
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.4;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 .type-button-sm {
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.4;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+/*
+ * Brand/page/section display face; never used for body copy or controls.
+ */
+.type-brand-heading {
+  font-family: var(--font-brand);
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  text-transform: none;
+}
+/* Numeric content: Montserrat with tabular figures. */
+.type-price {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
+/* The rounded search field owns its focus outline, not its rectangular input.
+   Other controls retain the global keyboard-focus fallback. */
+.search-field:focus-within {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
 /* Phone-first app shell */
 .app-shell {
   margin-inline: auto;
@@ -600,17 +684,12 @@
   perspective: 1000px;
 }
 
-/* Glassmorphism Surface Tokens */
+/* Glassmorphism Surface Tokens — derived from the active theme surface. */
 @utility glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-}
-
-.dark .glass-panel {
-  background: rgba(26, 26, 26, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
 }
 
 /* Base interactive hover scale for floating cards */
@@ -676,11 +755,6 @@
   position: relative;
 }
 
-/* fill-mode `none`: once the 300/250ms run finishes the keyframe transform is
-   NOT retained, so the element stops being the containing block for
-   position: fixed descendants (05-02). `will-change` stays for the duration of
-   the run only — ConsumerRouteTransition drops this class on animationend /
-   animationcancel, which is what clears the will-change containing block. */
 .route-transition-push {
   animation: nativeRoutePush 300ms cubic-bezier(0.32, 0.72, 0, 1) none;
   will-change: transform, opacity;
@@ -700,10 +774,6 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-  /* Reduced motion never runs the animation, so no animationend fires and the
-     JS cleanup cannot clear `will-change`. Kill it here too: a lingering
-     `will-change: transform` still turns the container into the containing
-     block for fixed-position children (05-02). */
   .route-transition-push,
   .route-transition-pop {
     animation: none !important;
@@ -721,5 +791,5 @@
 }
 
 @utility bg-orange-gradient {
-  background: linear-gradient(135deg, #cc5200 0%, #b34700 55%, #9a3412 100%);
+  background: var(--gradient-orange);
 }

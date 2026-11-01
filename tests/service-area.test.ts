@@ -22,7 +22,7 @@ describe("serviceArea", () => {
   });
 
   it("accepts a store next to the user", () => {
-    const local = { lat: 23.0300, lng: 72.5600, deliveryRadiusKm: 7 };
+    const local = { lat: 23.03, lng: 72.56, deliveryRadiusKm: 7 };
     expect(isStoreInDeliveryArea(local, user.lat, user.lng)).toBe(true);
   });
 

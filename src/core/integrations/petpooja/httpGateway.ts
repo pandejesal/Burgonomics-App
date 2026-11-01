@@ -72,9 +72,7 @@ const LOG_WRITE_TIMEOUT_MS = 4_000;
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("log write timeout")), ms)
-    ),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("log write timeout")), ms)),
   ]);
 }
 
@@ -120,7 +118,10 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   private readonly breakerThreshold: number;
   private readonly logTimeout: number;
 
-  private breakers = new Map<string, { state: "closed" | "open" | "half-open"; failures: number }>();
+  private breakers = new Map<
+    string,
+    { state: "closed" | "open" | "half-open"; failures: number }
+  >();
   private readonly store = createKeyValueStore();
   private cache = new Map<string, { at: number; data: any }>();
   private calls = 0;
@@ -139,7 +140,10 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   // -- transport ---------------------------------------------------------
 
   private async authHeaders(): Promise<Record<string, string>> {
-    const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
     try {
       const token = await auth.currentUser?.getIdToken();
       if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -203,7 +207,11 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     return (await res.json()) as T;
   }
 
-  private async post<T>(route: string, body: Record<string, any>, breakerKey = "global"): Promise<T> {
+  private async post<T>(
+    route: string,
+    body: Record<string, any>,
+    breakerKey = "global",
+  ): Promise<T> {
     const breaker = this.breakerFor(breakerKey);
     if (breaker.state === "open") {
       throw new Error(`Circuit breaker OPEN for ${breakerKey} — failing fast`);
@@ -296,11 +304,11 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     });
 
     try {
-      const res = await this.post<{ success?: boolean; petpoojaOrderId?: string; kotNumber?: string }>(
-        "/petpooja/pushOrder",
-        { orderId, order: payload },
-        `push:${payload.restID}`
-      );
+      const res = await this.post<{
+        success?: boolean;
+        petpoojaOrderId?: string;
+        kotNumber?: string;
+      }>("/petpooja/pushOrder", { orderId, order: payload }, `push:${payload.restID}`);
       return {
         acknowledged: res.success !== false,
         kotNumber: res.kotNumber || res.petpoojaOrderId,
@@ -314,25 +322,36 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
 
   async pushMenu(storeId: string): Promise<PetpoojaMenuSyncResult> {
     try {
-      const res = await this.post<{ itemCount?: number; categoriesCount?: number; syncedItems?: number; syncedCategories?: number }>(
-        "/petpooja/syncMenu",
-        { branchId: storeId, mode: "full" },
-        `menu:${storeId}`
-      );
+      const res = await this.post<{
+        itemCount?: number;
+        categoriesCount?: number;
+        syncedItems?: number;
+        syncedCategories?: number;
+      }>("/petpooja/syncMenu", { branchId: storeId, mode: "full" }, `menu:${storeId}`);
       const itemsSynced = res.itemCount ?? res.syncedItems ?? 0;
       const categoriesCount = res.categoriesCount ?? res.syncedCategories ?? 0;
       await this.writeSyncLog(storeId, "FULL", itemsSynced, categoriesCount, null);
-      return { itemsSynced, categoriesCount, addonGroupsCount: 0, syncedAt: new Date().toISOString() };
+      return {
+        itemsSynced,
+        categoriesCount,
+        addonGroupsCount: 0,
+        syncedAt: new Date().toISOString(),
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Menu sync failed";
       await this.writeSyncLog(storeId, "FULL", 0, 0, message);
-      return { itemsSynced: 0, categoriesCount: 0, addonGroupsCount: 0, syncedAt: new Date().toISOString() };
+      return {
+        itemsSynced: 0,
+        categoriesCount: 0,
+        addonGroupsCount: 0,
+        syncedAt: new Date().toISOString(),
+      };
     }
   }
 
   async runSync(
     storeId: string,
-    mode: "full" | "incremental" | "stock" | "status"
+    mode: "full" | "incremental" | "stock" | "status",
   ): Promise<SyncReport> {
     const started = Date.now();
     if (mode === "full" || mode === "incremental") {
@@ -407,7 +426,9 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   async getStoreStatus(storeId: string): Promise<StoreOperationalState> {
     const breaker = this.breakerFor(`menu:${storeId}`);
     try {
-      const res = await this.cached(`status:${storeId}`, () => this.get<any>("/health", `menu:${storeId}`));
+      const res = await this.cached(`status:${storeId}`, () =>
+        this.get<any>("/health", `menu:${storeId}`),
+      );
       const online = res?.status === "healthy";
       return {
         storeId,
@@ -495,7 +516,11 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
 
   async getSyncLogs(): Promise<SyncLogRecord[]> {
     try {
-      const q = query(collection(db, "petpooja_sync_logs"), orderBy("createdAt", "desc"), limit(50));
+      const q = query(
+        collection(db, "petpooja_sync_logs"),
+        orderBy("createdAt", "desc"),
+        limit(50),
+      );
       const snapshot = await getDocs(q);
       return snapshot.docs.map((d) => {
         const data = d.data();
@@ -526,7 +551,11 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
 
   async getWebhookLogs(): Promise<WebhookRecord[]> {
     try {
-      const q = query(collection(db, "petpooja_webhook_logs"), orderBy("timestamp", "desc"), limit(50));
+      const q = query(
+        collection(db, "petpooja_webhook_logs"),
+        orderBy("timestamp", "desc"),
+        limit(50),
+      );
       const snapshot = await getDocs(q);
       return snapshot.docs.map((d) => {
         const data = d.data();
@@ -549,10 +578,14 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
 
   subscribeWebhookLogs(
     onLogs: (logs: WebhookRecord[]) => void,
-    onError?: (err: Error) => void
+    onError?: (err: Error) => void,
   ): () => void {
     try {
-      const q = query(collection(db, "petpooja_webhook_logs"), orderBy("timestamp", "desc"), limit(50));
+      const q = query(
+        collection(db, "petpooja_webhook_logs"),
+        orderBy("timestamp", "desc"),
+        limit(50),
+      );
       return onSnapshot(
         q,
         (snapshot) => {
@@ -569,10 +602,10 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
                 executionTimeMs: data.executionTimeMs ?? 0,
                 payload: data.payload || {},
               };
-            })
+            }),
           );
         },
-        (err) => onError?.(err as Error)
+        (err) => onError?.(err as Error),
       );
     } catch (err) {
       onError?.(err as Error);
@@ -591,7 +624,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         const res = await this.post<{ success?: boolean }>(
           "/petpooja/pushOrder",
           { orderId: entry.orderId, order: entry.payload },
-          `push:${entry.payload.restID}`
+          `push:${entry.payload.restID}`,
         );
         if (res.success === false) {
           remaining.push({ ...entry, attempts: entry.attempts + 1 });
@@ -710,7 +743,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     _scope: "FULL" | "INCREMENTAL" | "STOCK" | "STATUS",
     _created: number,
     _updated: number,
-    _error: string | null
+    _error: string | null,
   ) {
     // NOTE: sync logs are written server-side (menuSyncWebhook) where the
     // Admin SDK bypasses rules. Client writes here are denied by rules, so

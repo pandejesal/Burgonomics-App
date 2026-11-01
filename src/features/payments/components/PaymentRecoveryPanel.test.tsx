@@ -12,7 +12,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@/core/services/haptics", () => ({
-  HapticService: { impact: vi.fn(async () => {}), selection: vi.fn(), notification: vi.fn(async () => {}) },
+  HapticService: {
+    impact: vi.fn(async () => {}),
+    selection: vi.fn(),
+    notification: vi.fn(async () => {}),
+  },
 }));
 vi.mock("@/core/services/audio", () => ({
   AudioService: { playClick: vi.fn(), playSuccess: vi.fn() },
@@ -26,9 +30,7 @@ import type { PaymentVerification } from "@/features/payments/models";
 let root: Root | null = null;
 let host: HTMLElement | null = null;
 
-async function renderPanel(
-  props: React.ComponentProps<typeof PaymentRecoveryPanel>,
-) {
+async function renderPanel(props: React.ComponentProps<typeof PaymentRecoveryPanel>) {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -80,49 +82,52 @@ const FIXTURES: Array<{
 ];
 
 describe("PaymentRecoveryPanel - rendered recovery states (C01 / A08 B9)", () => {
-  it.each(FIXTURES)("$name: exact payment id, do-not-pay-again, support + orders, no new pay", async (fx) => {
-    const outcome = resolveVerifyOutcome({
-      verify: fx.verify,
-      internalOrderId: "ord_fixture",
-      gatewayOrderId: "order_rzp_fixture",
-      paymentId: "pay_fixture_42",
-    });
+  it.each(FIXTURES)(
+    "$name: exact payment id, do-not-pay-again, support + orders, no new pay",
+    async (fx) => {
+      const outcome = resolveVerifyOutcome({
+        verify: fx.verify,
+        internalOrderId: "ord_fixture",
+        gatewayOrderId: "order_rzp_fixture",
+        paymentId: "pay_fixture_42",
+      });
 
-    // Decision-layer invariant: none of these states may ever reach the
-    // markPaymentFailed branch at any call site.
-    expect(outcome.kind).toBe("reconciliation");
-    if (outcome.kind !== "reconciliation") return;
-    expect(outcome.reason).toBe(fx.reason);
+      // Decision-layer invariant: none of these states may ever reach the
+      // markPaymentFailed branch at any call site.
+      expect(outcome.kind).toBe("reconciliation");
+      if (outcome.kind !== "reconciliation") return;
+      expect(outcome.reason).toBe(fx.reason);
 
-    const onContactSupport = vi.fn();
-    const onCheckOrders = vi.fn();
-    await renderPanel({
-      reason: outcome.reason,
-      paymentId: outcome.paymentId ?? null,
-      orderId: outcome.gatewayOrderId,
-      onContactSupport,
-      onCheckOrders,
-    });
+      const onContactSupport = vi.fn();
+      const onCheckOrders = vi.fn();
+      await renderPanel({
+        reason: outcome.reason,
+        paymentId: outcome.paymentId ?? null,
+        orderId: outcome.gatewayOrderId,
+        onContactSupport,
+        onCheckOrders,
+      });
 
-    const text = host!.textContent ?? "";
-    // Exact payment id from the callback is rendered...
-    expect(text).toContain("pay_fixture_42");
-    // ...with the do-not-pay-again instruction...
-    expect(text).toContain("Do not pay again");
-    // ...and never the old false "no money has been charged" reassurance.
-    expect(text).not.toContain("no money has been charged");
+      const text = host!.textContent ?? "";
+      // Exact payment id from the callback is rendered...
+      expect(text).toContain("pay_fixture_42");
+      // ...with the do-not-pay-again instruction...
+      expect(text).toContain("Do not pay again");
+      // ...and never the old false "no money has been charged" reassurance.
+      expect(text).not.toContain("no money has been charged");
 
-    // Only support + existing-order recovery: no Retry / Pay / Try again.
-    const labels = buttonLabels();
-    expect(labels).toEqual(["Contact support", "Check my orders"]);
-    expect(labels.join(" ")).not.toMatch(/retry|pay again|try again/i);
+      // Only support + existing-order recovery: no Retry / Pay / Try again.
+      const labels = buttonLabels();
+      expect(labels).toEqual(["Contact support", "Check my orders"]);
+      expect(labels.join(" ")).not.toMatch(/retry|pay again|try again/i);
 
-    const [supportBtn, ordersBtn] = Array.from(document.querySelectorAll("button"));
-    await act(async () => supportBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    await act(async () => ordersBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onContactSupport).toHaveBeenCalledTimes(1);
-    expect(onCheckOrders).toHaveBeenCalledTimes(1);
-  });
+      const [supportBtn, ordersBtn] = Array.from(document.querySelectorAll("button"));
+      await act(async () => supportBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      await act(async () => ordersBtn.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(onContactSupport).toHaveBeenCalledTimes(1);
+      expect(onCheckOrders).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("PAYMENT_NOT_CAPTURED (held authorization): no new pay, support-led release path", async () => {
     const outcome = resolveVerifyOutcome({
@@ -191,7 +196,11 @@ describe("PaymentRecoveryPanel - rendered recovery states (C01 / A08 B9)", () =>
 
   it("does not claim verification success for an unverified 200 envelope", () => {
     const outcome = resolveVerifyOutcome({
-      verify: ok({ verified: false, confirmedOrderId: "", paymentId: "pay_x" } as PaymentVerification),
+      verify: ok({
+        verified: false,
+        confirmedOrderId: "",
+        paymentId: "pay_x",
+      } as PaymentVerification),
       internalOrderId: "ord_x",
       gatewayOrderId: "order_rzp_x",
       paymentId: "pay_x",

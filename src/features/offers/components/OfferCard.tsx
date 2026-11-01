@@ -69,21 +69,21 @@ export function OfferCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <Text variant="titleMedium" className="truncate">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Text variant="titleMedium" className="font-semibold">
               {offer.title}
             </Text>
             <AppBadge tone={applied ? "success" : "warning"}>{offer.discount.label}</AppBadge>
             {isAutomatic && !applied && <AppBadge tone="neutral">Auto-applied</AppBadge>}
           </div>
 
-          <Text variant="bodyMedium" tone="secondary" className="mt-0.5 line-clamp-2">
+          <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-relaxed">
             {offer.description}
           </Text>
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 type-caption text-text-secondary">
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 type-caption text-text-secondary">
             {offer.code && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-accent/60 px-1.5 py-0.5 font-mono uppercase tracking-wider text-accent font-bold">
+              <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-accent/60 px-2 py-1 text-sm font-semibold uppercase text-accent">
                 {offer.code}
               </span>
             )}
@@ -99,11 +99,11 @@ export function OfferCard({
             )}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => onViewTerms?.(offer)}
-              className="type-label-large text-primary underline underline-offset-2"
+              className="type-label-large min-h-11 text-primary-text underline underline-offset-2"
             >
               View terms
             </button>
@@ -120,7 +120,7 @@ export function OfferCard({
               <AppBadge tone="success">Applied automatically</AppBadge>
             ) : (
               <AppButton
-                variant="cta"
+                variant="primary"
                 size="sm"
                 disabled={disabled || !isEligibleStatus}
                 loading={busy}

@@ -7,8 +7,10 @@ import type { useAuthStore } from "../src/features/auth/state/authStore";
 import { GENERIC_ERROR_MESSAGE } from "../src/core/errors/userMessages";
 import { Route } from "../src/routes/auth.login";
 
-type LoginState = Pick<ReturnType<typeof useAuthStore.getState>,
-  "status" | "error" | "requestOtp" | "clearError">;
+type LoginState = Pick<
+  ReturnType<typeof useAuthStore.getState>,
+  "status" | "error" | "requestOtp" | "clearError"
+>;
 
 const boundary = vi.hoisted(() => ({
   state: null as LoginState | null,
@@ -23,10 +25,18 @@ vi.mock("@tanstack/react-router", () => ({
     useSearch: () => ({}),
   }),
   useNavigate: () => boundary.navigate,
-  Link: ({ to, children, ...props }: React.PropsWithChildren<{
+  Link: ({
+    to,
+    children,
+    ...props
+  }: React.PropsWithChildren<{
     to: string;
     className?: string;
-  }>) => <a href={to} {...props}>{children}</a>,
+  }>) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
 }));
 vi.mock("../src/features/auth/state/authStore", () => ({
   useAuthStore: <Value,>(selector: (state: LoginState) => Value) => {

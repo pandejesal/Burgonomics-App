@@ -61,23 +61,23 @@ export function CouponCard({
   return (
     <div
       className={cn(
-        "relative rounded-2xl border bg-surface overflow-hidden shadow-xs transition-all",
+        "relative overflow-hidden rounded-2xl border bg-surface shadow-xs transition-colors",
         applied
-          ? "border-emerald-500 bg-emerald-950/10 shadow-sm"
+          ? "border-success bg-success/10 shadow-sm"
           : "border-divider hover:border-primary/50",
-        className
+        className,
       )}
     >
       {/* Ticket Dotted Border Decorative Left Cutout */}
-      <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#0A0A0A] border border-divider" />
-      <div className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#0A0A0A] border border-divider" />
+      <div className="absolute -left-2.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full border border-divider bg-background" />
+      <div className="absolute -right-2.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full border border-divider bg-background" />
 
-      <div className="p-4 sm:p-5 space-y-3">
+      <div className="space-y-4 p-4 sm:p-5">
         {/* Top Header: Badge, Code & Apply Button */}
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-[#FF6600] text-white text-[10px] font-black uppercase tracking-wider shadow-xs">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-accent px-2.5 py-1 text-sm font-semibold text-accent-foreground shadow-xs">
                 {offer.discount.label || "PROMO"}
               </span>
 
@@ -85,32 +85,32 @@ export function CouponCard({
                 <button
                   type="button"
                   onClick={handleCopyCode}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-bg-secondary hover:bg-divider border border-dashed border-primary text-xs font-mono font-bold text-primary transition-colors cursor-pointer"
+                  className="inline-flex min-h-11 items-center gap-1 rounded-md border border-dashed border-primary bg-bg-secondary px-2.5 py-1 text-sm font-semibold text-primary-text transition-colors hover:bg-divider cursor-pointer"
                 >
                   <span>{offer.code}</span>
                   {copied ? (
-                    <Check className="w-3 h-3 text-emerald-500" />
+                    <Check className="h-3.5 w-3.5 text-success" aria-hidden />
                   ) : (
-                    <Copy className="w-3 h-3 text-text-secondary" />
+                    <Copy className="h-3.5 w-3.5 text-text-secondary" aria-hidden />
                   )}
                 </button>
               )}
             </div>
 
-            <h3 className="text-sm font-bold text-text pt-1">{offer.title}</h3>
-            <p className="text-xs text-text-secondary line-clamp-2">{offer.description}</p>
+            <h3 className="type-title-large pt-1 text-text">{offer.title}</h3>
+            <p className="text-sm leading-relaxed text-text-secondary">{offer.description}</p>
           </div>
 
           <button
             type="button"
             onClick={handleApplyClick}
             className={cn(
-              "shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer",
+              "min-h-11 shrink-0 rounded-xl px-4 py-2 text-sm font-semibold shadow-xs transition-colors cursor-pointer",
               applied
-                ? "bg-emerald-950 text-emerald-300 border border-emerald-800 hover:bg-emerald-900"
+                ? "border border-success/40 bg-success/10 text-success hover:bg-success/20"
                 : isEligible
-                ? "bg-primary hover:bg-primary-hover text-white"
-                : "bg-bg-secondary text-text-secondary border border-divider cursor-not-allowed opacity-80"
+                  ? "bg-primary text-primary-foreground hover:bg-primary-hover"
+                  : "border border-divider bg-bg-secondary text-text-secondary cursor-not-allowed opacity-80",
             )}
           >
             {applied ? "Applied" : "Apply"}
@@ -119,18 +119,18 @@ export function CouponCard({
 
         {/* Real-time MOV Progress Bar (if shortfall exists) */}
         {!isEligible && validation.progressToUnlock && (
-          <div className="p-2.5 bg-bg-secondary rounded-xl border border-divider space-y-1.5">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-amber-400 font-bold">
+          <div className="space-y-2 rounded-xl border border-divider bg-bg-secondary p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="font-semibold text-warning">
                 Add ₹{validation.progressToUnlock.shortfall} more to unlock
               </span>
-              <span className="font-mono text-text-secondary">
+              <span className="tabular-nums text-text-secondary">
                 ₹{validation.progressToUnlock.current} / ₹{validation.progressToUnlock.required}
               </span>
             </div>
-            <div className="w-full h-1.5 bg-divider rounded-full overflow-hidden">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-divider">
               <div
-                className="h-full bg-[#FF6600] rounded-full transition-all duration-300"
+                className="h-full rounded-full bg-accent transition-all duration-300"
                 style={{ width: `${validation.progressToUnlock.percentage}%` }}
               />
             </div>
@@ -138,8 +138,8 @@ export function CouponCard({
         )}
 
         {/* Metadata Footer & Terms Accordion Trigger */}
-        <div className="pt-2 border-t border-divider flex items-center justify-between text-[11px] text-text-secondary">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-3 text-sm text-text-secondary">
+          <div className="flex flex-wrap items-center gap-3">
             {offer.eligibility?.minOrderValue ? (
               <span>Min order: ₹{offer.eligibility.minOrderValue}</span>
             ) : (
@@ -153,17 +153,21 @@ export function CouponCard({
           <button
             type="button"
             onClick={() => setShowTerms(!showTerms)}
-            className="flex items-center gap-0.5 text-primary hover:underline font-bold cursor-pointer"
+            className="flex min-h-11 items-center gap-0.5 font-semibold text-primary-text hover:underline cursor-pointer"
           >
-            <span>T&C</span>
-            {showTerms ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            <span>T&amp;C</span>
+            {showTerms ? (
+              <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+            )}
           </button>
         </div>
 
         {/* Expandable Terms & Conditions */}
         {showTerms && (
-          <div className="p-3 bg-bg-secondary rounded-xl border border-divider text-[11px] text-text-secondary space-y-1 animate-in fade-in duration-150">
-            <div className="font-bold text-text mb-1">Terms & Conditions:</div>
+          <div className="animate-in space-y-1.5 rounded-xl border border-divider bg-bg-secondary p-3.5 text-sm leading-relaxed text-text-secondary fade-in duration-150">
+            <div className="mb-1 font-semibold text-text">Terms &amp; Conditions:</div>
             <div>• Valid only on direct app orders at Burgonomics.</div>
             <div>• Cannot be combined with other promo codes.</div>
             {offer.discount?.maxDiscount && (

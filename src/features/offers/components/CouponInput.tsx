@@ -56,7 +56,14 @@ export function CouponInput({ onSubmit, busy = false, error, success, onClearMes
             <X className="h-4 w-4" aria-hidden />
           </button>
         )}
-        <AppButton type="submit" variant="ghost" size="sm" disabled={!code.trim()} loading={busy}>
+        <AppButton
+          type="submit"
+          variant="ghost"
+          size="sm"
+          disabled={!code.trim()}
+          loading={busy}
+          className="shrink-0 whitespace-nowrap"
+        >
           Apply
         </AppButton>
       </label>

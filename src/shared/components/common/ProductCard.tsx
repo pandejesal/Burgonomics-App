@@ -61,8 +61,8 @@ export function ProductCard({
           <div className="skeleton h-full w-full" aria-hidden />
         )}
         {typeof discountPercentage === "number" && discountPercentage > 0 && (
-          <AppBadge tone="warning" className="absolute left-2.5 top-2.5 shadow-sm font-extrabold">
-            {discountPercentage}% OFF
+          <AppBadge tone="warning" className="absolute left-2.5 top-2.5 shadow-sm">
+            {discountPercentage}% off
           </AppBadge>
         )}
         {!inStock && (
@@ -76,7 +76,7 @@ export function ProductCard({
       <div className="flex flex-1 flex-col min-w-0 gap-1.5 p-4 bg-surface">
         <div className="flex items-center gap-2 min-w-0">
           {typeof veg === "boolean" && <VegIndicator veg={veg} />}
-          <Text variant="titleMedium" className="truncate font-bold text-text-primary">
+          <Text variant="titleMedium" className="font-semibold text-text-primary">
             {name}
           </Text>
         </div>
@@ -84,13 +84,13 @@ export function ProductCard({
           <Text
             variant="bodyMedium"
             tone="secondary"
-            className="line-clamp-2 text-xs leading-normal"
+            className="line-clamp-2 text-sm leading-relaxed"
           >
             {description}
           </Text>
         )}
-        <div className="mt-auto flex items-center justify-between pt-3">
-          <Text variant="headlineMedium" className="text-primary tracking-wide">
+        <div className="mt-auto flex items-center justify-between gap-3 pt-3">
+          <Text variant="headlineMedium" className="text-primary-text tabular-nums">
             {formatINR(price)}
           </Text>
           <button
@@ -101,9 +101,9 @@ export function ProductCard({
             }}
             disabled={!inStock}
             aria-label={`Add ${name} to cart`}
-            className="min-h-[44px] min-w-[76px] rounded-full bg-accent px-5 py-1.5 text-xs font-extrabold uppercase text-accent-foreground shadow-sm hover:brightness-105 active:scale-95 transition-all duration-150 disabled:opacity-40"
+            className="min-h-11 min-w-[76px] rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover active:scale-95 disabled:opacity-40"
           >
-            ADD +
+            Add
           </button>
         </div>
       </div>

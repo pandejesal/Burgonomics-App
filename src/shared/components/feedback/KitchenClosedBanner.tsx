@@ -26,16 +26,16 @@ export function KitchenClosedBanner({ className, message }: KitchenClosedBannerP
       role="status"
       aria-live="polite"
       className={cn(
-        "flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/15 p-3.5 text-amber-900 shadow-sm dark:text-amber-200",
+        "flex items-start gap-3 rounded-[var(--radius-large)] border border-warning/30 bg-warning/10 p-4 text-warning",
         className,
       )}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/25 text-amber-700 dark:bg-amber-400/25 dark:text-amber-300">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-warning/15 text-warning">
         <MoonStar className="h-4.5 w-4.5" aria-hidden />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-black uppercase tracking-wide">{message ?? KITCHEN_CLOSED_MESSAGE}</p>
-        <p className="mt-0.5 text-[11px] font-medium opacity-90">
+        <p className="type-body font-semibold">{message ?? KITCHEN_CLOSED_MESSAGE}</p>
+        <p className="mt-1 type-caption">
           You can browse the full menu now — checkout opens at {KITCHEN_OPEN_LABEL}
           {minutesUntilOpen >= 60
             ? ` (in ${Math.floor(minutesUntilOpen / 60)}h ${minutesUntilOpen % 60}m)`

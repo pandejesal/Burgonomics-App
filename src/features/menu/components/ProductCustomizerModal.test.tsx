@@ -49,8 +49,7 @@ describe("ProductCustomizerModal & Modifiers Specification Suite", () => {
       const selectedModifiersDeltas = [40, 35, 25]; // Gluten-free bun (40) + Cheddar (35) + Jalapenos (25)
 
       // Combo meal upsell was removed (2026-10-06): no +99/+149 surcharge applies.
-      const unitPrice =
-        basePrice + selectedModifiersDeltas.reduce((acc, d) => acc + d, 0);
+      const unitPrice = basePrice + selectedModifiersDeltas.reduce((acc, d) => acc + d, 0);
 
       expect(unitPrice).toBe(299 + 40 + 35 + 25); // 399
 
@@ -85,7 +84,7 @@ describe("ProductCustomizerModal & Modifiers Specification Suite", () => {
   describe("3. Multi-Select Max Selection Limits", () => {
     it("enforces maxSelect limit when adding extra toppings", () => {
       const maxSelect = 3;
-      let currentSelected = ["opt_cheddar", "opt_jalapenos", "opt_mushrooms"];
+      const currentSelected = ["opt_cheddar", "opt_jalapenos", "opt_mushrooms"];
       const newOption = "opt_onions";
 
       const handleToggle = (current: string[], nextOpt: string, max?: number) => {
@@ -119,7 +118,7 @@ describe("ProductCustomizerModal & Modifiers Specification Suite", () => {
       // (2026-10-06); the fingerprint now derives from productId + modifiers only.
       const generateFingerprint = (
         productId: string,
-        mods: Array<{ groupId: string; optionId: string }>
+        mods: Array<{ groupId: string; optionId: string }>,
       ) => {
         const sorted = [...mods]
           .sort((a, b) => `${a.groupId}:${a.optionId}`.localeCompare(`${b.groupId}:${b.optionId}`))

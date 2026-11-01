@@ -14,9 +14,9 @@ import { isSyntheticEmail } from "@/features/profile/state/profileStore";
  * is sanitized here so the synthetic value can never reach the UI or the
  * store (null = the documented "erase" semantics).
  */
-export function sanitizeProfileDoc<
-  T extends { email?: string | null } | null | undefined,
->(profile: T): T {
+export function sanitizeProfileDoc<T extends { email?: string | null } | null | undefined>(
+  profile: T,
+): T {
   if (profile && isSyntheticEmail(profile.email)) {
     return { ...profile, email: null };
   }

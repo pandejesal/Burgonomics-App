@@ -66,8 +66,7 @@ const multiGroup: CustomizationGroup = {
 };
 
 const radios = () => Array.from(host!.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
-const checkboxes = () =>
-  Array.from(host!.querySelectorAll<HTMLButtonElement>('[role="checkbox"]'));
+const checkboxes = () => Array.from(host!.querySelectorAll<HTMLButtonElement>('[role="checkbox"]'));
 
 describe("L1 — modifier options are real, keyboard-operable controls", () => {
   it("renders single-choice options as focusable radios that expose aria-checked", async () => {
@@ -85,11 +84,7 @@ describe("L1 — modifier options are real, keyboard-operable controls", () => {
 
     const options = radios();
     expect(options.length).toBe(3);
-    expect(options.map((o) => o.getAttribute("aria-checked"))).toEqual([
-      "true",
-      "false",
-      "false",
-    ]);
+    expect(options.map((o) => o.getAttribute("aria-checked"))).toEqual(["true", "false", "false"]);
     for (const option of options) {
       // A native <button> is focusable and Enter/Space-activatable by the platform.
       expect(option.tagName).toBe("BUTTON");

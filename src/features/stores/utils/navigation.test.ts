@@ -26,14 +26,13 @@ describe("getDirectionsUrl", () => {
   });
 
   it("drops a partial or non-finite origin instead of writing NaN into the URL", () => {
-    const destinationOnly =
-      "https://www.google.com/maps/dir/?api=1&destination=23.0131,72.5085";
+    const destinationOnly = "https://www.google.com/maps/dir/?api=1&destination=23.0131,72.5085";
 
     expect(getDirectionsUrl(23.0131, 72.5085, 19.076)).toBe(destinationOnly);
     expect(getDirectionsUrl(23.0131, 72.5085, Number.NaN, 72.8777)).toBe(destinationOnly);
-    expect(
-      getDirectionsUrl(23.0131, 72.5085, Number.POSITIVE_INFINITY, 72.8777),
-    ).toBe(destinationOnly);
+    expect(getDirectionsUrl(23.0131, 72.5085, Number.POSITIVE_INFINITY, 72.8777)).toBe(
+      destinationOnly,
+    );
     expect(getDirectionsUrl(23.0131, 72.5085, undefined, undefined)).toBe(destinationOnly);
   });
 });
@@ -71,9 +70,7 @@ describe("openDirections", () => {
 
     expect(open).toHaveBeenCalledTimes(2);
     for (const call of open.mock.calls) {
-      expect(call[0]).toBe(
-        "https://www.google.com/maps/dir/?api=1&destination=23.0131,72.5085",
-      );
+      expect(call[0]).toBe("https://www.google.com/maps/dir/?api=1&destination=23.0131,72.5085");
     }
   });
 

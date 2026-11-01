@@ -79,8 +79,9 @@ const addItem = vi.hoisted(() =>
   })),
 );
 vi.mock("@/features/cart/repositories/CartRepository", () => ({
-  cartRepository: { addItem: (input: { productId: string; storeId: string; unitPrice: number }) =>
-    addItem(input) },
+  cartRepository: {
+    addItem: (input: { productId: string; storeId: string; unitPrice: number }) => addItem(input),
+  },
 }));
 
 const listProducts = vi.hoisted(() => vi.fn());

@@ -11,9 +11,16 @@ vi.mock("@/features/addresses/repositories/AddressRepository", () => ({
   addressRepository: { update: vi.fn(async () => ({ success: true })), create: vi.fn() },
 }));
 vi.mock("@/features/stores/hooks/useLocationPermission", () => ({
-  useLocationPermission: () => ({ request: vi.fn(), coords: null, status: "unavailable", isLoading: false }),
+  useLocationPermission: () => ({
+    request: vi.fn(),
+    coords: null,
+    status: "unavailable",
+    isLoading: false,
+  }),
 }));
-vi.mock("@/core/services/haptics", () => ({ HapticService: { impact: vi.fn(), selection: vi.fn() } }));
+vi.mock("@/core/services/haptics", () => ({
+  HapticService: { impact: vi.fn(), selection: vi.fn() },
+}));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("react-leaflet", () => ({
   MapContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -50,16 +57,12 @@ function stubFormLayout(
   opts: { boxTop: number; boxHeight: () => number; fieldContentTop: number },
 ) {
   form.getBoundingClientRect = () => makeRect(opts.boxTop, opts.boxHeight());
-  field.getBoundingClientRect = () =>
-    makeRect(opts.fieldContentTop - form.scrollTop, 44);
+  field.getBoundingClientRect = () => makeRect(opts.fieldContentTop - form.scrollTop, 44);
 }
 
 /** Type into a React-controlled input without firing focus (jsdom-safe). */
 function typeInto(input: HTMLInputElement, value: string) {
-  const desc = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(input),
-    "value",
-  );
+  const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value");
   desc?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -99,15 +102,11 @@ async function renderModal() {
   document.body.append(host);
   const root = createRoot(host);
   const close = vi.fn();
-  await act(async () =>
-    root.render(<AddressFormModal isOpen onClose={close} />),
-  );
+  await act(async () => root.render(<AddressFormModal isOpen onClose={close} />));
   mounted.push({ root, host });
   const dialog = lastDialog();
   const form = dialog.querySelector<HTMLFormElement>("form")!;
-  const line1 = form.querySelector<HTMLInputElement>(
-    'input[placeholder^="e.g. Flat 402"]',
-  )!;
+  const line1 = form.querySelector<HTMLInputElement>('input[placeholder^="e.g. Flat 402"]')!;
   return { host, root, dialog, form, line1, close };
 }
 
@@ -118,10 +117,24 @@ it("portals outside transformed screens and submits from a non-scrolling save fo
   document.body.append(host);
   const root = createRoot(host);
   const close = vi.fn();
-  await act(async () => root.render(<AddressFormModal isOpen onClose={close} addressToEdit={{
-    id: "test-address", label: "home", line1: "Test building", city: "Ahmedabad",
-    pincode: "380001", lat: 23.02, lng: 72.57, isDefault: false,
-  }} />));
+  await act(async () =>
+    root.render(
+      <AddressFormModal
+        isOpen
+        onClose={close}
+        addressToEdit={{
+          id: "test-address",
+          label: "home",
+          line1: "Test building",
+          city: "Ahmedabad",
+          pincode: "380001",
+          lat: 23.02,
+          lng: 72.57,
+          isDefault: false,
+        }}
+      />,
+    ),
+  );
   mounted.push({ root, host });
   const dialog = lastDialog();
   expect(host.contains(dialog)).toBe(false);
@@ -132,7 +145,10 @@ it("portals outside transformed screens and submits from a non-scrolling save fo
   expect(save.parentElement?.className).toContain("shrink-0");
   await act(async () => save.click());
   expect(addressRepository.update).toHaveBeenCalledOnce();
-  expect(addressRepository.update).toHaveBeenCalledWith("test-address", expect.objectContaining({ line1: "Test building", lat: 23.02 }));
+  expect(addressRepository.update).toHaveBeenCalledWith(
+    "test-address",
+    expect.objectContaining({ line1: "Test building", lat: 23.02 }),
+  );
   expect(close).toHaveBeenCalledOnce();
 }, 15000);
 
@@ -154,7 +170,6 @@ it("scrolls the focused field into the form's visible box when it starts below i
   const boxRect = form.getBoundingClientRect();
   expect(fieldRect.bottom).toBeLessThanOrEqual(boxRect.bottom - 12);
   expect(fieldRect.top).toBeGreaterThanOrEqual(boxRect.top);
-
 });
 
 it("re-reveals the focused field when the viewport shrinks under the keyboard", async () => {
@@ -178,7 +193,6 @@ it("re-reveals the focused field when the viewport shrinks under the keyboard", 
   const fieldRect = line1.getBoundingClientRect();
   expect(fieldRect.bottom).toBeLessThanOrEqual(280 - 12);
   expect(fieldRect.top).toBeGreaterThanOrEqual(100);
-
 });
 
 it("uses visualViewport resize/scroll signals when the browser exposes them and drops them on close", async () => {
@@ -204,18 +218,10 @@ it("uses visualViewport resize/scroll signals when the browser exposes them and 
     mounted.push({ root, host });
     const dialog = lastDialog();
     const form = dialog.querySelector<HTMLFormElement>("form")!;
-    const line1 = form.querySelector<HTMLInputElement>(
-      'input[placeholder^="e.g. Flat 402"]',
-    )!;
+    const line1 = form.querySelector<HTMLInputElement>('input[placeholder^="e.g. Flat 402"]')!;
 
-    expect(viewport.addEventListener).toHaveBeenCalledWith(
-      "resize",
-      expect.any(Function),
-    );
-    expect(viewport.addEventListener).toHaveBeenCalledWith(
-      "scroll",
-      expect.any(Function),
-    );
+    expect(viewport.addEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(viewport.addEventListener).toHaveBeenCalledWith("scroll", expect.any(Function));
 
     let boxHeight = 400;
     stubFormLayout(form, line1, {
@@ -237,14 +243,8 @@ it("uses visualViewport resize/scroll signals when the browser exposes them and 
       root.render(<AddressFormModal isOpen={false} onClose={vi.fn()} />);
     });
     expect(document.querySelector("[role=dialog]")).toBeNull();
-    expect(viewport.removeEventListener).toHaveBeenCalledWith(
-      "resize",
-      expect.any(Function),
-    );
-    expect(viewport.removeEventListener).toHaveBeenCalledWith(
-      "scroll",
-      expect.any(Function),
-    );
+    expect(viewport.removeEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(viewport.removeEventListener).toHaveBeenCalledWith("scroll", expect.any(Function));
     expect(handlers.size).toBeGreaterThanOrEqual(2);
 
     // The captured handler must be inert after teardown: no crash, no scroll.
@@ -276,7 +276,6 @@ it("stops steering the scroll once focus leaves the fields for the save footer",
     window.dispatchEvent(new Event("resize"));
   });
   expect(form.scrollTop).toBe(0);
-
 });
 
 it("keeps the scroll-box and footer layout contract the reveal depends on", async () => {
@@ -295,7 +294,6 @@ it("keeps the scroll-box and footer layout contract the reveal depends on", asyn
   expect(form.contains(footer)).toBe(false);
   expect(form.contains(header)).toBe(false);
   expect(dialog.className).toContain("overflow-hidden");
-
 });
 
 it("closes a clean form straight away through the close control", async () => {
@@ -305,7 +303,6 @@ it("closes a clean form straight away through the close control", async () => {
   );
   expect(close).toHaveBeenCalledTimes(1);
   expect(dialog.querySelector("[role=alertdialog]")).toBeNull();
-
 });
 
 it("asks before discarding typed input on Escape and keeps the edits when cancelled", async () => {
@@ -341,7 +338,6 @@ it("asks before discarding typed input on Escape and keeps the edits when cancel
   });
   expect(dialog.querySelector("[role=alertdialog]")).not.toBeNull();
   expect(close).not.toHaveBeenCalled();
-
 });
 
 it("dismisses the discard confirm on a second Escape without losing edits", async () => {
@@ -372,7 +368,6 @@ it("discards the edits and closes once the confirm is accepted", async () => {
   )!;
   await act(async () => discard.click());
   expect(close).toHaveBeenCalledTimes(1);
-
 });
 
 it("warns on reload only while there are unsaved changes", async () => {
@@ -386,7 +381,6 @@ it("warns on reload only while there are unsaved changes", async () => {
   const dirty = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(dirty);
   expect(dirty.defaultPrevented).toBe(true);
-
 });
 
 /** Edit-mode sheet with every required field already seeded, so a test can
@@ -453,7 +447,10 @@ it("coalesces a rapid double submit into exactly one remote save", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   let release!: (value: unknown) => void;
   vi.mocked(addressRepository.update).mockImplementationOnce(
-    () => new Promise((resolve) => { release = resolve as (value: unknown) => void; }) as never,
+    () =>
+      new Promise((resolve) => {
+        release = resolve as (value: unknown) => void;
+      }) as never,
   );
 
   const { form, close } = await renderEditModal();
@@ -479,8 +476,7 @@ it("releases the re-entry guard after a failed save so one later tap can retry",
     .mockResolvedValueOnce({ success: true } as never);
 
   const { form, close } = await renderEditModal();
-  const submit = () =>
-    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  const submit = () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
   await act(async () => submit());
   expect(addressRepository.update).toHaveBeenCalledTimes(1);
@@ -498,14 +494,14 @@ it("blocks a retry after a session change because the first write already commit
     success: false,
     error: {
       code: "AUTH_CHANGED",
-      message: "Your session changed before we could confirm that. Reopen this address after signing in.",
+      message:
+        "Your session changed before we could confirm that. Reopen this address after signing in.",
       retryable: false,
     },
   } as never);
 
   const { dialog, form } = await renderEditModal();
-  const submit = () =>
-    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  const submit = () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
   await act(async () => submit());
   const alert = dialog.querySelector<HTMLElement>('[role="alert"]');

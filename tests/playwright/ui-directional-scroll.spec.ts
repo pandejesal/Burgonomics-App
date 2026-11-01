@@ -119,7 +119,10 @@ test.beforeAll(async () => {
   const bundle = result.outputFiles[0].text;
   harnessDir = await mkdtemp(join(tmpdir(), "ui-directional-scroll-"));
   const html = join(harnessDir, "directional-scroll.html");
-  await writeFile(html, fixture.replace("/*__BUNDLE__*/", () => bundle));
+  await writeFile(
+    html,
+    fixture.replace("/*__BUNDLE__*/", () => bundle),
+  );
   harnessUrl = pathToFileURL(html).href;
 });
 
@@ -274,9 +277,7 @@ test("horizontal drags still belong to the rail", async ({ page }) => {
   await touchDrag(page, { x: 320, y: 60 }, { x: 90, y: 66 });
 
   const after = await read(page);
-  expect(after.railLeft, "horizontal drag must scroll the rail").toBeGreaterThan(
-    before.railLeft,
-  );
+  expect(after.railLeft, "horizontal drag must scroll the rail").toBeGreaterThan(before.railLeft);
   expect(after.panelTop, "a horizontal drag must not scroll the panel").toBe(before.panelTop);
   expectNoPageErrors(page);
 });
@@ -286,9 +287,7 @@ test("a vertical drag outside the rail still scrolls the page natively", async (
   await touchDrag(page, { x: 200, y: 700 }, { x: 204, y: 420 });
 
   const after = await read(page);
-  expect(after.windowY, "page must scroll where nothing else can").toBeGreaterThan(
-    before.windowY,
-  );
+  expect(after.windowY, "page must scroll where nothing else can").toBeGreaterThan(before.windowY);
   expect(after.probe.prevented, "no hook listener on the page body").toBe(0);
   expectNoPageErrors(page);
 });

@@ -1,6 +1,4 @@
-import * as React from "react";
-import { motion } from "motion/react";
-import { Bike, ShoppingBag, Utensils } from "lucide-react";
+﻿import * as React from "react";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 import type { Fulfillment } from "@/features/stores/models/Store";
@@ -14,14 +12,18 @@ interface ModeSegmentedSwitchProps {
 interface ModeOption {
   id: Fulfillment;
   label: string;
-  Icon: React.ComponentType<{ className?: string }>;
-  etaText: string;
 }
 
+/**
+ * One 48px row, three text segments, one green fill for the active mode.
+ *
+ * No icons: an icon stacked over a label doubled the control height and gave
+ * two competing signals for the same state. Text alone stays legible at 200%.
+ */
 const MODES: ModeOption[] = [
-  { id: "delivery", label: "Delivery", Icon: Bike, etaText: "25-30 min" },
-  { id: "takeaway", label: "Takeaway", Icon: ShoppingBag, etaText: "Ready in 12 min" },
-  { id: "dinein", label: "Dine-In", Icon: Utensils, etaText: "In-Store" },
+  { id: "delivery", label: "Delivery" },
+  { id: "takeaway", label: "Takeaway" },
+  { id: "dinein", label: "Dine-in" },
 ];
 
 export function ModeSegmentedSwitch({
@@ -34,13 +36,26 @@ export function ModeSegmentedSwitch({
   return (
     <div
       role="radiogroup"
-      aria-label="Fulfillment Mode"
-      className={cn(
-        "relative flex w-full items-center justify-between rounded-full bg-black/20 p-1 backdrop-blur-sm",
-        className,
-      )}
+      aria-label="Fulfillment mode"
+      onKeyDown={(event) => {
+        const currentIndex = MODES.findIndex((mode) => mode.id === current);
+        let nextIndex: number;
+        if (event.key === "ArrowRight" || event.key === "ArrowDown")
+          nextIndex = (currentIndex + 1) % MODES.length;
+        else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+          nextIndex = (currentIndex + MODES.length - 1) % MODES.length;
+        else if (event.key === "Home") nextIndex = 0;
+        else if (event.key === "End") nextIndex = MODES.length - 1;
+        else return;
+        event.preventDefault();
+        onChange(MODES[nextIndex].id);
+        event.currentTarget
+          .querySelectorAll<HTMLButtonElement>('button[role="radio"]')
+          [nextIndex]?.focus();
+      }}
+      className={cn("flex w-full items-stretch gap-1 rounded-xl bg-bg-secondary p-1", className)}
     >
-      {MODES.map(({ id, label, Icon }) => {
+      {MODES.map(({ id, label }) => {
         const isSelected = current === id;
         return (
           <button
@@ -48,6 +63,7 @@ export function ModeSegmentedSwitch({
             type="button"
             role="radio"
             aria-checked={isSelected}
+            tabIndex={isSelected ? 0 : -1}
             onClick={() => {
               if (!isSelected) {
                 void HapticService.selection();
@@ -55,21 +71,13 @@ export function ModeSegmentedSwitch({
               }
             }}
             className={cn(
-              "relative z-10 flex flex-1 items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors duration-200 outline-none",
+              "flex min-h-12 min-w-0 flex-1 items-center justify-center rounded-[10px] px-2 py-2 text-center text-sm leading-snug focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:text-base",
               isSelected
-                ? "text-primary font-bold"
-                : "text-white/80 hover:text-white",
+                ? "bg-primary font-semibold text-primary-foreground"
+                : "font-medium text-text-secondary hover:text-text-primary",
             )}
           >
-            {isSelected && (
-              <motion.div
-                layoutId="activeModePill"
-                className="absolute inset-0 z-[-1] rounded-full bg-white shadow-sm"
-                transition={{ type: "spring", stiffness: 450, damping: 32 }}
-              />
-            )}
-            <Icon className={cn("h-3.5 w-3.5", isSelected ? "text-primary stroke-[2.5px]" : "text-white/80")} />
-            <span className="truncate">{label}</span>
+            <span className="max-w-full break-words">{label}</span>
           </button>
         );
       })}

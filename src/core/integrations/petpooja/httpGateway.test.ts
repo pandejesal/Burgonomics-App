@@ -116,7 +116,7 @@ describe("petpooja gateway wiring", () => {
         store: { id: "str_001", name: "S", address: "A" },
         totals: {},
         payment: { method: "upi" },
-      } as any)
+      } as any),
     ).rejects.toThrow("Customer phone is required");
   });
 

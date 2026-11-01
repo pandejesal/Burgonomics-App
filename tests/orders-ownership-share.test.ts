@@ -24,10 +24,10 @@ describe("Order privacy + share URL (real code)", () => {
 
   it("builds the canonical track URL both share call sites must use", () => {
     expect(buildTrackUrl("ord_123", "https://burgonomics.com")).toBe(
-      "https://burgonomics.com/orders/ord_123/track"
+      "https://burgonomics.com/orders/ord_123/track",
     );
     expect(buildTrackUrl("ord_123", "https://burgonomics.com/")).toBe(
-      "https://burgonomics.com/orders/ord_123/track"
+      "https://burgonomics.com/orders/ord_123/track",
     );
   });
 });

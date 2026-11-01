@@ -60,8 +60,9 @@ describe("pricingEngine — all-in unit price contract", () => {
     // grand total adds packaging + delivery but never `taxes` again.
     expect(totals.subtotal).toBe(798);
     expect(totals.grandTotal).toBe(
-      Math.round((798 + DEFAULT_PRICING_CONFIG.packagingFee + DEFAULT_PRICING_CONFIG.deliveryFee) * 100) /
-        100,
+      Math.round(
+        (798 + DEFAULT_PRICING_CONFIG.packagingFee + DEFAULT_PRICING_CONFIG.deliveryFee) * 100,
+      ) / 100,
     );
     expect(totals.grandTotal).toBeGreaterThanOrEqual(totals.subtotal);
     expect(totals.taxes).toBeGreaterThan(0);

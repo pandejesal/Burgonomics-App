@@ -6,7 +6,12 @@ describe("Prompt 27: Order History, Reorder & Invoice Download Suite", () => {
     it("distinguishes ongoing active orders from completed terminal orders", () => {
       const activeOrder = {
         id: "ord_1",
-        status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+        status: {
+          code: "OUT_FOR_DELIVERY",
+          label: "Out for Delivery",
+          kind: "in_progress",
+          terminal: false,
+        },
       } as unknown as Order;
 
       const completedOrder = {

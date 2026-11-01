@@ -31,8 +31,8 @@ export function GuestProfilePrompt() {
           tone="secondary"
           className="mx-auto mt-3 w-11/12 max-w-[320px] leading-relaxed"
         >
-          Sign in with your mobile number to save favourites and addresses on this device
-          and track your orders.
+          Sign in with your mobile number to save favourites and addresses on this device and track
+          your orders.
         </Text>
       </div>
 

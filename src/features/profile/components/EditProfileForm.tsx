@@ -56,8 +56,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
       // (INVALID_PROFILE: "Enter a valid email address."; UNAUTHORIZED).
       // SERVER_ERROR appends the raw Firestore message, so every other code
       // is logged and mapped instead.
-      const curated =
-        res.error.code === "INVALID_PROFILE" || res.error.code === "UNAUTHORIZED";
+      const curated = res.error.code === "INVALID_PROFILE" || res.error.code === "UNAUTHORIZED";
       if (!curated) console.error("[profile] update failed:", res.error);
       setError(curated ? res.error.message : toUserMessage(res));
       return;
@@ -71,7 +70,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
       <div className="flex items-center gap-3">
         <div
           aria-hidden
-          className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary type-headline-medium font-black"
+          className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary-text type-headline-medium font-semibold"
         >
           {(fullName || profile.phone)
             .split(" ")
@@ -121,9 +120,7 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
       />
 
       <fieldset>
-        <legend className="type-caption uppercase text-text-secondary mb-2">
-          Gender (optional)
-        </legend>
+        <legend className="type-label-large mb-2 text-text-secondary">Gender (optional)</legend>
         <div className="grid grid-cols-2 gap-2">
           {GENDERS.map((opt) => {
             const active = gender === opt.value;
@@ -134,9 +131,9 @@ export function EditProfileForm({ profile, onCancel, onSaved }: Props) {
                 onClick={() => setGender(active ? undefined : opt.value)}
                 aria-pressed={active}
                 className={cn(
-                  "min-h-[44px] rounded-full border px-3 type-label-large transition-colors",
+                  "min-h-11 rounded-full border px-3 type-label-large transition-colors",
                   active
-                    ? "border-primary bg-primary/10 text-primary"
+                    ? "border-primary bg-primary/10 text-primary-text"
                     : "border-divider text-text-secondary hover:border-primary/40",
                 )}
               >

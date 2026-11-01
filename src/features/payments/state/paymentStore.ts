@@ -39,7 +39,12 @@ interface PaymentState {
   setFailure: (f: PaymentFailure | null) => void;
   setInternalOrderId: (id: string | null) => void;
   setGatewayOrderId: (id: string | null) => void;
-  setReconciliation: (pending: boolean, reason: string | null, internalId?: string | null, gatewayId?: string | null) => void;
+  setReconciliation: (
+    pending: boolean,
+    reason: string | null,
+    internalId?: string | null,
+    gatewayId?: string | null,
+  ) => void;
   clearReconciliation: () => void;
   reset: () => void;
 }
@@ -65,12 +70,13 @@ export const usePaymentStore = create<PaymentState>()((set) => ({
   setFailure: (f) => set({ failure: f }),
   setInternalOrderId: (id) => set({ internalOrderId: id }),
   setGatewayOrderId: (id) => set({ gatewayOrderId: id }),
-  setReconciliation: (pending, reason, internalId, gatewayId) => set((state) => ({
-    reconciliationPending: pending,
-    reconciliationReason: pending ? reason : null,
-    internalOrderId: pending ? (internalId ?? state.internalOrderId) : state.internalOrderId,
-    gatewayOrderId: pending ? (gatewayId ?? state.gatewayOrderId) : state.gatewayOrderId,
-  })),
+  setReconciliation: (pending, reason, internalId, gatewayId) =>
+    set((state) => ({
+      reconciliationPending: pending,
+      reconciliationReason: pending ? reason : null,
+      internalOrderId: pending ? (internalId ?? state.internalOrderId) : state.internalOrderId,
+      gatewayOrderId: pending ? (gatewayId ?? state.gatewayOrderId) : state.gatewayOrderId,
+    })),
   // Nulls the ids as well: this is the single place that must not leave a
   // previous account's internal/gateway reference behind (account isolation).
   clearReconciliation: () =>
@@ -82,7 +88,6 @@ export const usePaymentStore = create<PaymentState>()((set) => ({
     }),
   reset: () => set(initial),
 }));
-
 
 export interface PaymentReconciliationRecord {
   internalOrderId: string | null;
@@ -97,21 +102,18 @@ function reconKey(uid: string): string {
 
 export function persistPaymentReconciliation(
   uid: string | null | undefined,
-  record: Omit<PaymentReconciliationRecord, "createdAt">
+  record: Omit<PaymentReconciliationRecord, "createdAt">,
 ): void {
   if (!uid || typeof sessionStorage === "undefined") return;
   try {
-    sessionStorage.setItem(
-      reconKey(uid),
-      JSON.stringify({ ...record, createdAt: Date.now() })
-    );
+    sessionStorage.setItem(reconKey(uid), JSON.stringify({ ...record, createdAt: Date.now() }));
   } catch {
     // storage unavailable; in-memory store still guards this tab
   }
 }
 
 export function loadPaymentReconciliation(
-  uid: string | null | undefined
+  uid: string | null | undefined,
 ): PaymentReconciliationRecord | null {
   if (!uid || typeof sessionStorage === "undefined") return null;
   try {
@@ -134,15 +136,14 @@ export function clearPaymentReconciliation(uid: string | null | undefined): void
   }
 }
 
-export function hydratePaymentReconciliation(uid: string | null | undefined): PaymentReconciliationRecord | null {
+export function hydratePaymentReconciliation(
+  uid: string | null | undefined,
+): PaymentReconciliationRecord | null {
   const rec = loadPaymentReconciliation(uid);
   if (rec) {
-    usePaymentStore.getState().setReconciliation(
-      true,
-      rec.reason,
-      rec.internalOrderId,
-      rec.gatewayOrderId
-    );
+    usePaymentStore
+      .getState()
+      .setReconciliation(true, rec.reason, rec.internalOrderId, rec.gatewayOrderId);
     usePaymentStore.getState().setInternalOrderId(rec.internalOrderId);
     usePaymentStore.getState().setGatewayOrderId(rec.gatewayOrderId);
   } else {

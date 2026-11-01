@@ -11,6 +11,7 @@ This application follows the **Interpretable Context Methodology (ICM)** (arXiv:
 ---
 
 ## 🚦 Mandatory Verification Gate
+
 ```bash
 npx tsc --noEmit && npm run build
 ```

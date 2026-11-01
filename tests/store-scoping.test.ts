@@ -160,7 +160,11 @@ describe("ordersStore identity re-scope (finding 6)", () => {
     window.localStorage.setItem(
       "burg.orders::user_a",
       JSON.stringify({
-        state: { byId: { ord_x: { id: "ord_x", status: { terminal: false } } }, ids: ["ord_x"], activeOrderId: "ord_x" },
+        state: {
+          byId: { ord_x: { id: "ord_x", status: { terminal: false } } },
+          ids: ["ord_x"],
+          activeOrderId: "ord_x",
+        },
         version: 1,
       }),
     );

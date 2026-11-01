@@ -73,7 +73,13 @@ export const useSearchStore = create<SearchState>()(
         if (!q.trim()) {
           // Clearing the box also clears the dedupe key, so re-typing a term
           // that was already searched searches again instead of staying idle.
-          set({ suggestions: [], results: [], status: "idle", error: undefined, activeKey: undefined });
+          set({
+            suggestions: [],
+            results: [],
+            status: "idle",
+            error: undefined,
+            activeKey: undefined,
+          });
         }
       },
 
@@ -170,7 +176,14 @@ export const useSearchStore = create<SearchState>()(
 
       reset() {
         requestSeq++;
-        set({ query: "", status: "idle", results: [], suggestions: [], error: undefined, activeKey: undefined });
+        set({
+          query: "",
+          status: "idle",
+          results: [],
+          suggestions: [],
+          error: undefined,
+          activeKey: undefined,
+        });
       },
     }),
     {

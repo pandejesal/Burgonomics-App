@@ -10,11 +10,7 @@ interface BOGOBannerProps {
   className?: string;
 }
 
-export function BOGOBanner({
-  code = "BURGERBOGO",
-  onApplyCode,
-  className,
-}: BOGOBannerProps) {
+export function BOGOBanner({ code = "BURGERBOGO", onApplyCode, className }: BOGOBannerProps) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -29,46 +25,46 @@ export function BOGOBanner({
   return (
     <div
       className={cn(
-        "relative rounded-2xl overflow-hidden bg-gradient-to-br from-[#0E4825] via-[#122e1a] to-[#0A0A0A] border border-[#0E4825]/40 text-white p-5 shadow-lg select-none",
-        className
+        "relative select-none overflow-hidden rounded-2xl border border-primary bg-primary p-5 text-primary-foreground shadow-lg",
+        className,
       )}
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {/* Top Badges */}
-        <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-[10px] font-black uppercase tracking-wider text-[#4ADE80]">
-            <Sparkles className="w-3 h-3 text-amber-300" />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-sm font-semibold text-primary-foreground backdrop-blur-md">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
             <span>Signature BOGO</span>
           </span>
 
-          <span className="px-2.5 py-0.5 rounded-full bg-[#FF6600] text-white text-[10px] font-black uppercase tracking-wider shadow-sm">
+          <span className="rounded-full bg-accent px-2.5 py-1 text-sm font-semibold text-accent-foreground shadow-sm">
             1+1 FREE
           </span>
         </div>
 
         {/* Title and Explanation */}
         <div>
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
-            BUY 1 GET 1 FREE
+          <h2 className="type-headline-large leading-tight text-primary-foreground">
+            Buy 1 Get 1 Free
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-300 mt-1">
-            Order any 2 Smashed Burgers & the lower-priced burger is 100% Free.
+          <p className="mt-1 text-base leading-relaxed text-primary-foreground/85">
+            Order any 2 Smashed Burgers &amp; the lower-priced burger is 100% Free.
           </p>
         </div>
 
         {/* Bottom Action Row */}
-        <div className="flex items-center justify-between pt-2 border-t border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/15 pt-3">
           <button
             type="button"
             onClick={handleCopy}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/40 hover:bg-black/60 border border-white/20 text-xs font-mono font-bold transition-all cursor-pointer"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/25 bg-black/30 px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-black/45 cursor-pointer"
           >
-            <Tag className="w-3.5 h-3.5 text-[#4ADE80]" />
+            <Tag className="h-3.5 w-3.5" aria-hidden />
             <span>{code}</span>
             {copied ? (
-              <Check className="w-3.5 h-3.5 text-[#4ADE80]" />
+              <Check className="h-3.5 w-3.5" aria-hidden />
             ) : (
-              <Copy className="w-3.5 h-3.5 text-zinc-400" />
+              <Copy className="h-3.5 w-3.5 text-primary-foreground/70" aria-hidden />
             )}
           </button>
 
@@ -76,9 +72,9 @@ export function BOGOBanner({
             <button
               type="button"
               onClick={() => onApplyCode(code)}
-              className="px-4 py-1.5 rounded-xl bg-[#FF6600] hover:bg-[#e05a00] text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+              className="min-h-11 rounded-xl bg-primary-foreground px-4 py-2 text-sm font-semibold text-primary-text shadow-xs transition-colors hover:bg-primary-foreground/90 cursor-pointer"
             >
-              Apply to Cart
+              Apply to cart
             </button>
           )}
         </div>

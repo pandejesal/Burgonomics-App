@@ -52,7 +52,7 @@ export function CompletionRing({ percent, size = 56, stroke = 5, label }: Props)
           className={cn("transition-[stroke-dashoffset] duration-700 ease-out")}
         />
       </svg>
-      <span className="absolute inset-0 grid place-items-center text-xs font-bold text-text">
+      <span className="absolute inset-0 grid place-items-center text-sm font-semibold tabular-nums text-text">
         {percent}%
       </span>
     </div>

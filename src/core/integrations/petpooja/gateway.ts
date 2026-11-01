@@ -19,7 +19,7 @@ export function createPetpoojaGateway(): PetpoojaGateway {
   }
   throw new Error(
     "[Petpooja] VITE_PETPOOJA_ENABLED is not set to true — refusing to start with mock gateway. " +
-    "Set VITE_PETPOOJA_ENABLED=true and provide PETPOOJA_APP_KEY, PETPOOJA_APP_SECRET, PETPOOJA_ACCESS_TOKEN to go live."
+      "Set VITE_PETPOOJA_ENABLED=true and provide PETPOOJA_APP_KEY, PETPOOJA_APP_SECRET, PETPOOJA_ACCESS_TOKEN to go live.",
   );
 }
 

@@ -1,12 +1,6 @@
 import type { ApiResult } from "@/core/network/http";
 import { homeService } from "@/features/home/services/homeService";
-import type {
-  Banner,
-  Combo,
-  HomeBundle,
-  QuickReorderItem,
-  RecommendationItem,
-} from "@/features/home/models";
+import type { Banner, Combo, HomeBundle, RecommendationItem } from "@/features/home/models";
 import type { MenuCategory, MenuItem } from "@/features/menu/services/menuService";
 import type { Offer } from "@/features/offers/models";
 
@@ -39,9 +33,6 @@ export class HomeRepository {
   }
   getRecommendations(storeId: string): Promise<ApiResult<RecommendationItem[]>> {
     return this.service.getRecommendations(storeId);
-  }
-  getQuickReorder(userId: string): Promise<ApiResult<QuickReorderItem[]>> {
-    return this.service.getQuickReorder(userId);
   }
 }
 

@@ -64,10 +64,7 @@ function deferred<T>() {
 
 /** Type into a React-controlled input without firing focus (jsdom-safe). */
 function typeInto(input: HTMLInputElement, value: string) {
-  const desc = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(input),
-    "value",
-  );
+  const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value");
   desc?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -171,16 +168,12 @@ it("focuses the dialog on open and returns focus to the opener on close", async 
   await act(async () => opener.focus());
   expect(document.activeElement).toBe(opener);
 
-  await act(async () =>
-    root.render(<AddressFormModal isOpen onClose={vi.fn()} />),
-  );
+  await act(async () => root.render(<AddressFormModal isOpen onClose={vi.fn()} />));
   const dialog = openDialog();
   expect(dialog.getAttribute("aria-modal")).toBe("true");
   expect(document.activeElement).toBe(dialog);
 
-  await act(async () =>
-    root.render(<AddressFormModal isOpen={false} onClose={vi.fn()} />),
-  );
+  await act(async () => root.render(<AddressFormModal isOpen={false} onClose={vi.fn()} />));
   expect(document.querySelector("[role=dialog]")).toBeNull();
   expect(document.activeElement).toBe(opener);
 
@@ -242,7 +235,7 @@ it("names the dialog by its heading and associates every field label with its in
   // Save As is a grouped control (fieldset/legend), not a stray label.
   const legend = dialog.querySelector("legend");
   expect(legend?.textContent).toContain("Save As");
-  const toggles = dialog.querySelectorAll<HTMLButtonElement>('button[aria-pressed]');
+  const toggles = dialog.querySelectorAll<HTMLButtonElement>("button[aria-pressed]");
   expect(toggles.length).toBe(3);
   expect(toggles[0].getAttribute("aria-pressed")).toBe("true");
 
@@ -264,14 +257,14 @@ it("starts city empty (no fake Mumbai), requires it on save, and keeps the pin r
     typeInto(pincode, "380001");
   });
   await act(async () => save.click());
-  expect(dialog.querySelector('[role=alert]')?.textContent).toContain("Please enter your city");
+  expect(dialog.querySelector("[role=alert]")?.textContent).toContain("Please enter your city");
   expect(toast.error).toHaveBeenCalledWith("Please enter your city");
   expect(addressRepository.create).not.toHaveBeenCalled();
 
   // City filled but no confirmed pin → pin requirement is unchanged.
   await act(async () => typeInto(city, "Ahmedabad"));
   await act(async () => save.click());
-  expect(dialog.querySelector('[role=alert]')?.textContent).toContain("Locate Me");
+  expect(dialog.querySelector("[role=alert]")?.textContent).toContain("Locate Me");
   expect(addressRepository.create).not.toHaveBeenCalled();
 
   await cleanup();
@@ -284,9 +277,7 @@ it("saves the typed address once a pin is placed and reports repository failures
   } as never);
   const close = vi.fn();
   const success = vi.fn();
-  const { cleanup } = await mount(
-    <AddressFormModal isOpen onClose={close} onSuccess={success} />,
-  );
+  const { cleanup } = await mount(<AddressFormModal isOpen onClose={close} onSuccess={success} />);
   const dialog = openDialog();
   const line1 = dialog.querySelector<HTMLInputElement>("#address-modal-line1")!;
   const city = dialog.querySelector<HTMLInputElement>("#address-modal-city")!;
@@ -325,9 +316,7 @@ it("saves the typed address once a pin is placed and reports repository failures
   } as never);
   await act(async () => map.events?.click({ latlng: { lat: 19.08, lng: 72.88 } }));
   await act(async () => save.click());
-  expect(toast.error).toHaveBeenCalledWith(
-    "Your session expired. Please sign in again.",
-  );
+  expect(toast.error).toHaveBeenCalledWith("Your session expired. Please sign in again.");
 
   // A thrown repository error releases the Saving… state instead of wedging.
   vi.mocked(addressRepository.create).mockRejectedValueOnce(new Error("offline"));
@@ -342,7 +331,10 @@ it("saves the typed address once a pin is placed and reports repository failures
 
 it("never overwrites fields the customer typed when an async pin geocode resolves", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   const { cleanup } = await mount(<AddressFormModal isOpen onClose={vi.fn()} />);
   const dialog = openDialog();
   const city = dialog.querySelector<HTMLInputElement>("#address-modal-city")!;
@@ -354,12 +346,14 @@ it("never overwrites fields the customer typed when an async pin geocode resolve
   act(() => map.events?.click({ latlng: { lat: 19.076, lng: 72.877 } }));
 
   await act(async () =>
-    pending.resolve(geocodeReply({
-      city: "Surat",
-      postcode: "395001",
-      house_number: "12",
-      road: "MG Road",
-    })),
+    pending.resolve(
+      geocodeReply({
+        city: "Surat",
+        postcode: "395001",
+        house_number: "12",
+        road: "MG Road",
+      }),
+    ),
   );
 
   // Typed city wins; untouched fields still get filled from the reply.
@@ -373,7 +367,13 @@ it("never overwrites fields the customer typed when an async pin geocode resolve
 it("drops a stale geocode reply when a newer pin was placed meanwhile", async () => {
   const first = deferred<Response>();
   const second = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => first.promise).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn(() => first.promise)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise),
+  );
   const { cleanup } = await mount(<AddressFormModal isOpen onClose={vi.fn()} />);
   const city = openDialog().querySelector<HTMLInputElement>("#address-modal-city")!;
 
@@ -381,14 +381,10 @@ it("drops a stale geocode reply when a newer pin was placed meanwhile", async ()
   act(() => map.events?.click({ latlng: { lat: 22.3, lng: 70.8 } }));
 
   // Newer reply wins…
-  await act(async () =>
-    second.resolve(geocodeReply({ city: "Rajkot", postcode: "360001" })),
-  );
+  await act(async () => second.resolve(geocodeReply({ city: "Rajkot", postcode: "360001" })));
   expect(city.value).toBe("Rajkot");
   // …and the older one, resolving later, is discarded by its token.
-  await act(async () =>
-    first.resolve(geocodeReply({ city: "Vadodara", postcode: "390001" })),
-  );
+  await act(async () => first.resolve(geocodeReply({ city: "Vadodara", postcode: "390001" })));
   expect(city.value).toBe("Rajkot");
 
   await cleanup();
@@ -396,15 +392,16 @@ it("drops a stale geocode reply when a newer pin was placed meanwhile", async ()
 
 it("discards a geocode reply that resolves after the sheet closed and reopened", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   const { cleanup, rerender } = await mount(<AddressFormModal isOpen onClose={vi.fn()} />);
   const city = openDialog().querySelector<HTMLInputElement>("#address-modal-city")!;
 
   act(() => map.events?.click({ latlng: { lat: 19.076, lng: 72.877 } }));
   await rerender(<AddressFormModal isOpen={false} onClose={vi.fn()} />);
-  await act(async () =>
-    pending.resolve(geocodeReply({ city: "Surat", postcode: "395001" })),
-  );
+  await act(async () => pending.resolve(geocodeReply({ city: "Surat", postcode: "395001" })));
   // Reopen: the reset bumped the token, so the old reply stays dropped.
   await rerender(<AddressFormModal isOpen onClose={vi.fn()} />);
   const reopenedCity = openDialog().querySelector<HTMLInputElement>("#address-modal-city")!;
@@ -415,7 +412,10 @@ it("discards a geocode reply that resolves after the sheet closed and reopened",
 
 it("keeps saved values of an edited address when a pin geocode resolves", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   const { cleanup } = await mount(
     <AddressFormModal
       isOpen
@@ -438,12 +438,14 @@ it("keeps saved values of an edited address when a pin geocode resolves", async 
   // This address has no coords, so tapping the pin geocodes…
   act(() => map.events?.click({ latlng: { lat: 19.076, lng: 72.877 } }));
   await act(async () =>
-    pending.resolve(geocodeReply({
-      city: "Surat",
-      postcode: "395001",
-      house_number: "12",
-      road: "MG Road",
-    })),
+    pending.resolve(
+      geocodeReply({
+        city: "Surat",
+        postcode: "395001",
+        house_number: "12",
+        road: "MG Road",
+      }),
+    ),
   );
   // …but the loaded address fields are treated as typed and stay intact.
   expect(line1.value).toBe("B-42, Sunshine Heights");
@@ -455,7 +457,10 @@ it("keeps saved values of an edited address when a pin geocode resolves", async 
 
 it("fills untouched fields from an auto GPS fix and still protects typed ones", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   loc.current = {
     request: vi.fn(async () => ({ status: "granted" as const })),
     coords: { lat: 19.076, lng: 72.877 },
@@ -472,12 +477,14 @@ it("fills untouched fields from an auto GPS fix and still protects typed ones", 
 
   await act(async () => typeInto(city, "Mumbai"));
   await act(async () =>
-    pending.resolve(geocodeReply({
-      city: "Surat",
-      postcode: "395001",
-      house_number: "12",
-      road: "MG Road",
-    })),
+    pending.resolve(
+      geocodeReply({
+        city: "Surat",
+        postcode: "395001",
+        house_number: "12",
+        road: "MG Road",
+      }),
+    ),
   );
 
   expect(city.value).toBe("Mumbai");
@@ -517,7 +524,10 @@ it("jumps the map instantly under prefers-reduced-motion instead of flying", asy
 
 it("does not treat an auto GPS fill as unsaved changes on close", async () => {
   const pending = deferred<Response>();
-  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => pending.promise),
+  );
   loc.current = {
     request: vi.fn(async () => ({ status: "granted" as const })),
     coords: { lat: 19.076, lng: 72.877 },

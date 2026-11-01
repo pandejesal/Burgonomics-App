@@ -33,8 +33,8 @@ export function OrderTimeline({ steps, cancelled, className }: Props) {
           aria-hidden="true"
         >
           <div className="flex justify-between items-center px-1">
-            <span className="type-caption font-bold text-text-secondary">Live Tracker</span>
-            <span className="type-caption font-mono text-primary font-bold bg-primary/10 px-2.5 py-0.5 rounded-full">
+            <span className="type-caption font-semibold text-text-secondary">Live tracker</span>
+            <span className="type-caption rounded-full bg-primary/10 px-2.5 py-0.5 font-semibold tabular-nums text-primary-text">
               {Math.round(progressPercent)}%
             </span>
           </div>
@@ -45,7 +45,7 @@ export function OrderTimeline({ steps, cancelled, className }: Props) {
 
             {/* Filled completed path */}
             <motion.div
-              className="absolute h-1.5 bg-gradient-to-r from-primary to-orange-500 rounded-full left-2"
+              className="absolute h-1.5 rounded-full bg-primary left-2"
               initial={{ width: 0 }}
               animate={{ width: `calc(${progressPercent}% - 8px)` }}
               transition={{ type: "spring", stiffness: 60, damping: 18 }}
@@ -80,14 +80,14 @@ export function OrderTimeline({ steps, cancelled, className }: Props) {
           </div>
 
           {/* Milestone labels */}
-          <div className="flex justify-between items-center text-[10px] font-semibold uppercase tracking-wider text-text-secondary px-1">
+          <div className="flex justify-between items-center gap-1 px-1 text-xs font-medium text-text-secondary">
             {steps.map((s, idx) => (
               <span
                 key={idx}
                 className={cn(
-                  "truncate max-w-[65px] text-center",
+                  "max-w-[65px] text-center leading-tight",
                   idx <= currentStepIndex
-                    ? "text-primary font-bold"
+                    ? "text-primary-text font-semibold"
                     : "text-text-secondary opacity-75",
                 )}
               >
@@ -185,7 +185,7 @@ export function OrderTimeline({ steps, cancelled, className }: Props) {
                   <Text
                     variant="titleMedium"
                     tone={cancelled ? "secondary" : state === "future" ? "secondary" : "primary"}
-                    className="truncate font-semibold"
+                    className="font-semibold"
                   >
                     {step.title}
                   </Text>

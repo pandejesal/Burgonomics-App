@@ -28,6 +28,7 @@ import { ReviewItemsList } from "@/features/checkout";
 import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
 import { recoveryReasonForOrderMarker } from "@/features/payments/utils/paymentRecovery";
 import { useReorderItems } from "@/features/orders/hooks/useReorderItems";
+import { ReorderDialogs } from "@/features/orders/components/ReorderDialogs";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/orders/$orderId/")({
@@ -115,7 +116,16 @@ function OrderDetailsPage() {
   // Hooks MUST stay above every early return: a hook below a conditional
   // return flips the hook count between renders (skeleton → loaded →
   // not-found) and crashes with React #310 on the first data load.
-  const { reorder: triggerReorder } = useReorderItems();
+  const {
+    reorder: triggerReorder,
+    isReordering,
+    outOfStockModal,
+    confirmReorderRemaining,
+    dismissOutOfStockModal,
+    pendingConfirmation,
+    confirmPendingReorder,
+    cancelPendingReorder,
+  } = useReorderItems();
 
   const reorder = async () => {
     if (order) {
@@ -335,6 +345,16 @@ function OrderDetailsPage() {
             <InvoiceDownloadButton order={order} className="w-full justify-center py-3" />
           </div>
         </div>
+
+        <ReorderDialogs
+          outOfStockModal={outOfStockModal}
+          pendingConfirmation={pendingConfirmation}
+          busy={isReordering}
+          onConfirmRemaining={() => void confirmReorderRemaining()}
+          onDismissOutOfStock={dismissOutOfStockModal}
+          onConfirm={() => void confirmPendingReorder()}
+          onCancel={cancelPendingReorder}
+        />
       </AppShell>
     </ProtectedRoute>
   );

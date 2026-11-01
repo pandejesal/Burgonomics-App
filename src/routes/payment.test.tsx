@@ -50,7 +50,7 @@ describe("Prompt 17: Payment Gateway & Razorpay Modal Integration Suite", () => 
           onFailure: () => {},
           onCancel: () => {},
         },
-        "upi"
+        "upi",
       );
 
       expect(successCalled).toBe(true);

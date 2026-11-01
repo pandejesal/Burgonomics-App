@@ -26,12 +26,32 @@ export async function bootstrapNativePlatform(): Promise<void> {
       import("@capacitor/app"),
     ]);
 
-    // Status bar — brand green, light content style (matches capacitor.config.ts StatusBar plugin).
-    try {
-      await StatusBar.setStyle({ style: Style.Light });
+    // Status bar follows the same white/black appearance authority as the app.
+    // Style.Dark paints dark icons for the white canvas; Style.Light paints
+    // light icons for the black canvas. Android also needs the bar colour.
+    const applyStatusBarAppearance = (theme?: string) => {
+      const resolved =
+        theme === "dark" || theme === "light"
+          ? theme
+          : document.documentElement.classList.contains("dark")
+            ? "dark"
+            : "light";
+      void StatusBar.setStyle({ style: resolved === "dark" ? Style.Light : Style.Dark }).catch(
+        () => undefined,
+      );
       if (getPlatform() === "android") {
-        await StatusBar.setBackgroundColor({ color: "#0E4825" });
+        void StatusBar.setBackgroundColor({
+          color: resolved === "dark" ? "#000000" : "#FFFFFF",
+        }).catch(() => undefined);
       }
+    };
+
+    try {
+      applyStatusBarAppearance(document.documentElement.dataset.theme);
+      window.addEventListener("burg:themechange", (event) => {
+        const detail = (event as CustomEvent<{ resolved?: string }>).detail;
+        applyStatusBarAppearance(detail?.resolved);
+      });
     } catch {
       /* status bar not available on this device */
     }
@@ -62,9 +82,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
         const schemeOk = url.protocol === "burgonomics:";
         const hostOk =
           url.protocol === "https:" &&
-          ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
-            url.hostname.toLowerCase()
-          );
+          ["burgonomics.com", "www.burgonomics.com"].includes(url.hostname.toLowerCase());
         if (!schemeOk && !hostOk) return;
         const path = url.pathname + url.search + url.hash;
         const safe = sanitizeRedirectUrl(path, "");
@@ -122,7 +140,8 @@ export async function bootstrapNativePlatform(): Promise<void> {
       const path = hash || window.location.pathname;
       // Drop query string / fragment so `/home?from=x` still counts as Home.
       const pathOnly = path.split(/[?#]/)[0] || path;
-      const isEntry = !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
+      const isEntry =
+        !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
 
       if (isEntry) {
         // At an entry screen, minimize instead of abrupt termination.

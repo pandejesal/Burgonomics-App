@@ -152,7 +152,7 @@ describe("Prompt 11: Menu Catalog, Filtering & 1-Tap Quick Add Suite", () => {
         (p) =>
           p.name.toLowerCase().includes("jain") ||
           p.description?.toLowerCase().includes("jain") ||
-          p.badges?.some((b) => b.label.toLowerCase().includes("jain"))
+          p.badges?.some((b) => b.label.toLowerCase().includes("jain")),
       );
       expect(jainItems.length).toBe(1);
       expect(jainItems[0].id).toBe("prod_jain_burger");
@@ -163,7 +163,7 @@ describe("Prompt 11: Menu Catalog, Filtering & 1-Tap Quick Add Suite", () => {
         (p) =>
           p.name.toLowerCase().includes("spicy") ||
           p.name.toLowerCase().includes("peri") ||
-          p.description?.toLowerCase().includes("spicy")
+          p.description?.toLowerCase().includes("spicy"),
       );
       expect(spicyItems.length).toBe(1);
       expect(spicyItems[0].id).toBe("prod_soldout_wrap");
@@ -174,8 +174,8 @@ describe("Prompt 11: Menu Catalog, Filtering & 1-Tap Quick Add Suite", () => {
         p.badges?.some(
           (b) =>
             b.label.toLowerCase().includes("special") ||
-            b.label.toLowerCase().includes("bestseller")
-        )
+            b.label.toLowerCase().includes("bestseller"),
+        ),
       );
       expect(specialItems.length).toBe(2);
     });

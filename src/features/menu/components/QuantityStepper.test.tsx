@@ -22,7 +22,8 @@ const mount = async (ui: React.ReactElement) => {
   await act(async () => root!.render(ui));
 };
 
-const buttons = () => Array.from(host!.querySelectorAll<HTMLButtonElement>('[role="group"] button'));
+const buttons = () =>
+  Array.from(host!.querySelectorAll<HTMLButtonElement>('[role="group"] button'));
 const minus = () => buttons()[0];
 const plus = () => buttons()[1];
 
@@ -68,7 +69,9 @@ describe("B04: QuantityStepper markup, 44px targets and range", () => {
     expect(minus().disabled).toBe(true);
     expect(plus().disabled).toBe(false);
 
-    await act(async () => root!.render(<QuantityStepper value={3} onChange={onChange} min={1} max={3} />));
+    await act(async () =>
+      root!.render(<QuantityStepper value={3} onChange={onChange} min={1} max={3} />),
+    );
     expect(minus().disabled).toBe(false);
     expect(plus().disabled).toBe(true);
   });
@@ -88,7 +91,9 @@ describe("B04: QuantityStepper markup, 44px targets and range", () => {
     expect(HapticService.impact).toHaveBeenCalledWith("light");
 
     // At the ceiling: no change.
-    await act(async () => root!.render(<QuantityStepper value={3} onChange={onChange} min={1} max={3} />));
+    await act(async () =>
+      root!.render(<QuantityStepper value={3} onChange={onChange} min={1} max={3} />),
+    );
     await act(async () => plus().click());
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).not.toHaveBeenCalledWith(4);

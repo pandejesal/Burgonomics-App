@@ -207,12 +207,15 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
     }
   }, [reverseGeocode]);
 
-  const handleMapClick = useCallback((lat: number, lng: number) => {
-    autoLocatedRef.current = true;
-    setMapCenter({ lat, lng });
-    setPinPlaced(true);
-    void reverseGeocode(lat, lng);
-  }, [reverseGeocode]);
+  const handleMapClick = useCallback(
+    (lat: number, lng: number) => {
+      autoLocatedRef.current = true;
+      setMapCenter({ lat, lng });
+      setPinPlaced(true);
+      void reverseGeocode(lat, lng);
+    },
+    [reverseGeocode],
+  );
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     e.target.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -317,10 +320,10 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
   return (
     <div className="space-y-6 pb-28">
       {/* 60-30-10 Brand Header */}
-      <div className="text-center space-y-1">
-        <h2 className="type-headline-large text-primary">WHERE'S THE FOOD GOING?</h2>
-        <p className="type-body-medium text-text-secondary font-medium">
-          Tap map or drag the orange pin to set your exact location
+      <div className="space-y-1.5 text-center">
+        <h2 className="type-headline-large text-text">Where's the food going?</h2>
+        <p className="type-body-medium text-text-secondary">
+          Tap the map or drag the pin to set your exact location
         </p>
       </div>
 
@@ -330,7 +333,12 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         style={{ height: "260px", zIndex: 0 }}
       >
         <div role="img" aria-label="Delivery location map" className="h-full w-full">
-          <MapContainer center={mapCenter} zoom={16} zoomControl={false} style={{ height: "100%", width: "100%" }}>
+          <MapContainer
+            center={mapCenter}
+            zoom={16}
+            zoomControl={false}
+            style={{ height: "100%", width: "100%" }}
+          >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -359,20 +367,18 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
               }
             }}
             disabled={isLocating}
-            className="flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 min-h-[44px] shadow-lg shadow-accent/40 hover:bg-accent/90 text-white transition-all type-label-large border-2 border-white cursor-pointer"
+            className="flex min-h-11 items-center gap-2 rounded-full border-2 border-white bg-primary px-4 py-2.5 type-label-large text-primary-foreground shadow-lg transition-colors hover:bg-primary-hover cursor-pointer"
           >
-            <Navigation className={cn("h-4 w-4", isLocating && "animate-spin")} />
-            {isLocating ? "Locating..." : "Locate Me"}
+            <Navigation className={cn("h-4 w-4", isLocating && "animate-spin")} aria-hidden />
+            {isLocating ? "Locating…" : "Locate Me"}
           </button>
         </div>
 
         <div
-          className="absolute bottom-0 w-full bg-primary/95 backdrop-blur-sm p-2.5 text-center text-white"
+          className="absolute bottom-0 w-full bg-primary/95 p-3 text-center text-primary-foreground backdrop-blur-sm"
           style={{ zIndex: 1000 }}
         >
-          <span className="type-caption tracking-widest uppercase">
-            Double check your pin drop!
-          </span>
+          <span className="type-caption">Double check your pin drop!</span>
         </div>
       </div>
 
@@ -380,8 +386,8 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         locationStatus === "blocked" ||
         locationStatus === "unavailable") && (
         <p role="status" className="type-caption text-text-secondary text-center">
-          Location unavailable — drag the pin manually, or enable location in your
-          browser settings and tap Locate Me.
+          Location unavailable — drag the pin manually, or enable location in your browser settings
+          and tap Locate Me.
         </p>
       )}
 
@@ -394,9 +400,7 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
         className="space-y-5 bg-surface rounded-[var(--radius-large)] p-1"
       >
         <fieldset>
-          <legend className="type-label-large uppercase text-primary mb-3 tracking-wide">
-            Save as
-          </legend>
+          <legend className="type-label-large mb-3 text-text-secondary">Save as</legend>
           <div className="flex gap-3">
             {LABELS.map((opt) => {
               const active = label === opt.value;
@@ -411,14 +415,14 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
                   }}
                   aria-pressed={active}
                   className={cn(
-                    "flex-1 inline-flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] border-2 py-3 transition-all cursor-pointer",
+                    "flex min-h-11 flex-1 flex-col items-center justify-center gap-1.5 rounded-[var(--radius-medium)] border-2 py-3 transition-colors cursor-pointer",
                     active
-                      ? "border-accent bg-accent/10 text-accent shadow-sm"
-                      : "border-divider bg-bg-secondary text-text-secondary hover:border-accent/40",
+                      ? "border-primary bg-primary/10 text-primary-text shadow-sm"
+                      : "border-divider bg-bg-secondary text-text-secondary hover:border-primary/40",
                   )}
                 >
                   <Icon className="h-5 w-5" aria-hidden />
-                  <span className="type-caption font-bold">{opt.label}</span>
+                  <span className="type-label-large">{opt.label}</span>
                 </button>
               );
             })}
@@ -533,28 +537,32 @@ export function AddressForm({ initial, onCancel, onSaved }: Props) {
       </form>
 
       {/* Sticky Save Bar pinned to bottom sitting above keyboard */}
-      {typeof document !== "undefined" && createPortal(<div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
-        <div className="mx-auto flex max-w-[560px] items-center gap-3">
-          <AppButton
-            type="button"
-            variant="outlined"
-            onClick={onCancel}
-            className="border-2 font-bold text-text-secondary border-divider shrink-0 px-5"
-          >
-            CANCEL
-          </AppButton>
-          <AppButton
-            type="submit"
-            form="address-entry-form"
-            fullWidth
-            loading={busy}
-            variant="cta"
-            className="font-bold shadow-brand"
-          >
-            {initial ? "SAVE CHANGES" : "SAVE ADDRESS"}
-          </AppButton>
-        </div>
-      </div>, document.body)}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shadow-high">
+            <div className="mx-auto flex max-w-[560px] items-center gap-3">
+              <AppButton
+                type="button"
+                variant="outlined"
+                onClick={onCancel}
+                className="shrink-0 border-2 border-divider px-5 font-semibold text-text-secondary"
+              >
+                Cancel
+              </AppButton>
+              <AppButton
+                type="submit"
+                form="address-entry-form"
+                fullWidth
+                loading={busy}
+                variant="primary"
+                className="font-semibold shadow-brand"
+              >
+                {initial ? "Save changes" : "Save address"}
+              </AppButton>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -24,6 +24,8 @@ export interface Banner {
 
 export interface Combo {
   id: string;
+  /** Canonical menu product backing this meal; never inferred from an ID prefix. */
+  productId?: string;
   name: string;
   description: string;
   price: number;
@@ -55,5 +57,10 @@ export interface HomeBundle {
   popularCombos: Combo[];
   recommendations: RecommendationItem[];
   recentlyViewed: MenuItem[];
+  /**
+   * @deprecated Home no longer loads reorder history. Always empty; the field
+   * survives only so persisted/consumer shapes keep type-checking. Reordering
+   * lives on the empty cart (authenticated, bounded read).
+   */
   quickReorder: QuickReorderItem[];
 }
