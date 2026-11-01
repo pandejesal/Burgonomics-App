@@ -1,0 +1,9 @@
+# Native release inputs
+
+Set these GitHub Actions secrets separately in each repository (never commit values):
+- MOBILE_PRODUCTION_ENV: JSON object of public VITE_* string values; VITE_APP_ENV=production, all six Firebase web configuration values, and the real HTTPS API base. Customer uses VITE_API_BASE_URL and VITE_PAYMENTS_API_BASE_URL plus VITE_RAZORPAY_KEY_ID=rzp_live_...; partner uses VITE_API_BASE. Include intended push flags. Values are bundled publicly, not server credentials.
+- GOOGLE_SERVICES_JSON_BASE64: matching Android Firebase config, base64 encoded.
+- GOOGLE_SERVICE_INFO_PLIST_BASE64: matching registered Apple Firebase config, base64 encoded.
+- RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_PASSWORD, RELEASE_KEY_ALIAS: Android upload signing inputs.
+
+Preparation fails with the missing key name, never its value. Ignored generated files are .env.production, android/app/google-services.json and ios/App/App/GoogleService-Info.plist. Apple registrations/APNs keys must be configured by the account owner.

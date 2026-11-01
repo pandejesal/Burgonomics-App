@@ -34,6 +34,12 @@ jobs:
       - name: 📦 Install Node Dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Prepare native production configuration
+        run: node scripts/prepare-native-config.mjs android
+        env:
+          MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+
       - name: ⚡ Build Web Bundle & Sync Capacitor Android
         run: |
           npm run build:mobile

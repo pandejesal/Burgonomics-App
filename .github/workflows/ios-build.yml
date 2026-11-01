@@ -66,6 +66,12 @@ jobs:
       - name: 📦 Install Node Dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Prepare native production configuration
+        run: node scripts/prepare-native-config.mjs ios
+        env:
+          MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+
       - name: ⚡ Build Web Bundle & Sync Capacitor iOS
         run: |
           npm run build:mobile
@@ -171,6 +177,12 @@ jobs:
 
       - name: 📦 Install Node Dependencies
         run: npm install --legacy-peer-deps
+
+      - name: Prepare native production configuration
+        run: node scripts/prepare-native-config.mjs ios
+        env:
+          MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
 
       - name: ⚡ Build Web Bundle & Sync Capacitor iOS
         run: |
