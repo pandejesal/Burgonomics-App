@@ -1,5 +1,6 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { APP } from "@/core/constants/app";
+import { SplashPage } from "./splash";
 
 /**
  * Root route ('/') — branded splash first, then Home ('/home')
@@ -11,5 +12,5 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: `${APP.name} — ${APP.tagline}` },
     ],
   }),
-  component: () => <Navigate to="/splash" replace />,
+  component: SplashPage,
 });

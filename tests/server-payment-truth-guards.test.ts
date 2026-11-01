@@ -219,7 +219,7 @@ let testSeq = 0;
 beforeEach(() => {
   vi.clearAllMocks();
   mockSetDoc.mockReset().mockResolvedValue(undefined);
-  mockGetDoc.mockReset();
+  mockGetDoc.mockReset().mockResolvedValue({ exists: () => false, data: () => ({}) });
   mockGetDocs.mockReset();
   // A fresh uid per test = a fresh cache scope: the module-level caches are
   // per-account (R03) and never carry state across tests.

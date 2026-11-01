@@ -1,28 +1,37 @@
 import { create } from "zustand";
-import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import type {
-  AppSettings,
-  LanguagePreference,
-  NotificationPreferences,
-  ThemePreference,
-} from "@/features/settings/models";
+import { persist, createJSONStorage } from "zustand/middleware";
+import type { AppSettings, LanguagePreference, ThemePreference } from "@/features/settings/models";
 
 /**
- * Single source of truth for the persisted appearance preference.
+ * Install-global UI preferences only. Notification preferences were moved
+ * out of this store into the per-account/device `notificationPrefsStore`
+ * (`burg.notifPrefs.v1.<uid>`) — writing them here would let one account's
+ * consent leak to the next person who signs in on a shared device.
  *
- * The same helpers are used by:
- *  - the pre-paint bootstrap (`bootstrapThemeAuthority`, called from __root),
- *  - the root layout effect (system-change + resume listener),
- *  - the Settings screen (explicit System / Light / Dark control).
- *
- * Keeping class application, validation and storage migration here means the
- * app never has two competing theme implementations.
+ * Storage migration: the legacy key `burg.settings` (which also held the
+ * pre-account notification blob) is READ ONLY. UI prefs now live in
+ * `burg.settings.ui.v1`, so existing customers keep their theme/language
+ * while the legacy notification blob is never overwritten or deleted.
  */
+export const LEGACY_SETTINGS_STORAGE_KEY = "burg.settings";
+export const UI_SETTINGS_STORAGE_KEY = "burg.settings.ui.v1";
 
-export const SETTINGS_STORAGE_KEY = "burg.settings";
+interface SettingsState extends AppSettings {
+  update: (patch: Partial<AppSettings>) => void;
+  reset: () => void;
+}
 
-export const THEME_PREFERENCES = ["system", "light", "dark"] as const;
-const LANGUAGES = ["en", "hi"] as const;
+const DEFAULTS: AppSettings = {
+  theme: "system",
+  language: "en",
+  // Consent flags start OFF — no analytics/ads consent before an
+  // affirmative act, and the toggles are device-local only.
+  analyticsOptIn: false,
+  personalizedAdsOptIn: false,
+};
+
+/** Launch's name for the same fresh-install defaults (theme authority). */
+export const DEFAULT_SETTINGS: AppSettings = DEFAULTS;
 
 /** Canvas colours used for the native status bar / theme-color meta tag. */
 export const THEME_CANVAS_COLORS = {
@@ -32,157 +41,138 @@ export const THEME_CANVAS_COLORS = {
 
 export type ResolvedTheme = "light" | "dark";
 
-export const DEFAULT_NOTIFICATIONS: NotificationPreferences = {
-  offers: true,
-  orderUpdates: true,
-  announcements: false,
-};
+export const isThemePreference = isTheme;
+export const isLanguagePreference = isLanguage;
 
-/**
- * Fresh installs follow the OS appearance. Existing explicit choices are
- * preserved by the persist migration/merge below — they are never rewritten
- * just because the default changed from "light" to "system".
- */
-export const DEFAULT_SETTINGS: AppSettings = {
-  theme: "system",
-  language: "en",
-  notifications: DEFAULT_NOTIFICATIONS,
-  // Consent flags start OFF — no analytics/ads consent before an
-  // affirmative act, and the toggles are device-local only.
-  analyticsOptIn: false,
-  personalizedAdsOptIn: false,
-};
+const memoryFallback = new Map<string, string>();
 
-export function isThemePreference(value: unknown): value is ThemePreference {
-  return typeof value === "string" && (THEME_PREFERENCES as readonly string[]).includes(value);
+function isTheme(value: unknown): value is ThemePreference {
+  return value === "system" || value === "light" || value === "dark";
 }
 
-export function isLanguagePreference(value: unknown): value is LanguagePreference {
-  return typeof value === "string" && (LANGUAGES as readonly string[]).includes(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function coerceBoolean(value: unknown, fallback: boolean): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function coerceNotifications(value: unknown): NotificationPreferences {
-  const source = isRecord(value) ? value : {};
-  return {
-    offers: coerceBoolean(source.offers, DEFAULT_NOTIFICATIONS.offers),
-    orderUpdates: coerceBoolean(source.orderUpdates, DEFAULT_NOTIFICATIONS.orderUpdates),
-    announcements: coerceBoolean(source.announcements, DEFAULT_NOTIFICATIONS.announcements),
-  };
+function isLanguage(value: unknown): value is LanguagePreference {
+  return value === "en" || value === "hi";
 }
 
 /**
- * Runtime validation for anything read from storage. Invalid themes fall back
- * to "system" — never to the previously rendered theme, so a hand-edited or
- * corrupted value cannot pin the app to an unavailable appearance.
+ * Builds a zustand-compatible payload from the legacy `burg.settings` blob.
+ * Reads only theme/language/consent flags; the `notifications` key is left
+ * untouched in legacy storage for the per-uid migration prompt to inspect.
  */
-export function normalizeSettings(value: unknown): AppSettings {
-  const source = isRecord(value) ? value : {};
-  return {
-    theme: isThemePreference(source.theme) ? source.theme : "system",
-    language: isLanguagePreference(source.language) ? source.language : "en",
-    notifications: coerceNotifications(source.notifications),
-    analyticsOptIn: coerceBoolean(source.analyticsOptIn, DEFAULT_SETTINGS.analyticsOptIn),
-    personalizedAdsOptIn: coerceBoolean(
-      source.personalizedAdsOptIn,
-      DEFAULT_SETTINGS.personalizedAdsOptIn,
-    ),
-  };
-}
-
-function safeLocalStorage(): Pick<Storage, "getItem"> | null {
+function migrateLegacyUiPayload(): string | null {
+  if (typeof window === "undefined" || !window.localStorage) return null;
   try {
-    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+    const raw = window.localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    const container =
+      parsed && typeof parsed === "object" && "state" in parsed
+        ? (parsed as { state?: unknown }).state
+        : parsed;
+    if (!container || typeof container !== "object") return null;
+    const state = container as Record<string, unknown>;
+    return JSON.stringify({
+      state: {
+        theme: isTheme(state.theme) ? state.theme : DEFAULTS.theme,
+        language: isLanguage(state.language) ? state.language : DEFAULTS.language,
+        analyticsOptIn: state.analyticsOptIn === true,
+        personalizedAdsOptIn: state.personalizedAdsOptIn === true,
+      },
+      version: 1,
+    });
   } catch {
-    // Safari private mode / blocked storage throws on access.
+    return null;
   }
-  return null;
 }
 
+/** localStorage when available, memory otherwise; legacy read-only fallback. */
+function uiSettingsStorage(): Storage {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return {
+      getItem: (key: string) => memoryFallback.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        memoryFallback.set(key, value);
+      },
+      removeItem: (key: string) => {
+        memoryFallback.delete(key);
+      },
+      clear: () => {
+        memoryFallback.clear();
+      },
+      length: memoryFallback.size,
+      key: (index: number) => Array.from(memoryFallback.keys())[index] ?? null,
+    } as Storage;
+  }
+  return {
+    getItem: (key: string) =>
+      window.localStorage.getItem(key) ?? migrateLegacyUiPayload(),
+    setItem: (key: string, value: string) => {
+      window.localStorage.setItem(key, value);
+    },
+    removeItem: (key: string) => {
+      window.localStorage.removeItem(key);
+    },
+    clear: () => window.localStorage.clear(),
+    get length() {
+      return window.localStorage.length;
+    },
+    key: (index: number) => window.localStorage.key(index),
+  };
+}
+
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set) => ({
+      ...DEFAULTS,
+      // Seed the pre-paint appearance so the first render already matches the
+      // customer's saved choice (no light-then-dark flash).
+      theme: readStoredThemePreference(),
+      update: (patch) => set((s) => ({ ...s, ...patch })),
+      reset: () => set({ ...DEFAULTS }),
+    }),
+    {
+      name: UI_SETTINGS_STORAGE_KEY,
+      version: 1,
+      storage: createJSONStorage(uiSettingsStorage),
+      skipHydration: true,
+      partialize: (s) => ({
+        theme: s.theme,
+        language: s.language,
+        analyticsOptIn: s.analyticsOptIn,
+        personalizedAdsOptIn: s.personalizedAdsOptIn,
+      }),
+    },
+  ),
+);
+
 /**
- * Reads the persisted preference without hydrating Zustand. Used to seed the
- * store and apply the correct class before React's first paint.
+ * Reads the persisted appearance without hydrating Zustand, so the pre-paint
+ * bootstrap (index.html's inline script and `bootstrapThemeAuthority`) agrees
+ * with the store. Reads the split UI key first, then the legacy `burg.settings`
+ * blob (read-only migration), tolerating a bare settings object.
  */
 export function readStoredThemePreference(
-  storage: Pick<Storage, "getItem"> | null = safeLocalStorage(),
+  storage: Pick<Storage, "getItem"> | null = typeof window !== "undefined"
+    ? window.localStorage
+    : null,
 ): ThemePreference {
   if (!storage) return "system";
-  try {
-    const raw = storage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return "system";
-
-    const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed)) return "system";
-
-    // Zustand stores `{ state, version }`; tolerate a bare settings object
-    // so older local snapshots cannot wedge the app on a light default.
-    const state = isRecord(parsed.state) ? parsed.state : parsed;
-    return isThemePreference(state.theme) ? state.theme : "system";
-  } catch {
-    return "system";
+  for (const key of [UI_SETTINGS_STORAGE_KEY, LEGACY_SETTINGS_STORAGE_KEY]) {
+    try {
+      const raw = storage.getItem(key);
+      if (!raw) continue;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") continue;
+      const state =
+        "state" in parsed && parsed.state && typeof parsed.state === "object"
+          ? (parsed as { state: Record<string, unknown> }).state
+          : (parsed as Record<string, unknown>);
+      if (isTheme(state.theme)) return state.theme;
+    } catch {
+      // Malformed blob: try the next key, then fall back to system.
+    }
   }
-}
-
-function memoryStorage(): StateStorage {
-  const values = new Map<string, string>();
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => {
-      values.set(key, value);
-    },
-    removeItem: (key) => {
-      values.delete(key);
-    },
-  };
-}
-
-function settingsStorage(): StateStorage {
-  const fallback = memoryStorage();
-  let storage: Storage | null = null;
-  try {
-    if (typeof window !== "undefined") storage = window.localStorage;
-  } catch {
-    // A blocked storage getter is equivalent to unavailable storage.
-  }
-  return {
-    getItem: (key) => {
-      try {
-        if (storage) {
-          const value = storage.getItem(key);
-          if (value !== null) fallback.setItem(key, value);
-          return value;
-        }
-      } catch {
-        storage = null;
-      }
-      return fallback.getItem(key);
-    },
-    setItem: (key, value) => {
-      fallback.setItem(key, value);
-      try {
-        storage?.setItem(key, value);
-      } catch {
-        // Quota/private-mode errors can happen even when the getter succeeds.
-        // Keep this session's choice, including any later rehydration.
-        storage = null;
-      }
-    },
-    removeItem: (key) => {
-      fallback.removeItem(key);
-      try {
-        storage?.removeItem(key);
-      } catch {
-        storage = null;
-      }
-    },
-  };
+  return "system";
 }
 
 export function resolveTheme(
@@ -217,13 +207,9 @@ export function readSystemPrefersDark(win: Window | null = null): boolean {
 export function applyThemeToDocument(resolved: ResolvedTheme, root?: HTMLElement): void {
   const element = root ?? (typeof document !== "undefined" ? document.documentElement : null);
   if (!element) return;
-
   element.classList.toggle("dark", resolved === "dark");
   element.dataset.theme = resolved;
   element.style.colorScheme = resolved;
-
-  // Native shells (status bar / splash) listen for this instead of importing
-  // the store, keeping one appearance authority with no native coupling here.
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("burg:themechange", { detail: { resolved } }));
   }
@@ -238,11 +224,7 @@ function syncThemeColorMeta(resolved: ResolvedTheme, doc?: Document): void {
 
 export function applyThemePreference(
   preference: ThemePreference,
-  options: {
-    systemPrefersDark?: boolean;
-    root?: HTMLElement;
-    doc?: Document;
-  } = {},
+  options: { systemPrefersDark?: boolean; root?: HTMLElement; doc?: Document } = {},
 ): ResolvedTheme {
   const resolved = resolveTheme(preference, options.systemPrefersDark ?? readSystemPrefersDark());
   applyThemeToDocument(resolved, options.root);
@@ -250,11 +232,6 @@ export function applyThemePreference(
   return resolved;
 }
 
-/**
- * Subscribes to OS appearance changes only while the user chose "system".
- * Returns a no-op cleanup for explicit Light/Dark so the root effect can use
- * one code path and still guarantee listener removal.
- */
 export function watchSystemTheme(
   preference: ThemePreference,
   onChange: (prefersDark: boolean) => void,
@@ -266,69 +243,9 @@ export function watchSystemTheme(
   return () => mediaQuery.removeEventListener?.("change", listener);
 }
 
-interface SettingsState extends AppSettings {
-  update: (patch: Partial<AppSettings>) => void;
-  updateNotifications: (patch: Partial<AppSettings["notifications"]>) => void;
-  reset: () => void;
-}
-
-export const useSettingsStore = create<SettingsState>()(
-  persist(
-    (set) => ({
-      ...DEFAULT_SETTINGS,
-      notifications: { ...DEFAULT_NOTIFICATIONS },
-      // Seed from storage so the first render (and the module-level pre-paint
-      // bootstrap) already has the explicit choice, eliminating the
-      // light-then-dark flash caused by skipHydration.
-      theme: readStoredThemePreference(),
-      update: (patch) =>
-        set((s) => ({
-          ...s,
-          ...patch,
-          // Runtime guard: a stale caller or a hand-edited object cannot
-          // write an unsupported enum value back into the store.
-          theme: isThemePreference(patch.theme) ? patch.theme : s.theme,
-          language: isLanguagePreference(patch.language) ? patch.language : s.language,
-          notifications:
-            patch.notifications === undefined
-              ? s.notifications
-              : coerceNotifications({ ...s.notifications, ...patch.notifications }),
-        })),
-      updateNotifications: (patch) =>
-        set((s) => ({
-          notifications: coerceNotifications({ ...s.notifications, ...patch }),
-        })),
-      reset: () =>
-        set({
-          ...DEFAULT_SETTINGS,
-          notifications: { ...DEFAULT_NOTIFICATIONS },
-        }),
-    }),
-    {
-      name: SETTINGS_STORAGE_KEY,
-      version: 3,
-      storage: createJSONStorage(settingsStorage),
-      skipHydration: true,
-      migrate: (persistedState) => normalizeSettings(persistedState),
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...normalizeSettings(persistedState),
-      }),
-      partialize: (s) => ({
-        theme: s.theme,
-        language: s.language,
-        notifications: s.notifications,
-        analyticsOptIn: s.analyticsOptIn,
-        personalizedAdsOptIn: s.personalizedAdsOptIn,
-      }),
-    },
-  ),
-);
-
 /**
- * Pre-paint entry point. Called once from the root route module (which is
- * evaluated before React mounts) and again by the root effect after
- * rehydration. Safe during SSR — it no-ops without a document.
+ * Pre-paint entry point, called from the root route module and again after
+ * rehydration. No-ops during SSR.
  */
 export function bootstrapThemeAuthority(): void {
   if (typeof document === "undefined") return;

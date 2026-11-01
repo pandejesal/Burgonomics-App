@@ -1,0 +1,134 @@
+# =============================================================================
+# Customer Emulator Lane — DEC-09 required PR gate (local emulator + browser).
+#
+# Policy (accepted DEC-09, authorized FULL-CATEGORY/DEC-09 relevant-PR emulator
+# gate): PRs that touch customer UI, Firebase wiring, or Firestore rules MUST
+# exercise the real local `tests/emulator` harness — SQLite-backed Firestore
+# emulator on loopback, seeded synthetic `demo-burgonomics-emulator` data, real
+# customer rules, real Chromium, no production credentials, no live provider
+# traffic, no deploy. The job fails on: harness missing (fail-closed preflight),
+# any positive suite skip (7 exact manifest tests must pass), missing negative
+# inversion, stale/mismatched rules, or anything else the harness classifies as
+# non-PASS. Uploaded artifacts (report, manifest, raw logs, screenshots) are
+# evidence only — an "all-skipped" run can never satisfy this gate.
+# Tooling discipline (this workflow, no package/lock edits):
+#   - Node 22 (release production target), JDK 21 (emulator requirement).
+#   - Pinned `firebase-tools@15.32.1` + `@playwright/test@1.63.0` are installed
+#     into an EPHEMERAL tool prefix under $RUNNER_TEMP and resolved via NODE_PATH
+#     so the harness PARENT (require.resolve) finds the absolute paths, while the
+#     harness child env stays the secret-stripping allowlist (untouched).
+#     Any unpinned/global-latest/--legacy-peer-deps resolution is forbidden.
+#   - The two tool dirs are removed from `node_modules` in this EPHEMERAL
+#     checkout so resolution cannot silently fall back to a different local
+#     version; the workflow asserts exact versions and fails-closed on mismatch.
+#
+# Integration note: `tests/emulator/**` (run-lane.mjs, lane.mjs, gates, specs)
+# is authored on the actions lane branch and lands on live branches before this
+# workflow becomes meaningful on a PR; until then, PRs touching the filtered
+# paths fail this job with the harness' own BLOCKED result — intended.
+# =============================================================================
+
+name: Customer Emulator Lane
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "firestore.rules"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "tsconfig.*.json"
+      - "vite.config.ts"
+      - "vite.mobile.config.ts"
+      - "vitest.config.ts"
+      - "vitest.setup.ts"
+      - "scripts/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: customer-emulator-lane-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emulator-lane:
+    name: Local emulator + Chromium lane (7 positive, intended negative, 0 skips)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      # Official actions pinned to their verified v4 tag commit SHAs (tag objects
+      # resolved + commit-validated via `gh api repos/actions/…/commits/<sha>`
+      # on 2026-10-27; see scripts/test evidence).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install workspace dependencies (clean, lockfile-pinned)
+        run: npm ci
+
+      - name: Install exact pinned lane tooling into an ephemeral prefix
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ci-tool"
+          printf '%s\n' '{"name":"burgonomics-ci-lane-tool","private":true,"version":"0.0.0"}' > "$RUNNER_TEMP/ci-tool/package.json"
+          npm install --prefix "$RUNNER_TEMP/ci-tool" --no-fund --no-audit \
+            firebase-tools@15.32.1 @playwright/test@1.63.0
+          "$RUNNER_TEMP/ci-tool/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Route lane resolution through the pinned ephemeral toolchain
+        run: |
+          set -euo pipefail
+          # The PR checkout is ephemeral; removing these two tools from its
+          # node_modules guarantees require.resolve falls through to the pinned
+          # prefix via NODE_PATH instead of a silently-different local version.
+          rm -rf node_modules/firebase-tools node_modules/@playwright/test
+          {
+            echo "NODE_PATH=$RUNNER_TEMP/ci-tool/node_modules"
+            echo "EMULATOR_ALLOW_DOWNLOAD=1"
+            echo "EMULATOR_CANONICAL_RULES=$GITHUB_WORKSPACE/firestore.rules"
+            echo "EMULATOR_LANE_ARTIFACTS=$RUNNER_TEMP/emulator-lane-artifacts"
+            echo "EMULATOR_JAVA_HOME=${JAVA_HOME}"
+          } >> "$GITHUB_ENV"
+
+      - name: Assert exact pinned tool versions (fail closed on drift)
+        run: |
+          node -e "const pathOf=(m)=>require.resolve(m+'/package.json');const versionOf=(m)=>require(pathOf(m)).version;const bad=[];if(versionOf('firebase-tools')!=='15.32.1')bad.push('firebase-tools '+versionOf('firebase-tools'));if(versionOf('@playwright/test')!=='1.63.0')bad.push('@playwright/test '+versionOf('@playwright/test'));require.resolve('firebase-tools/lib/bin/firebase.js');require.resolve('firebase-tools/lib/emulator/downloadableEmulatorInfo.json');require.resolve('@playwright/test/cli');if(bad.length){console.error('UNPINNED TOOLCHAIN (CI forbids drifting lane tools): '+bad.join('; '));process.exit(1)}console.log('toolchain pinned: firebase-tools@15.32.1 @ '+pathOf('firebase-tools')+', @playwright/test@1.63.0 @ '+pathOf('@playwright/test'))"
+
+      # Runs AFTER npm ci so the deep YAML syntax check inside the static test
+      # resolves the existing lockfile's `yaml` parser — it can never silently
+      # skip on CI for want of a parser.
+      - name: Static contract self-check of this workflow (no emulator, no installs)
+        run: node --test tests/ci/customer-emulator-lane.workflow.test.mjs
+
+      - name: Run local emulator browser lane (positive 7/7 + intended negative)
+        run: node tests/emulator/run-lane.mjs
+        timeout-minutes: 20
+
+      # Belt-and-braces over the lane's own exit code: the job must fail —
+      # never fall back to success — when the manifest is missing, invalid,
+      # not a PASS, skips a positive test, or lacks the intended negative gate.
+      - name: Fail unless the lane manifest proves a real PASS (0 skips)
+        if: always()
+        run: |
+          node -e "const fs=require('fs');const file=process.env.EMULATOR_LANE_ARTIFACTS+'/manifest.json';let m;try{m=JSON.parse(fs.readFileSync(file,'utf8'))}catch(e){console.error('lane manifest missing/unreadable at '+file+': '+e.message);process.exit(1)}const problems=[];if(m.verdict!=='PASS')problems.push('verdict='+m.verdict+' problems='+(m.problems||[]).join(' | '));const gates=m.suiteGates||{};const pos=gates.positive;if(!pos)problems.push('no positive suite gate');else{if(pos.ok!==true)problems.push('positive.ok=false');const c=pos.counts||{};if(c.expected!==7)problems.push('positive.expected='+(c.expected??'<missing>')+' (required 7/7, no all-skipped runs)');if(c.skipped!==0)problems.push('positive.skipped='+(c.skipped??'<missing>'));if(c.unexpected!==0)problems.push('positive.unexpected='+(c.unexpected??'<missing>'));if(c.flaky!==0)problems.push('positive.flaky='+(c.flaky??'<missing>'))}if(!gates.negativeProbe||gates.negativeProbe.ok!==true)problems.push('negativeProbe.ok!==true');if(!gates.negativeInverted||gates.negativeInverted.ok!==true)problems.push('negativeInverted.ok!==true');if(m.env&&m.env.credentialValuesCopied===true)problems.push('manifest reports credential values copied');if(problems.length){console.error('FAIL lane-manifest gate: '+problems.join('; '));process.exit(1)}console.log('lane manifest gate OK: verdict PASS; positive 7/7/0-skip; negative inversion proven')"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: emulator-lane-artifacts
+          path: ${{ runner.temp }}/emulator-lane-artifacts/
+          if-no-files-found: error
+          retention-days: 7

@@ -83,6 +83,7 @@ vi.mock("@/features/payments", async () => {
 
 import { useRazorpayPayment } from "./useRazorpayPayment";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
+import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { fail, ok } from "@/core/network/http";
 import { toast } from "sonner";
 import { userMessageFor } from "@/core/errors/userMessages";
@@ -158,6 +159,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   usePaymentStore.getState().reset();
+  useCheckoutStore.getState().reset();
 });
 
 afterEach(async () => {
@@ -223,8 +225,10 @@ describe("useRazorpayPayment - post-gateway recovery call sites (C01 / A08 B1+B9
     expect(mocks.cartClear).not.toHaveBeenCalled();
   });
 
-  it("control: a fully verified payment still clears the cart and navigates once", async () => {
+  it("control: a fully verified payment still clears the cart and checkout state, and navigates once", async () => {
     usePaymentStore.getState().setInternalOrderId("ord_hook");
+    useCheckoutStore.getState().setTipAmount(30);
+    useCheckoutStore.getState().setOrderNotes("Legacy hook notes");
     await mountHook();
     await runCheckout(
       ok({ verified: true, confirmedOrderId: "ord_hook", paymentId: "pay_hook_1" }),
@@ -237,6 +241,10 @@ describe("useRazorpayPayment - post-gateway recovery call sites (C01 / A08 B1+B9
     expect(mocks.cartClear).toHaveBeenCalledTimes(1);
     expect(mocks.navigate).toHaveBeenCalledTimes(1);
     expect(mocks.markPaymentFailed).not.toHaveBeenCalled();
+    // The confirmation screen no longer performs this cleanup, so the success
+    // path itself must not leak the consumed tip/notes into the next order.
+    expect(useCheckoutStore.getState().tipAmount).toBe(0);
+    expect(useCheckoutStore.getState().orderNotes).toBe("");
   });
 });
 
@@ -267,6 +275,25 @@ async function runGatewayFailure(
     await hook!.initiatePayment("online");
   });
 }
+
+describe("useRazorpayPayment - curated order-creation refusals", () => {
+  it("renders the minimum-order shortfall verbatim instead of a generic gateway error", async () => {
+    const curated = "Add items worth ₹49 more to meet the ₹149 minimum order.";
+    mocks.createPaymentOrder.mockResolvedValue(fail("MIN_ORDER", curated, true));
+    await mountHook();
+    await act(async () => {
+      await hook!.initiatePayment("online");
+    });
+
+    const state = usePaymentStore.getState();
+    expect(state.status).toBe("failed");
+    expect(state.failure?.code).toBe("MIN_ORDER");
+    expect(state.failure?.message).toBe(curated);
+    expect(state.failure?.retryable).toBe(true);
+    expect(JSON.stringify(vi.mocked(toast.error).mock.calls)).toContain(curated);
+    expect(mocks.openCheckout).not.toHaveBeenCalled();
+  });
+});
 
 describe("useRazorpayPayment - gateway-reported failure truth (D1)", () => {
   it("never echoes raw provider text into the failure panel or toast", async () => {

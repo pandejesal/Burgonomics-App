@@ -93,11 +93,10 @@ describe("settings theme authority", () => {
     const state = useSettingsStore.getState();
     expect(state.theme).toBe("dark");
     expect(state.language).toBe("hi");
-    expect(state.notifications).toEqual({
-      offers: false,
-      orderUpdates: true,
-      announcements: true,
-    });
+    // Notification preferences moved to the per-account notificationPrefsStore
+    // (see tests/notification-prefs.customer.test.ts); this install-global
+    // store must no longer carry them.
+    expect("notifications" in state).toBe(false);
     expect(state.analyticsOptIn).toBe(true);
     expect(state.personalizedAdsOptIn).toBe(true);
   });

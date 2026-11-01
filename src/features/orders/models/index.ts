@@ -187,6 +187,15 @@ export interface Order {
   estimatedAt?: Iso8601;
   /** Terminal timestamp (delivered / picked_up / completed / cancelled). */
   completedAt?: Iso8601;
+  /**
+   * Server-written document clock — every status/ownership lane in
+   * `firestore.rules` merge-writes `updatedAt` (Firestore serverTimestamp
+   * in memory, `{seconds,nanoseconds}` once the persisted cache round-trips
+   * through JSON). Passthrough from the raw order doc (unvalidated — same
+   * class as `reconciliation.updatedAt` above): read ONLY for cache
+   * freshness ranking in ordersStore; never render it.
+   */
+  updatedAt?: unknown;
 
   /** Petpooja POS sync status and details */
   petpoojaStatus?: "Pending" | "Processing" | "Synced" | "Failed" | "Bypassed";
@@ -202,6 +211,25 @@ export interface Order {
   deliveryPartner?: DeliveryPartnerInfo;
   /** Repository metadata pass-through (KOT number, POS refs, …). */
   meta?: Record<string, unknown>;
+}
+
+/**
+ * Amount the customer still owes on this order, or null when the document
+ * does not carry a readable grand total. Mirrors the checkout payable rule:
+ * grand total plus tip minus redeemed loyalty points, floored at zero.
+ */
+export function orderPayableAmount(
+  order: Pick<Order, "totals" | "tipAmount" | "loyaltyPointsRedeemed">,
+): number | null {
+  const grandTotal = order.totals?.grandTotal;
+  if (typeof grandTotal !== "number" || !Number.isFinite(grandTotal)) return null;
+  const tip =
+    typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount) ? order.tipAmount : 0;
+  const points =
+    typeof order.loyaltyPointsRedeemed === "number" && Number.isFinite(order.loyaltyPointsRedeemed)
+      ? order.loyaltyPointsRedeemed
+      : 0;
+  return Math.max(0, grandTotal + tip - points);
 }
 
 export interface OrderTrackingSnapshot {

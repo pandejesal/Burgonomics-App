@@ -1,0 +1,16 @@
+{
+  "//": "EMULATOR TEST LANE ONLY — not a deploy target. Firestore only; UI off; auth/functions/storage absent (auth is Phase 2, reserved 9098).",
+  "//rules": "DELIBERATE DEVIATION from the design doc: firebase-tools rejects a '..' rules path ('../../firestore.rules is outside of project directory'), and it silently defaults to ALLOW ALL when the rules file is missing. So this declared config points at an existing deny-everything file. run-lane.mjs materializes an effective config in the artifacts dir whose absolute rules path is the hash-verified canonical customer firestore.rules.",
+  "firestore": {
+    "rules": "deny-all.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8099
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

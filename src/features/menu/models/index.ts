@@ -36,7 +36,7 @@ export interface Product {
   /** Optional strike-through original price (offers/discounts). */
   compareAtPrice?: Money;
   discountPercentage?: number;
-  veg: boolean;
+  veg?: boolean;
   imageUrl?: string;
   imageUrls?: string[];
   fallbackImageUrl?: string;

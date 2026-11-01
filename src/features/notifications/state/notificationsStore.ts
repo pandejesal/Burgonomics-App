@@ -7,7 +7,30 @@ import {
   readScopedPersisted,
 } from "@/features/auth/utils/scopedPersistence";
 
-export type NotificationCategory = "offer" | "order" | "general";
+export type NotificationCategory = "offer" | "order" | "general" | "support";
+
+/**
+ * Normalizes both the canonical purpose (`supportReplies`, `orderUpdates`, …)
+ * and the legacy category names into the tray's four buckets.
+ */
+export function normalizeNotificationCategory(value: unknown): NotificationCategory {
+  switch (value) {
+    case "support":
+    case "supportReplies":
+      return "support";
+    case "order":
+    case "orderUpdates":
+      return "order";
+    case "offer":
+    case "offers":
+      return "offer";
+    case "general":
+    case "announcements":
+      return "general";
+    default:
+      return "general";
+  }
+}
 
 export interface AppNotification {
   id: string;

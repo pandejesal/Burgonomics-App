@@ -2,7 +2,8 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /** VegIndicator — accessible veg/non-veg icon per Design System §22.6 */
-export function VegIndicator({ veg, className }: { veg: boolean; className?: string }) {
+export function VegIndicator({ veg, className }: { veg?: boolean; className?: string }) {
+  if (veg === undefined || veg === null) return null;
   return (
     <span
       role="img"

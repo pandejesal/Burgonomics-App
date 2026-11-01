@@ -1,4 +1,4 @@
-import { Bell, Gift, Package, Megaphone, X } from "lucide-react";
+import { Bell, Gift, Package, Megaphone, LifeBuoy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/shared/components/common/Text";
 import { formatDistanceToNow } from "@/features/notifications/utils/formatDate";
@@ -11,6 +11,7 @@ const iconFor: Record<NotificationCategory, typeof Bell> = {
   offer: Gift,
   order: Package,
   general: Megaphone,
+  support: LifeBuoy,
 };
 
 interface Props {

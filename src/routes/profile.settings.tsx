@@ -6,6 +6,7 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "@/features/settings/state/settingsStore";
+import { useNotificationPrefsStore } from "@/features/settings/state/notificationPrefsStore";
 import { settingsRepository } from "@/features/settings/repositories/SettingsRepository";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import type { ThemePreference } from "@/features/settings/models";
@@ -33,6 +34,7 @@ export function Page() {
 
 function Body() {
   const settings = useSettingsStore();
+  const notificationPrefs = useNotificationPrefsStore();
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [themeError, setThemeError] = React.useState<string | null>(null);
@@ -127,19 +129,19 @@ function Body() {
             <ToggleRow
               label="Offers & promotions"
               description="Deals, combos and special limited drops."
-              value={settings.notifications.offers}
+              value={notificationPrefs.desired.offers}
               onChange={(v) => void settingsRepository.updateNotifications({ offers: v })}
             />
             <ToggleRow
               label="Order updates"
               description="Preparation, dispatch and live delivery tracking."
-              value={settings.notifications.orderUpdates}
+              value={notificationPrefs.desired.orderUpdates}
               onChange={(v) => void settingsRepository.updateNotifications({ orderUpdates: v })}
             />
             <ToggleRow
               label="Announcements"
               description="Product launches and store news."
-              value={settings.notifications.announcements}
+              value={notificationPrefs.desired.announcements}
               onChange={(v) => void settingsRepository.updateNotifications({ announcements: v })}
             />
           </div>

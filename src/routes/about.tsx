@@ -52,7 +52,7 @@ function Page() {
         <AppCard padded>
           <Text variant="titleMedium">Restaurant information</Text>
           <div className="mt-2 space-y-1">
-            <Text variant="bodyMedium">Burgonomics Foods Pvt. Ltd.</Text>
+            <Text variant="bodyMedium">{APP.legalEntity} (trading as {APP.tradeName})</Text>
             <Text variant="bodyMedium" tone="secondary">
               FSSAI-licensed &amp; regularly audited kitchens
             </Text>

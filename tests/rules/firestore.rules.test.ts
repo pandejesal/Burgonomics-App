@@ -556,6 +556,108 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
+  it("33a. [ORDERS-CREATE-NESTED-SETTLEMENT-DENY] Customer create cannot mint a nested payment.status settlement marker", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      totals: { grandTotal: 0 },
+    };
+    for (const [id, status] of [
+      ["ord_evil_nested_completed", "completed"],
+      ["ord_evil_nested_paid", "paid"],
+    ] as const) {
+      await assertFails(
+        setDoc(doc(custDb, "orders", id), {
+          ...base,
+          payment: { method: "online", label: "Pay Online", status },
+        })
+      );
+    }
+  });
+
+  it("33b. [ORDERS-CREATE-SERVER-OWNED-KEYS-DENY] Customer create cannot plant POS, reconciliation or dispatch ownership keys", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      payment: { method: "online", label: "Pay Online", status: "pending" },
+    };
+    for (const [id, extra] of [
+      ["ord_evil_pos", { petpoojaStatus: "Synced" }],
+      ["ord_evil_recon", { reconciliation: { state: "payment_review" } }],
+      ["ord_evil_dispatch", { deliveryPartner: { name: "Porter" } }],
+      ["ord_evil_porter", { porterOrderId: "porter_123" }],
+    ] as const) {
+      await assertFails(setDoc(doc(custDb, "orders", id), { ...base, ...extra }));
+    }
+  });
+
+  it("33c. [ORDERS-CREATE-PENDING-PAYMENT-ALLOW] Normal customer create with the pending payment shape, items, totals and branchId still succeeds", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_clean_pending"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [{ productId: "p1", name: "Burger", quantity: 1, unitPrice: 250 }],
+        totals: { subtotal: 250, grandTotal: 275 },
+        payment: { method: "online", label: "Pay Online", status: "pending" },
+      })
+    );
+  });
+
+  it("33d. [ORDERS-CREATE-ZERO-PAYABLE-PENDING-ALLOW] A ₹0 coupon order creates with the pending marker, while the same order with a client paid marker is still refused", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      items: [{ productId: "p1", name: "Burger", quantity: 1, unitPrice: 150 }],
+      totals: { subtotal: 150, promoDiscount: 150, grandTotal: 0 },
+    };
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_clean_free_pending"), {
+        ...base,
+        payment: { method: "online", label: "Free order — no payment due", status: "pending" },
+      })
+    );
+    await assertFails(
+      setDoc(doc(custDb, "orders", "ord_evil_free_paid"), {
+        ...base,
+        payment: { method: "online", label: "Paid Online (₹0)", status: "paid" },
+      })
+    );
+  });
+
+  it("37d. [ORDERS-UPDATE-FULFILLMENT-IMMUTABLE] Staff cannot flip orderType to bypass delivery OTP", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "orders", "ord_otp_type_guard"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        orderType: "delivery",
+        fulfillment: "delivery",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [],
+        totals: { grandTotal: 0 },
+      });
+    });
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branch1Db, "orders", "ord_otp_type_guard"), { orderType: "takeaway" })
+    );
+    await assertFails(
+      updateDoc(doc(branch1Db, "orders", "ord_otp_type_guard"), { fulfillment: "takeaway" })
+    );
+  });
+
   it("34. [ORDERS-CREATE-WALKIN-ALLOW] Branch staff CAN birth a POS walk-in order (customerId 'cust_walkin' + staff userId + own branch, born completed)", async () => {
     const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
     await assertSucceeds(
@@ -608,6 +710,58 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         paymentStatus: "completed",
         deliveryOtp: "999999",
       }),
+    );
+  });
+
+  it("37b. [ORDERS-CREATE-PAYMENT-SERVER-FIELDS-DENY] Customer cannot plant a Route receipt or capture fields in the nested payment map", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    const base = {
+      customerId: "cust_100",
+      userId: "cust_100",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+    };
+    for (const [id, payment] of [
+      ["ord_evil_route", { status: "pending", routeTransfer: { id: "fake" } }],
+      ["ord_evil_receipt", { status: "pending", receipt: { id: "fake" } }],
+      ["ord_evil_capture", { status: "pending", capturedAmountPaise: 100 }],
+    ] as const) {
+      await assertFails(setDoc(doc(custDb, "orders", id), { ...base, payment }));
+    }
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_pay_display_ok"), {
+        ...base,
+        payment: {
+          method: "online",
+          label: "Pay Online",
+          status: "pending",
+          transactionId: "pay_pending",
+          paidAt: "2026-10-25T00:00:00.000Z",
+        },
+      })
+    );
+  });
+
+  it("37c. [ORDERS-CREATE-WALKIN-PAYMENT-SERVER-FIELDS-DENY] Walk-in lane payment map obeys the same allowlist", async () => {
+    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    const base = {
+      customerId: "cust_walkin",
+      userId: "branch_owner_1",
+      branchId: "branch_01",
+      status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+      paymentStatus: "completed",
+    };
+    await assertFails(
+      setDoc(doc(branch1Db, "orders", "ord_pos_evil_pay_1"), {
+        ...base,
+        payment: { status: "completed", routeTransfer: { id: "fake" } },
+      })
+    );
+    await assertSucceeds(
+      setDoc(doc(branch1Db, "orders", "ord_pos_pay_ok"), {
+        ...base,
+        payment: { method: "cash", label: "Cash", status: "completed" },
+      })
     );
   });
 
@@ -915,6 +1069,32 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         id: "cust_new",
         phone: "+919000000000",
         deletedAt: new Date().toISOString(),
+
+  // =========================================================================
+  // 8. ORDER BASKET (`items`) & DISPATCH (`deliveryStatus`) IMMUTABILITY
+  // =========================================================================
+
+  it("50. [ORDERS-UPDATE-ITEMS-DENY] branch_owner and branch_staff update of `items` on an order in their branch is DENIED", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "admins", "branch_staff_1"), {
+        email: "staff1@burgonomics.com",
+        role: "branch_staff",
+        branchId: "branch_01",
+        name: "Navrangpura Staff",
+      });
+    });
+
+    const branchOwnerDb = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchOwnerDb, "orders", "order_501"), {
+        items: [{ productId: "p_tamper", name: "Tampered Burger", quantity: 1, unitPrice: 1 }],
+      })
+    );
+
+    const branchStaffDb = testEnv.authenticatedContext("branch_staff_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchStaffDb, "orders", "order_501"), {
+        items: [{ productId: "p_tamper", name: "Tampered Burger", quantity: 1, unitPrice: 1 }],
       })
     );
   });
@@ -959,4 +1139,85 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
   // suppressed the real branch settlement. Only the display fields the apps
   // write (method/label/status/transactionId/paidAt) may be born client-side.
   // =========================================================================
+
+  it("51. [ORDERS-UPDATE-DELIVERY-STATUS-DENY] branch_staff and branch_owner update of `deliveryStatus` on an order in their branch is DENIED", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "admins", "branch_staff_1"), {
+        email: "staff1@burgonomics.com",
+        role: "branch_staff",
+        branchId: "branch_01",
+        name: "Navrangpura Staff",
+      });
+    });
+
+    const branchStaffDb = testEnv.authenticatedContext("branch_staff_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchStaffDb, "orders", "order_501"), {
+        deliveryStatus: "DELIVERED",
+      })
+    );
+
+    const branchOwnerDb = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertFails(
+      updateDoc(doc(branchOwnerDb, "orders", "order_501"), {
+        deliveryStatus: "OUT_FOR_DELIVERY",
+      })
+    );
+  });
+
+  it("52. [ORDERS-UPDATE-LEGIT-STATUS-ALLOW] Legitimate branch-staff status transition on an order in their branch still SUCCEEDS", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "admins", "branch_staff_1"), {
+        email: "staff1@burgonomics.com",
+        role: "branch_staff",
+        branchId: "branch_01",
+        name: "Navrangpura Staff",
+      });
+    });
+
+    const branchStaffDb = testEnv.authenticatedContext("branch_staff_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(branchStaffDb, "orders", "order_501"), {
+        status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
+      })
+    );
+  });
+
+  it("53. [ORDERS-CREATE-WITH-ITEMS-ALLOW] Order creation with `items` (customer and walk-in lanes) still SUCCEEDS", async () => {
+    const custDb = testEnv.authenticatedContext("cust_100").firestore();
+    await assertSucceeds(
+      setDoc(doc(custDb, "orders", "ord_create_items_cust"), {
+        customerId: "cust_100",
+        userId: "cust_100",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [{ productId: "p1", name: "Classic Burger", quantity: 2, unitPrice: 149 }],
+        totals: { subtotal: 298, grandTotal: 313 },
+        payment: { method: "online", label: "Pay Online", status: "pending" },
+      })
+    );
+
+    const branchOwnerDb = testEnv.authenticatedContext("branch_owner_1").firestore();
+    await assertSucceeds(
+      setDoc(doc(branchOwnerDb, "orders", "ord_create_items_walkin"), {
+        customerId: "cust_walkin",
+        userId: "branch_owner_1",
+        branchId: "branch_01",
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
+        paymentStatus: "completed",
+        total: 149,
+      })
+    );
+  });
+
+  it("54. [ORDERS-UPDATE-BRAND-OWNER-BYPASS-DOC] Documented residual: brand_owner bypasses branch-staff field deny-list on order update", async () => {
+    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    await assertSucceeds(
+      updateDoc(doc(brandDb, "orders", "order_501"), {
+        items: [{ productId: "p_admin_fix", name: "Admin Adjusted Burger", quantity: 1, unitPrice: 149 }],
+        deliveryStatus: "ASSIGNED",
+      })
+    );
+  });
 });

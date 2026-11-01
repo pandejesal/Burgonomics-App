@@ -16,7 +16,7 @@ interface ModifierGroupSelectorProps {
 /**
  * ModifierGroupSelector — Renders mandatory or optional modifier groups.
  * Features strict 60-30-10 palette with #0E4825 Forest Green selection states,
- * #FF6600 Required tags, live selection counters, and out-of-stock guards.
+ * semantic accent Required tags, live selection counters, and out-of-stock guards.
  */
 export function ModifierGroupSelector({
   group,
@@ -42,7 +42,7 @@ export function ModifierGroupSelector({
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-text">{group.name}</span>
           {isRequired && (
-            <span className="px-2 py-0.5 rounded-md bg-[#FF6600]/10 text-[#FF6600] text-[10px] font-black uppercase tracking-wider">
+            <span className="px-2 py-0.5 rounded-md bg-accent/10 text-accent dark:text-accent-foreground text-[10px] font-black uppercase tracking-wider">
               Required
             </span>
           )}

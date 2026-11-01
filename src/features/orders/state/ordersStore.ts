@@ -34,6 +34,37 @@ interface OrdersState {
   clearAll: () => void;
 }
 
+/**
+ * Compare two unknown updatedAt stamps (ISO string | epoch number, seconds or
+ * milliseconds | Firestore Timestamp, including the `{seconds,nanoseconds}`
+ * form the persisted cache round-trips through JSON). Returns null whenever
+ * either side is missing/uncomparable — the caller then keeps the incoming
+ * write (legacy parity: no guard can block what we cannot rank).
+ */
+function updatedAtMs(value: unknown): number | null {
+  try {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      // Normalise seconds-vs-ms: anything < 1e12 is seconds.
+      return value < 1e12 ? value * 1000 : value;
+    }
+    if (typeof value === "string" && value.length >= 8) {
+      const ms = Date.parse(value);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    const ts = value as
+      | { toMillis?: unknown; seconds?: unknown; nanoseconds?: unknown }
+      | undefined;
+    if (ts && typeof ts.toMillis === "function") return Number((ts.toMillis as () => number).call(ts));
+    if (ts && typeof ts.seconds === "number") {
+      const nanos = typeof ts.nanoseconds === "number" ? ts.nanoseconds : 0;
+      return ts.seconds * 1000 + Math.floor(nanos / 1_000_000);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export const useOrdersStore = create<OrdersState>()(
   persist(
     (set) => ({
@@ -43,6 +74,35 @@ export const useOrdersStore = create<OrdersState>()(
 
       upsert: (order) =>
         set((s) => {
+          const existing = s.byId[order.id];
+          // STRESS SWEEP 2026-10-24 (I): ordersStore upserts can land out of
+          // order — a slower one-shot `getOrder` read resolving AFTER a newer
+          // server-written upsert (finalizePaidOrder / cancelOrder /
+          // markPaymentFailed / setWhatsappOptIn) used to clobber the newer
+          // status. Two fail-closed guards:
+          //   1) a TERMINAL record never regresses to a non-terminal one;
+          //   2) when both stamps are comparable, an older snapshot loses.
+          // Absent/uncomparable stamps keep the incoming write (original
+          // behavior), so this guard can never strand a legal update.
+          // Scope (verified): this ranks ordersStore writes only. Order
+          // History renders `listOrders` output directly and detail/track
+          // keep their own `getOrder` result in local state, so their
+          // ordering is NOT covered here. Snapshots whose stamps come from
+          // different clocks (client-written creation stamp vs a server
+          // serverTimestamp status write) are also not rankable — that
+          // provenance gap is tracked separately.
+          if (existing) {
+            const existingTerminal = existing.status?.terminal === true;
+            const incomingTerminal = order.status?.terminal === true;
+            if (existingTerminal && !incomingTerminal) {
+              return s;
+            }
+            const existingMs = updatedAtMs(existing.updatedAt);
+            const incomingMs = updatedAtMs(order.updatedAt);
+            if (existingMs !== null && incomingMs !== null && existingMs > incomingMs) {
+              return s;
+            }
+          }
           const exists = order.id in s.byId;
           const nextIds = exists ? s.ids : [order.id, ...s.ids];
           return {

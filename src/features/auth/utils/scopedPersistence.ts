@@ -111,6 +111,48 @@ export function scopedNamespacedStorage(
   };
 }
 
+/**
+ * Persisted caches that hold user-owned data under `key::uid`.
+ *
+ * DPDP erasure: after an account is deleted the uid is gone forever, so its
+ * scoped rows must not linger on the device. Normal logout deliberately KEEPS
+ * them (a returning customer finds their addresses/cart again); only the
+ * deletion path purges. Kept as an explicit list — a typo here fails a test
+ * (tests/local-cache-purge.test.ts) rather than silently leaving PII behind.
+ */
+export const USER_SCOPED_CACHE_KEYS = [
+  "burg.addresses", // saved delivery addresses
+  "burg.notifications", // in-app notification tray (bodies may carry order detail)
+  "burgonomics.loyalty.v1", // cached loyalty balance
+  "burg.cart", // cart lines
+  "burg.checkout", // checkout notes / fulfilment draft
+] as const;
+
+/**
+ * Removes every `baseKey::uid` row for ONE uid. Never falls back to the
+ * unscoped legacy keys: those are the guest scope, not this account's.
+ * Returns the keys actually removed so the caller can log an audit trail.
+ */
+export function purgeScopedLocalCaches(
+  uid: string | null | undefined,
+  baseKeys: readonly string[] = USER_SCOPED_CACHE_KEYS,
+): string[] {
+  if (!uid || typeof window === "undefined") return [];
+  const removed: string[] = [];
+  for (const baseKey of baseKeys) {
+    const key = scopedStorageKey(baseKey, uid);
+    try {
+      if (window.localStorage.getItem(key) === null) continue;
+      window.localStorage.removeItem(key);
+      removed.push(key);
+    } catch {
+      // Restricted/quota-frozen storage: nothing can be purged locally; the
+      // server-side erasure still stands and the caller logs the miss.
+    }
+  }
+  return removed;
+}
+
 /** In-memory Storage stand-in for non-browser (SSR/node test) runtimes. */
 export function createMemoryStorage(): Storage {
   const map = new Map<string, string>();

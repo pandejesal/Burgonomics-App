@@ -1,0 +1,9 @@
+{
+  "//": "Scoped typecheck for the emulator lane only. Run with: npx tsc -p tests/emulator/tsconfig.json --noEmit",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vite/client"]
+  },
+  "include": ["./**/*.ts", "./**/*.tsx"]
+}

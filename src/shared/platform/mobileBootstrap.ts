@@ -9,6 +9,33 @@ import { isNative, getPlatform } from "./platform";
 import { initPushNotifications } from "./pushNotifications";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 
+/**
+ * Resolves and validates an incoming native app URL (custom scheme or universal link).
+ * Returns the safe in-app route string, or null if invalid or unsafe.
+ */
+export function resolveAppUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    const schemeOk = url.protocol === "burgonomics:";
+    const hostOk =
+      url.protocol === "https:" &&
+      ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
+        url.hostname.toLowerCase()
+      );
+    if (!schemeOk && !hostOk) return null;
+
+    const route =
+      url.protocol === "burgonomics:"
+        ? (url.host ? `/${url.host}${url.pathname}` : url.pathname)
+        : url.pathname;
+    const path = route + url.search + url.hash;
+    const safe = sanitizeRedirectUrl(path, "");
+    return safe || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function bootstrapNativePlatform(): Promise<void> {
   if (!isNative()) return;
 
@@ -26,32 +53,12 @@ export async function bootstrapNativePlatform(): Promise<void> {
       import("@capacitor/app"),
     ]);
 
-    // Status bar follows the same white/black appearance authority as the app.
-    // Style.Dark paints dark icons for the white canvas; Style.Light paints
-    // light icons for the black canvas. Android also needs the bar colour.
-    const applyStatusBarAppearance = (theme?: string) => {
-      const resolved =
-        theme === "dark" || theme === "light"
-          ? theme
-          : document.documentElement.classList.contains("dark")
-            ? "dark"
-            : "light";
-      void StatusBar.setStyle({ style: resolved === "dark" ? Style.Light : Style.Dark }).catch(
-        () => undefined,
-      );
-      if (getPlatform() === "android") {
-        void StatusBar.setBackgroundColor({
-          color: resolved === "dark" ? "#000000" : "#FFFFFF",
-        }).catch(() => undefined);
-      }
-    };
-
+    // Status bar — brand green, light content style (matches capacitor.config.ts StatusBar plugin).
     try {
-      applyStatusBarAppearance(document.documentElement.dataset.theme);
-      window.addEventListener("burg:themechange", (event) => {
-        const detail = (event as CustomEvent<{ resolved?: string }>).detail;
-        applyStatusBarAppearance(detail?.resolved);
-      });
+      await StatusBar.setStyle({ style: Style.Light });
+      if (getPlatform() === "android") {
+        await StatusBar.setBackgroundColor({ color: "#0E4825" });
+      }
     } catch {
       /* status bar not available on this device */
     }
@@ -78,14 +85,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
     // router (open redirect into arbitrary in-app or external targets).
     App.addListener("appUrlOpen", (event) => {
       try {
-        const url = new URL(event.url);
-        const schemeOk = url.protocol === "burgonomics:";
-        const hostOk =
-          url.protocol === "https:" &&
-          ["burgonomics.com", "www.burgonomics.com"].includes(url.hostname.toLowerCase());
-        if (!schemeOk && !hostOk) return;
-        const path = url.pathname + url.search + url.hash;
-        const safe = sanitizeRedirectUrl(path, "");
+        const safe = resolveAppUrl(event.url);
         if (safe) {
           window.history.pushState({}, "", safe);
           window.dispatchEvent(new PopStateEvent("popstate"));
@@ -140,8 +140,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
       const path = hash || window.location.pathname;
       // Drop query string / fragment so `/home?from=x` still counts as Home.
       const pathOnly = path.split(/[?#]/)[0] || path;
-      const isEntry =
-        !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
+      const isEntry = !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
 
       if (isEntry) {
         // At an entry screen, minimize instead of abrupt termination.
@@ -156,7 +155,7 @@ export async function bootstrapNativePlatform(): Promise<void> {
 
       // Sub-route with no history entry — keep the app alive on Home.
       // (Same pushState + popstate contract used by the deep-link handler above.)
-      window.history.pushState({}, "", "#/home");
+      window.history.pushState({}, "", "/home");
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
   } catch (err) {

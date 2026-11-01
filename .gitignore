@@ -83,5 +83,6 @@ ios/App/DerivedData
 *.pre-phase2
 .harness/
 
-# Playwright / harness run output
+# Playwright runner output (never evidence — evidence lives outside the repo)
 test-results/
+playwright-report/

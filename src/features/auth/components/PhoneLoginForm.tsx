@@ -6,6 +6,7 @@ import { TextField } from "@/shared/components/common/TextField";
 import { Text } from "@/shared/components/common/Text";
 import { COUNTRY_CODE, PHONE_LENGTH, validatePhone } from "@/features/auth/utils/validators";
 import { APP } from "@/core/constants/app";
+import { RecaptchaHost } from "@/features/auth/components/RecaptchaHost";
 
 export interface PhoneLoginFormProps {
   onSubmit: (phone: string) => Promise<void>;
@@ -132,8 +133,8 @@ export function PhoneLoginForm({
           .
         </Text>
 
-        {/* reCAPTCHA Invisible/Visible Anchor */}
-        <div id="recaptcha-container" className="flex justify-center my-1" />
+        {/* Per-mount reCAPTCHA host (no global container id). */}
+        <RecaptchaHost flow="login" />
       </div>
     </form>
   );

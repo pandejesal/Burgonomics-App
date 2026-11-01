@@ -48,6 +48,10 @@
 	<array>
 		<string>arm64</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<!-- Orientation parity with Android: MainActivity in AndroidManifest.xml
 	     declares no android:screenOrientation, so Android rotates through all
 	     four orientations. iPhone previously allowed only three, which made

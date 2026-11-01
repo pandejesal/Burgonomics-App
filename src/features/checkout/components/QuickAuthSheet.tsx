@@ -57,7 +57,8 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await requestOtp(`+91${sanitizePhone(phone)}`, "whatsapp");
+    const handle = `+91${sanitizePhone(phone)}`;
+    const res = await requestOtp("checkout", handle, "whatsapp");
     setBusy(false);
 
     if (res.ok) {
@@ -81,7 +82,8 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await verifyOtp(otp);
+    const handle = `+91${sanitizePhone(phone)}`;
+    const res = await verifyOtp("checkout", handle, String(otp));
     setBusy(false);
 
     if (res.ok) {
