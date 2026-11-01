@@ -7,3 +7,7 @@ Set these GitHub Actions secrets separately in each repository (never commit val
 - RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_PASSWORD, RELEASE_KEY_ALIAS: Android upload signing inputs.
 
 Preparation fails with the missing key name, never its value. Ignored generated files are .env.production, android/app/google-services.json and ios/App/App/GoogleService-Info.plist. Apple registrations/APNs keys must be configured by the account owner.
+
+## Apple distribution secrets
+
+ASC_API_KEY_BASE64 (base64 .p8), ASC_KEY_ID, ASC_ISSUER_ID, APPLE_TEAM_ID, IOS_CERTIFICATE_BASE64 (base64 distribution .p12), IOS_CERTIFICATE_PASSWORD, IOS_PROFILE_BASE64 (base64 App Store profile with exact bundle and production push). None set means unsigned archive; partial configuration fails with missing names. All present enables signed archive and IPA export only, never automatic upload. Temporary keychain/private files/profile are cleaned in finally.

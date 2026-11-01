@@ -157,7 +157,7 @@ jobs:
           retention-days: 14
 
   ios-archive:
-    name: iOS Archive (unsigned scaffold)
+    name: iOS Archive (signed when configured)
     if: github.event_name == 'workflow_dispatch'
     runs-on: macos-26
     steps:
@@ -198,11 +198,28 @@ jobs:
         run: node scripts/patch-ios-spm.js
 
       - name: 🏗️ Archive iOS App (unsigned)
-        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath build/App.xcarchive CODE_SIGNING_ALLOWED=NO archive
+        id: archive
+        run: python3 scripts/archive_ios.py
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
 
       - name: 📤 Upload Unsigned iOS Archive
         uses: actions/upload-artifact@v4
         with:
           name: core-unsigned-xcarchive
           path: build/App.xcarchive
+          if-no-files-found: error
+
+      - name: Upload signed IPA (never submit automatically)
+        if: steps.archive.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-ipa
+          path: build/ipa/*.ipa
           if-no-files-found: error

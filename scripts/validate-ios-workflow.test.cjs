@@ -173,12 +173,16 @@ test('customer: build/archive xcodebuild invocations keep CODE_SIGNING_ALLOWED=N
   }
 });
 
-test('customer: zero secrets references and zero signing/store-upload tooling', () => {
-  const text = stripYamlComments(fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8'));
-  assert.ok(!text.includes('secrets.'), 'workflow must reference no secrets (credential-free lane)');
-  for (const token of FORBIDDEN_SIGNING_TOKENS) {
-    assert.ok(!text.includes(token), `forbidden signing/store token in workflow: ${token}`);
-  }
+test('distribution signing is manual, complete-secret gated and export-only', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'archive_ios.py'), 'utf8');
+  assert.ok(source.includes("return 'unsigned'"));
+  assert.ok(source.includes('Incomplete iOS signing secrets'));
+  assert.ok(source.includes('CODE_SIGNING_ALLOWED=NO'));
+  assert.ok(source.includes('-exportArchive'));
+  assert.ok(source.includes("'destination': 'export'"));
+  const workflow = fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8');
+  assert.ok(workflow.includes("steps.archive.outputs.signed == 'true'"));
+  assert.ok(workflow.includes('ASC_API_KEY_BASE64'));
 });
 
 test('customer: "cap sync ios" is always followed by scripts/patch-ios-spm.js', () => {
@@ -200,7 +204,7 @@ test('customer: artifact uploads reference only build outputs (.zip/.xcarchive/.
       if (!String(step.uses || '').startsWith('actions/upload-artifact')) continue;
       const p = String((step.with || {}).path || '');
       assert.ok(
-        /\.(zip|xcarchive|log)$/i.test(p.trim()),
+        /\.(zip|xcarchive|log|ipa)$/i.test(p.trim()),
         `${name}: upload-artifact path must be a build output, got: ${p}`
       );
     }
