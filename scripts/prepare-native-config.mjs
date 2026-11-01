@@ -22,8 +22,10 @@ export function prepareConfig(env, platform) {
     let config;
     try { config = JSON.parse(native); } catch { throw new Error('GOOGLE_SERVICES_JSON_BASE64 must decode to valid JSON'); }
     if (config.project_info?.project_id !== values.VITE_FIREBASE_PROJECT_ID || !config.client?.some(c => c.client_info?.android_client_info?.package_name === 'com.burgonomics')) throw new Error('Android Firebase project/package mismatch');
-  } else if (!native.includes('<plist') || !new RegExp('<key>BUNDLE_ID</key>\\s*<string>com\.burgonomics</string>').test(native)) {
-    throw new Error('GOOGLE_SERVICE_INFO_PLIST_BASE64 must contain the matching Apple bundle ID');
+  } else {
+    const bundle = native.match(/<key>BUNDLE_ID<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
+    const project = native.match(/<key>PROJECT_ID<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
+    if (!native.includes('<plist') || bundle !== 'com.burgonomics' || project !== values.VITE_FIREBASE_PROJECT_ID) throw new Error('Apple Firebase bundle/project mismatch');
   }
   return { dotenv: Object.entries(values).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join('\n') + '\n', native, nativePath: platform === 'android' ? 'android/app/google-services.json' : 'ios/App/App/GoogleService-Info.plist' };
 }
