@@ -28,6 +28,7 @@ import { AppButton } from "@/shared/components/common/AppButton";
 import { AppBadge } from "@/shared/components/common/AppBadge";
 import { Text } from "@/shared/components/common/Text";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { FailureState } from "@/shared/components/feedback/FailureState";
 import { AudioService } from "@/core/services/audio";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { Spinner } from "@/shared/components/feedback/Spinner";
@@ -65,6 +66,7 @@ import {
 import type { PaymentResult } from "@/features/payments/models";
 import type { PaymentOrder, PaymentPreflight } from "@/features/payments/models";
 import type { ApiResult } from "@/core/network/http";
+import { ok } from "@/core/network/http";
 import {
   describePaymentFailure,
   isNonRetryableOrderFailure,
@@ -78,6 +80,9 @@ import {
 } from "@/features/payments/utils/paymentRecovery";
 import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
+import type { Order } from "@/features/orders/models";
+import { classifyResumableOrder, isTerminalResumeRefusal } from "@/features/payments/utils/resumeOrder";
+import { resumeContextFromOrder, resumeDisplayTotals } from "@/features/payments/utils/resumeContext";
 import {
   persistPaymentReconciliation,
   clearPaymentReconciliation,
@@ -173,9 +178,49 @@ function PaymentPage() {
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
   const tipAmount = useCheckoutStore((s) => s.tipAmount);
 
+  /* ── CUS-16 resume: bill the ORDER, never the cart ─────────────────────
+   * The customer reaches this screen from "Complete payment" on an unpaid
+   * order, and by then the cart is usually empty. The document is loaded
+   * first; everything below prices, displays and charges THAT document. */
+  const [resumeOrder, setResumeOrder] = React.useState<Order | null>(null);
+  const [resumeStatus, setResumeStatus] = React.useState<
+    "idle" | "loading" | "loaded" | "error" | "unavailable"
+  >("idle");
+  const [resumeError, setResumeError] = React.useState<string | null>(null);
+  const [resumeReload, setResumeReload] = React.useState(0);
+
+  const resume = React.useMemo(() => resumeContextFromOrder(resumeOrder), [resumeOrder]);
+  const resumeState = resumeOrder ? classifyResumableOrder(resumeOrder) : null;
+
+  // The outlet / mode / lines / address this screen must bill: the order's
+  // when resuming, the live cart's otherwise.
+  const billingLines = resume ? resume.cart.lines : lines;
+  const billingFulfillment = resume ? resume.fulfillment : fulfillment;
+  const billingStore = resume ? resume.store : activeStore;
+  const billingAddress = resume ? resume.address : selectedAddress;
+  const billingItemCount = resume
+    ? billingLines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0)
+    : itemCount;
+  const billingPromo = resume ? (resume.cart.promo ?? null) : promo;
+
+  const feesOverride = React.useMemo(() => {
+    if (!resume) return undefined;
+    return {
+      storeId: resume.store.id,
+      branchId: resume.store.partnerBranchId ?? null,
+      fulfillment: resume.fulfillment,
+      dropLat: typeof resume.address?.lat === "number" ? resume.address.lat : null,
+      dropLng: typeof resume.address?.lng === "number" ? resume.address.lng : null,
+    };
+  }, [resume]);
+
   // R8: the payment screen re-quotes on entry/address change/expiry and gates
   // PAY on a live server quote (cash included).
-  const { state: feesState, view: quoteView, refresh: refreshQuote } = useCheckoutFees();
+  const {
+    state: feesState,
+    view: quoteView,
+    refresh: refreshQuote,
+  } = useCheckoutFees(feesOverride);
 
   const [totals, setTotals] = React.useState<CartTotals | null>(null);
   // Authoritative-quote acceptance, same rule as checkout.tsx: the gateway
@@ -258,6 +303,41 @@ function PaymentPage() {
     if (resumeOrderId) usePaymentStore.getState().setInternalOrderId(resumeOrderId);
   }, [resumeOrderId]);
 
+  // CUS-16 follow-up: LOAD the order the customer asked to pay. The cart is
+  // usually empty here, so the document (not the cart) supplies the lines,
+  // amount, address and outlet. A failed read is a failure with a retry —
+  // never "nothing to pay for".
+  React.useEffect(() => {
+    if (!hydrated || !isBootstrapped || !isAuthenticated || !resumeOrderId) return;
+    let cancelled = false;
+    setResumeStatus("loading");
+    setResumeError(null);
+    void orderRepository
+      .getOrder(resumeOrderId)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.success) {
+          console.error("[payment] resume order read failed:", res.error);
+          setResumeOrder(null);
+          setResumeError(toUserMessage(res));
+          setResumeStatus("error");
+          return;
+        }
+        setResumeOrder(res.data);
+        setResumeStatus(res.data ? "loaded" : "unavailable");
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.error("[payment] resume order read threw:", err);
+        setResumeOrder(null);
+        setResumeError("We couldn't load this order. Please check your connection and try again.");
+        setResumeStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, isBootstrapped, isAuthenticated, resumeOrderId, resumeReload]);
+
   // Loop 11: release the pay re-entry guard on every terminal status so a
   // failed/cancelled payment is retryable but never double-fired.
   const payStatus = usePaymentStore((s) => s.status);
@@ -284,11 +364,25 @@ function PaymentPage() {
   // The bill the customer was shown includes the persisted delivery tip, and
   // the server charges it. Comparing the gateway amount against a tip-less
   // total raised a bogus "total has been updated" prompt on every tipped order.
+  const effectiveTipAmount = resume ? resume.tipAmount : tipAmount;
   const displayedBillTotal =
-    totals === null ? undefined : Math.max(0, totals.grandTotal + tipAmount);
+    totals === null ? undefined : Math.max(0, totals.grandTotal + effectiveTipAmount);
 
   const loadTotals = React.useCallback(async () => {
     try {
+      // Resuming: the ORDER has fixed lines, so its stored totals are the
+      // bill — the cart is never priced. Before the document arrives there is
+      // no bill yet (PAY stays disabled), and no cart read is spent.
+      if (resumeOrderId) {
+        if (!resume) {
+          setTotals(null);
+          setTotalsFailed(false);
+          return;
+        }
+        setTotals(resumeDisplayTotals(resume.totals, feesState, resume.fulfillment));
+        setTotalsFailed(false);
+        return;
+      }
       const r = await cartRepository.calculateTotals();
       if (r.success) {
         setTotals(r.data);
@@ -306,7 +400,7 @@ function PaymentPage() {
       setTotalsFailed(true);
       setTotals(null);
     }
-  }, []);
+  }, [resume, resumeOrderId, feesState]);
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -316,7 +410,74 @@ function PaymentPage() {
   if (!hydrated || !isBootstrapped) return <PaymentSkeleton />;
   if (!isAuthenticated) return <PaymentSkeleton />;
 
-  if (lines.length === 0) {
+  /* ── CUS-16 resume gates ──────────────────────────────────────────────
+   * Paying an existing order must never depend on the cart, and must never
+   * offer a payment the server would refuse. Each state says exactly what is
+   * true of this order; none of them is "your cart is empty". */
+  if (resumeOrderId) {
+    if (resumeStatus === "loading" || resumeStatus === "idle") return <PaymentSkeleton />;
+    if (resumeStatus === "error") {
+      return (
+        <AppShell title="Payment" backTo="/orders" showTabs={false} showTopBar>
+          <FailureState
+            title="Couldn't load this order"
+            message={resumeError ?? "We couldn't load this order. Please try again."}
+            onRetry={() => setResumeReload((value) => value + 1)}
+          />
+        </AppShell>
+      );
+    }
+    if (resumeStatus === "unavailable" || !resumeOrder) {
+      return (
+        <AppShell title="Payment" backTo="/orders" showTabs={false} showTopBar>
+          <EmptyState
+            title="Order not found"
+            description="We couldn't find this order in your account. Open your orders to see what needs paying."
+            actionLabel="View my orders"
+            onAction={() => navigate({ to: "/orders" })}
+          />
+        </AppShell>
+      );
+    }
+    if (resumeState && resumeState.kind !== "payable") {
+      const settled = resumeState.kind === "paid";
+      const atCounter = resumeState.kind === "cash";
+      const blockedReason = resumeState.kind === "blocked" ? resumeState.reason : null;
+      const title = settled
+        ? "This order is already paid"
+        : atCounter
+          ? "This order is paid at the counter"
+          : blockedReason === "expired"
+            ? "This order expired before it was paid"
+            : blockedReason === "cancelled"
+              ? "This order was cancelled"
+              : "This order could not be completed";
+      const description = settled
+        ? "Nothing is left to pay. Open the order to follow it or see the receipt."
+        : atCounter
+          ? "Cash and pay-at-store orders are settled at the outlet, so there is nothing to pay online."
+          : blockedReason === "expired"
+            ? "Unpaid orders expire so the kitchen is never sent food nobody paid for. Place a new order to try again."
+            : "No payment can be taken for this order. Open it for its full status, or contact support.";
+      return (
+        <AppShell title="Payment" backTo="/orders" showTabs={false} showTopBar>
+          <EmptyState
+            title={title}
+            description={description}
+            actionLabel={settled || atCounter ? "View order" : "View my orders"}
+            onAction={() =>
+              settled || atCounter
+                ? void navigate({
+                    to: "/orders/$orderId/track",
+                    params: { orderId: resumeOrderId },
+                  })
+                : void navigate({ to: "/orders" })
+            }
+          />
+        </AppShell>
+      );
+    }
+  } else if (lines.length === 0) {
     return (
       <AppShell title="Payment" backTo="/checkout" showTabs={false} showTopBar>
         <EmptyState
@@ -401,11 +562,14 @@ function PaymentPage() {
     if (payInFlight.current) return;
     // Re-read the live selection: the outlet or mode can change after mount
     // (another tab, a menu/store switch) without this screen re-rendering.
+    // A resumed order is exempt — its outlet and mode come from the document,
+    // not from whatever the cart/store store currently holds.
     const liveSelection = useStoreSelection.getState();
     if (
-      !liveSelection.activeStore ||
-      !liveSelection.fulfillment ||
-      !storeSupportsFulfillment(liveSelection.activeStore, liveSelection.fulfillment)
+      !resume &&
+      (!liveSelection.activeStore ||
+        !liveSelection.fulfillment ||
+        !storeSupportsFulfillment(liveSelection.activeStore, liveSelection.fulfillment))
     ) {
       setStatus("idle");
       setPreflightIssue(
@@ -414,6 +578,17 @@ function PaymentPage() {
           : !liveSelection.fulfillment
             ? "Choose how you'd like this order: delivery, takeaway or dine-in."
             : "This outlet is not offering your selected order type right now.",
+      );
+      return;
+    }
+    // CUS-16: an existing order can only be paid while it is still payable.
+    // A capture that lands between the read and the tap must not be re-charged.
+    if (resume && resumeState && resumeState.kind !== "payable") {
+      setStatus("idle");
+      setPreflightIssue(
+        resumeState.kind === "paid"
+          ? "This order is already paid."
+          : "This order can no longer be paid.",
       );
       return;
     }
@@ -446,8 +621,9 @@ function PaymentPage() {
     // screen may have sat open until the quote expired, so read it fresh.
     const quoteNow = deliveryQuoteView({
       state: useCheckoutStore.getState().checkoutFees,
-      fulfillment,
-      hasAddress: Number.isFinite(selectedAddress?.lat) && Number.isFinite(selectedAddress?.lng),
+      fulfillment: billingFulfillment,
+      hasAddress:
+        Number.isFinite(billingAddress?.lat) && Number.isFinite(billingAddress?.lng),
     });
     if (!quoteNow.payEnabled) {
       payInFlight.current = false;
@@ -491,23 +667,30 @@ function PaymentPage() {
     }
 
     // 1. Validate common checkout requirements
-    // CUS-07: this await used to sit outside every try/catch. A preflight that
-    // REJECTED (repository/store read throwing) escaped startPayment with the
-    // synchronous `payInFlight` guard still held and the status stuck on
-    // "preparing" — the spinner spun forever and every later tap returned
-    // silently at the guard. Release the guard and surface a retryable failure:
-    // no gateway has opened at this point, so nothing can have been charged.
+    // CUS-16: a resumed order is NOT validated against the cart — the cart is
+    // empty, and the document already cleared every one of these gates when it
+    // was created. The server re-asserts ownership, unpaid state and price.
     let preflight: ApiResult<PaymentPreflight>;
-    try {
-      preflight = await paymentRepository.validateForPayment();
-    } catch (err) {
-      console.error("[payment] preflight failed:", err);
-      payInFlight.current = false;
-      setStatus("failed");
-      const message = "We couldn't check your order. Please try again.";
-      setFailure({ code: "PREFLIGHT_ERROR", message, retryable: true });
-      toast.error("Couldn't start payment", { description: message });
-      return;
+    if (resume) {
+      preflight = { success: true, data: { valid: true, issues: [] } };
+    } else {
+      // CUS-07: this await used to sit outside every try/catch. A preflight that
+      // REJECTED (repository/store read throwing) escaped startPayment with the
+      // synchronous `payInFlight` guard still held and the status stuck on
+      // "preparing" — the spinner spun forever and every later tap returned
+      // silently at the guard. Release the guard and surface a retryable failure:
+      // no gateway has opened at this point, so nothing can have been charged.
+      try {
+        preflight = await paymentRepository.validateForPayment();
+      } catch (err) {
+        console.error("[payment] preflight failed:", err);
+        payInFlight.current = false;
+        setStatus("failed");
+        const message = "We couldn't check your order. Please try again.";
+        setFailure({ code: "PREFLIGHT_ERROR", message, retryable: true });
+        toast.error("Couldn't start payment", { description: message });
+        return;
+      }
     }
     if (!preflight.success || !preflight.data.valid) {
       payInFlight.current = false;
@@ -523,7 +706,9 @@ function PaymentPage() {
     }
 
     // 2. CASH FLOW (COD / Pay at Counter) - skip Razorpay completely!
-    if (method === "cash") {
+    // A resumed order already chose online payment and sits unpaid on the
+    // server; switching it to cash here would mint a second order.
+    if (method === "cash" && !resume) {
       setStatus("waiting");
 
       try {
@@ -598,22 +783,38 @@ function PaymentPage() {
       const orderRes = await paymentRepository.createPaymentOrder({
         // R8/R6: the server binds the charge to this courier quote.
         deliveryQuoteId:
-          isDelivery && quoteForPayment.status === "ready"
+          billingFulfillment === "delivery" && quoteForPayment.status === "ready"
             ? (quoteForPayment.deliveryQuoteId ?? undefined)
             : undefined,
-        // CUS-16: pay the EXISTING unpaid order; never create another one.
+        // CUS-16: pay the EXISTING unpaid order; never create another one,
+        // and price it from that document rather than the (usually empty) cart.
         resumeOrderId,
+        resumeOrder: resumeOrder ?? undefined,
       });
       if (!orderRes.success) {
+        // A refusal that proves this order can never be paid again (paid,
+        // foreign, missing, terminal) must not be offered as a retry.
+        if (isTerminalResumeRefusal(orderRes.error.code)) {
+          payInFlight.current = false;
+          setStatus("failed");
+          const message = orderFailureMessage(orderRes.error);
+          setFailure({ code: orderRes.error.code, message, retryable: false });
+          toast.error("Couldn't start payment", { description: message });
+          return;
+        }
         // Stale/missing quote: re-quote, then show the updated figure through
         // the existing price dialog. No gateway opened, nothing was charged.
-        if (isDelivery && isDeliveryQuoteRefusal(orderRes.error.code)) {
+        if (billingFulfillment === "delivery" && isDeliveryQuoteRefusal(orderRes.error.code)) {
           payInFlight.current = false;
           setStatus("idle");
           setFailure(null);
           const displayed = displayedBillTotal ?? null;
           const next = await refreshQuote();
-          const recalculated = await cartRepository.calculateTotals();
+          // A resumed order has fixed lines: its bill is the document's total
+          // with the server's new fee, never a cart recomputation.
+          const recalculated: ApiResult<CartTotals> = resume
+            ? ok(resumeDisplayTotals(resume.totals, next, resume.fulfillment))
+            : await cartRepository.calculateTotals();
           if (next.status !== "ready" || !recalculated.success) {
             const message =
               next.status === "unserviceable"
@@ -810,7 +1011,8 @@ function PaymentPage() {
   const cancelAttempt = async () => {
     if (order) await paymentRepository.cancelPayment(order.orderId);
     resetPayment();
-    void navigate({ to: "/checkout" });
+    // A resumed order belongs to history, not to a cart this screen never read.
+    void navigate({ to: resumeOrderId ? "/orders" : "/checkout" });
   };
 
   const busy = status === "preparing" || status === "waiting" || status === "retrying";
@@ -830,33 +1032,38 @@ function PaymentPage() {
   // button says so instead of the reconciliation "under review" copy.
   const storeNotLinked = status !== "success" && failure?.code === STORE_NOT_LINKED;
   const eta =
-    fulfillment === "delivery"
-      ? activeStore?.etaMinutes
-      : (activeStore?.pickupEtaMinutes ?? activeStore?.etaMinutes);
+    billingFulfillment === "delivery"
+      ? billingStore?.etaMinutes
+      : (billingStore?.pickupEtaMinutes ?? billingStore?.etaMinutes);
   const grandTotal = acceptedServerTotal ?? totals?.grandTotal ?? 0;
   // The gateway order is minted with the persisted tip included, so the "To
   // Pay" figure must show it too — otherwise the customer sees a smaller
   // number than the amount they are charged.
   const finalPayable =
-    grandTotal + (typeof tipAmount === "number" && Number.isFinite(tipAmount) ? tipAmount : 0);
+    grandTotal +
+    (typeof effectiveTipAmount === "number" && Number.isFinite(effectiveTipAmount)
+      ? effectiveTipAmount
+      : 0);
 
-  const instructions =
-    fulfillment === "delivery"
+  const instructions = resume
+    ? (resumeOrder?.fulfillmentInstructions ?? "")
+    : fulfillment === "delivery"
       ? deliveryInstructions
       : fulfillment === "takeaway"
         ? pickupInstructions
         : diningNotes;
 
-  const isDelivery = fulfillment === "delivery";
+  const isDelivery = billingFulfillment === "delivery";
   const selectedCashLabel = isDelivery ? "Cash on Delivery" : "Pay at Store";
   // Fail closed on a missing/unsupported mode: /payment is a public route, so
   // a deep link or an outlet switch while checkout was open must not authorise
-  // a payment on a guessed mode.
-  const fulfillmentSupported =
-    !!activeStore && !!fulfillment && storeSupportsFulfillment(activeStore, fulfillment);
-  const fulfillmentBlockMessage = !activeStore
+  // a payment on a guessed mode. A resumed order carries its own mode.
+  const fulfillmentSupported = resume
+    ? true
+    : !!activeStore && !!fulfillment && storeSupportsFulfillment(activeStore, fulfillment);
+  const fulfillmentBlockMessage = !billingStore
     ? "Choose an outlet to continue."
-    : !fulfillment
+    : !billingFulfillment
       ? "Choose how you'd like this order: delivery, takeaway or dine-in."
       : "This outlet is not offering your selected order type right now.";
 
@@ -910,7 +1117,9 @@ function PaymentPage() {
                               : undefined
               }
               iconLeft={
-                method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined
+                (method === "online" || resume) && !payBlocked ? (
+                  <Lock className="h-4 w-4" />
+                ) : undefined
               }
             >
               {!fulfillmentSupported
@@ -930,8 +1139,10 @@ function PaymentPage() {
                     : payBlocked
                       ? "Payment under review"
                       : status === "failed" || status === "cancelled"
-                        ? "Retry checkout"
-                        : method === "online"
+                        ? resume
+                          ? "Retry payment"
+                          : "Retry checkout"
+                        : method === "online" || resume
                           ? "Pay Online"
                           : isDelivery
                             ? "Place COD Order"
@@ -957,7 +1168,9 @@ function PaymentPage() {
             </button>
           </div>
         )}
-        {/* Step 1: Payment Method Selection */}
+        {/* Step 1: Payment Method Selection. A resumed order already chose
+            online payment on the server, so offering "cash" here would mint a
+            second order — the method is fixed to online for that screen. */}
         <section aria-labelledby="payment-section-title" className="space-y-3">
           <div className="flex flex-col gap-1">
             <Text
@@ -968,10 +1181,28 @@ function PaymentPage() {
               How would you like to pay?
             </Text>
             <Text variant="bodyMedium" tone="secondary">
-              Select a secure business payment option below.
+              {resume
+                ? "This order is unpaid. Finish it online — the amount below is what your order costs."
+                : "Select a secure business payment option below."}
             </Text>
           </div>
-          <PaymentMethodList value={method} onChange={setMethod} disabled={busy} />
+          {resume ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-primary bg-primary/5 p-4 ring-1 ring-primary/30">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary text-white">
+                <CreditCard className="h-6 w-6" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <Text variant="titleMedium" className="font-semibold leading-snug text-primary-text">
+                  Pay Online
+                </Text>
+                <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-relaxed">
+                  Fast &amp; secure payment via UPI, Cards, NetBanking or Wallets
+                </Text>
+              </div>
+            </div>
+          ) : (
+            <PaymentMethodList value={method} onChange={setMethod} disabled={busy} />
+          )}
         </section>
 
         {/* Secure badge */}
@@ -1031,11 +1262,11 @@ function PaymentPage() {
                   Fulfillment Store
                 </Text>
                 <Text variant="titleMedium" className="font-semibold truncate">
-                  {activeStore?.name ?? "Store not selected"}
+                  {billingStore?.name ?? "Store not selected"}
                 </Text>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <Text variant="caption" tone="secondary">
-                    {activeStore?.area}
+                    {billingStore?.area}
                   </Text>
                   {eta && (
                     <span className="inline-flex items-center gap-1 text-text-secondary">
@@ -1046,14 +1277,14 @@ function PaymentPage() {
                     </span>
                   )}
                   <AppBadge tone="neutral" className="capitalize">
-                    {fulfillment === "dinein" ? "Dine-in" : fulfillment}
+                    {billingFulfillment === "dinein" ? "Dine-in" : billingFulfillment}
                   </AppBadge>
                 </div>
               </div>
             </div>
 
             {/* Address SNAPSHOT */}
-            {isDelivery && selectedAddress && (
+            {isDelivery && billingAddress && (
               <div className="py-4 flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-text-secondary mt-0.5 shrink-0" aria-hidden />
                 <div className="min-w-0 flex-1">
@@ -1061,19 +1292,19 @@ function PaymentPage() {
                     Delivery Address
                   </Text>
                   <Text variant="bodyMedium" className="font-semibold text-text capitalize">
-                    {selectedAddress.label === "other"
-                      ? (selectedAddress.customLabel ?? "Other")
-                      : selectedAddress.label}
+                    {billingAddress.label === "other"
+                      ? (billingAddress.customLabel ?? "Other")
+                      : billingAddress.label}
                   </Text>
                   <p className="text-sm text-text-secondary mt-1">
-                    {selectedAddress.contactName} ({selectedAddress.contactPhone})
+                    {billingAddress.contactName} ({billingAddress.contactPhone})
                   </p>
                   <p className="text-xs text-text-secondary mt-0.5 leading-normal">
                     {[
-                      selectedAddress.line1,
-                      selectedAddress.line2,
-                      selectedAddress.landmark ? `Near ${selectedAddress.landmark}` : null,
-                      `${selectedAddress.city} - ${selectedAddress.pincode}`,
+                      billingAddress.line1,
+                      billingAddress.line2,
+                      billingAddress.landmark ? `Near ${billingAddress.landmark}` : null,
+                      `${billingAddress.city} - ${billingAddress.pincode}`,
                     ]
                       .filter(Boolean)
                       .join(", ")}
@@ -1097,26 +1328,33 @@ function PaymentPage() {
               </div>
             )}
 
-            {/* Cart Items List */}
+            {/* Cart Items List — the order's own lines when resuming. */}
             <div className="py-4">
               <div className="mb-2 flex items-center justify-between">
                 <Text variant="titleMedium" className="font-bold">
-                  Order Summary ({itemCount} {itemCount === 1 ? "item" : "items"})
+                  Order Summary ({billingItemCount}{" "}
+                  {billingItemCount === 1 ? "item" : "items"})
                 </Text>
-                <Link to="/cart" className="type-label-large text-primary hover:underline">
-                  Edit Cart
-                </Link>
+                {resume ? (
+                  <span className="type-label-large text-text-secondary">
+                    From this order
+                  </span>
+                ) : (
+                  <Link to="/cart" className="type-label-large text-primary hover:underline">
+                    Edit Cart
+                  </Link>
+                )}
               </div>
-              <ReviewItemsList lines={lines} />
+              <ReviewItemsList lines={billingLines} />
             </div>
 
             {/* Applied Promos */}
-            {promo && totals && totals.promoDiscount > 0 && (
+            {billingPromo && totals && totals.promoDiscount > 0 && (
               <div className="py-3.5 flex items-center justify-between bg-emerald-500/5 -mx-5 px-5">
                 <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                   <Tag className="h-4 w-4 shrink-0" aria-hidden />
                   <Text variant="bodyMedium" className="font-bold">
-                    Code: {promo.code}
+                    Code: {billingPromo.code}
                   </Text>
                 </div>
                 <Text
@@ -1134,7 +1372,7 @@ function PaymentPage() {
                 Selected Payment Type
               </Text>
               <div className="flex items-center gap-1.5 text-text font-semibold text-sm">
-                {method === "online" ? (
+                {method === "online" || resume ? (
                   <>
                     <CreditCard className="h-4 w-4 text-orange-500" aria-hidden />
                     <span>Pay Online</span>

@@ -33,7 +33,20 @@ export interface UseCheckoutFeesResult {
   refresh: () => Promise<CheckoutFeesState>;
 }
 
-export function useCheckoutFees(): UseCheckoutFeesResult {
+/**
+ * CUS-16 resume: paying an EXISTING order must quote against that order's
+ * outlet and drop pin, not against whatever the cart/store store happens to
+ * hold (usually nothing — the cart is empty by then).
+ */
+export interface CheckoutFeesContextOverride {
+  storeId: string | null;
+  branchId: string | null;
+  fulfillment: string | null;
+  dropLat: number | null;
+  dropLng: number | null;
+}
+
+export function useCheckoutFees(override?: CheckoutFeesContextOverride): UseCheckoutFeesResult {
   const hydrated = useHydrated();
   // CUS-17: /checkout/fees is an authenticated endpoint. A signed-out visitor
   // must never trigger a guaranteed 401; the cart/checkout read "Calculated at
@@ -44,11 +57,11 @@ export function useCheckoutFees(): UseCheckoutFeesResult {
   const address = useAddressStore(selectSelectedAddress);
   const state = useCheckoutStore((s) => s.checkoutFees);
 
-  const orderType = asPricingFulfillment(fulfillment);
-  const storeId = activeStore?.id ?? null;
-  const branchId = activeStore?.partnerBranchId ?? null;
-  const dropLat = address?.lat ?? null;
-  const dropLng = address?.lng ?? null;
+  const orderType = asPricingFulfillment(override ? override.fulfillment : fulfillment);
+  const storeId = override ? override.storeId : (activeStore?.id ?? null);
+  const branchId = override ? override.branchId : (activeStore?.partnerBranchId ?? null);
+  const dropLat = override ? override.dropLat : (address?.lat ?? null);
+  const dropLng = override ? override.dropLng : (address?.lng ?? null);
 
   const ctx = React.useMemo(
     () => buildCheckoutFeesContext({ storeId, branchId, orderType, dropLat, dropLng }),

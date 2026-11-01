@@ -17,6 +17,7 @@
 import type { ApiResult } from "@/core/network/http";
 import { fail, ok } from "@/core/network/http";
 import { logger } from "@/core/logging/logger";
+import type { CartTotals } from "@/features/cart/models";
 import { paymentsService } from "@/features/payments/services/paymentsService";
 import type {
   PaymentOrder,
@@ -39,7 +40,8 @@ import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { orderRepository } from "@/features/orders/repositories/OrderRepository";
 import { usePaymentStore, loadPaymentReconciliation } from "@/features/payments/state/paymentStore";
-import { toStoreSnapshot } from "@/features/orders/models";
+import { toStoreSnapshot, type Order } from "@/features/orders/models";
+import { resumeContextFromOrder } from "@/features/payments/utils/resumeContext";
 import { checkMinimumOrder, minOrderShortfallMessage } from "@/shared/pricing/pricingEngine";
 
 export class PaymentRepository {
@@ -210,6 +212,13 @@ export class PaymentRepository {
      * and owned by this customer; the client must NOT create another order.
      */
     resumeOrderId?: string;
+    /**
+     * CUS-16 follow-up: the ORDER DOCUMENT being resumed. When present the
+     * attempt is priced from that document — its store, fulfillment, items,
+     * total and address — and NOT from the cart, which is normally empty by
+     * the time a customer returns to an unpaid order. Nothing is written.
+     */
+    resumeOrder?: Order;
   }): Promise<ApiResult<PaymentOrder>> {
     const uid = useAuthStore.getState().user?.id ?? null;
     const pendingRecon = loadPaymentReconciliation(uid);
@@ -220,24 +229,35 @@ export class PaymentRepository {
         false,
       );
     }
-    const totalsRes = await cartRepository.calculateTotals();
+    const resumeOrder = opts?.resumeOrder ?? null;
+    const resume = resumeContextFromOrder(resumeOrder);
+    // Resuming is priced from the order document; a cart read would bill ₹0
+    // (empty cart) or, worse, a different basket than the one on file.
+    const totalsRes: ApiResult<CartTotals> = resume
+      ? ok(resume.totals)
+      : await cartRepository.calculateTotals();
     if (!totalsRes.success) return totalsRes;
 
-    const sel = useStoreSelection.getState();
+    const sel = resume
+      ? {
+          activeStore: resume.store,
+          fulfillment: resume.fulfillment,
+        }
+      : useStoreSelection.getState();
     if (!sel.activeStore || !sel.fulfillment) {
       return fail("MISSING_CONTEXT", "Store and fulfillment method are required.");
     }
 
-    const cart = useCartStore.getState();
+    const cart = resume ? resume.cart : useCartStore.getState();
     const auth = useAuthStore.getState();
-    const address = selectSelectedAddress(useAddressStore.getState());
+    const address = resume ? resume.address : selectSelectedAddress(useAddressStore.getState());
     const checkout = useCheckoutStore.getState();
     // D31–D33: loyalty redemption is not offered to customers any more. The
     // transport pins 0 unconditionally — an explicit caller argument, a legacy
     // persisted value, or a deep link without the cart cannot redeem points.
     void opts?.loyaltyPointsToRedeem;
     const loyaltyPointsToRedeem = 0;
-    const tipAmount = checkout.tipAmount;
+    const tipAmount = resume ? resume.tipAmount : checkout.tipAmount;
 
     const checkoutSnapshot = {
       store: toStoreSnapshot(sel.activeStore),
