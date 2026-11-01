@@ -74,15 +74,3 @@ const TERMINAL_REFUSALS = new Set([
 export function isTerminalResumeRefusal(code?: string | null): boolean {
   return typeof code === "string" && TERMINAL_REFUSALS.has(code);
 }
-
-/** The amount this order still owes, from the document only. */
-export function resumableAmountDue(order: Order): number | null {
-  const grandTotal = order.totals?.grandTotal;
-  if (typeof grandTotal !== "number" || !Number.isFinite(grandTotal)) return null;
-  const tip =
-    typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount) ? order.tipAmount : 0;
-  // Loyalty redemption was withdrawn; legacy docs may still carry points, and
-  // they were already discounted from the server total, so they are NOT
-  // subtracted here (the server's amountPaise is the authority).
-  return Math.max(0, grandTotal + tip);
-}
