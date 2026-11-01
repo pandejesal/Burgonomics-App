@@ -51,7 +51,7 @@ jobs:
       - name: Neutralize Windows-only org.gradle.java.home
         run: sed -i '/^org.gradle.java.home=/d' android/gradle.properties
 
-      - name: 🛡️ Preflight: Validate release secrets non-empty
+      - name: "🛡️ Preflight: Validate release secrets non-empty"
         # CI gate: ensure all required release signing secrets are present before
         # attempting decode or Gradle release task. Error messages use generic field
         # names only — no secret values are printed to the logs.
