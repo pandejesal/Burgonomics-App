@@ -1,0 +1,1 @@
+iOS icons are opaque RGB PNGs generated from assets/logo.png, the burger mascot used by Android launcher artwork. The original is contained within an 840px square on a white 1024px canvas; each required iPhone/iPad/marketing size is downsampled with Lanczos. No rounded mask is baked in. Validate sizes/alpha with Pillow and review icon-1024.png before submission.
