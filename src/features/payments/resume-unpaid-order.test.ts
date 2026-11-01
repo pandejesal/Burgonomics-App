@@ -160,4 +160,21 @@ describe("resuming an unpaid order", () => {
     expect(fixture.createFromCurrentContext).toHaveBeenCalledTimes(1);
     expect(fixture.createOrder.mock.calls[0][0]).toMatchObject({ orderId: "ord_new" });
   });
+
+  it("never shares an idempotency key between two different resumed orders", async () => {
+    // The server binds a payment intent to ONE order and refuses a live intent
+    // minted for another, so the key must be scoped to the resumed order — two
+    // abandoned orders can carry the identical basket.
+    const repository = new PaymentRepository({ createOrder: fixture.createOrder } as never);
+
+    await repository.createPaymentOrder({ resumeOrderId: "ord_1793523404362_PKKeDF" });
+    await repository.createPaymentOrder({ resumeOrderId: "ord_1793525626991_ulZ3RS" });
+
+    expect(fixture.createOrder).toHaveBeenCalledTimes(2);
+    const firstKey = (fixture.createOrder.mock.calls[0][0] as { idempotencyKey: string })
+      .idempotencyKey;
+    const secondKey = (fixture.createOrder.mock.calls[1][0] as { idempotencyKey: string })
+      .idempotencyKey;
+    expect(firstKey).not.toBe(secondKey);
+  });
 });

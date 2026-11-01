@@ -302,7 +302,12 @@ export class PaymentRepository {
     // so a re-entry can recognise the checkout it already persisted (CUS-09).
     // Server reprices authoritatively from items + store pricing; the client
     // amount below is display-only.
+    // CUS-16: a resumed attempt is identified by the ORDER id too. Two
+    // different unpaid orders can carry the same basket, and the server binds
+    // an idempotency key to one order (a live intent for another is refused);
+    // the key must therefore never be shared across orders.
     const fingerprint = JSON.stringify([
+      opts?.resumeOrderId?.trim() || null,
       sel.activeStore.id,
       cart.lines.map((l) => [l.productId, l.quantity, l.unitPrice]),
       cart.promo?.code || null,
