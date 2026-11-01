@@ -13,6 +13,7 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 import { asPricingFulfillment } from "@/shared/pricing/pricingEngine";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
+import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import {
   QUOTE_REFRESH_GRACE_MS,
   buildCheckoutFeesContext,
@@ -34,6 +35,10 @@ export interface UseCheckoutFeesResult {
 
 export function useCheckoutFees(): UseCheckoutFeesResult {
   const hydrated = useHydrated();
+  // CUS-17: /checkout/fees is an authenticated endpoint. A signed-out visitor
+  // must never trigger a guaranteed 401; the cart/checkout read "Calculated at
+  // checkout" and signing in remains the path that unlocks a real quote.
+  const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const fulfillment = useStoreSelection((s) => s.fulfillment);
   const activeStore = useStoreSelection((s) => s.activeStore);
   const address = useAddressStore(selectSelectedAddress);
@@ -54,23 +59,26 @@ export function useCheckoutFees(): UseCheckoutFeesResult {
   ctxRef.current = ctx;
 
   React.useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !isAuthenticated) return;
     void quoteCheckoutFees(ctx);
-  }, [hydrated, key, ctx]);
+  }, [hydrated, isAuthenticated, key, ctx]);
 
   // R8: re-quote on expiry. A quote that dies while the screen is open must
   // never be retried on the stale fare.
   const expiresAt = state.status === "ready" ? state.expiresAt : null;
   React.useEffect(() => {
-    if (!hydrated || expiresAt === null) return;
+    if (!hydrated || !isAuthenticated || expiresAt === null) return;
     const delay = Math.max(0, expiresAt - Date.now()) + QUOTE_REFRESH_GRACE_MS;
     const timer = setTimeout(() => {
       void quoteCheckoutFees(ctxRef.current);
     }, delay);
     return () => clearTimeout(timer);
-  }, [hydrated, expiresAt, key]);
+  }, [hydrated, isAuthenticated, expiresAt, key]);
 
-  const refresh = React.useCallback(() => quoteCheckoutFees(ctxRef.current), []);
+  const refresh = React.useCallback(() => {
+    if (!isAuthenticated) return Promise.resolve(useCheckoutStore.getState().checkoutFees);
+    return quoteCheckoutFees(ctxRef.current);
+  }, [isAuthenticated]);
 
   const view = deliveryQuoteView({
     state,

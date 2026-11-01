@@ -987,7 +987,7 @@ export function CheckoutPage() {
                 legacyNotesPending ||
                 onlineOrderingUnavailable ||
                 !fulfillmentSupported ||
-                !quoteView.payEnabled
+                (isAuthenticated && !quoteView.payEnabled)
               }
               aria-disabled={
                 busy ||
@@ -999,7 +999,7 @@ export function CheckoutPage() {
                 legacyNotesPending ||
                 onlineOrderingUnavailable ||
                 !fulfillmentSupported ||
-                !quoteView.payEnabled
+                (isAuthenticated && !quoteView.payEnabled)
               }
               title={
                 !fulfillmentSupported
@@ -1008,7 +1008,9 @@ export function CheckoutPage() {
                     : fulfillmentBlockMessage
                   : onlineOrderingUnavailable
                     ? "This outlet isn't taking online orders yet."
-                    : !quoteView.payEnabled
+                    : !isAuthenticated
+                      ? "Sign in to continue"
+                      : !quoteView.payEnabled
                       ? (quoteView.message ?? "Getting delivery price")
                       : reconciliationPending
                         ? "We are confirming your payment — please do not pay again"
@@ -1032,7 +1034,9 @@ export function CheckoutPage() {
                   ? "Choose fulfillment"
                   : onlineOrderingUnavailable
                     ? "Online ordering unavailable"
-                    : !quoteView.payEnabled
+                    : !isAuthenticated
+                      ? "Sign in to continue"
+                      : !quoteView.payEnabled
                       ? quoteView.storeNotLinked
                         ? "Online ordering unavailable"
                         : quoteView.status === "idle" || quoteView.status === "loading"
@@ -1357,7 +1361,9 @@ export function CheckoutPage() {
             <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
-                {!totals ? (
+                {!isAuthenticated ? (
+                  <span className="type-caption font-medium">Calculated at checkout</span>
+                ) : !totals ? (
                   <span className="text-warning-text">unavailable</span>
                 ) : quoteView.packagingFee !== null ? (
                   isDineIn && quoteView.packagingFee === 0 ? (
@@ -1375,7 +1381,9 @@ export function CheckoutPage() {
               <div className="flex items-start justify-between gap-3 text-text-secondary">
                 <span>Delivery Fee</span>
                 <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
-                  {!totals ? (
+                  {!isAuthenticated ? (
+                    <span className="type-caption font-medium">Calculated at checkout</span>
+                  ) : !totals ? (
                     <span className="text-warning-text">unavailable</span>
                   ) : quoteView.showDeliveryFee && quoteView.deliveryFee !== null ? (
                     formatINR(quoteView.deliveryFee)
