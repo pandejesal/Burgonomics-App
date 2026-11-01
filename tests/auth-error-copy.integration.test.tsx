@@ -118,6 +118,9 @@ describe("login error copy at the rendered screen boundary", () => {
     expect(boundary.state!.requestOtp).toHaveBeenCalledWith("login", "9876543210", "sms");
     expect(boundary.toastError).toHaveBeenCalledExactlyOnceWith(GENERIC_ERROR_MESSAGE);
     expect(boundary.toastError).not.toHaveBeenCalledWith(rawError);
-    expect(diagnostic).toHaveBeenCalledWith("[auth] OTP request failed:", "AUTH_OTP_REQUEST_FAILED");
+    expect(diagnostic).toHaveBeenCalledWith(
+      "[auth] OTP request failed:",
+      "AUTH_OTP_REQUEST_FAILED",
+    );
   });
 });

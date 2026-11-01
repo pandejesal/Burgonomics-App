@@ -73,21 +73,16 @@ const EMULATOR_CSP = [
 
 /** Pure HTML rewrite — throws when the source drifts instead of serving a wrong entry. */
 function rewriteIndexHtml(html: string): string {
-  const entryPattern =
-    /<script\s+type="module"\s+src="\/src\/mobile-entry\.tsx"\s*><\/script>/;
+  const entryPattern = /<script\s+type="module"\s+src="\/src\/mobile-entry\.tsx"\s*><\/script>/;
   if (!entryPattern.test(html)) {
     throw new Error(
       `[emulator-lane] index.html no longer contains the module entry ${ENTRY_SOURCE}; refusing to serve a lane that boots the wrong entry.`,
     );
   }
 
-  let out = html.replace(
-    entryPattern,
-    `<script type="module" src="${ENTRY_LANE}"></script>`,
-  );
+  let out = html.replace(entryPattern, `<script type="module" src="${ENTRY_LANE}"></script>`);
 
-  const cspPattern =
-    /<meta\s+http-equiv="Content-Security-Policy"\s+content="[^"]*"\s*\/?>/;
+  const cspPattern = /<meta\s+http-equiv="Content-Security-Policy"\s+content="[^"]*"\s*\/?>/;
   if (!cspPattern.test(out)) {
     throw new Error(
       "[emulator-lane] index.html has no CSP meta tag; the lane cannot prove a loopback-only connect policy.",
@@ -101,10 +96,7 @@ function rewriteIndexHtml(html: string): string {
   // Font fidelity is explicitly NOT claimed in this lane. Removing the requests
   // (rather than allowing them) keeps the "zero non-loopback requests" assertion
   // meaningful.
-  out = out.replace(
-    /\s*<link[^>]*(?:fonts\.googleapis\.com|fonts\.gstatic\.com)[^>]*>/g,
-    "",
-  );
+  out = out.replace(/\s*<link[^>]*(?:fonts\.googleapis\.com|fonts\.gstatic\.com)[^>]*>/g, "");
   if (/fonts\.(?:googleapis|gstatic)\.com/.test(out)) {
     throw new Error("[emulator-lane] external font links survived the HTML rewrite");
   }

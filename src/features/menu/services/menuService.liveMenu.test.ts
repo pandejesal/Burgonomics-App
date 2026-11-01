@@ -69,7 +69,7 @@ describe("menuService live menu subscription", () => {
 
     const results: any[] = [];
     const unsub = menuService.subscribeProducts("store_large", undefined, (res) =>
-      results.push(res)
+      results.push(res),
     );
 
     await vi.waitFor(() => expect(results.length).toBe(1));
@@ -110,9 +110,7 @@ describe("menuService live menu subscription", () => {
     firestore.onSnapshot.mockImplementation(() => () => {});
 
     const results: any[] = [];
-    const unsub = menuService.subscribeProducts(undefined, undefined, (res) =>
-      results.push(res)
-    );
+    const unsub = menuService.subscribeProducts(undefined, undefined, (res) => results.push(res));
 
     await vi.waitFor(() => expect(results.length).toBe(1));
 

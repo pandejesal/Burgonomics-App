@@ -7,10 +7,7 @@ export type LanguagePreference = "en" | "hi";
  * and sent to the preferences API as-is.
  */
 export type NotificationPreferenceKey =
-  | "offers"
-  | "orderUpdates"
-  | "announcements"
-  | "supportReplies";
+  "offers" | "orderUpdates" | "announcements" | "supportReplies";
 
 export interface NotificationPreferences {
   offers: boolean;
@@ -24,13 +21,12 @@ export interface NotificationPreferences {
  * offers/orderUpdates/supportReplies are on, announcements are opt-in.
  * An explicit `false` is always preserved — never re-defaulted.
  */
-export const NOTIFICATION_PREFERENCE_DEFAULTS: Readonly<NotificationPreferences> =
-  Object.freeze({
-    offers: true,
-    orderUpdates: true,
-    announcements: false,
-    supportReplies: true,
-  });
+export const NOTIFICATION_PREFERENCE_DEFAULTS: Readonly<NotificationPreferences> = Object.freeze({
+  offers: true,
+  orderUpdates: true,
+  announcements: false,
+  supportReplies: true,
+});
 
 /**
  * Per-uid decision for the pre-account `burg.settings.notifications` blob.

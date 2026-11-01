@@ -195,8 +195,7 @@ export const paymentsService = {
       // or dine-in payment (the server would refuse or mis-bill).
       const { deliveryQuoteId, ...rest } = input;
       const isDeliveryOrder = (input.orderType ?? input.fulfillment) === "delivery";
-      const payload =
-        isDeliveryOrder && deliveryQuoteId ? { ...rest, deliveryQuoteId } : rest;
+      const payload = isDeliveryOrder && deliveryQuoteId ? { ...rest, deliveryQuoteId } : rest;
       // PAYMENTS_CONTRACT_SPEC §1: the server answers with canonical names
       // (`razorpayOrderId`, `amountPaise`) plus legacy aliases (`orderId`,
       // `amount` in rupees). Read canonical first, fall back to legacy.

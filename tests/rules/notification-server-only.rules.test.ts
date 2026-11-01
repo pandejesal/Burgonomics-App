@@ -6,14 +6,7 @@ import {
   assertFails,
   assertSucceeds,
 } from "@firebase/rules-unit-testing";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  collection,
-  getDocs,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 
 /**
  * N09 — Notification server-owned paths are default-deny at the rules layer.
@@ -79,7 +72,9 @@ describe("Firestore Security Rules — N09 notification server-only paths", () =
       });
       emulatorAvailable = true;
     } catch {
-      console.warn(`Firestore Emulator is not running on 127.0.0.1:${EMULATOR_PORT}. Skipping rules integration tests.`);
+      console.warn(
+        `Firestore Emulator is not running on 127.0.0.1:${EMULATOR_PORT}. Skipping rules integration tests.`,
+      );
       emulatorAvailable = false;
     }
   });
@@ -103,20 +98,28 @@ describe("Firestore Security Rules — N09 notification server-only paths", () =
       const db = writerContext.firestore();
 
       await setDoc(doc(db, "admins", "brand_owner_1"), {
-        email: "brand@burgonomics.com", role: "brand_owner", name: "Brand",
+        email: "brand@burgonomics.com",
+        role: "brand_owner",
+        name: "Brand",
       });
       await setDoc(doc(db, "admins", "developer_1"), {
-        email: "dev@burgonomics.com", role: "developer", name: "Developer",
+        email: "dev@burgonomics.com",
+        role: "developer",
+        name: "Developer",
       });
       await setDoc(doc(db, "admins", "support_1"), {
-        email: "support@burgonomics.com", role: "support", name: "Support",
+        email: "support@burgonomics.com",
+        role: "support",
+        name: "Support",
       });
 
       await setDoc(doc(db, "users", USER_UID), {
-        fullName: "Prefs Owner", fcmTokens: ["tok_a"],
+        fullName: "Prefs Owner",
+        fcmTokens: ["tok_a"],
       });
       await setDoc(doc(db, "users", FOREIGN_UID), {
-        fullName: "Prefs Foreign", fcmTokens: [" tok_b"],
+        fullName: "Prefs Foreign",
+        fcmTokens: [" tok_b"],
       });
 
       // Backend-shaped server docs (devicePrefs.ts / sendGate.ts /
@@ -129,7 +132,12 @@ describe("Firestore Security Rules — N09 notification server-only paths", () =
       });
       await setDoc(doc(db, "users", FOREIGN_UID, "device_prefs", INSTALLATION_ID), {
         installationId: INSTALLATION_ID,
-        categories: { offers: false, orderUpdates: true, announcements: true, supportReplies: false },
+        categories: {
+          offers: false,
+          orderUpdates: true,
+          announcements: true,
+          supportReplies: false,
+        },
         syncedAt: new Date().toISOString(),
       });
 
@@ -173,89 +181,134 @@ describe("Firestore Security Rules — N09 notification server-only paths", () =
   // 1. users/{uid}/device_prefs/{installationId} — no client lane at all
   // -------------------------------------------------------------------------
 
-  it("n09-prefs: every role is denied READ on own and foreign device_prefs", { timeout: 120000 }, async () => {
-    for (const actor of ROLE_ACTORS) {
-      const db = databaseFor(actor);
-      await assertFails(
-        getDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID)),
-        `ROLE=${actor.label} must not read OWN account device_prefs`
-      );
-      await assertFails(
-        getDoc(doc(db, "users", FOREIGN_UID, "device_prefs", INSTALLATION_ID)),
-        `ROLE=${actor.label} must not read FOREIGN account device_prefs`
-      );
-      await assertFails(
-        getDocs(collection(db, "users", USER_UID, "device_prefs")),
-        `ROLE=${actor.label} must not list device_prefs`
-      );
-    }
-  });
+  it(
+    "n09-prefs: every role is denied READ on own and foreign device_prefs",
+    { timeout: 120000 },
+    async () => {
+      for (const actor of ROLE_ACTORS) {
+        const db = databaseFor(actor);
+        await assertFails(
+          getDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID)),
+          `ROLE=${actor.label} must not read OWN account device_prefs`,
+        );
+        await assertFails(
+          getDoc(doc(db, "users", FOREIGN_UID, "device_prefs", INSTALLATION_ID)),
+          `ROLE=${actor.label} must not read FOREIGN account device_prefs`,
+        );
+        await assertFails(
+          getDocs(collection(db, "users", USER_UID, "device_prefs")),
+          `ROLE=${actor.label} must not list device_prefs`,
+        );
+      }
+    },
+  );
 
-  it("n09-prefs: every role is denied WRITE on device_prefs regardless of ownership", { timeout: 120000 }, async () => {
-    for (const actor of ROLE_ACTORS) {
-      const db = databaseFor(actor);
-      await assertFails(
-        setDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID), {
-          installationId: INSTALLATION_ID,
-          categories: { offers: true, orderUpdates: false, announcements: true, supportReplies: true },
-        }),
-        `ROLE=${actor.label} must not write own device_prefs (suppression forge)`
-      );
-      await assertFails(
-        updateDoc(doc(db, "users", FOREIGN_UID, "device_prefs", INSTALLATION_ID), {
-          "categories.orderUpdates": false,
-        }),
-        `ROLE=${actor.label} must not patch foreign device_prefs`
-      );
-    }
-  });
+  it(
+    "n09-prefs: every role is denied WRITE on device_prefs regardless of ownership",
+    { timeout: 120000 },
+    async () => {
+      for (const actor of ROLE_ACTORS) {
+        const db = databaseFor(actor);
+        await assertFails(
+          setDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID), {
+            installationId: INSTALLATION_ID,
+            categories: {
+              offers: true,
+              orderUpdates: false,
+              announcements: true,
+              supportReplies: true,
+            },
+          }),
+          `ROLE=${actor.label} must not write own device_prefs (suppression forge)`,
+        );
+        await assertFails(
+          updateDoc(doc(db, "users", FOREIGN_UID, "device_prefs", INSTALLATION_ID), {
+            "categories.orderUpdates": false,
+          }),
+          `ROLE=${actor.label} must not patch foreign device_prefs`,
+        );
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 2. notification_quarantine + notification_dispatch — server-only ledgers
   // -------------------------------------------------------------------------
 
-  it("n09-quarantine: read+write denied for every role on notification_quarantine", { timeout: 120000 }, async () => {
-    for (const actor of ROLE_ACTORS) {
-      const db = databaseFor(actor);
-      await assertFails(getDoc(doc(db, "notification_quarantine", "nq_seed")), `ROLE=${actor.label} quarantine read`);
-      await assertFails(getDocs(collection(db, "notification_quarantine")), `ROLE=${actor.label} quarantine list`);
-      await assertFails(
-        setDoc(doc(db, "notification_quarantine", "nq_forged"), { reason: "none", body: "sneaked" }),
-        `ROLE=${actor.label} quarantine write`
-      );
-    }
-  });
+  it(
+    "n09-quarantine: read+write denied for every role on notification_quarantine",
+    { timeout: 120000 },
+    async () => {
+      for (const actor of ROLE_ACTORS) {
+        const db = databaseFor(actor);
+        await assertFails(
+          getDoc(doc(db, "notification_quarantine", "nq_seed")),
+          `ROLE=${actor.label} quarantine read`,
+        );
+        await assertFails(
+          getDocs(collection(db, "notification_quarantine")),
+          `ROLE=${actor.label} quarantine list`,
+        );
+        await assertFails(
+          setDoc(doc(db, "notification_quarantine", "nq_forged"), {
+            reason: "none",
+            body: "sneaked",
+          }),
+          `ROLE=${actor.label} quarantine write`,
+        );
+      }
+    },
+  );
 
-  it("n09-dispatch: read+write denied for every role on notification_dispatch", { timeout: 120000 }, async () => {
-    for (const actor of ROLE_ACTORS) {
-      const db = databaseFor(actor);
-      await assertFails(getDoc(doc(db, "notification_dispatch", "attempt_seed")), `ROLE=${actor.label} dispatch read`);
-      await assertFails(getDocs(collection(db, "notification_dispatch")), `ROLE=${actor.label} dispatch list`);
-      await assertFails(
-        setDoc(doc(db, "notification_dispatch", "attempt_forged"), { ownerUid: USER_UID, token: "tok" }),
-        `ROLE=${actor.label} dispatch write`
-      );
-    }
-  });
+  it(
+    "n09-dispatch: read+write denied for every role on notification_dispatch",
+    { timeout: 120000 },
+    async () => {
+      for (const actor of ROLE_ACTORS) {
+        const db = databaseFor(actor);
+        await assertFails(
+          getDoc(doc(db, "notification_dispatch", "attempt_seed")),
+          `ROLE=${actor.label} dispatch read`,
+        );
+        await assertFails(
+          getDocs(collection(db, "notification_dispatch")),
+          `ROLE=${actor.label} dispatch list`,
+        );
+        await assertFails(
+          setDoc(doc(db, "notification_dispatch", "attempt_forged"), {
+            ownerUid: USER_UID,
+            token: "tok",
+          }),
+          `ROLE=${actor.label} dispatch write`,
+        );
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 3. notification_admin_sends audit trail lives in admin_audit_logs —
   //    append-only, server-written, brand read-only.
   // -------------------------------------------------------------------------
 
-  it("n09-audit: admin_audit_logs stays server-written (brand read-only, clients append nothing)", { timeout: 120000 }, async () => {
-    const brandDb = databaseFor({ uid: "brand_owner_1" });
-    await assertSucceeds(getDoc(doc(brandDb, "admin_audit_logs", "admin_log_seed")));
-    for (const actor of ROLE_ACTORS) {
-      const db = databaseFor(actor);
-      await assertFails(
-        setDoc(doc(db, "admin_audit_logs", "admin_log_forged"), {
-          action: "notification_admin_sends", actorUid: "brand_owner_1", targetId: USER_UID,
-        }),
-        `ROLE=${actor.label} must not fabricate a notification_admin_sends audit row`
-      );
-    }
-  });
+  it(
+    "n09-audit: admin_audit_logs stays server-written (brand read-only, clients append nothing)",
+    { timeout: 120000 },
+    async () => {
+      const brandDb = databaseFor({ uid: "brand_owner_1" });
+      await assertSucceeds(getDoc(doc(brandDb, "admin_audit_logs", "admin_log_seed")));
+      for (const actor of ROLE_ACTORS) {
+        const db = databaseFor(actor);
+        await assertFails(
+          setDoc(doc(db, "admin_audit_logs", "admin_log_forged"), {
+            action: "notification_admin_sends",
+            actorUid: "brand_owner_1",
+            targetId: USER_UID,
+          }),
+          `ROLE=${actor.label} must not fabricate a notification_admin_sends audit row`,
+        );
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 4. No cascade: scoped grants on users/{uid} must NOT open the prefs
@@ -280,7 +333,7 @@ describe("Firestore Security Rules — N09 notification server-only paths", () =
         read: true,
         readAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      })
+      }),
     );
   });
 
@@ -289,26 +342,39 @@ describe("Firestore Security Rules — N09 notification server-only paths", () =
     await assertFails(getDoc(doc(foreignDb, "users", USER_UID, "notifications", "notif_1")));
   });
 
-  it("n09-inbox: client creates of notifications stay server-only; server control unchanged", { timeout: 120000 }, async () => {
-    const ownerDb = databaseFor({ uid: USER_UID });
-    await assertFails(
-      setDoc(doc(ownerDb, "users", USER_UID, "notifications", "notif_forged"), {
-        userId: USER_UID, title: "self-serve", body: "spoofed",
-      }),
-      "notification inbox rows are server-minted"
-    );
-    await testEnv!.withSecurityRulesDisabled(async (writerContext) => {
-      const db = writerContext.firestore();
-      await setDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID), {
-        installationId: INSTALLATION_ID,
-        categories: { offers: false, orderUpdates: true, announcements: true, supportReplies: true },
-        syncedAt: new Date().toISOString(),
+  it(
+    "n09-inbox: client creates of notifications stay server-only; server control unchanged",
+    { timeout: 120000 },
+    async () => {
+      const ownerDb = databaseFor({ uid: USER_UID });
+      await assertFails(
+        setDoc(doc(ownerDb, "users", USER_UID, "notifications", "notif_forged"), {
+          userId: USER_UID,
+          title: "self-serve",
+          body: "spoofed",
+        }),
+        "notification inbox rows are server-minted",
+      );
+      await testEnv!.withSecurityRulesDisabled(async (writerContext) => {
+        const db = writerContext.firestore();
+        await setDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID), {
+          installationId: INSTALLATION_ID,
+          categories: {
+            offers: false,
+            orderUpdates: true,
+            announcements: true,
+            supportReplies: true,
+          },
+          syncedAt: new Date().toISOString(),
+        });
+        await setDoc(doc(db, "notification_dispatch", "attempt_server"), {
+          attemptId: "attempt_server",
+          ownerUid: USER_UID,
+          createdAt: new Date().toISOString(),
+        });
+        const prefs = await getDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID));
+        expect(prefs.exists()).toBe(true);
       });
-      await setDoc(doc(db, "notification_dispatch", "attempt_server"), {
-        attemptId: "attempt_server", ownerUid: USER_UID, createdAt: new Date().toISOString(),
-      });
-      const prefs = await getDoc(doc(db, "users", USER_UID, "device_prefs", INSTALLATION_ID));
-      expect(prefs.exists()).toBe(true);
-    });
-  });
+    },
+  );
 });

@@ -16,11 +16,7 @@ import {
   type AuthApiResult,
   type AuthFlowId,
 } from "@/features/auth/utils/authErrors";
-import {
-  acquireForFlow,
-  dirtyFlow,
-  isFlowMounted,
-} from "@/features/auth/state/authBinding";
+import { acquireForFlow, dirtyFlow, isFlowMounted } from "@/features/auth/state/authBinding";
 
 export const AUTH_REQUEST_DEADLINE_MS = 60_000;
 export const AUTH_VERIFY_DEADLINE_MS = 60_000;
@@ -106,9 +102,7 @@ export interface AuthAttemptDeps {
 }
 
 type TimeoutOutcome<T> =
-  | { kind: "value"; value: T }
-  | { kind: "error"; error: unknown }
-  | { kind: "timeout" };
+  { kind: "value"; value: T } | { kind: "error"; error: unknown } | { kind: "timeout" };
 
 function withDeadline<T>(promise: Promise<T>, ms: number): Promise<TimeoutOutcome<T>> {
   return new Promise((resolve) => {
@@ -315,7 +309,12 @@ export function createAuthAttemptController(
     const outcome = await withDeadline(send, deps.timeoutMs);
 
     if (outcome.kind === "timeout") {
-      if (lockOpId === opId && state.kind === "requesting" && state.gen === gen && state.epoch === epoch) {
+      if (
+        lockOpId === opId &&
+        state.kind === "requesting" &&
+        state.gen === gen &&
+        state.epoch === epoch
+      ) {
         generation += 1;
         state = {
           kind: "unknown",
@@ -500,10 +499,7 @@ export function createAuthAttemptController(
 
     const user = outcome.value.user;
     const stale =
-      lockOpId !== opId ||
-      epoch !== intentEpoch ||
-      state.kind !== "verifying" ||
-      state.gen !== gen;
+      lockOpId !== opId || epoch !== intentEpoch || state.kind !== "verifying" || state.gen !== gen;
 
     if (stale) {
       await deps.cleanupStaleUser(user);

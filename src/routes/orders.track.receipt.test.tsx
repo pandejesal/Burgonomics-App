@@ -38,7 +38,13 @@ vi.mock("@/features/auth/components/ProtectedRoute", () => ({
 }));
 
 vi.mock("@/shared/layouts/AppShell", () => ({
-  AppShell: ({ children, rightSlot }: { children: React.ReactNode; rightSlot?: React.ReactNode }) => (
+  AppShell: ({
+    children,
+    rightSlot,
+  }: {
+    children: React.ReactNode;
+    rightSlot?: React.ReactNode;
+  }) => (
     <div>
       {rightSlot}
       {children}
@@ -100,7 +106,8 @@ const buildOrder = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as unknown as Record<string, unknown>;
 
-const Page = (Route as unknown as { options: { component: React.ComponentType } }).options.component;
+const Page = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 async function mount() {
   const container = document.createElement("div");

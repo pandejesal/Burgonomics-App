@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const listProducts = vi.hoisted(() => vi.fn());
 vi.mock("../src/features/menu/repositories/MenuRepository", () => ({
   menuRepository: {
-    listCategories: vi.fn(async () => ({ success: false, error: { message: "off" } } as any)),
+    listCategories: vi.fn(async () => ({ success: false, error: { message: "off" } }) as any),
     listProducts,
     subscribeCategories: vi.fn(() => () => undefined),
     subscribeProducts: vi.fn(() => () => undefined),
@@ -74,8 +74,12 @@ describe("stress sweep P1 repairs (customer app)", () => {
     });
 
     it("absent stamps keep the incoming write (uncomparable → legacy behavior)", () => {
-      useOrdersStore.getState().upsert(asAny({ id: "ord_3", status: { code: "PLACED", terminal: false } }));
-      useOrdersStore.getState().upsert(asAny({ id: "ord_3", status: { code: "CONFIRMED", terminal: false } }));
+      useOrdersStore
+        .getState()
+        .upsert(asAny({ id: "ord_3", status: { code: "PLACED", terminal: false } }));
+      useOrdersStore
+        .getState()
+        .upsert(asAny({ id: "ord_3", status: { code: "CONFIRMED", terminal: false } }));
       expect(useOrdersStore.getState().byId["ord_3"].status.code).toBe("CONFIRMED");
     });
 
@@ -145,9 +149,7 @@ describe("stress sweep P1 repairs (customer app)", () => {
         );
       useOrdersStore
         .getState()
-        .upsert(
-          orderFixture("ord_ns", "PREPARING", false, { seconds, nanoseconds: 100_000_000 }),
-        );
+        .upsert(orderFixture("ord_ns", "PREPARING", false, { seconds, nanoseconds: 100_000_000 }));
       expect(useOrdersStore.getState().byId["ord_ns"].status.code).toBe("OUT_FOR_DELIVERY");
     });
 
@@ -155,9 +157,7 @@ describe("stress sweep P1 repairs (customer app)", () => {
       const seconds = Math.floor(OLDER_MS / 1000);
       useOrdersStore
         .getState()
-        .upsert(
-          orderFixture("ord_ns2", "PREPARING", false, { seconds, nanoseconds: 100_000_000 }),
-        );
+        .upsert(orderFixture("ord_ns2", "PREPARING", false, { seconds, nanoseconds: 100_000_000 }));
       useOrdersStore
         .getState()
         .upsert(
@@ -208,18 +208,20 @@ describe("stress sweep P1 repairs (customer app)", () => {
 
     it("RED: preserves live 86ing synced while loadMore was in flight", async () => {
       // Bucket built by page 1 with truffle_burger initially IN STOCK.
-      useMenuStore.setState(asAny({
-        buckets: {
-          cat_burgers: {
-            items: [productFixture("truffle_burger", true)],
-            page: 1,
-            pageSize: 100,
-            total: 125,
-            hasMore: true,
-            loading: false,
+      useMenuStore.setState(
+        asAny({
+          buckets: {
+            cat_burgers: {
+              items: [productFixture("truffle_burger", true)],
+              page: 1,
+              pageSize: 100,
+              total: 125,
+              hasMore: true,
+              loading: false,
+            },
           },
-        },
-      }));
+        }),
+      );
 
       // Page 2 is deferred: pause loadMore until after live sync is injected.
       let resolveListProducts!: (value: any) => void;
@@ -241,7 +243,7 @@ describe("stress sweep P1 repairs (customer app)", () => {
           cat_burgers: {
             ...s.buckets["cat_burgers"],
             items: s.buckets["cat_burgers"].items.map((it: any) =>
-              it.id === "truffle_burger" ? { ...it, inStock: false } : it
+              it.id === "truffle_burger" ? { ...it, inStock: false } : it,
             ),
           },
         },

@@ -211,8 +211,7 @@ vi.mock("@/features/auth/state/authStore", () => {
   };
 });
 vi.mock("@/features/addresses", () => ({
-  useAddressStore: (select: (s: unknown) => unknown) =>
-    select({ items: [], selectedId: null }),
+  useAddressStore: (select: (s: unknown) => unknown) => select({ items: [], selectedId: null }),
   selectSelectedAddress: () => null,
 }));
 vi.mock("@/features/orders", () => ({

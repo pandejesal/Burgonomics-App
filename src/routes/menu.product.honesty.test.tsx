@@ -32,7 +32,13 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/shared/layouts/AppShell", () => ({
-  AppShell: ({ children, bottomSlot }: { children: React.ReactNode; bottomSlot?: React.ReactNode }) => (
+  AppShell: ({
+    children,
+    bottomSlot,
+  }: {
+    children: React.ReactNode;
+    bottomSlot?: React.ReactNode;
+  }) => (
     <main>
       {children}
       {bottomSlot}
@@ -67,7 +73,8 @@ vi.mock("@/core/services/haptics", () => ({
 
 import { Route } from "./menu.product.$productId";
 
-const Page = (Route as unknown as { options: { component: React.ComponentType } }).options.component;
+const Page = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 const buildProduct = (overrides: Record<string, unknown> = {}) =>
   ({

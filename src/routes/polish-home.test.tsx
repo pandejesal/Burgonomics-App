@@ -56,8 +56,7 @@ vi.mock("@/shared/components/feedback/PetpoojaSyncPlaceholder", () => ({
 }));
 vi.mock("@/shared/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => true }));
 vi.mock("@/core/state/appConfigStore", () => ({
-  useAppConfig: (select: (state: { isOnline: boolean }) => unknown) =>
-    select({ isOnline: true }),
+  useAppConfig: (select: (state: { isOnline: boolean }) => unknown) => select({ isOnline: true }),
 }));
 vi.mock("@/features/home", () => ({
   useHomeStore: (select: (state: unknown) => unknown) =>
@@ -129,8 +128,8 @@ vi.mock("@/features/orders/repositories/OrderRepository", () => ({
 
 import { Route as HomeRoute } from "./home";
 
-const HomePage = (HomeRoute as unknown as { options: { component: React.ComponentType } })
-  .options.component;
+const HomePage = (HomeRoute as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 let container: HTMLDivElement;
 let root: Root;

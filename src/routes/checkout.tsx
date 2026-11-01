@@ -455,8 +455,7 @@ export function CheckoutPage() {
     const quoteNow = deliveryQuoteView({
       state: useCheckoutStore.getState().checkoutFees,
       fulfillment,
-      hasAddress:
-        Number.isFinite(selectedAddress?.lat) && Number.isFinite(selectedAddress?.lng),
+      hasAddress: Number.isFinite(selectedAddress?.lat) && Number.isFinite(selectedAddress?.lng),
     });
     if (!quoteNow.payEnabled) {
       const message = quoteNow.message ?? "Getting delivery price";

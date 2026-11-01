@@ -137,19 +137,13 @@ describe("search sticky header and accent tokens", () => {
     expect(form, "search form").not.toBeNull();
     const formTokens = classTokens(form!);
     expect(formTokens).toContain("sticky");
-    expect(formTokens).toContain(
-      "top-[calc(3.5rem+env(safe-area-inset-top,0px))]",
-    );
-    expect(formTokens).toContain(
-      "scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))]",
-    );
+    expect(formTokens).toContain("top-[calc(3.5rem+env(safe-area-inset-top,0px))]");
+    expect(formTokens).toContain("scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))]");
     expect(formTokens).not.toContain("top-0");
 
     const input = container.querySelector<HTMLInputElement>('input[type="search"]');
     expect(input, "search input").not.toBeNull();
-    expect(classTokens(input!)).toContain(
-      "scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))]",
-    );
+    expect(classTokens(input!)).toContain("scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))]");
   });
 
   it("renders the active diet chip and text links with semantic accent tokens", async () => {

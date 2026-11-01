@@ -20,8 +20,9 @@ vi.mock("@/core/services/haptics", () => ({
 }));
 
 vi.mock("@/features/menu/state/menuStore", () => ({
-  useMenuStore: (selector: (state: { setActiveCategory: typeof fixture.setActiveCategory }) => unknown) =>
-    selector({ setActiveCategory: fixture.setActiveCategory }),
+  useMenuStore: (
+    selector: (state: { setActiveCategory: typeof fixture.setActiveCategory }) => unknown,
+  ) => selector({ setActiveCategory: fixture.setActiveCategory }),
 }));
 
 import { CategoryGrid } from "./CategoryGrid";

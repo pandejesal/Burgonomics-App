@@ -51,7 +51,8 @@ function spec(
 ) {
   const status = options.status ?? "expected";
   const resultStatus =
-    options.resultStatus ?? (status === "expected" ? "passed" : status === "skipped" ? "skipped" : "failed");
+    options.resultStatus ??
+    (status === "expected" ? "passed" : status === "skipped" ? "skipped" : "failed");
   const resultCount = options.resultCount ?? 1;
   return {
     title,
@@ -72,7 +73,11 @@ function spec(
 
 type AnySpec = ReturnType<typeof spec>;
 
-function report(specs: AnySpec[], overrides: Record<string, number> = {}, errors: Array<{ message: string }> = []) {
+function report(
+  specs: AnySpec[],
+  overrides: Record<string, number> = {},
+  errors: Array<{ message: string }> = [],
+) {
   const counts: Record<string, number> = { expected: 0, skipped: 0, unexpected: 0, flaky: 0 };
   for (const item of specs) {
     for (const test of item.tests) counts[test.status] = (counts[test.status] ?? 0) + 1;
@@ -119,7 +124,13 @@ describe("positive suite gate", () => {
   it("accepts exactly the 7 required passing tests", () => {
     const gate = classifyPositiveReport(validPositive());
     expect(gate.ok, gate.problems.join("; ")).toBe(true);
-    expect(gate.counts).toMatchObject({ expected: 7, skipped: 0, unexpected: 0, flaky: 0, total: 7 });
+    expect(gate.counts).toMatchObject({
+      expected: 7,
+      skipped: 0,
+      unexpected: 0,
+      flaky: 0,
+      total: 7,
+    });
   });
 
   it("RED: the old exit-code check accepted a skipped suite; the gate rejects it", () => {
@@ -140,7 +151,10 @@ describe("positive suite gate", () => {
     const failing = REQUIRED_POSITIVE_TESTS[0];
     const suite = report(
       REQUIRED_POSITIVE_TESTS.map((title) =>
-        spec(title, title === failing ? { status: "unexpected", error: "expect(x).toBe(y) failed" } : {}),
+        spec(
+          title,
+          title === failing ? { status: "unexpected", error: "expect(x).toBe(y) failed" } : {},
+        ),
       ),
       { expected: 6, unexpected: 1 },
     );
@@ -151,7 +165,10 @@ describe("positive suite gate", () => {
     const flaky = REQUIRED_POSITIVE_TESTS[1];
     const suite = report(
       REQUIRED_POSITIVE_TESTS.map((title) =>
-        spec(title, title === flaky ? { status: "flaky", resultCount: 2, resultStatus: "passed" } : {}),
+        spec(
+          title,
+          title === flaky ? { status: "flaky", resultCount: 2, resultStatus: "passed" } : {},
+        ),
       ),
       { expected: 6, flaky: 1 },
     );
@@ -159,25 +176,34 @@ describe("positive suite gate", () => {
   });
 
   it("rejects a missing required test (suite shrunk)", () => {
-    const suite = report(REQUIRED_POSITIVE_TESTS.slice(0, 6).map((title) => spec(title)), { expected: 6 });
+    const suite = report(
+      REQUIRED_POSITIVE_TESTS.slice(0, 6).map((title) => spec(title)),
+      { expected: 6 },
+    );
     const gate = classifyPositiveReport(suite);
     expect(gate.ok).toBe(false);
     expect(gate.missingTitles).toEqual([REQUIRED_POSITIVE_TESTS[6]]);
   });
 
   it("rejects an extra test that is not in the gate manifest (explicit coverage)", () => {
-    const suite = report([...REQUIRED_POSITIVE_TESTS.map((title) => spec(title)), spec("a future test")], {
-      expected: 8,
-    });
+    const suite = report(
+      [...REQUIRED_POSITIVE_TESTS.map((title) => spec(title)), spec("a future test")],
+      {
+        expected: 8,
+      },
+    );
     const gate = classifyPositiveReport(suite);
     expect(gate.ok).toBe(false);
     expect(gate.extraTitles).toEqual(["a future test"]);
   });
 
   it("rejects duplicate titles", () => {
-    const suite = report([...REQUIRED_POSITIVE_TESTS.map((title) => spec(title)), spec(REQUIRED_POSITIVE_TESTS[0])], {
-      expected: 8,
-    });
+    const suite = report(
+      [...REQUIRED_POSITIVE_TESTS.map((title) => spec(title)), spec(REQUIRED_POSITIVE_TESTS[0])],
+      {
+        expected: 8,
+      },
+    );
     expect(classifyPositiveReport(suite).ok).toBe(false);
   });
 
@@ -204,10 +230,13 @@ describe("positive suite gate", () => {
   });
 
   it("classifies the probe spec title independently", () => {
-    const gate = classifyPositiveReport(report([spec(NEGATIVE_PROBE_TITLE, { file: "negative-probe.spec.ts" })]), {
-      expectedTitles: [NEGATIVE_PROBE_TITLE],
-      fileSuffix: "negative-probe.spec.ts",
-    });
+    const gate = classifyPositiveReport(
+      report([spec(NEGATIVE_PROBE_TITLE, { file: "negative-probe.spec.ts" })]),
+      {
+        expectedTitles: [NEGATIVE_PROBE_TITLE],
+        fileSuffix: "negative-probe.spec.ts",
+      },
+    );
     expect(gate.ok, gate.problems.join("; ")).toBe(true);
   });
 });
@@ -220,7 +249,11 @@ describe("negative inverted gate", () => {
       logText: "Running 1 test…",
     });
     expect(gate.ok, gate.problems.join("; ")).toBe(true);
-    expect(gate.failure).toMatchObject({ expected: 2, received: 0, title: NEGATIVE_INVERTED_TITLE });
+    expect(gate.failure).toMatchObject({
+      expected: 2,
+      received: 0,
+      title: NEGATIVE_INVERTED_TITLE,
+    });
     expect(gate.signature).toMatchObject({ backendUnavailable: true });
   });
 
@@ -232,7 +265,11 @@ describe("negative inverted gate", () => {
       }),
     ]);
     expect(legacyNegativeAccepted(1)).toBe(true);
-    const gate = classifyNegativeReport({ report: generic, networkProof: negativeProof(), logText: "x" });
+    const gate = classifyNegativeReport({
+      report: generic,
+      networkProof: negativeProof(),
+      logText: "x",
+    });
     expect(gate.ok).toBe(false);
     expect(gate.problems.join("; ")).toMatch(/toHaveCount/);
   });
@@ -245,9 +282,16 @@ describe("negative inverted gate", () => {
       "Error: seed proof missing at …",
     ]) {
       const harness = report([
-        spec(NEGATIVE_INVERTED_TITLE, { status: "unexpected", error: `${INTENDED_MESSAGE}\n${suffix}` }),
+        spec(NEGATIVE_INVERTED_TITLE, {
+          status: "unexpected",
+          error: `${INTENDED_MESSAGE}\n${suffix}`,
+        }),
       ]);
-      const gate = classifyNegativeReport({ report: harness, networkProof: negativeProof(), logText: "x" });
+      const gate = classifyNegativeReport({
+        report: harness,
+        networkProof: negativeProof(),
+        logText: "x",
+      });
       expect(gate.ok, `should reject: ${suffix}`).toBe(false);
     }
   });
@@ -259,24 +303,35 @@ describe("negative inverted gate", () => {
         error: INTENDED_MESSAGE,
       }),
     ]);
-    expect(classifyNegativeReport({ report: wrong, networkProof: negativeProof(), logText: "x" }).ok).toBe(false);
+    expect(
+      classifyNegativeReport({ report: wrong, networkProof: negativeProof(), logText: "x" }).ok,
+    ).toBe(false);
   });
 
   it("rejects a passing run, skipped run, or more than one failure", () => {
     const passing = report([spec(NEGATIVE_INVERTED_TITLE)]);
-    expect(classifyNegativeReport({ report: passing, networkProof: negativeProof(), logText: "x" }).ok).toBe(false);
+    expect(
+      classifyNegativeReport({ report: passing, networkProof: negativeProof(), logText: "x" }).ok,
+    ).toBe(false);
 
-    const skipped = report([spec(NEGATIVE_INVERTED_TITLE, { status: "skipped", resultStatus: "skipped" })], {
-      expected: 0,
-      skipped: 1,
-    });
-    expect(classifyNegativeReport({ report: skipped, networkProof: negativeProof(), logText: "x" }).ok).toBe(false);
+    const skipped = report(
+      [spec(NEGATIVE_INVERTED_TITLE, { status: "skipped", resultStatus: "skipped" })],
+      {
+        expected: 0,
+        skipped: 1,
+      },
+    );
+    expect(
+      classifyNegativeReport({ report: skipped, networkProof: negativeProof(), logText: "x" }).ok,
+    ).toBe(false);
 
     const two = report([
       spec(NEGATIVE_INVERTED_TITLE, { status: "unexpected", error: INTENDED_MESSAGE }),
       spec("a second failure", { status: "unexpected", error: INTENDED_MESSAGE }),
     ]);
-    expect(classifyNegativeReport({ report: two, networkProof: negativeProof(), logText: "x" }).ok).toBe(false);
+    expect(
+      classifyNegativeReport({ report: two, networkProof: negativeProof(), logText: "x" }).ok,
+    ).toBe(false);
   });
 
   it("rejects the wrong card counts", () => {
@@ -287,7 +342,8 @@ describe("negative inverted gate", () => {
       }),
     ]);
     expect(
-      classifyNegativeReport({ report: wrongCounts, networkProof: negativeProof(), logText: "x" }).ok,
+      classifyNegativeReport({ report: wrongCounts, networkProof: negativeProof(), logText: "x" })
+        .ok,
     ).toBe(false);
   });
 
@@ -318,7 +374,9 @@ describe("negative inverted gate", () => {
     expect(
       classifyNegativeReport({
         report: validInverted(),
-        networkProof: negativeProof({ requests: [...negativeProof().requests, "https://firestore.googleapis.com/v1/x"] }),
+        networkProof: negativeProof({
+          requests: [...negativeProof().requests, "https://firestore.googleapis.com/v1/x"],
+        }),
         logText: "x",
       }).ok,
     ).toBe(false);
@@ -333,13 +391,22 @@ describe("negative inverted gate", () => {
 
   it("rejects a blank captured output", () => {
     expect(
-      classifyNegativeReport({ report: validInverted(), networkProof: negativeProof(), logText: "   " }).ok,
+      classifyNegativeReport({
+        report: validInverted(),
+        networkProof: negativeProof(),
+        logText: "   ",
+      }).ok,
     ).toBe(false);
   });
 });
 
 describe("sticky hit gate", () => {
-  const base = { formPosition: "sticky", focused: true, hitTag: "INPUT", hitAriaLabel: "Search the menu" };
+  const base = {
+    formPosition: "sticky",
+    focused: true,
+    hitTag: "INPUT",
+    hitAriaLabel: "Search the menu",
+  };
 
   it("accepts the input as the actual pixel-centre hit", () => {
     const gate = classifyStickyHits({ ...base, hitInsideForm: true, hitIsInput: true });
@@ -348,7 +415,13 @@ describe("sticky hit gate", () => {
   });
 
   it("RED: old form-only check accepted a sibling overlay; the gate rejects it", () => {
-    const overlay = { ...base, hitTag: "DIV", hitAriaLabel: null, hitInsideForm: true, hitIsInput: false };
+    const overlay = {
+      ...base,
+      hitTag: "DIV",
+      hitAriaLabel: null,
+      hitInsideForm: true,
+      hitIsInput: false,
+    };
     const gate = classifyStickyHits(overlay);
     expect(gate.legacyWouldPass).toBe(true);
     expect(gate.ok).toBe(false);
@@ -356,10 +429,13 @@ describe("sticky hit gate", () => {
   });
 
   it("rejects a non-sticky form or an unfocused input", () => {
-    expect(classifyStickyHits({ ...base, formPosition: "static", hitInsideForm: true, hitIsInput: true }).ok).toBe(
-      false,
-    );
-    expect(classifyStickyHits({ ...base, focused: false, hitInsideForm: true, hitIsInput: true }).ok).toBe(false);
+    expect(
+      classifyStickyHits({ ...base, formPosition: "static", hitInsideForm: true, hitIsInput: true })
+        .ok,
+    ).toBe(false);
+    expect(
+      classifyStickyHits({ ...base, focused: false, hitInsideForm: true, hitIsInput: true }).ok,
+    ).toBe(false);
   });
 });
 

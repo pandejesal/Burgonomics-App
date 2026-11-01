@@ -11,7 +11,7 @@ describe("lookupMenuDescription", () => {
     expect(lookupMenuDescription("Jr. Hero Burger")).toContain("crispy Aloo Patty");
     expect(lookupMenuDescription("Cheese Jalapeño Burger")).toContain("jalapeños");
     expect(lookupMenuDescription("Classic Cold Coffee")).toBe(
-      "The perfect mix of sweet, bold, and creamy."
+      "The perfect mix of sweet, bold, and creamy.",
     );
   });
 

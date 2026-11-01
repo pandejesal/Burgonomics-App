@@ -60,8 +60,8 @@ function PrivacyPage() {
               withdraw consent or raise a grievance by contacting our Grievance Officer at{" "}
               <strong>{APP.grievanceEmail}</strong>. Withdrawing consent does not affect lawfulness
               of processing before withdrawal. Processors: <strong>Razorpay</strong> (payments),{" "}
-              <strong>Borzo and Shadowfax</strong> (delivery), <strong>Firebase/Google</strong> (auth, DB),{" "}
-              <strong>Petpooja</strong> (POS) — disclosed per Data Safety.
+              <strong>Borzo and Shadowfax</strong> (delivery), <strong>Firebase/Google</strong>{" "}
+              (auth, DB), <strong>Petpooja</strong> (POS) — disclosed per Data Safety.
             </Text>
           </section>
 
@@ -96,7 +96,8 @@ function PrivacyPage() {
               </li>
               <li>
                 <strong>Location (optional):</strong> Precise/approximate GPS to route to nearest
-                store and deliver (shared with our delivery partners, Borzo and Shadowfax, only for delivery).
+                store and deliver (shared with our delivery partners, Borzo and Shadowfax, only for
+                delivery).
               </li>
             </ul>
           </section>
@@ -166,8 +167,7 @@ function PrivacyPage() {
               <br />
               <strong>Email:</strong> privacy@burgonomics.com
               <br />
-              <strong>Address:</strong> Glassdoors Studio, Ahmedabad, Gujarat –
-              380015, India.
+              <strong>Address:</strong> Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.
               <br />
               <strong>Nodal Contact Person:</strong> Same as Grievance Officer
               (nodal@burgonomics.com) for law-enforcement coordination.

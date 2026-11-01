@@ -9,17 +9,9 @@
  */
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { settingsService } from "@/features/settings/services/settingsService";
-import {
-  isValidSettingsPatch,
-  useSettingsStore,
-} from "@/features/settings/state/settingsStore";
-import {
-  useNotificationPrefsStore,
-} from "@/features/settings/state/notificationPrefsStore";
-import type {
-  AppSettings,
-  NotificationPreferences,
-} from "@/features/settings/models";
+import { isValidSettingsPatch, useSettingsStore } from "@/features/settings/state/settingsStore";
+import { useNotificationPrefsStore } from "@/features/settings/state/notificationPrefsStore";
+import type { AppSettings, NotificationPreferences } from "@/features/settings/models";
 import { currentScopedUid } from "@/features/auth/utils/scopedPersistence";
 import { requestPushPermissions } from "@/shared/platform/pushNotifications";
 
@@ -71,9 +63,7 @@ export class SettingsRepository {
     return ok(undefined);
   }
 
-  async updateNotifications(
-    patch: Partial<NotificationPreferences>,
-  ): Promise<ApiResult<void>> {
+  async updateNotifications(patch: Partial<NotificationPreferences>): Promise<ApiResult<void>> {
     const uid = currentScopedUid();
     if (!uid) {
       return fail("unauthenticated", notificationFailureMessage("unauthenticated"));

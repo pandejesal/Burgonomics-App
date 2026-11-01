@@ -46,7 +46,9 @@ test("unreachable emulator: no synthetic data, no production fallback, no extern
   guard.assertClean("negative-probe");
   guard.assertNoPii();
   const unexpectedExternal = guard.requests.filter(
-    (url) => !url.includes("127.0.0.1") && !/^https?:\/\/www\.google\.com\/images\/cleardot\.gif/.test(url),
+    (url) =>
+      !url.includes("127.0.0.1") &&
+      !/^https?:\/\/www\.google\.com\/images\/cleardot\.gif/.test(url),
   );
   expect(unexpectedExternal, "no production host may be contacted").toEqual([]);
 

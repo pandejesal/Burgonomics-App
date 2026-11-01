@@ -98,24 +98,15 @@ describe("auth redaction: provider detail never reaches a sink or caller", () =>
     expect(quick).toContain("verifyOtp(");
     expect(quick).not.toMatch(/console\.error\([^)]*res\.error/);
 
-    const login = readFileSync(
-      join(process.cwd(), "src/routes/auth.login.tsx"),
-      "utf8",
-    );
-    
+    const login = readFileSync(join(process.cwd(), "src/routes/auth.login.tsx"), "utf8");
+
     expect(login).not.toMatch(/console\.error\([^)]*res\.error/);
 
-    const otp = readFileSync(
-      join(process.cwd(), "src/routes/auth.otp.tsx"),
-      "utf8",
-    );
-    
+    const otp = readFileSync(join(process.cwd(), "src/routes/auth.otp.tsx"), "utf8");
+
     expect(otp).not.toMatch(/console\.error\([^)]*res\.error/);
 
-    const root = readFileSync(
-      join(process.cwd(), "src/routes/__root.tsx"),
-      "utf8",
-    );
+    const root = readFileSync(join(process.cwd(), "src/routes/__root.tsx"), "utf8");
     expect(root).not.toContain('id="recaptcha-container"');
   });
 

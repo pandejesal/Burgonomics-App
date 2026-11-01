@@ -105,8 +105,9 @@ describe("L1 — modifier options are real, keyboard-operable controls", () => {
       />,
     );
 
-    const requiredLabel = Array.from(host!.querySelectorAll<HTMLElement>("span"))
-      .find((element) => element.textContent === "Required");
+    const requiredLabel = Array.from(host!.querySelectorAll<HTMLElement>("span")).find(
+      (element) => element.textContent === "Required",
+    );
     expect(requiredLabel).toBeDefined();
     expect(requiredLabel!.className).toContain("bg-accent/10");
     expect(requiredLabel!.className).toContain("text-accent");

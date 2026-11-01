@@ -79,7 +79,7 @@ describe("stress sweep P0 repairs (customer app)", () => {
 
     it("RED: suggestions are delivered when fetchSuggestions and submit fire on the same turn", async () => {
       repository.suggest.mockResolvedValue(
-        ok([{ id: "sug_1", label: "Smash Burger" } as unknown as SearchModels.Product])
+        ok([{ id: "sug_1", label: "Smash Burger" } as unknown as SearchModels.Product]),
       );
       repository.search.mockResolvedValue(ok({ items: [] }));
 

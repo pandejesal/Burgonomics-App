@@ -1,7 +1,4 @@
-import type {
-  NotificationSyncErrorCode,
-  NotificationSyncStatus,
-} from "@/features/settings/models";
+import type { NotificationSyncErrorCode, NotificationSyncStatus } from "@/features/settings/models";
 
 export interface PushStatusSnapshot {
   enabled: boolean;
@@ -60,13 +57,16 @@ export function NotificationSyncNotice({
 }: NotificationSyncNoticeProps) {
   if (status === "conflict") {
     return (
-      <div role="alert" className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+      <div
+        role="alert"
+        className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2"
+      >
         <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300">
           Another device changed these settings.
         </p>
         <p className="text-[11px] text-text-secondary leading-tight">
-          Your latest changes aren&apos;t saved yet. Keep this device&apos;s choices or
-          use the other device&apos;s version.
+          Your latest changes aren&apos;t saved yet. Keep this device&apos;s choices or use the
+          other device&apos;s version.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -145,11 +145,7 @@ export function NotificationSyncNotice({
     );
   }
 
-  return (
-    <p className="text-[11px] text-text-secondary">
-      Stored on this device for your account.
-    </p>
-  );
+  return <p className="text-[11px] text-text-secondary">Stored on this device for your account.</p>;
 }
 
 export function NotificationPushStatusNotice({ status }: { status: PushStatusSnapshot }) {

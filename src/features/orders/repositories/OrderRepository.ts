@@ -36,10 +36,7 @@ import type {
   PaymentDisplayStatus,
 } from "@/features/orders/models";
 import { toStoreSnapshot } from "@/features/orders/models";
-import {
-  checkMinimumOrder,
-  minOrderShortfallMessage,
-} from "@/shared/pricing/pricingEngine";
+import { checkMinimumOrder, minOrderShortfallMessage } from "@/shared/pricing/pricingEngine";
 
 // -- Tracking subscription contract ----------------------------------
 

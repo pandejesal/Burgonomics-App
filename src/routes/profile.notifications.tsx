@@ -10,7 +10,10 @@ import {
   type NotificationCategory,
 } from "@/features/notifications/state/notificationsStore";
 import { notificationRepository } from "@/features/notifications/repositories/NotificationRepository";
-import { parseNotificationRefSearch, parseStoredNotificationTarget } from "@/features/notifications/utils/notificationRouting";
+import {
+  parseNotificationRefSearch,
+  parseStoredNotificationTarget,
+} from "@/features/notifications/utils/notificationRouting";
 import { resolveNotificationRefNavigation } from "@/features/notifications/services/notificationInbox";
 import { cn } from "@/lib/utils";
 
@@ -143,9 +146,7 @@ function Body() {
                   notification={n}
                   onRead={() => {
                     if (!n.read) void notificationRepository.markRead(n.id);
-                    const target = n.deeplink
-                      ? parseStoredNotificationTarget(n.deeplink)
-                      : null;
+                    const target = n.deeplink ? parseStoredNotificationTarget(n.deeplink) : null;
                     if (!target) return;
                     if (target.to === "/support") {
                       void navigate({ to: "/support", search: target.search });

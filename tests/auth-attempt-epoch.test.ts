@@ -98,13 +98,13 @@ describe("auth attempt ownership, deadline and epoch", () => {
     expect(requested.data.maskedPhone).toBe("******3210");
     expect(requested.data.phone).not.toBe(requested.data.handle);
 
-    expect(
-      (await controller.verifyOtp("checkout", requested.data.handle, "123456")).success,
-    ).toBe(false);
+    expect((await controller.verifyOtp("checkout", requested.data.handle, "123456")).success).toBe(
+      false,
+    );
     expect(controller.adoptChallenge("checkout", requested.data.handle)).toEqual({ ok: true });
-    expect(
-      (await controller.verifyOtp("checkout", requested.data.handle, "123456")).success,
-    ).toBe(true);
+    expect((await controller.verifyOtp("checkout", requested.data.handle, "123456")).success).toBe(
+      true,
+    );
     expect(confirm).toHaveBeenCalledTimes(1);
   });
 
@@ -246,7 +246,7 @@ describe("auth attempt ownership, deadline and epoch", () => {
     const cleanup = vi.fn(async () => undefined);
     const controller = makeController({
       sendSms: vi.fn(async () => confirmation("stale")),
-      confirm: vi.fn(async () => ({ user: stale } as UserCredential)),
+      confirm: vi.fn(async () => ({ user: stale }) as UserCredential),
       cleanupStaleUser: cleanup,
     });
     const issued = await controller.requestOtp("login", "9876543210");

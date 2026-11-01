@@ -16,7 +16,12 @@ const buildOrder = () =>
     shortCode: "BG-INV1",
     status: { code: "DELIVERED", label: "Delivered", kind: "completed", terminal: true },
     fulfillment: "delivery",
-    store: { id: "s1", name: "Burgonomics CG Road", address: "Satellite, Ahmedabad", phone: "+91 98250 88991" },
+    store: {
+      id: "s1",
+      name: "Burgonomics CG Road",
+      address: "Satellite, Ahmedabad",
+      phone: "+91 98250 88991",
+    },
     items: [{ name: "Hero Burger", quantity: 2, unitPrice: 199 }],
     totals: { subtotal: 398, taxes: 19, grandTotal: 398 },
     payment: { method: "online", label: "Paid Online", status: "paid" },

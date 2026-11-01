@@ -138,7 +138,12 @@ describe("Prompt 26: Live Order Tracking & Porter GPS Map Suite", () => {
     it("names the courier the order actually carries", () => {
       const order = {
         id: "ord_103b",
-        status: { code: "OUT_FOR_DELIVERY", label: "Out for Delivery", kind: "in_progress", terminal: false },
+        status: {
+          code: "OUT_FOR_DELIVERY",
+          label: "Out for Delivery",
+          kind: "in_progress",
+          terminal: false,
+        },
         fulfillment: "delivery",
         deliveryPartner: { name: "Borzo" },
       } as unknown as Order;

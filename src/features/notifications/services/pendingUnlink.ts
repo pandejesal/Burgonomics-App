@@ -68,9 +68,7 @@ function storageRemove(key: string): void {
  */
 export async function hashToken(token: string): Promise<string> {
   const cryptoObj =
-    typeof globalThis !== "undefined"
-      ? (globalThis.crypto as Crypto | undefined)
-      : undefined;
+    typeof globalThis !== "undefined" ? (globalThis.crypto as Crypto | undefined) : undefined;
   if (cryptoObj?.subtle) {
     try {
       const bytes = new TextEncoder().encode(token);

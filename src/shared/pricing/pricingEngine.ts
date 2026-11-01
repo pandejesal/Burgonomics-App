@@ -162,7 +162,6 @@ export function toPaise(rupees: number): number {
   return Number.isFinite(value) ? Math.round(value * 100) : 0;
 }
 
-
 /**
  * Builds the pricing config for one order: app-wide launch schedule, with the
  * live delivery quote and any store-level minimum folded in.
@@ -350,10 +349,12 @@ export function calculateOrderTotals(input: PricingCalculationInput): Calculated
   const cgst = round2(taxes / 2);
   const sgst = round2(taxes - cgst);
 
-
-  const packagingFee = hasItems && typeof config.packagingFee === "number" ? config.packagingFee : 0;
+  const packagingFee =
+    hasItems && typeof config.packagingFee === "number" ? config.packagingFee : 0;
   const deliveryFee =
-    hasItems && asPricingFulfillment(fulfillment) === "delivery" && typeof config.deliveryFee === "number"
+    hasItems &&
+    asPricingFulfillment(fulfillment) === "delivery" &&
+    typeof config.deliveryFee === "number"
       ? config.deliveryFee
       : 0;
 

@@ -24,13 +24,8 @@ import {
   type NotificationSyncErrorCode,
   type NotificationSyncStatus,
 } from "@/features/settings/models";
-import {
-  notificationsService,
-} from "@/features/notifications/services/notificationsService";
-import {
-  currentScopedUid,
-  onAuthUidChange,
-} from "@/features/auth/utils/scopedPersistence";
+import { notificationsService } from "@/features/notifications/services/notificationsService";
+import { currentScopedUid, onAuthUidChange } from "@/features/auth/utils/scopedPersistence";
 
 export const NOTIF_PREFS_STORAGE_PREFIX = "burg.notifPrefs.v1";
 export const INSTALLATION_ID_STORAGE_KEY = "burg.installationId";
@@ -73,9 +68,7 @@ function storageRemove(key: string): void {
 
 function randomId(): string {
   const cryptoObj =
-    typeof globalThis !== "undefined"
-      ? (globalThis.crypto as Crypto | undefined)
-      : undefined;
+    typeof globalThis !== "undefined" ? (globalThis.crypto as Crypto | undefined) : undefined;
   if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
     return cryptoObj.randomUUID();
   }
@@ -105,12 +98,9 @@ function isBoolean(value: unknown): value is boolean {
 
 /** Fills absent keys from defaults; an explicit boolean (including false) wins. */
 export function coerceNotificationPreferences(value: unknown): NotificationPreferences {
-  const source =
-    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   return {
-    offers: isBoolean(source.offers)
-      ? source.offers
-      : NOTIFICATION_PREFERENCE_DEFAULTS.offers,
+    offers: isBoolean(source.offers) ? source.offers : NOTIFICATION_PREFERENCE_DEFAULTS.offers,
     orderUpdates: isBoolean(source.orderUpdates)
       ? source.orderUpdates
       : NOTIFICATION_PREFERENCE_DEFAULTS.orderUpdates,
@@ -152,10 +142,7 @@ export function readLegacyNotificationPreferences(): Partial<NotificationPrefere
   }
 }
 
-export function preferencesEqual(
-  a: NotificationPreferences,
-  b: NotificationPreferences,
-): boolean {
+export function preferencesEqual(a: NotificationPreferences, b: NotificationPreferences): boolean {
   return NOTIFICATION_PREFERENCE_KEYS.every((key) => a[key] === b[key]);
 }
 
@@ -449,7 +436,11 @@ export const useNotificationPrefsStore = create<NotificationPrefsState>()((set, 
   async hydrateForUid(uid) {
     if (!uid) {
       serverHydratedUid = null;
-      set({ ...EMPTY_STATE, desired: defaultNotificationPreferences(), acknowledged: defaultNotificationPreferences() });
+      set({
+        ...EMPTY_STATE,
+        desired: defaultNotificationPreferences(),
+        acknowledged: defaultNotificationPreferences(),
+      });
       return;
     }
 
@@ -720,7 +711,11 @@ export const useNotificationPrefsStore = create<NotificationPrefsState>()((set, 
 
   reset() {
     serverHydratedUid = null;
-    set({ ...EMPTY_STATE, desired: defaultNotificationPreferences(), acknowledged: defaultNotificationPreferences() });
+    set({
+      ...EMPTY_STATE,
+      desired: defaultNotificationPreferences(),
+      acknowledged: defaultNotificationPreferences(),
+    });
   },
 }));
 
@@ -798,8 +793,7 @@ export function initNotificationPrefsSync(): void {
       broadcastChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
       broadcastChannel.onmessage = (event: MessageEvent) => {
         const payload = event.data as
-          | { type?: string; record?: PersistedNotificationPrefsV1 }
-          | undefined;
+          { type?: string; record?: PersistedNotificationPrefsV1 } | undefined;
         if (!payload || payload.type !== "prefs" || !payload.record) return;
         applyRemoteRecord(payload.record);
       };

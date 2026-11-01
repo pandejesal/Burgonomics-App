@@ -15,14 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({
-    to,
-    children,
-    ...rest
-  }: {
-    to: string;
-    children: React.ReactNode;
-  }) => (
+  Link: ({ to, children, ...rest }: { to: string; children: React.ReactNode }) => (
     <a href={to} {...rest}>
       {children}
     </a>
@@ -86,11 +79,7 @@ async function render(element: React.ReactElement) {
 describe("FulfillmentDetailsCard — launch checkout details card", () => {
   it("delivery shows the selected address and an honest empty state without one", async () => {
     await render(
-      <FulfillmentDetailsCard
-        fulfillment="delivery"
-        store={store}
-        selectedAddress={address}
-      />,
+      <FulfillmentDetailsCard fulfillment="delivery" store={store} selectedAddress={address} />,
     );
     expect(container.textContent).toContain("1. Delivery Details");
     expect(container.textContent).toContain("12 Test Street");
@@ -106,11 +95,7 @@ describe("FulfillmentDetailsCard — launch checkout details card", () => {
 
   it("takeaway shows the pickup outlet and a dialable phone", async () => {
     await render(
-      <FulfillmentDetailsCard
-        fulfillment="takeaway"
-        store={store}
-        selectedAddress={address}
-      />,
+      <FulfillmentDetailsCard fulfillment="takeaway" store={store} selectedAddress={address} />,
     );
     expect(container.textContent).toContain("1. Pickup Location");
     expect(container.textContent).toContain("Vesu Outlet");

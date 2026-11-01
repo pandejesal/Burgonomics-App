@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fail } from "../src/core/network/http";
 
 const calculateTotals = vi.hoisted(() => vi.fn());
-const validateCart = vi.hoisted(() => vi.fn(async () => ({ success: true as const, data: { valid: true, issues: [] } })));
+const validateCart = vi.hoisted(() =>
+  vi.fn(async () => ({ success: true as const, data: { valid: true, issues: [] } })),
+);
 const prepareCheckout = vi.hoisted(() =>
   vi.fn(async () => ({ success: true as const, data: { checkoutToken: "tok_min_order" } })),
 );

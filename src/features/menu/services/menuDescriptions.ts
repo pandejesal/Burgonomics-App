@@ -12,8 +12,7 @@ export const MENU_DESCRIPTIONS: Record<string, string> = {
     "A crispy Aloo Patty layered with fresh veggies and smooth Burger sauce, finished with a mild kick of spice.",
   "korean kimchi burger":
     "Get ready for a flavor explosion! A crispy Veggie Aloo Patty topped with tangy kimchi, spicy veggies, and bold Korean sauces.",
-  "mexican mafia burger":
-    "Mexican Patty, zesty sauce, fresh onions, tomatoes, and jalapeños.",
+  "mexican mafia burger": "Mexican Patty, zesty sauce, fresh onions, tomatoes, and jalapeños.",
   "veggie loaded burger":
     "Loaded with fresh veggies like lettuce, tomatoes, and onions, paired with a savory veggie patty.",
   "kurkure momos burger":
@@ -26,8 +25,7 @@ export const MENU_DESCRIPTIONS: Record<string, string> = {
     "Double-layered paneer patties, mozzarella-filled Italian stuffing, fresh veggies, and bold tandoori flavor. A spicy, irresistible bite you won't forget.",
   "cheese burst burger":
     "A cheesy explosion with a cheese burst patty, fresh onions, tomatoes, lettuce, and our signature sauces. Perfectly melted, perfectly satisfying.",
-  "super hero burger":
-    "(Aloo Tikki + Cheese Burst) Three times the power, all in one bite.",
+  "super hero burger": "(Aloo Tikki + Cheese Burst) Three times the power, all in one bite.",
   "great indian burger":
     "Desi meets juicy! Jumbo veggie patty, fresh tomato, onion, lettuce, burger sauce & spicy kadhai gravy.",
   "gochuchang burger":
@@ -44,12 +42,10 @@ export const MENU_DESCRIPTIONS: Record<string, string> = {
     "A crispy patty layered with fresh lettuce, tomato, and a bold ghost pepper sauce, tucked into a soft toasted bun for a fiery kick, served with sauce and crunchy nachos — just dip in sauce and nachos and bite away.",
   "veg momos":
     "Crispy golden bites stuffed with fresh veggies, bursting with flavor in every crunch!",
-  "veg cheese momos":
-    "Golden-fried pockets oozing with melty cheese and sweet corn.",
+  "veg cheese momos": "Golden-fried pockets oozing with melty cheese and sweet corn.",
   "kurkure momos":
     "Juicy vegetable momos coated in a crunchy Kurkure-style crust and fried golden for a crispy, irresistible bite.",
-  "classic salted fries":
-    "Crispy and golden salted fries to satisfy your savory cravings.",
+  "classic salted fries": "Crispy and golden salted fries to satisfy your savory cravings.",
   "peri peri fries":
     "Elevate your fry experience with our Peri Peri Seasoned Fries, delivering a spicy and flavorful kick to satisfy your taste buds.",
   "peri peri cheese fries":
@@ -84,16 +80,13 @@ export const MENU_DESCRIPTIONS: Record<string, string> = {
     "Pizza topped with smoky tandoori paneer, onions, capsicum, and a rich, cheesy layer of flavour-packed goodness with flavorful tandoori sauce.",
   "irish cold coffee":
     "A smooth, rich blend of coffee with a hint of Irish cream, perfectly chilled.",
-  "classic cold coffee":
-    "The perfect mix of sweet, bold, and creamy.",
+  "classic cold coffee": "The perfect mix of sweet, bold, and creamy.",
   "hazlenut cold coffee":
     "A decadent blend of bold espresso, creamy milk, and irresistible hazelnut syrup, served over ice. A nutty, smooth treat!",
-  "peach iced tea":
-    "A refreshing iced tea infused with sweet peach flavor, perfectly chilled.",
+  "peach iced tea": "A refreshing iced tea infused with sweet peach flavor, perfectly chilled.",
   "kokum iced tea":
     "A cooling, tangy kokum drink inspired by coastal flavors, perfect to beat the heat.",
-  "masala coke":
-    "Classic Coke with a spicy masala kick for a bold, refreshing taste.",
+  "masala coke": "Classic Coke with a spicy masala kick for a bold, refreshing taste.",
   "lemon iced tea":
     "Refreshing brewed tea shaken with zesty lemon, sugar syrup, and ice for a perfectly sweet and citrusy cooler.",
   "oreo shake":
@@ -104,8 +97,7 @@ export const MENU_DESCRIPTIONS: Record<string, string> = {
     "Creamy blend of chilled milk, vanilla flavour, blueberry syrup, and juicy blueberry taste, finished with a deliciously smooth texture.",
   "strawberry oreo shake":
     "Creamy milk and vanilla frappe blended with juicy strawberry, crunchy Oreo biscuits, and strawberry syrup for a rich, fruity treat.",
-  "chocolate brownie":
-    "Rich, fudgy chocolate brownie with an indulgent, melt-in-the-mouth taste.",
+  "chocolate brownie": "Rich, fudgy chocolate brownie with an indulgent, melt-in-the-mouth taste.",
 };
 
 /** Normalize an item name for tolerant matching across POS spelling drift. */

@@ -68,8 +68,7 @@ vi.mock("@/features/stores/state/storeStore", () => ({
     select({ activeStore: { id: "store_1" } }),
 }));
 vi.mock("@/features/menu/state/menuStore", () => ({
-  useMenuStore: (select: (state: unknown) => unknown) =>
-    select({ pushRecentlyViewed: vi.fn() }),
+  useMenuStore: (select: (state: unknown) => unknown) => select({ pushRecentlyViewed: vi.fn() }),
 }));
 vi.mock("@/features/menu/repositories/MenuRepository", () => ({
   menuRepository: {
@@ -182,7 +181,8 @@ describe("product purchase-path accent tokens", () => {
     (fixture.product as Record<string, unknown>).compareAtPrice = 299;
     (fixture.product as Record<string, unknown>).badges = [{ id: "b1", label: "Chef Special" }];
     (fixture.product as Record<string, unknown>).inStock = false;
-    (fixture.product as Record<string, unknown>).unavailableReason = "Kitchen Closed for Maintenance";
+    (fixture.product as Record<string, unknown>).unavailableReason =
+      "Kitchen Closed for Maintenance";
 
     await mount();
 

@@ -20,13 +20,15 @@ export function resolveAppUrl(rawUrl: string): string | null {
     const hostOk =
       url.protocol === "https:" &&
       ["burgonomics.com", "www.burgonomics.com", "burgonomics.netlify.app"].includes(
-        url.hostname.toLowerCase()
+        url.hostname.toLowerCase(),
       );
     if (!schemeOk && !hostOk) return null;
 
     const route =
       url.protocol === "burgonomics:"
-        ? (url.host ? `/${url.host}${url.pathname}` : url.pathname)
+        ? url.host
+          ? `/${url.host}${url.pathname}`
+          : url.pathname
         : url.pathname;
     const path = route + url.search + url.hash;
     const safe = sanitizeRedirectUrl(path, "");
@@ -140,7 +142,8 @@ export async function bootstrapNativePlatform(): Promise<void> {
       const path = hash || window.location.pathname;
       // Drop query string / fragment so `/home?from=x` still counts as Home.
       const pathOnly = path.split(/[?#]/)[0] || path;
-      const isEntry = !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
+      const isEntry =
+        !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
 
       if (isEntry) {
         // At an entry screen, minimize instead of abrupt termination.

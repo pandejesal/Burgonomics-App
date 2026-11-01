@@ -81,13 +81,8 @@ vi.mock("../src/features/notifications/services/notificationInbox", () => ({
 
 import { Route } from "../src/routes/profile.notifications";
 
-const Page = (Route as unknown as { options: { component: React.ComponentType } }).options.component;
-
-
-
-
-
-
+const Page = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

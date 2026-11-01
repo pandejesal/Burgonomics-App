@@ -144,9 +144,7 @@ export const useSearchStore = create<SearchState>()(
           // same-turn suggestion. suggestSeq + scope + query token checks
           // already enforce latest-wins for this response class.
           const stillCurrent =
-            seq === suggestSeq &&
-            scope === listScope &&
-            q === get().query.trim();
+            seq === suggestSeq && scope === listScope && q === get().query.trim();
           if (res.success && stillCurrent) {
             set({ suggestions: res.data });
           }

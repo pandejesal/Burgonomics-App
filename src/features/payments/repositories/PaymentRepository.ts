@@ -40,10 +40,7 @@ import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { orderRepository } from "@/features/orders/repositories/OrderRepository";
 import { usePaymentStore, loadPaymentReconciliation } from "@/features/payments/state/paymentStore";
 import { toStoreSnapshot } from "@/features/orders/models";
-import {
-  checkMinimumOrder,
-  minOrderShortfallMessage,
-} from "@/shared/pricing/pricingEngine";
+import { checkMinimumOrder, minOrderShortfallMessage } from "@/shared/pricing/pricingEngine";
 
 export class PaymentRepository {
   readonly name = "PaymentRepository";
@@ -345,8 +342,8 @@ export class PaymentRepository {
     const fees = useCheckoutStore.getState().checkoutFees;
     const deliveryQuoteId =
       sel.fulfillment === "delivery"
-        ? opts?.deliveryQuoteId ??
-          (fees.status === "ready" ? (fees.deliveryQuoteId ?? undefined) : undefined)
+        ? (opts?.deliveryQuoteId ??
+          (fees.status === "ready" ? (fees.deliveryQuoteId ?? undefined) : undefined))
         : undefined;
 
     const orderRes = await this.service.createOrder({

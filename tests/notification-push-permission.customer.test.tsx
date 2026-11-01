@@ -116,11 +116,7 @@ describe("push availability honesty", () => {
 describe("never-saved defaults honesty", () => {
   it("renders default-settings copy, not 'Saved to your account'", () => {
     const html = renderToStaticMarkup(
-      <NotificationSyncNotice
-        {...baseProps}
-        status="idle"
-        usingDefaults
-      />,
+      <NotificationSyncNotice {...baseProps} status="idle" usingDefaults />,
     );
     expect(html).toContain("Using default notification settings");
     expect(html).not.toContain("Saved to your account");

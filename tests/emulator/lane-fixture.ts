@@ -150,7 +150,9 @@ const CLOSURE_IMAGE_PROBE = /^https?:\/\/www\.google\.com\/images\/cleardot\.gif
 const ALLOW_CLOSURE_PROBE = process.env.EMULATOR_LANE_ALLOW_CLOSURE_PROBE === "1";
 
 function isToleratedClosureProbe(attempt: BlockedAttempt): boolean {
-  return ALLOW_CLOSURE_PROBE && attempt.resourceType === "image" && CLOSURE_IMAGE_PROBE.test(attempt.url);
+  return (
+    ALLOW_CLOSURE_PROBE && attempt.resourceType === "image" && CLOSURE_IMAGE_PROBE.test(attempt.url)
+  );
 }
 
 /**
@@ -239,13 +241,12 @@ export async function installNetworkGuard(page: Page): Promise<NetworkGuard> {
         problems.push(`CSP violations: ${JSON.stringify(unexpectedCsp)}`);
       }
       const foreignSockets = websockets.filter((url) => !isLoopbackLaneUrl(url));
-      if (foreignSockets.length > 0) problems.push(`non-loopback websockets: ${JSON.stringify(foreignSockets)}`);
+      if (foreignSockets.length > 0)
+        problems.push(`non-loopback websockets: ${JSON.stringify(foreignSockets)}`);
       // Any non-loopback request is a failure, including a redirect target that
       // the route predicate did not see as the original request.
       const unexpectedRequests = requests.filter(
-        (url) =>
-          !isLoopbackLaneUrl(url) &&
-          !(ALLOW_CLOSURE_PROBE && CLOSURE_IMAGE_PROBE.test(url)),
+        (url) => !isLoopbackLaneUrl(url) && !(ALLOW_CLOSURE_PROBE && CLOSURE_IMAGE_PROBE.test(url)),
       );
       if (unexpectedRequests.length > 0) {
         problems.push(`non-loopback requests: ${JSON.stringify(unexpectedRequests.slice(0, 5))}`);
@@ -269,7 +270,9 @@ export async function installNetworkGuard(page: Page): Promise<NetworkGuard> {
         (text) => emailish.test(text) || longDigits.test(text),
       );
       if (offenders.length > 0) {
-        throw new Error(`[console] PII-shaped value found: ${JSON.stringify(offenders.slice(0, 5))}`);
+        throw new Error(
+          `[console] PII-shaped value found: ${JSON.stringify(offenders.slice(0, 5))}`,
+        );
       }
     },
   };
@@ -310,7 +313,9 @@ export function captureRecords(): readonly CaptureRecord[] {
 export async function capture(page: Page, name: string): Promise<CaptureRecord> {
   mkdirSync(SCREENSHOTS_DIR, { recursive: true });
 
-  const marker = await page.evaluate(() => document.documentElement.dataset.emulatorLane === "true");
+  const marker = await page.evaluate(
+    () => document.documentElement.dataset.emulatorLane === "true",
+  );
   if (!marker) throw new Error("[capture] emulator lane marker missing on <html>");
 
   const badge = page.locator(`#${BADGE_ID}`);
@@ -405,7 +410,9 @@ export async function dismissConsentBanner(page: Page): Promise<void> {
     await dismiss.click({ timeout: 5_000 });
     await expect(dismiss).toHaveCount(0);
   }
-  const consent = await page.evaluate(() => window.localStorage.getItem("burg.dpdp_consent_granted"));
+  const consent = await page.evaluate(() =>
+    window.localStorage.getItem("burg.dpdp_consent_granted"),
+  );
   expect(consent, "dismissing the banner must not record DPDP consent").toBeNull();
 }
 

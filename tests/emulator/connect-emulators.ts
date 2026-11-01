@@ -84,7 +84,9 @@ function describeTarget(target: Readonly<Partial<EmulatorTarget>>): string {
  * host, missing/wrong port. `demo-*` alone is not enough — this lane owns exactly
  * one project so a typo cannot silently attach to a sibling demo database.
  */
-export function assertEmulatorTarget(target: Readonly<Partial<EmulatorTarget>>): asserts target is EmulatorTarget {
+export function assertEmulatorTarget(
+  target: Readonly<Partial<EmulatorTarget>>,
+): asserts target is EmulatorTarget {
   const { projectId, host, port } = target;
   if (typeof projectId !== "string" || projectId.length === 0) {
     throw new EmulatorTargetError("project-missing", target);

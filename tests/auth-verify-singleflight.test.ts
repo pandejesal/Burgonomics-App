@@ -70,15 +70,13 @@ describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => 
     const gate = new Promise((resolve) => {
       release = resolve;
     });
-    const verify = vi.spyOn(authRepository, "verifyOtp").mockImplementation(
-      async () => {
-        await gate;
-        return {
-          success: true as const,
-          data: { user: USER, accessToken: "a", refreshToken: "r" },
-        } as any;
-      },
-    );
+    const verify = vi.spyOn(authRepository, "verifyOtp").mockImplementation(async () => {
+      await gate;
+      return {
+        success: true as const,
+        data: { user: USER, accessToken: "a", refreshToken: "r" },
+      } as any;
+    });
 
     const first = useAuthStore.getState().verifyOtp("login", "handle_verify_1", "123456");
     const second = useAuthStore.getState().verifyOtp("login", "handle_verify_1", "123456");
@@ -96,9 +94,10 @@ describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => 
   });
 
   it("resets the guard after a failure so a retry is allowed", async () => {
-    const verify = vi
-      .spyOn(authRepository, "verifyOtp")
-      .mockResolvedValue({ success: false, error: { code: "INVALID", message: "bad code" } } as any);
+    const verify = vi.spyOn(authRepository, "verifyOtp").mockResolvedValue({
+      success: false,
+      error: { code: "INVALID", message: "bad code" },
+    } as any);
 
     const first = await useAuthStore.getState().verifyOtp("login", "handle_verify_1", "000000");
     expect(first.ok).toBe(false);

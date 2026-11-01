@@ -20,12 +20,7 @@ export const PUBLIC_OFFERS_PATH = "/offers";
 export const PUBLIC_ANNOUNCEMENTS_PATH = "/home";
 
 export type PushPurpose =
-  | "orderUpdates"
-  | "supportReplies"
-  | "offers"
-  | "announcements"
-  | "system"
-  | "operational";
+  "orderUpdates" | "supportReplies" | "offers" | "announcements" | "system" | "operational";
 
 const PURPOSES: ReadonlySet<string> = new Set<PushPurpose>([
   "orderUpdates",
@@ -98,10 +93,7 @@ export function resolveInboxNavigation(
  * String target used for the in-app inbox row/toast. Missing/denied documents
  * land on the notification centre, never `/`.
  */
-export function resolveInboxTarget(
-  purpose: string | null | undefined,
-  targetId: unknown,
-): string {
+export function resolveInboxTarget(purpose: string | null | undefined, targetId: unknown): string {
   const navigation = resolveInboxNavigation(purpose, targetId);
   if (navigation.to === "/support") {
     return `/support?ticketId=${encodeURIComponent(navigation.search.ticketId)}`;
@@ -135,10 +127,7 @@ export function parseNotificationRefSearch(search: Record<string, unknown>): {
   return ref ? { ref } : {};
 }
 
-export type TrayNavigation =
-  | NotificationNavigation
-  | { to: "/offers" }
-  | { to: "/home" };
+export type TrayNavigation = NotificationNavigation | { to: "/offers" } | { to: "/home" };
 
 const STORED_TARGET_ORIGIN = "https://stored.invalid";
 

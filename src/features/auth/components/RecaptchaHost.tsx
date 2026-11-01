@@ -1,10 +1,6 @@
 import * as React from "react";
 import { useEffect, useId, useRef, useState } from "react";
-import {
-  bindHost,
-  releaseHost,
-  type RecaptchaSize,
-} from "@/features/auth/state/authBinding";
+import { bindHost, releaseHost, type RecaptchaSize } from "@/features/auth/state/authBinding";
 import type { AuthFlowId } from "@/features/auth/utils/authErrors";
 
 const MAX_FRAME_RETRIES = 10;

@@ -47,9 +47,7 @@ async function seedSession(accessToken: string) {
 }
 
 const customerReads = () =>
-  mockGetDoc.mock.calls.filter(
-    (call) => call[0]?.[1] === "customers" && call[0]?.[2] === USER.id,
-  );
+  mockGetDoc.mock.calls.filter((call) => call[0]?.[1] === "customers" && call[0]?.[2] === USER.id);
 
 describe("authStore.bootstrap loyalty refresh (F11)", () => {
   beforeEach(async () => {

@@ -82,9 +82,7 @@ interface PushDisplay {
  * Applies the ownership gate and resolves the real target. Returns null when
  * the payload must be dropped before any UI side effect.
  */
-async function resolvePushDisplay(
-  data: Record<string, unknown>,
-): Promise<PushDisplay | null> {
+async function resolvePushDisplay(data: Record<string, unknown>): Promise<PushDisplay | null> {
   const parsed = parsePushPayload(data);
   const uid = await currentAuthUid();
 

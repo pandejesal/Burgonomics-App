@@ -22,11 +22,7 @@ const baseStore: Store = {
   pricing: null,
 };
 
-function withSupports(
-  delivery: boolean,
-  takeaway: boolean,
-  dineIn: boolean,
-): Store {
+function withSupports(delivery: boolean, takeaway: boolean, dineIn: boolean): Store {
   return { ...baseStore, supports: { delivery, takeaway, dineIn } };
 }
 
@@ -54,9 +50,7 @@ describe("storeSupportsFulfillment — canonical boolean contract", () => {
     expect(storeSupportsFulfillment(undefined, "takeaway")).toBe(false);
     expect(storeSupportsFulfillment(baseStore, null)).toBe(false);
     expect(storeSupportsFulfillment(baseStore, undefined)).toBe(false);
-    expect(
-      storeSupportsFulfillment(baseStore, "curbside" as unknown as Fulfillment),
-    ).toBe(false);
+    expect(storeSupportsFulfillment(baseStore, "curbside" as unknown as Fulfillment)).toBe(false);
   });
 });
 
@@ -83,9 +77,7 @@ describe("storeSupportsFulfillment — legacy/malformed persisted capability set
   } as unknown as Store;
 
   it("does not throw when a cached store has no supports field", () => {
-    expect(() =>
-      storeSupportsFulfillment(legacyWithoutSupports, "delivery"),
-    ).not.toThrow();
+    expect(() => storeSupportsFulfillment(legacyWithoutSupports, "delivery")).not.toThrow();
     expect(storeSupportsFulfillment(legacyWithoutSupports, "delivery")).toBe(false);
     expect(storeSupportsFulfillment(legacyWithoutSupports, "takeaway")).toBe(false);
     expect(storeSupportsFulfillment(legacyWithoutSupports, "dinein")).toBe(false);

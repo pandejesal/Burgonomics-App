@@ -271,7 +271,9 @@ async function mount() {
 function payButton(): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((b) => {
     const text = b.textContent ?? "";
-    return text.includes("PAY") || text.includes("FULFILLMENT") || text.includes("PAYMENT UNDER REVIEW");
+    return (
+      text.includes("PAY") || text.includes("FULFILLMENT") || text.includes("PAYMENT UNDER REVIEW")
+    );
   });
   expect(button).toBeDefined();
   return button as HTMLButtonElement;

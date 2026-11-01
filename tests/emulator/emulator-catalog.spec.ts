@@ -63,7 +63,10 @@ test.afterAll(() => {
         allowedClosureProbes: guards.flatMap((entry) => entry.allowedProbes),
         blockedAttempts: blocked,
         cspViolations,
-        consoleMessages: [...new Set(guards.flatMap((entry) => entry.consoleMessages))].slice(0, 200),
+        consoleMessages: [...new Set(guards.flatMap((entry) => entry.consoleMessages))].slice(
+          0,
+          200,
+        ),
         pageErrors: [...new Set(guards.flatMap((entry) => entry.pageErrors))],
         uniqueRequests: requests.length,
         requests,
@@ -99,7 +102,9 @@ test.afterEach(async () => {
   guard.assertNoPii();
 });
 
-test("cold launch: guest / lands on /stores with exactly the two seeded stores", async ({ page }) => {
+test("cold launch: guest / lands on /stores with exactly the two seeded stores", async ({
+  page,
+}) => {
   await gotoStores(page);
   await assertLaneMarker(page, proof);
 
@@ -175,13 +180,19 @@ test("Alpha menu: 3 derived categories, 48 items, every 8th sold out, beta absen
 
     // Every expected record id from the emulator read is on screen, by name.
     for (const name of category.names) {
-      expect(labels.some((label) => label.startsWith(name)), `missing ${name}`).toBe(true);
+      expect(
+        labels.some((label) => label.startsWith(name)),
+        `missing ${name}`,
+      ).toBe(true);
     }
     // Sold-out count/identities match the seeded `inStock:false` set exactly.
     const soldOut = labels.filter((label) => label.endsWith(", sold out"));
     expect(soldOut).toHaveLength(category.outOfStockNames.length);
     for (const name of category.outOfStockNames) {
-      expect(soldOut.some((label) => label.startsWith(name)), `not sold out: ${name}`).toBe(true);
+      expect(
+        soldOut.some((label) => label.startsWith(name)),
+        `not sold out: ${name}`,
+      ).toBe(true);
     }
 
     totalRendered += labels.length;
@@ -226,7 +237,10 @@ test("alpha search: 'Test Burger 0' filters to burgers only and beta stays out",
     els.map((el) => el.getAttribute("aria-label") ?? ""),
   );
   for (const name of expected) {
-    expect(labels.some((label) => label.startsWith(name)), `missing ${name}`).toBe(true);
+    expect(
+      labels.some((label) => label.startsWith(name)),
+      `missing ${name}`,
+    ).toBe(true);
   }
   // The query really filtered: no sides/drinks and none of the beta sentinels.
   for (const label of labels) {
@@ -261,7 +275,10 @@ test("beta store is isolated by restId: 3 sentinels and none of Alpha's menu", a
     els.map((el) => el.getAttribute("aria-label") ?? ""),
   );
   for (const name of proof.beta.names) {
-    expect(labels.some((label) => label.startsWith(name)), `missing ${name}`).toBe(true);
+    expect(
+      labels.some((label) => label.startsWith(name)),
+      `missing ${name}`,
+    ).toBe(true);
   }
 
   const bodyText = await page.locator("body").innerText();
@@ -428,7 +445,9 @@ function expectStickyHit(measurement: StickyMeasurement, at: string, width: numb
       measurement.center.y,
     )}) hit ${String(measurement.hitTag)} (${String(measurement.hitAriaLabel)}), not the input`,
   ).toBe(true);
-  expect(verdict.legacyWouldPass, `${width}px ${at}: old form-only check would have passed`).toBe(true);
+  expect(verdict.legacyWouldPass, `${width}px ${at}: old form-only check would have passed`).toBe(
+    true,
+  );
   expect(verdict.ok, `${width}px ${at}: ${verdict.problems.join("; ")}`).toBe(true);
 }
 

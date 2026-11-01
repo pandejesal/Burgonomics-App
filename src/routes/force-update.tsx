@@ -59,7 +59,7 @@ export function resolveForceUpdateAction(
 ): ForceUpdateAction {
   const ios = officialStoreUrl(iosStoreUrl, "ios");
   const android = officialStoreUrl(androidStoreUrl, "android");
-  const url = isIosUserAgent(userAgent) ? ios ?? android : android ?? ios;
+  const url = isIosUserAgent(userAgent) ? (ios ?? android) : (android ?? ios);
   if (url) return { kind: "store", label: "Open app store", url };
   return { kind: "support", label: "Contact support" };
 }

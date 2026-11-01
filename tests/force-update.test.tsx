@@ -41,8 +41,7 @@ vi.mock("../src/shared/components/feedback/EmptyState", () => ({
 
 const Page = Route.options.component as React.ComponentType;
 
-const ANDROID_URL =
-  "https://play.google.com/store/apps/details?id=com.burgonomics.customer";
+const ANDROID_URL = "https://play.google.com/store/apps/details?id=com.burgonomics.customer";
 const IOS_URL = "https://apps.apple.com/in/app/burgonomics/id1234567890";
 
 describe("force-update recovery action", () => {
@@ -94,9 +93,9 @@ describe("force-update recovery action", () => {
     appConfig.integrations.iosStoreUrl = "http://apps.apple.com/app/burgonomics/id1234567890";
     await act(async () => root.render(<Page />));
     expect(container.querySelector("button")?.textContent).toBe("Contact support");
-    expect(resolveForceUpdateAction(appConfig.integrations.androidStoreUrl, "", "Android").kind).toBe(
-      "support",
-    );
+    expect(
+      resolveForceUpdateAction(appConfig.integrations.androidStoreUrl, "", "Android").kind,
+    ).toBe("support");
   });
 
   it("selects the iOS listing on an iPhone user agent", () => {

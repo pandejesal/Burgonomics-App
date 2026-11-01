@@ -22,10 +22,7 @@ vi.mock("firebase/firestore", async (importOriginal) => {
   };
 });
 
-import {
-  useAuthStore,
-  DEVICE_UNLINK_TIMEOUT_MS,
-} from "../src/features/auth/state/authStore";
+import { useAuthStore, DEVICE_UNLINK_TIMEOUT_MS } from "../src/features/auth/state/authStore";
 import { authRepository } from "../src/features/auth/repositories/AuthRepository";
 import { notificationsService } from "../src/features/notifications/services/notificationsService";
 import { profileRepository } from "../src/features/profile/repositories/ProfileRepository";

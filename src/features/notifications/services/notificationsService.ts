@@ -191,9 +191,7 @@ export async function getNotificationPreferences(
     }
     const body = await readJson(response);
     const exists = body?.exists !== false;
-    const prefs =
-      prefsFromBody(body) ??
-      (exists ? null : { ...NOTIFICATION_PREFERENCE_DEFAULTS });
+    const prefs = prefsFromBody(body) ?? (exists ? null : { ...NOTIFICATION_PREFERENCE_DEFAULTS });
     if (!prefs || typeof body?.version !== "number") {
       logger.warn("notifications.preferencesReadInvalidResponse");
       return { status: "failed", code: "invalid_response" };

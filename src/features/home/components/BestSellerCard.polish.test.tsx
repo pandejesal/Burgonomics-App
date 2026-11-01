@@ -61,11 +61,7 @@ vi.mock("motion/react", async () => {
               layout: _layout,
               ...domProps
             } = props;
-            return ReactRuntime.createElement(
-              tag,
-              { ...domProps, ref },
-              children,
-            );
+            return ReactRuntime.createElement(tag, { ...domProps, ref }, children);
           },
         );
         motionTypes.set(tag, type as unknown as React.ComponentType<Record<string, unknown>>);

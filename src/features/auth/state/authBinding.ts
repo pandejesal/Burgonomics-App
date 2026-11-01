@@ -1,7 +1,11 @@
 import { RecaptchaVerifier, type Auth } from "firebase/auth";
 import { auth as firebaseAuth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
-import { firebaseAuthCode, type AuthFlowId, type HostFailure } from "@/features/auth/utils/authErrors";
+import {
+  firebaseAuthCode,
+  type AuthFlowId,
+  type HostFailure,
+} from "@/features/auth/utils/authErrors";
 
 export type RecaptchaSize = "normal" | "compact";
 
@@ -18,8 +22,7 @@ export interface BindFailure {
 export type BindResult = BindSuccess | BindFailure;
 
 export type AcquireResult =
-  | { ok: true; size: RecaptchaSize; verifier: RecaptchaVerifier }
-  | BindFailure;
+  { ok: true; size: RecaptchaSize; verifier: RecaptchaVerifier } | BindFailure;
 
 type BindingState = "ready" | "dirty";
 
@@ -49,8 +52,7 @@ let factory: RecaptchaFactory = (auth, element, parameters) =>
 /** Test seam: keeps the real SDK out of unit tests while using the same code. */
 export function __setRecaptchaFactoryForTests(next: RecaptchaFactory | null): void {
   factory =
-    next ??
-    ((auth, element, parameters) => new RecaptchaVerifier(auth, element, parameters));
+    next ?? ((auth, element, parameters) => new RecaptchaVerifier(auth, element, parameters));
 }
 
 function safeClear(verifier: RecaptchaVerifier | null): void {

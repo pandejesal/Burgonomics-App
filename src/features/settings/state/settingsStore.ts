@@ -45,10 +45,7 @@ export const isThemePreference = isTheme;
 export const isLanguagePreference = isLanguage;
 
 /** True when every present enum field in a patch is a supported value. */
-export function isValidSettingsPatch(patch: {
-  theme?: unknown;
-  language?: unknown;
-}): boolean {
+export function isValidSettingsPatch(patch: { theme?: unknown; language?: unknown }): boolean {
   if (patch.theme !== undefined && !isTheme(patch.theme)) return false;
   if (patch.language !== undefined && !isLanguage(patch.language)) return false;
   return true;

@@ -87,9 +87,7 @@ describe("C-01 per-account/device isolation", () => {
     resetStore();
     await useNotificationPrefsStore.getState().hydrateForUid(UID_B);
 
-    expect(useNotificationPrefsStore.getState().desired).toEqual(
-      NOTIFICATION_PREFERENCE_DEFAULTS,
-    );
+    expect(useNotificationPrefsStore.getState().desired).toEqual(NOTIFICATION_PREFERENCE_DEFAULTS);
     expect(window.localStorage.getItem(notificationPrefsStorageKey(UID_B))).toBeTruthy();
     const bRaw = window.localStorage.getItem(notificationPrefsStorageKey(UID_B))!;
     expect(JSON.parse(bRaw).desired).toEqual(NOTIFICATION_PREFERENCE_DEFAULTS);
@@ -110,9 +108,7 @@ describe("C-01 legacy migration prompt (keep separate default)", () => {
     // Keep-separate is the default action: decline and verify defaults stay.
     state.declineLegacyPreferences();
     expect(useNotificationPrefsStore.getState().legacyDecision).toBe("declined");
-    expect(useNotificationPrefsStore.getState().desired).toEqual(
-      NOTIFICATION_PREFERENCE_DEFAULTS,
-    );
+    expect(useNotificationPrefsStore.getState().desired).toEqual(NOTIFICATION_PREFERENCE_DEFAULTS);
     expect(window.localStorage.getItem(LEGACY_KEY)).toBe(raw);
   });
 
@@ -172,9 +168,7 @@ describe("C-01 CAS + honest sync states", () => {
     expect(state.status).toBe("pending");
     expect(state.errorCode).toBe("offline");
 
-    const persisted = JSON.parse(
-      window.localStorage.getItem(notificationPrefsStorageKey(UID_A))!,
-    );
+    const persisted = JSON.parse(window.localStorage.getItem(notificationPrefsStorageKey(UID_A))!);
     expect(persisted.status).toBe("pending");
     expect(persisted.desired.offers).toBe(false);
   });
@@ -247,9 +241,9 @@ describe("C-01 CAS + honest sync states", () => {
     });
     await useNotificationPrefsStore.getState().retrySync();
     expect(useNotificationPrefsStore.getState().status).toBe("synced");
-    expect(vi.mocked(notificationsService.updatePreferences).mock.lastCall?.[0].expectedVersion).toBe(
-      4,
-    );
+    expect(
+      vi.mocked(notificationsService.updatePreferences).mock.lastCall?.[0].expectedVersion,
+    ).toBe(4);
   });
 
   it("discards a late response for an older mutation and saves the newest intent", async () => {
@@ -277,9 +271,7 @@ describe("C-01 CAS + honest sync states", () => {
       replicated: false,
       stale: false,
     } as never);
-    const secondSave = useNotificationPrefsStore
-      .getState()
-      .setPreference("announcements", true);
+    const secondSave = useNotificationPrefsStore.getState().setPreference("announcements", true);
 
     resolveFirst({
       status: "synced",

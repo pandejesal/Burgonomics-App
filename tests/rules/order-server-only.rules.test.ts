@@ -76,7 +76,11 @@ const ROLE_ACTORS: RoleActor[] = [
   { label: "branch_staff(own branch)", uid: "branch_staff_1" },
   { label: "support(admins doc)", uid: "support_1" },
   { label: "customer(order owner)", uid: CUSTOMER_UID },
-  { label: "claims-only branch_staff", uid: "claims_staff", tokenClaims: { role: "branch_staff", branchIds: [BRANCH] } },
+  {
+    label: "claims-only branch_staff",
+    uid: "claims_staff",
+    tokenClaims: { role: "branch_staff", branchIds: [BRANCH] },
+  },
   // Literal alias roles the RBAC helpers do not recognize must fail closed:
   // an unrecognized case/spelling must not inherit anyone's write lane.
   { label: "alias Brand_Owner(unrecognized)", uid: "alias_brand_owner" },
@@ -142,7 +146,10 @@ const PROTECTED_PATCHES: Array<{ field: string; patch: Record<string, unknown> }
   //    routeTransferClaimedAt (payments/routeTransfers.ts) are lease/claim
   //    stamps — a client-stamped value suppresses the real server claim.
   // --------------------------------------------------------------------------
-  { field: "refundActiveClaim", patch: { refundActiveClaim: { requestId: "req_rogue", paymentId: "pay_rogue" } } },
+  {
+    field: "refundActiveClaim",
+    patch: { refundActiveClaim: { requestId: "req_rogue", paymentId: "pay_rogue" } },
+  },
   { field: "refundClaimedAt", patch: { refundClaimedAt: "2026-10-27T00:00:00Z" } },
   { field: "refundClaimedRequestId", patch: { refundClaimedRequestId: "req_rogue" } },
   { field: "refundClaimedPaymentId", patch: { refundClaimedPaymentId: "pay_rogue" } },
@@ -167,8 +174,14 @@ const PROTECTED_PATCHES: Array<{ field: string; patch: Record<string, unknown> }
   // `payment` MAP, so planting the literal top-level dotted key (escaped-dot
   // updateDoc path -> a field literally named "payment.razorpayPaymentId")
   // changed no map value and sailed through.
-  { field: "payment.razorpayPaymentId (literal dotted key)", patch: { "payment\\.razorpayPaymentId": "pay_rogue" } },
-  { field: "payment.capturedPaymentId (literal dotted key)", patch: { "payment\\.capturedPaymentId": "pay_rogue" } },
+  {
+    field: "payment.razorpayPaymentId (literal dotted key)",
+    patch: { "payment\\.razorpayPaymentId": "pay_rogue" },
+  },
+  {
+    field: "payment.capturedPaymentId (literal dotted key)",
+    patch: { "payment\\.capturedPaymentId": "pay_rogue" },
+  },
 ];
 
 describe("Firestore Security Rules — DEC-01 order server-only fields (all client roles)", () => {
@@ -187,7 +200,9 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
       });
       emulatorAvailable = true;
     } catch {
-      console.warn(`Firestore Emulator is not running on 127.0.0.1:${EMULATOR_PORT}. Skipping rules integration tests.`);
+      console.warn(
+        `Firestore Emulator is not running on 127.0.0.1:${EMULATOR_PORT}. Skipping rules integration tests.`,
+      );
       emulatorAvailable = false;
     }
   });
@@ -211,33 +226,53 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
       const db = writerContext.firestore();
 
       await setDoc(doc(db, "admins", "brand_owner_1"), {
-        email: "brand@burgonomics.com", role: "brand_owner", name: "Brand",
+        email: "brand@burgonomics.com",
+        role: "brand_owner",
+        name: "Brand",
       });
       await setDoc(doc(db, "admins", "developer_1"), {
-        email: "dev@burgonomics.com", role: "developer", name: "Developer",
+        email: "dev@burgonomics.com",
+        role: "developer",
+        name: "Developer",
       });
       await setDoc(doc(db, "admins", "regional_manager_1"), {
-        email: "regional@burgonomics.com", role: "regional_manager", name: "Regional",
+        email: "regional@burgonomics.com",
+        role: "regional_manager",
+        name: "Regional",
       });
       await setDoc(doc(db, "admins", "branch_owner_1"), {
-        email: "branch1@burgonomics.com", role: "branch_owner", branchId: BRANCH, name: "Own",
+        email: "branch1@burgonomics.com",
+        role: "branch_owner",
+        branchId: BRANCH,
+        name: "Own",
       });
       await setDoc(doc(db, "admins", "branch_owner_2"), {
-        email: "branch2@burgonomics.com", role: "branch_owner", branchId: FOREIGN_BRANCH, name: "Foreign",
+        email: "branch2@burgonomics.com",
+        role: "branch_owner",
+        branchId: FOREIGN_BRANCH,
+        name: "Foreign",
       });
       await setDoc(doc(db, "admins", "branch_staff_1"), {
-        email: "staff1@burgonomics.com", role: "branch_staff", branchId: BRANCH, name: "Staff",
+        email: "staff1@burgonomics.com",
+        role: "branch_staff",
+        branchId: BRANCH,
+        name: "Staff",
       });
       await setDoc(doc(db, "admins", "support_1"), {
-        email: "support@burgonomics.com", role: "support", name: "Support",
+        email: "support@burgonomics.com",
+        role: "support",
+        name: "Support",
       });
       // Literal alias fail-closed probe: a case-mangled role must not pass.
       await setDoc(doc(db, "admins", "alias_brand_owner"), {
-        email: "alias@burgonomics.com", role: "Brand_Owner", name: "Alias",
+        email: "alias@burgonomics.com",
+        role: "Brand_Owner",
+        name: "Alias",
       });
 
       await setDoc(doc(db, "customers", CUSTOMER_UID), {
-        customerId: CUSTOMER_UID, fullName: "Owner Customer",
+        customerId: CUSTOMER_UID,
+        fullName: "Owner Customer",
       });
 
       const baseOrder = {
@@ -253,10 +288,14 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
 
       await setDoc(doc(db, "orders", OWN_ORDER), { ...baseOrder, orderId: OWN_ORDER });
       await setDoc(doc(db, "orders", DELIVERY_ORDER), {
-        ...baseOrder, orderId: DELIVERY_ORDER, orderType: "delivery",
+        ...baseOrder,
+        orderId: DELIVERY_ORDER,
+        orderType: "delivery",
       });
       await setDoc(doc(db, "orders", TAKEAWAY_ORDER), {
-        ...baseOrder, orderId: TAKEAWAY_ORDER, orderType: "takeaway",
+        ...baseOrder,
+        orderId: TAKEAWAY_ORDER,
+        orderType: "takeaway",
       });
     });
   });
@@ -275,29 +314,37 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
   // 1. THE MASK — every client role, own AND foreign, denied on protected set
   // -------------------------------------------------------------------------
 
-  it("dec01-denies: protected repository patches are DENIED for every client role", { timeout: 240000 }, async () => {
-    for (const actor of ROLE_ACTORS) {
-      const db = databaseFor(actor);
-      for (const { field, patch } of PROTECTED_PATCHES) {
+  it(
+    "dec01-denies: protected repository patches are DENIED for every client role",
+    { timeout: 240000 },
+    async () => {
+      for (const actor of ROLE_ACTORS) {
+        const db = databaseFor(actor);
+        for (const { field, patch } of PROTECTED_PATCHES) {
+          await assertFails(
+            updateDoc(doc(db, "orders", OWN_ORDER), patch),
+            `ROLE=${actor.label} must NOT patch protected field ${field}`,
+          );
+        }
+      }
+    },
+  );
+
+  it(
+    "dec01-delivery-otp: no client role can direct-DELIVER a delivery order (handover proof is server-only)",
+    { timeout: 180000 },
+    async () => {
+      for (const actor of ROLE_ACTORS) {
+        const db = databaseFor(actor);
         await assertFails(
-          updateDoc(doc(db, "orders", OWN_ORDER), patch),
-          `ROLE=${actor.label} must NOT patch protected field ${field}`
+          updateDoc(doc(db, "orders", DELIVERY_ORDER), {
+            status: { code: "DELIVERED", kind: "completed", label: "Delivered", terminal: true },
+          }),
+          `ROLE=${actor.label} must not direct-DELIVER a delivery order`,
         );
       }
-    }
-  });
-
-  it("dec01-delivery-otp: no client role can direct-DELIVER a delivery order (handover proof is server-only)", { timeout: 180000 }, async () => {
-    for (const actor of ROLE_ACTORS) {
-      const db = databaseFor(actor);
-      await assertFails(
-        updateDoc(doc(db, "orders", DELIVERY_ORDER), {
-          status: { code: "DELIVERED", kind: "completed", label: "Delivered", terminal: true },
-        }),
-        `ROLE=${actor.label} must not direct-DELIVER a delivery order`
-      );
-    }
-  });
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 2. EXPLICITLY SAFE SCOPED WRITES SURVIVE (no silent role lockout)
@@ -308,7 +355,7 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
     await assertSucceeds(
       updateDoc(doc(staffDb, "orders", OWN_ORDER), {
         status: { code: "READY_FOR_PICKUP", kind: "in_progress", label: "Ready", terminal: false },
-      })
+      }),
     );
   });
 
@@ -321,63 +368,101 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
     await assertSucceeds(
       updateDoc(doc(claimsDb, "orders", OWN_ORDER), {
         status: { code: "READY_FOR_PICKUP", kind: "in_progress", label: "Ready", terminal: false },
-      })
-    );
-  });
-
-  it("dec01-safe: brand_owner and developer retain masked noncritical workflow updates", { timeout: 120000 }, async () => {
-    const brandDb = databaseFor({ label: "brand_owner", uid: "brand_owner_1" });
-    await assertSucceeds(
-      updateDoc(doc(brandDb, "orders", OWN_ORDER), {
-        status: { code: "READY_FOR_PICKUP", kind: "in_progress", label: "Ready", terminal: false },
-      })
-    );
-    const devDb = databaseFor({ label: "developer", uid: "developer_1" });
-    await assertSucceeds(
-      updateDoc(doc(devDb, "orders", OWN_ORDER), {
-        status: { code: "PREPARING", kind: "in_progress", label: "Preparing", terminal: false },
-      })
-    );
-  });
-
-  it("dec01-safe: operators complete takeaway/dine-in orders in person (delivery stays OTP-only)", { timeout: 120000 }, async () => {
-    const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
-    await assertSucceeds(
-      updateDoc(doc(staffDb, "orders", TAKEAWAY_ORDER), {
-        status: { code: "PICKED_UP", kind: "completed", label: "Picked Up", terminal: true },
-      })
-    );
-  });
-
-  it("dec01-safe: foreign branch operator can still not touch another outlet's order", { timeout: 120000 }, async () => {
-    const foreignDb = databaseFor({ label: "branch_owner(foreign branch)", uid: "branch_owner_2" });
-    await assertFails(
-      updateDoc(doc(foreignDb, "orders", OWN_ORDER), {
-        status: { code: "READY_FOR_PICKUP", kind: "in_progress", label: "Ready", terminal: false },
       }),
-      "Foreign branch operator cannot workflow-write another outlet's order"
     );
   });
 
-  it("dec01-safe: alias unrecognized role is fail-closed even for safe workflow writes", { timeout: 120000 }, async () => {
-    const aliasDb = databaseFor({ label: "alias Brand_Owner", uid: "alias_brand_owner" });
-    await assertFails(
-      updateDoc(doc(aliasDb, "orders", OWN_ORDER), {
-        status: { code: "READY_FOR_PICKUP", kind: "in_progress", label: "Ready", terminal: false },
-      }),
-      "Recognized roles only: unrecognized role alias must fail closed"
-    );
-  });
+  it(
+    "dec01-safe: brand_owner and developer retain masked noncritical workflow updates",
+    { timeout: 120000 },
+    async () => {
+      const brandDb = databaseFor({ label: "brand_owner", uid: "brand_owner_1" });
+      await assertSucceeds(
+        updateDoc(doc(brandDb, "orders", OWN_ORDER), {
+          status: {
+            code: "READY_FOR_PICKUP",
+            kind: "in_progress",
+            label: "Ready",
+            terminal: false,
+          },
+        }),
+      );
+      const devDb = databaseFor({ label: "developer", uid: "developer_1" });
+      await assertSucceeds(
+        updateDoc(doc(devDb, "orders", OWN_ORDER), {
+          status: { code: "PREPARING", kind: "in_progress", label: "Preparing", terminal: false },
+        }),
+      );
+    },
+  );
 
-  it("dec01-safe: customer cancel + whatsapp opt-in scoped lanes survive", { timeout: 120000 }, async () => {
-    const custDb = databaseFor({ label: "customer(order owner)", uid: CUSTOMER_UID });
-    await assertSucceeds(
-      updateDoc(doc(custDb, "orders", OWN_ORDER), {
-        status: { code: "CANCELLED", kind: "cancelled", label: "Cancelled", terminal: true },
-        completedAt: new Date().toISOString(),
-      })
-    );
-  });
+  it(
+    "dec01-safe: operators complete takeaway/dine-in orders in person (delivery stays OTP-only)",
+    { timeout: 120000 },
+    async () => {
+      const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
+      await assertSucceeds(
+        updateDoc(doc(staffDb, "orders", TAKEAWAY_ORDER), {
+          status: { code: "PICKED_UP", kind: "completed", label: "Picked Up", terminal: true },
+        }),
+      );
+    },
+  );
+
+  it(
+    "dec01-safe: foreign branch operator can still not touch another outlet's order",
+    { timeout: 120000 },
+    async () => {
+      const foreignDb = databaseFor({
+        label: "branch_owner(foreign branch)",
+        uid: "branch_owner_2",
+      });
+      await assertFails(
+        updateDoc(doc(foreignDb, "orders", OWN_ORDER), {
+          status: {
+            code: "READY_FOR_PICKUP",
+            kind: "in_progress",
+            label: "Ready",
+            terminal: false,
+          },
+        }),
+        "Foreign branch operator cannot workflow-write another outlet's order",
+      );
+    },
+  );
+
+  it(
+    "dec01-safe: alias unrecognized role is fail-closed even for safe workflow writes",
+    { timeout: 120000 },
+    async () => {
+      const aliasDb = databaseFor({ label: "alias Brand_Owner", uid: "alias_brand_owner" });
+      await assertFails(
+        updateDoc(doc(aliasDb, "orders", OWN_ORDER), {
+          status: {
+            code: "READY_FOR_PICKUP",
+            kind: "in_progress",
+            label: "Ready",
+            terminal: false,
+          },
+        }),
+        "Recognized roles only: unrecognized role alias must fail closed",
+      );
+    },
+  );
+
+  it(
+    "dec01-safe: customer cancel + whatsapp opt-in scoped lanes survive",
+    { timeout: 120000 },
+    async () => {
+      const custDb = databaseFor({ label: "customer(order owner)", uid: CUSTOMER_UID });
+      await assertSucceeds(
+        updateDoc(doc(custDb, "orders", OWN_ORDER), {
+          status: { code: "CANCELLED", kind: "cancelled", label: "Cancelled", terminal: true },
+          completedAt: new Date().toISOString(),
+        }),
+      );
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 3. CREATE-WITH-ITEMS CONTRACT (not blanket-denied)
@@ -394,44 +479,52 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
         items: [{ productId: "p1", name: "Classic Burger", quantity: 2, unitPrice: 149 }],
         totals: { subtotal: 298, grandTotal: 313 },
         payment: { method: "online", label: "Pay Online", status: "pending" },
-      })
-    );
-  });
-
-  it("dec01-create: partner walk-in create-with-items still succeeds (POS state server-owned at birth)", { timeout: 120000 }, async () => {
-    const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
-    await assertSucceeds(
-      setDoc(doc(staffDb, "orders", "ord_rules_create_walkin"), {
-        customerId: "cust_walkin",
-        userId: "branch_staff_1",
-        branchId: BRANCH,
-        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
-        items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
-        paymentMethod: "cash",
-        paymentStatus: "completed",
-        total: 149,
-      })
-    );
-  });
-
-  it("dec01-create: walk-in cannot stamp POS/dispatch/refund/OTP state at birth either", { timeout: 120000 }, async () => {
-    const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
-    await assertFails(
-      setDoc(doc(staffDb, "orders", "ord_rules_create_walkin_pos"), {
-        customerId: "cust_walkin",
-        userId: "branch_staff_1",
-        branchId: BRANCH,
-        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
-        items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
-        paymentStatus: "completed",
-        total: 149,
-        // POS sync ledger is server-owned (petpooja ledger); a client-stamped
-        // value at birth is the exact privilege this rule removes.
-        petpoojaSyncStatus: "pending",
       }),
-      "POS sync state is server-stamped at order birth"
     );
   });
+
+  it(
+    "dec01-create: partner walk-in create-with-items still succeeds (POS state server-owned at birth)",
+    { timeout: 120000 },
+    async () => {
+      const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
+      await assertSucceeds(
+        setDoc(doc(staffDb, "orders", "ord_rules_create_walkin"), {
+          customerId: "cust_walkin",
+          userId: "branch_staff_1",
+          branchId: BRANCH,
+          status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+          items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
+          paymentMethod: "cash",
+          paymentStatus: "completed",
+          total: 149,
+        }),
+      );
+    },
+  );
+
+  it(
+    "dec01-create: walk-in cannot stamp POS/dispatch/refund/OTP state at birth either",
+    { timeout: 120000 },
+    async () => {
+      const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
+      await assertFails(
+        setDoc(doc(staffDb, "orders", "ord_rules_create_walkin_pos"), {
+          customerId: "cust_walkin",
+          userId: "branch_staff_1",
+          branchId: BRANCH,
+          status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+          items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
+          paymentStatus: "completed",
+          total: 149,
+          // POS sync ledger is server-owned (petpooja ledger); a client-stamped
+          // value at birth is the exact privilege this rule removes.
+          petpoojaSyncStatus: "pending",
+        }),
+        "POS sync state is server-stamped at order birth",
+      );
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 3b. REVIEWER RED 2026-10-27 — forgery AT BIRTH (both create lanes)
@@ -498,54 +591,66 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
     };
   }
 
-  it("dec09-create: lease/claim families cannot be planted at birth on the CUSTOMER lane", { timeout: 240000 }, async () => {
-    const custDb = databaseFor({ label: "customer", uid: "cust_creator" });
-    for (const { field, value } of EXPLOIT_CREATE_KEYS) {
+  it(
+    "dec09-create: lease/claim families cannot be planted at birth on the CUSTOMER lane",
+    { timeout: 240000 },
+    async () => {
+      const custDb = databaseFor({ label: "customer", uid: "cust_creator" });
+      for (const { field, value } of EXPLOIT_CREATE_KEYS) {
+        await assertFails(
+          setDoc(doc(custDb, "orders", `ord_exploit_cust_${field.replace(/\W+/g, "_")}`), {
+            ...customerCreateBase(),
+            [field]: value,
+          }),
+          `field ${field} must be server-stamped, never planted at order birth`,
+        );
+      }
+    },
+  );
+
+  it(
+    "dec09-create: lease/claim families cannot be planted at birth on the WALK-IN lane",
+    { timeout: 240000 },
+    async () => {
+      const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
+      for (const { field, value } of EXPLOIT_CREATE_KEYS) {
+        await assertFails(
+          setDoc(doc(staffDb, "orders", `ord_exploit_walkin_${field.replace(/\W+/g, "_")}`), {
+            ...walkInCreateBase("branch_staff_1"),
+            [field]: value,
+          }),
+          `field ${field} must be server-stamped, never planted at order birth`,
+        );
+      }
+    },
+  );
+
+  it(
+    "dec09-create: literal dotted keys (payment.razorpayPaymentId shape) cannot be planted at birth on either lane",
+    { timeout: 240000 },
+    async () => {
+      // Escaped-dot updateDoc-style key -> a field literally named
+      // "payment.razorpayPaymentId" (single top-level scalar, no `payment`
+      // map present). Backend readRecordedPaymentField reads that legacy
+      // literal as authoritative, so creation-time planting must be DENIED.
+      const custDb = databaseFor({ label: "customer", uid: "cust_creator" });
       await assertFails(
-        setDoc(doc(custDb, "orders", `ord_exploit_cust_${field.replace(/\W+/g, "_")}`), {
+        setDoc(doc(custDb, "orders", "ord_exploit_cust_dotted_pay"), {
           ...customerCreateBase(),
-          [field]: value,
+          "payment\\.razorpayPaymentId": "pay_rogue",
         }),
-        `field ${field} must be server-stamped, never planted at order birth`
+        "literal dotted payment binding is server-owned",
       );
-    }
-  });
-
-  it("dec09-create: lease/claim families cannot be planted at birth on the WALK-IN lane", { timeout: 240000 }, async () => {
-    const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
-    for (const { field, value } of EXPLOIT_CREATE_KEYS) {
+      const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
       await assertFails(
-        setDoc(doc(staffDb, "orders", `ord_exploit_walkin_${field.replace(/\W+/g, "_")}`), {
+        setDoc(doc(staffDb, "orders", "ord_exploit_walkin_dotted_pay"), {
           ...walkInCreateBase("branch_staff_1"),
-          [field]: value,
+          "payment\\.capturedPaymentId": "pay_rogue",
         }),
-        `field ${field} must be server-stamped, never planted at order birth`
+        "literal dotted payment binding is server-owned",
       );
-    }
-  });
-
-  it("dec09-create: literal dotted keys (payment.razorpayPaymentId shape) cannot be planted at birth on either lane", { timeout: 240000 }, async () => {
-    // Escaped-dot updateDoc-style key -> a field literally named
-    // "payment.razorpayPaymentId" (single top-level scalar, no `payment`
-    // map present). Backend readRecordedPaymentField reads that legacy
-    // literal as authoritative, so creation-time planting must be DENIED.
-    const custDb = databaseFor({ label: "customer", uid: "cust_creator" });
-    await assertFails(
-      setDoc(doc(custDb, "orders", "ord_exploit_cust_dotted_pay"), {
-        ...customerCreateBase(),
-        "payment\\.razorpayPaymentId": "pay_rogue",
-      }),
-      "literal dotted payment binding is server-owned"
-    );
-    const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
-    await assertFails(
-      setDoc(doc(staffDb, "orders", "ord_exploit_walkin_dotted_pay"), {
-        ...walkInCreateBase("branch_staff_1"),
-        "payment\\.capturedPaymentId": "pay_rogue",
-      }),
-      "literal dotted payment binding is server-owned"
-    );
-  });
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 4. SERVER CONTROL (Admin SDK / withSecurityRulesDisabled positive control)
@@ -557,7 +662,9 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
       await setDoc(
         doc(db, "orders", OWN_ORDER),
         {
-          items: [{ productId: "p_server", name: "Server Corrected Burger", quantity: 1, unitPrice: 149 }],
+          items: [
+            { productId: "p_server", name: "Server Corrected Burger", quantity: 1, unitPrice: 149 },
+          ],
           deliveryStatus: "ASSIGNED",
           refundStatus: "processed",
         },

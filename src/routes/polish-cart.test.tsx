@@ -111,8 +111,7 @@ vi.mock("@/features/addresses", () => ({
   selectSelectedAddress: (state: { selectedAddress: null }) => state.selectedAddress,
 }));
 vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
-  useLoyaltyStore: (select: (state: { balance: number }) => unknown) =>
-    select({ balance: 0 }),
+  useLoyaltyStore: (select: (state: { balance: number }) => unknown) => select({ balance: 0 }),
 }));
 vi.mock("@/features/cart", () => ({
   cartRepository: {
@@ -124,8 +123,7 @@ vi.mock("@/features/cart", () => ({
     validateCart: fixture.validateCart,
     prepareCheckout: fixture.prepareCheckout,
   },
-  useCartStore: (select: (state: typeof fixture.cartState) => unknown) =>
-    select(fixture.cartState),
+  useCartStore: (select: (state: typeof fixture.cartState) => unknown) => select(fixture.cartState),
   selectItemCount: () => fixture.itemCount,
   CartItemRow: () => null,
   CartItemList: () => null,
@@ -136,8 +134,7 @@ vi.mock("@/features/cart", () => ({
   PromoInput: () => null,
 }));
 vi.mock("@/features/cart/state/cartStore", () => ({
-  useCartStore: (select: (state: typeof fixture.cartState) => unknown) =>
-    select(fixture.cartState),
+  useCartStore: (select: (state: typeof fixture.cartState) => unknown) => select(fixture.cartState),
   selectItemCount: () => fixture.itemCount,
 }));
 vi.mock("@/core/services/haptics", () => ({
@@ -168,11 +165,7 @@ vi.mock("motion/react", async () => {
               layout: _layout,
               ...domProps
             } = props;
-            return ReactRuntime.createElement(
-              tag,
-              { ...domProps, ref },
-              children,
-            );
+            return ReactRuntime.createElement(tag, { ...domProps, ref }, children);
           },
         );
         motionTypes.set(tag, type as unknown as React.ComponentType<Record<string, unknown>>);
@@ -191,8 +184,8 @@ vi.mock("motion/react", async () => {
 import { Route as CartRoute } from "./cart";
 import { FloatingCartBar } from "@/features/cart/components/FloatingCartBar";
 
-const CartPage = (CartRoute as unknown as { options: { component: React.ComponentType } })
-  .options.component;
+const CartPage = (CartRoute as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 let container: HTMLDivElement;
 let root: Root;

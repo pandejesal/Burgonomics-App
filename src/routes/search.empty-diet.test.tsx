@@ -77,9 +77,11 @@ vi.mock("@/features/menu/state/searchStore", () => {
     clearRecent: vi.fn(),
     persist: { rehydrate: vi.fn() },
   };
-  return { useSearchStore: Object.assign((select: (s: typeof state) => unknown) => select(state), {
-    persist: state.persist,
-  }) };
+  return {
+    useSearchStore: Object.assign((select: (s: typeof state) => unknown) => select(state), {
+      persist: state.persist,
+    }),
+  };
 });
 vi.mock("@/features/cart", () => ({
   cartRepository: { addItem: vi.fn(async () => ({ success: true })) },
@@ -95,8 +97,8 @@ vi.mock("@/features/menu/components/ProductCustomizerModal", () => ({
 
 import { Route as SearchRoute } from "./search";
 
-const SearchPage = (SearchRoute as unknown as { options: { component: React.ComponentType } }).options
-  .component;
+const SearchPage = (SearchRoute as unknown as { options: { component: React.ComponentType } })
+  .options.component;
 
 let container: HTMLDivElement;
 let root: Root;

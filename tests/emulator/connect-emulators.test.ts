@@ -107,7 +107,10 @@ describe("connectEmulator (dependency seam)", () => {
     const { deps, loadDb, connect } = guardedDeps();
 
     await expect(
-      connectEmulator({ projectId: EMULATOR_PROJECT_ID, host: "firestore.googleapis.com", port: 8099 }, deps),
+      connectEmulator(
+        { projectId: EMULATOR_PROJECT_ID, host: "firestore.googleapis.com", port: 8099 },
+        deps,
+      ),
     ).rejects.toBeInstanceOf(EmulatorTargetError);
 
     expect(loadDb).not.toHaveBeenCalled();

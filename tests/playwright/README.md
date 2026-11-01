@@ -6,11 +6,11 @@ root install; run every command **from this app's directory**.
 
 ## Suite inventory (glob-verified: `tests/playwright/*config.ts`)
 
-| Config | Spec | Needs a server? |
-|---|---|---|
-| `playwright.sticky-scroll.config.ts` | `sticky-scrollport.spec.ts` | **Yes** — a served production build via `UI_BASE_URL` |
-| `playwright.directional-scroll.config.ts` | `ui-directional-scroll.spec.ts` | No — offline `file://` fixture, real Chromium touch |
-| `playwright.appbutton.config.ts` | `app-button-submit.spec.ts` | No — harness is bundled at test time |
+| Config                                    | Spec                            | Needs a server?                                       |
+| ----------------------------------------- | ------------------------------- | ----------------------------------------------------- |
+| `playwright.sticky-scroll.config.ts`      | `sticky-scrollport.spec.ts`     | **Yes** — a served production build via `UI_BASE_URL` |
+| `playwright.directional-scroll.config.ts` | `ui-directional-scroll.spec.ts` | No — offline `file://` fixture, real Chromium touch   |
+| `playwright.appbutton.config.ts`          | `app-button-submit.spec.ts`     | No — harness is bundled at test time                  |
 
 Historical note: the pre-iteration README referenced
 `ui-a11y-gestures.config.ts`. That file is **not present** in this tree. The

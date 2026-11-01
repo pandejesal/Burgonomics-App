@@ -134,10 +134,9 @@ vi.mock("@/features/stores/state/storeStore", () => {
     setFulfillment: vi.fn(),
   };
   return {
-    useStoreSelection: Object.assign(
-      (select: (s: typeof state) => unknown) => select(state),
-      { getState: () => state },
-    ),
+    useStoreSelection: Object.assign((select: (s: typeof state) => unknown) => select(state), {
+      getState: () => state,
+    }),
     storeSupportsFulfillment: (
       store: { supports?: { delivery?: boolean; takeaway?: boolean; dineIn?: boolean } } | null,
       mode: string | null,

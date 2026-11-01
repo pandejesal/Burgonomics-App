@@ -52,9 +52,9 @@ function updatedAtMs(value: unknown): number | null {
       return Number.isFinite(ms) ? ms : null;
     }
     const ts = value as
-      | { toMillis?: unknown; seconds?: unknown; nanoseconds?: unknown }
-      | undefined;
-    if (ts && typeof ts.toMillis === "function") return Number((ts.toMillis as () => number).call(ts));
+      { toMillis?: unknown; seconds?: unknown; nanoseconds?: unknown } | undefined;
+    if (ts && typeof ts.toMillis === "function")
+      return Number((ts.toMillis as () => number).call(ts));
     if (ts && typeof ts.seconds === "number") {
       const nanos = typeof ts.nanoseconds === "number" ? ts.nanoseconds : 0;
       return ts.seconds * 1000 + Math.floor(nanos / 1_000_000);

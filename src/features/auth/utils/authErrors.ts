@@ -112,8 +112,7 @@ const COOLDOWN_COPY_RE = /^Please wait [1-9]\d*s before requesting a new code\.$
 /** True only for copy this module authored; never for provider text. */
 export function isAuthoredAuthMessage(value: unknown): value is string {
   return (
-    typeof value === "string" &&
-    (AUTHORED_COPY_VALUES.has(value) || COOLDOWN_COPY_RE.test(value))
+    typeof value === "string" && (AUTHORED_COPY_VALUES.has(value) || COOLDOWN_COPY_RE.test(value))
   );
 }
 
@@ -140,8 +139,8 @@ export function hostFail(code: HostFailure): { ok: false; code: HostFailure } {
 export function isAuthFailure(value: unknown): value is AuthFailure {
   return Boolean(
     value &&
-      typeof value === "object" &&
-      (value as { success?: unknown }).success === false &&
-      typeof (value as { error?: { code?: unknown } }).error?.code === "string",
+    typeof value === "object" &&
+    (value as { success?: unknown }).success === false &&
+    typeof (value as { error?: { code?: unknown } }).error?.code === "string",
   );
 }

@@ -52,7 +52,10 @@ async function hideSplashScreen(): Promise<void> {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     await SplashScreen.hide({ fadeOutDuration: SPLASH_FADE_MS });
   } catch (pluginError) {
-    console.warn("[burgonomics] splash screen could not be hidden after a bootstrap failure", pluginError);
+    console.warn(
+      "[burgonomics] splash screen could not be hidden after a bootstrap failure",
+      pluginError,
+    );
   }
 }
 

@@ -237,9 +237,7 @@ describe("preferences write wire contract", () => {
 
 describe("preferences canonical read wire contract", () => {
   it("uses GET with installationId and maps notificationPrefs/version", async () => {
-    fetchMock.mockResolvedValueOnce(
-      response(200, { notificationPrefs: PREFS, version: 7 }),
-    );
+    fetchMock.mockResolvedValueOnce(response(200, { notificationPrefs: PREFS, version: 7 }));
 
     const result = await getNotificationPreferences(INSTALLATION_ID);
 

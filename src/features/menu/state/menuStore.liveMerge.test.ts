@@ -60,22 +60,26 @@ function primeRepository(all: Product[]) {
     async (_store: string, categoryId: string | undefined, page: number, pageSize: number) => {
       const scoped = categoryId ? all.filter((p) => p.categoryId === categoryId) : all;
       return ok(pageOf(scoped, page, pageSize));
-    }
+    },
   );
   repo.subscribeCategories.mockImplementation(() => () => {});
   repo.subscribeProducts.mockImplementation(
     (_store: string, _cat: string | undefined, cb: (res: ApiResult<ProductPage>) => void) => {
       liveCb = cb;
       return () => {};
-    }
+    },
   );
   return {
-    emit(payload: {
-      items: Product[];
-      total: number;
-      complete: boolean;
-    }) {
-      liveCb?.(ok({ items: payload.items, page: 1, pageSize: payload.items.length, total: payload.total, complete: payload.complete } as ProductPage));
+    emit(payload: { items: Product[]; total: number; complete: boolean }) {
+      liveCb?.(
+        ok({
+          items: payload.items,
+          page: 1,
+          pageSize: payload.items.length,
+          total: payload.total,
+          complete: payload.complete,
+        } as ProductPage),
+      );
     },
   };
 }

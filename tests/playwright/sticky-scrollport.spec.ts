@@ -110,11 +110,9 @@ async function waitForRealShell(page: Page, heading: RegExp): Promise<void> {
   const headerTitle = page.locator("header h1").first();
   await headerTitle.waitFor({ state: "visible", timeout: 10_000 });
   await expect(headerTitle).toHaveText(heading);
-  await page.waitForFunction(
-    () => (document.body.innerText ?? "").trim().length > 20,
-    undefined,
-    { timeout: 10_000 },
-  );
+  await page.waitForFunction(() => (document.body.innerText ?? "").trim().length > 20, undefined, {
+    timeout: 10_000,
+  });
   await page.evaluate(async () => {
     await document.fonts.ready;
     const images = Array.from(document.images);
@@ -197,7 +195,10 @@ async function probe(page: Page): Promise<Geometry> {
       let node = el.parentElement;
       while (node && node !== document.body) {
         const s = getComputedStyle(node);
-        if ((s.overflowX === "auto" || s.overflowX === "scroll") && node.scrollWidth > node.clientWidth + 1) {
+        if (
+          (s.overflowX === "auto" || s.overflowX === "scroll") &&
+          node.scrollWidth > node.clientWidth + 1
+        ) {
           return true;
         }
         node = node.parentElement;
@@ -250,7 +251,9 @@ async function probe(page: Page): Promise<Geometry> {
       formTop: style(form)?.top ?? null,
       input: inputBox,
       inputVisibleH: Number(inputVisibleH.toFixed(1)),
-      inputInViewport: Boolean(inputBox && inputBox.bottom > 0 && inputBox.top < window.innerHeight),
+      inputInViewport: Boolean(
+        inputBox && inputBox.bottom > 0 && inputBox.top < window.innerHeight,
+      ),
       inputHitIsInput,
       controls: {
         checked: checkedControls.length,
@@ -280,15 +283,24 @@ async function scrollToTarget(page: Page, target: ScrollTarget): Promise<void> {
 function assertPinnedHeader(g: Geometry, phase: string, vp: string): void {
   expect(g.header, `${vp} ${phase}: header missing (blank page?)`).not.toBeNull();
   expect(g.headerPosition, `${vp} ${phase}: header must be sticky`).toBe("sticky");
-  expect(g.header!.top, `${vp} ${phase}: header top at scrollY ${g.scrollY}`).toBeGreaterThanOrEqual(-1);
-  expect(Math.abs(g.header!.top), `${vp} ${phase}: header not pinned to top (top=${g.header!.top})`).toBeLessThanOrEqual(1);
+  expect(
+    g.header!.top,
+    `${vp} ${phase}: header top at scrollY ${g.scrollY}`,
+  ).toBeGreaterThanOrEqual(-1);
+  expect(
+    Math.abs(g.header!.top),
+    `${vp} ${phase}: header not pinned to top (top=${g.header!.top})`,
+  ).toBeLessThanOrEqual(1);
   expect(
     Math.abs(g.header!.bottom - g.header!.height),
     `${vp} ${phase}: header bottom does not match its own height`,
   ).toBeLessThanOrEqual(1);
   expect(g.header!.bottom, `${vp} ${phase}: header not intersecting viewport`).toBeGreaterThan(0);
   expect(g.header!.top, `${vp} ${phase}: header starts below viewport`).toBeLessThan(g.viewport.h);
-  expect(g.headerHitInside, `${vp} ${phase}: elementFromPoint at header midpoint is not inside header`).toBe(true);
+  expect(
+    g.headerHitInside,
+    `${vp} ${phase}: elementFromPoint at header midpoint is not inside header`,
+  ).toBe(true);
 }
 
 function assertVisibleNav(g: Geometry, phase: string, vp: string): void {
@@ -296,7 +308,9 @@ function assertVisibleNav(g: Geometry, phase: string, vp: string): void {
   expect(g.nav!.height, `${vp} ${phase}: nav has no height`).toBeGreaterThan(0);
   expect(g.nav!.bottom, `${vp} ${phase}: nav not intersecting viewport`).toBeGreaterThan(0);
   expect(g.nav!.top, `${vp} ${phase}: nav starts below viewport`).toBeLessThan(g.viewport.h);
-  expect(g.navHitInside, `${vp} ${phase}: elementFromPoint at nav midpoint is not inside nav`).toBe(true);
+  expect(g.navHitInside, `${vp} ${phase}: elementFromPoint at nav midpoint is not inside nav`).toBe(
+    true,
+  );
 }
 
 test.describe("root overflow guard (body must never be a scrollport)", () => {
@@ -308,10 +322,17 @@ test.describe("root overflow guard (body must never be a scrollport)", () => {
     expect(g.maxScroll, "privacy must be a genuinely long route").toBeGreaterThan(MIN_LONG_SCROLL);
     expect(g.bodyTextLen, "privacy body text").toBeGreaterThan(200);
     // Horizontal containment survives in both syntax branches.
-    expect(["clip", "hidden"], `html overflow-x computed ${g.htmlOverflowX}`).toContain(g.htmlOverflowX);
+    expect(["clip", "hidden"], `html overflow-x computed ${g.htmlOverflowX}`).toContain(
+      g.htmlOverflowX,
+    );
     // The defect was `overflow-x` on body; body must never become a scrollport.
-    expect(g.bodyOverflowX, "body must not carry horizontal overflow (would make it a scrollport)").toBe("visible");
-    expect(["auto", "scroll"], `body overflow-y computed ${g.bodyOverflowY}`).not.toContain(g.bodyOverflowY);
+    expect(
+      g.bodyOverflowX,
+      "body must not carry horizontal overflow (would make it a scrollport)",
+    ).toBe("visible");
+    expect(["auto", "scroll"], `body overflow-y computed ${g.bodyOverflowY}`).not.toContain(
+      g.bodyOverflowY,
+    );
     // Under the hidden fallback the root legitimately computes overflow-y:auto
     // (it is the viewport scroller); that alone is not the defect. The sticky
     // assertion below is the behavioural proof, not a computed-value proxy.
@@ -329,8 +350,13 @@ test.describe("long-route TopBar pinning matrix (/privacy)", () => {
       const initial = await probe(page);
       expect(initial.viewport.w, `${vp.name}: viewport width actually applied`).toBe(vp.width);
       expect(initial.viewport.h, `${vp.name}: viewport height actually applied`).toBe(vp.height);
-      expect(initial.bodyTextLen, `${vp.name}: blank page must fail, not pass`).toBeGreaterThan(200);
-      expect(initial.maxScroll, `${vp.name}: /privacy too short to prove pinning`).toBeGreaterThanOrEqual(MIN_TARGET_SCROLL);
+      expect(initial.bodyTextLen, `${vp.name}: blank page must fail, not pass`).toBeGreaterThan(
+        200,
+      );
+      expect(
+        initial.maxScroll,
+        `${vp.name}: /privacy too short to prove pinning`,
+      ).toBeGreaterThanOrEqual(MIN_TARGET_SCROLL);
 
       let assertedCases = 0;
       for (const target of [0, 350, "end"] as const) {
@@ -340,14 +366,20 @@ test.describe("long-route TopBar pinning matrix (/privacy)", () => {
 
         // The route must stay long at every step: a collapsed page (data/blank)
         // must fail rather than silently pass an empty loop.
-        expect(g.maxScroll, `${vp.name} ${phase}: route lost its scroll length`).toBeGreaterThanOrEqual(MIN_TARGET_SCROLL);
+        expect(
+          g.maxScroll,
+          `${vp.name} ${phase}: route lost its scroll length`,
+        ).toBeGreaterThanOrEqual(MIN_TARGET_SCROLL);
 
         assertPinnedHeader(g, phase, vp.name);
         assertVisibleNav(g, phase, vp.name);
 
         // Horizontal clipping is measured per visible control box, not with the
         // tautological `scrollWidth > innerWidth` under a clipped root.
-        expect(g.controls.checked, `${vp.name} ${phase}: no visible controls measured`).toBeGreaterThan(0);
+        expect(
+          g.controls.checked,
+          `${vp.name} ${phase}: no visible controls measured`,
+        ).toBeGreaterThan(0);
         expect(
           g.controls.clipped,
           `${vp.name} ${phase}: horizontally clipped controls ${JSON.stringify(g.controls.clipped)}`,
@@ -368,9 +400,10 @@ test.describe("search input pinning at 320x568 (existing empty UI)", () => {
 
     const initial = await probe(page);
     expect(initial.bodyTextLen, "blank search page must fail, not pass").toBeGreaterThan(80);
-    expect(initial.maxScroll, "search page too short to prove the pinned input at s350").toBeGreaterThanOrEqual(
-      MIN_TARGET_SCROLL,
-    );
+    expect(
+      initial.maxScroll,
+      "search page too short to prove the pinned input at s350",
+    ).toBeGreaterThanOrEqual(MIN_TARGET_SCROLL);
     expect(initial.form, "search form missing").not.toBeNull();
     expect(initial.input, "search input missing").not.toBeNull();
 
@@ -380,7 +413,9 @@ test.describe("search input pinning at 320x568 (existing empty UI)", () => {
       const g = await probe(page);
       const phase = target === "end" ? "end" : `s${target}`;
 
-      expect(g.maxScroll, `search ${phase}: route lost its scroll length`).toBeGreaterThanOrEqual(MIN_TARGET_SCROLL);
+      expect(g.maxScroll, `search ${phase}: route lost its scroll length`).toBeGreaterThanOrEqual(
+        MIN_TARGET_SCROLL,
+      );
       assertPinnedHeader(g, phase, "320x568");
 
       expect(g.form, `search ${phase}: form missing`).not.toBeNull();
@@ -391,9 +426,18 @@ test.describe("search input pinning at 320x568 (existing empty UI)", () => {
       ).toBeLessThanOrEqual(2);
       expect(g.input, `search ${phase}: input missing`).not.toBeNull();
       expect(g.inputInViewport, `search ${phase}: input not in viewport`).toBe(true);
-      expect(g.inputVisibleH, `search ${phase}: input visible height ${g.inputVisibleH}`).toBeGreaterThan(20);
-      expect(g.inputHitIsInput, `search ${phase}: elementFromPoint at input midpoint is not the input`).toBe(true);
-      expect(g.controls.checked, `search ${phase}: no visible non-carousel controls measured`).toBeGreaterThan(0);
+      expect(
+        g.inputVisibleH,
+        `search ${phase}: input visible height ${g.inputVisibleH}`,
+      ).toBeGreaterThan(20);
+      expect(
+        g.inputHitIsInput,
+        `search ${phase}: elementFromPoint at input midpoint is not the input`,
+      ).toBe(true);
+      expect(
+        g.controls.checked,
+        `search ${phase}: no visible non-carousel controls measured`,
+      ).toBeGreaterThan(0);
       expect(
         g.controls.clipped,
         `search ${phase}: horizontally clipped controls ${JSON.stringify(g.controls.clipped)}`,
@@ -414,7 +458,9 @@ test.describe("search at 375x812 (data-dependent leg)", () => {
     const g = await probe(page);
     // Blank pages must FAIL. Only a content-bearing short page may skip.
     expect(g.header, "375 search: blank page (no header) must fail, not skip").not.toBeNull();
-    expect(g.bodyTextLen, "375 search: blank page (no text) must fail, not skip").toBeGreaterThan(20);
+    expect(g.bodyTextLen, "375 search: blank page (no text) must fail, not skip").toBeGreaterThan(
+      20,
+    );
 
     test.skip(
       g.maxScroll < MIN_TARGET_SCROLL,
@@ -431,7 +477,9 @@ test.describe("search at 375x812 (data-dependent leg)", () => {
       assertPinnedHeader(step, phase, "375x812");
       assertVisibleNav(step, phase, "375x812");
       expect(step.inputInViewport, `375 search ${phase}: input not in viewport`).toBe(true);
-      expect(step.inputHitIsInput, `375 search ${phase}: input midpoint not hit-testable`).toBe(true);
+      expect(step.inputHitIsInput, `375 search ${phase}: input midpoint not hit-testable`).toBe(
+        true,
+      );
       assertedCases += 1;
     }
     expect(assertedCases).toBe(3);
@@ -474,17 +522,29 @@ test.describe("hidden fallback syntax branch (no overflow:clip)", () => {
     await page.goto(`${BASE}/privacy`, { waitUntil: "domcontentloaded" });
     await waitForRealShell(page, /privacy policy/i);
 
-    expect(cssRequests, "no stylesheet was intercepted; the variant was not applied").toBeGreaterThan(0);
-    expect(strippedSupportBlock, "served CSS had no @supports (overflow: clip) block to remove").toBe(true);
+    expect(
+      cssRequests,
+      "no stylesheet was intercepted; the variant was not applied",
+    ).toBeGreaterThan(0);
+    expect(
+      strippedSupportBlock,
+      "served CSS had no @supports (overflow: clip) block to remove",
+    ).toBe(true);
 
     const initial = await probe(page);
     test.info().annotations.push({
       type: "fallback-measurement",
       description: `cssRequests=${cssRequests} stripped=${strippedSupportBlock} htmlX=${initial.htmlOverflowX} bodyX=${initial.bodyOverflowX} bodyY=${initial.bodyOverflowY} maxScroll=${initial.maxScroll}`,
     });
-    expect(initial.htmlOverflowX, "variant must leave only the hidden fallback on the root").toBe("hidden");
-    expect(initial.bodyOverflowX, "body must stay free of overflow-x in the fallback").toBe("visible");
-    expect(["auto", "scroll"], `body overflow-y ${initial.bodyOverflowY}`).not.toContain(initial.bodyOverflowY);
+    expect(initial.htmlOverflowX, "variant must leave only the hidden fallback on the root").toBe(
+      "hidden",
+    );
+    expect(initial.bodyOverflowX, "body must stay free of overflow-x in the fallback").toBe(
+      "visible",
+    );
+    expect(["auto", "scroll"], `body overflow-y ${initial.bodyOverflowY}`).not.toContain(
+      initial.bodyOverflowY,
+    );
     expect(initial.maxScroll).toBeGreaterThan(MIN_LONG_SCROLL);
     expect(initial.bodyTextLen).toBeGreaterThan(200);
 
