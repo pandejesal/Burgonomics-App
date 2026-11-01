@@ -170,13 +170,42 @@ vi.mock("@/features/cart", () => ({
   ),
   selectItemCount: (s: { lines: unknown[] }) => s.lines.length,
 }));
-vi.mock("@/features/checkout", () => ({
-  useCheckoutStore: Object.assign(
-    (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
-    { getState: () => ({ ...fixture.checkoutState, reset: vi.fn() }) },
-  ),
-  ReviewItemsList: () => null,
-}));
+vi.mock("@/features/checkout", () => {
+  // Launch checkout keeps a live server quote; these route tests are about the
+  // bill/payment state machine, so the quote is a fixed usable one.
+  const readyFees = {
+    status: "ready" as const,
+    orderType: "delivery" as const,
+    packagingFee: 0,
+    deliveryFee: 0,
+    deliveryQuoteId: "q_test",
+    provider: "test",
+    expiresAt: Date.now() + 3_600_000,
+  };
+  const readyView = {
+    payEnabled: true,
+    status: "ready" as const,
+    message: null,
+    canRetry: false,
+    showTotal: true,
+    takeawaySelectable: false,
+    storeNotLinked: false,
+  };
+  return {
+    useCheckoutStore: Object.assign(
+      (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
+      { getState: () => ({ ...fixture.checkoutState, checkoutFees: readyFees, reset: vi.fn() }) },
+    ),
+    useCheckoutFees: () => ({
+      state: readyFees,
+      view: readyView,
+      refresh: vi.fn(async () => readyFees),
+    }),
+    deliveryQuoteView: () => readyView,
+    isDeliveryQuoteRefusal: () => false,
+    ReviewItemsList: () => null,
+  };
+});
 vi.mock("@/features/stores/state/storeStore", () => ({
   useStoreSelection: Object.assign(
     (
@@ -210,10 +239,23 @@ vi.mock("@/features/auth/state/authStore", () => {
     selectIsAuthenticated: (s: { user: unknown }) => !!s.user,
   };
 });
-vi.mock("@/features/addresses", () => ({
-  useAddressStore: (select: (s: unknown) => unknown) => select({ items: [], selectedId: null }),
-  selectSelectedAddress: () => null,
-}));
+vi.mock("@/features/addresses", () => {
+  const address = {
+    id: "addr_fulfill",
+    label: "home",
+    line1: "1 Main Road",
+    city: "Surat",
+    pincode: "395007",
+    lat: 21.15,
+    lng: 72.77,
+  };
+  return {
+    useAddressStore: (select: (s: unknown) => unknown) =>
+      select({ items: [address], selectedId: address.id, select: vi.fn() }),
+    selectAddresses: () => [address],
+    selectSelectedAddress: () => address,
+  };
+});
 vi.mock("@/features/orders", () => ({
   orderRepository: {
     createFromCurrentContext: fixture.createFromCurrentContext,
@@ -359,7 +401,7 @@ describe("payment route — missing/invalid fulfillment blocks every payment pat
     const pay = buttonWithText("Choose fulfillment");
     expect(pay).toBeDefined();
     expect(pay!.disabled).toBe(true);
-    expect(container.textContent).toContain("Choose how you'd like this order");
+    expect(container.textContent).toContain("not offering your selected order type");
     await act(async () => pay!.click());
     await act(async () => {});
     expectNoPaymentStarted();
@@ -439,7 +481,7 @@ describe("payment route — missing/invalid fulfillment blocks every payment pat
 
     expectNoPaymentStarted();
     expect(usePaymentStore.getState().status).toBe("idle");
-    expect(container.textContent).toContain("Choose how you'd like this order");
+    expect(container.textContent).toContain("not offering your selected order type");
   });
 });
 

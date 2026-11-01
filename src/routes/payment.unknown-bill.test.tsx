@@ -159,13 +159,42 @@ vi.mock("@/features/cart", () => ({
   ),
   selectItemCount: (s: { lines: unknown[] }) => s.lines.length,
 }));
-vi.mock("@/features/checkout", () => ({
-  useCheckoutStore: Object.assign(
-    (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
-    { getState: () => ({ ...fixture.checkoutState, reset: vi.fn() }) },
-  ),
-  ReviewItemsList: () => null,
-}));
+vi.mock("@/features/checkout", () => {
+  // Launch checkout keeps a live server quote; these route tests are about the
+  // bill/payment state machine, so the quote is a fixed usable one.
+  const readyFees = {
+    status: "ready" as const,
+    orderType: "delivery" as const,
+    packagingFee: 0,
+    deliveryFee: 0,
+    deliveryQuoteId: "q_test",
+    provider: "test",
+    expiresAt: Date.now() + 3_600_000,
+  };
+  const readyView = {
+    payEnabled: true,
+    status: "ready" as const,
+    message: null,
+    canRetry: false,
+    showTotal: true,
+    takeawaySelectable: false,
+    storeNotLinked: false,
+  };
+  return {
+    useCheckoutStore: Object.assign(
+      (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
+      { getState: () => ({ ...fixture.checkoutState, checkoutFees: readyFees, reset: vi.fn() }) },
+    ),
+    useCheckoutFees: () => ({
+      state: readyFees,
+      view: readyView,
+      refresh: vi.fn(async () => readyFees),
+    }),
+    deliveryQuoteView: () => readyView,
+    isDeliveryQuoteRefusal: () => false,
+    ReviewItemsList: () => null,
+  };
+});
 vi.mock("@/features/stores/state/storeStore", () => {
   const state = {
     activeStore: {

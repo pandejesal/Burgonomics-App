@@ -43,9 +43,15 @@ import { useAppConfig } from "@/core/state/appConfigStore";
 import { appConfig } from "@/core/config/env";
 
 import { useCartStore, selectItemCount, cartRepository } from "@/features/cart";
-import { ReviewItemsList, useCheckoutStore, useCheckoutFees, deliveryQuoteView, isDeliveryQuoteRefusal } from "@/features/checkout";
+import {
+  ReviewItemsList,
+  useCheckoutStore,
+  useCheckoutFees,
+  deliveryQuoteView,
+  isDeliveryQuoteRefusal,
+} from "@/features/checkout";
 import type { CartTotals } from "@/features/cart/models";
-import { useStoreSelection } from "@/features/stores/state/storeStore";
+import { useStoreSelection, storeSupportsFulfillment } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
 import {
@@ -59,7 +65,11 @@ import {
 import type { PaymentResult } from "@/features/payments/models";
 import type { PaymentOrder, PaymentPreflight } from "@/features/payments/models";
 import type { ApiResult } from "@/core/network/http";
-import { describePaymentFailure, isNonRetryableOrderFailure, STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
+import {
+  describePaymentFailure,
+  isNonRetryableOrderFailure,
+  STORE_NOT_LINKED,
+} from "@/features/payments/utils/paymentFailure";
 import {
   describePaymentRecovery,
   isRecoveryReason,
@@ -147,6 +157,7 @@ function PaymentPage() {
   const deliveryInstructions = useCheckoutStore((s) => s.deliveryInstructions);
   const pickupInstructions = useCheckoutStore((s) => s.pickupInstructions);
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
+  const tipAmount = useCheckoutStore((s) => s.tipAmount);
 
   // R8: the payment screen re-quotes on entry/address change/expiry and gates
   // PAY on a live server quote (cash included).
@@ -355,6 +366,35 @@ function PaymentPage() {
     // Sync re-entry guard: a second tap before status flips must not start
     // a second payment. (Terminal statuses reset the ref, see effect below.)
     if (payInFlight.current) return;
+    // Re-read the live selection: the outlet or mode can change after mount
+    // (another tab, a menu/store switch) without this screen re-rendering.
+    const liveSelection = useStoreSelection.getState();
+    if (
+      !liveSelection.activeStore ||
+      !liveSelection.fulfillment ||
+      !storeSupportsFulfillment(liveSelection.activeStore, liveSelection.fulfillment)
+    ) {
+      setStatus("idle");
+      setPreflightIssue(
+        !liveSelection.activeStore
+          ? "Choose an outlet to continue."
+          : !liveSelection.fulfillment
+            ? "Choose how you'd like this order: delivery, takeaway or dine-in."
+            : "This outlet is not offering your selected order type right now.",
+      );
+      return;
+    }
+    // A retry must not start a payment while the bill is unknown/failed —
+    // the disabled CTA alone does not cover the FailurePanel Retry path.
+    if (totals === null || totalsFailed) {
+      setStatus("idle");
+      setPreflightIssue(
+        totalsFailed
+          ? "Couldn't compute your bill. Please retry above."
+          : "Your bill is still being computed.",
+      );
+      return;
+    }
     payInFlight.current = true;
     // Belt-and-braces behind the disabled button: never fire Razorpay offline.
     if (!useAppConfig.getState().isOnline) {
@@ -374,8 +414,7 @@ function PaymentPage() {
     const quoteNow = deliveryQuoteView({
       state: useCheckoutStore.getState().checkoutFees,
       fulfillment,
-      hasAddress:
-        Number.isFinite(selectedAddress?.lat) && Number.isFinite(selectedAddress?.lng),
+      hasAddress: Number.isFinite(selectedAddress?.lat) && Number.isFinite(selectedAddress?.lng),
     });
     if (!quoteNow.payEnabled) {
       payInFlight.current = false;
@@ -398,9 +437,10 @@ function PaymentPage() {
     // and, once accepted, open the SAME gateway order.
     const heldOrder = pendingGatewayOrder.current;
     if (heldOrder) {
-      const heldAuthoritative =
-        typeof heldOrder.amount === "number" ? heldOrder.amount : undefined;
-      if (needsRepriceAcceptance(totals?.grandTotal, heldAuthoritative, acceptedServerAmount.current)) {
+      const heldAuthoritative = typeof heldOrder.amount === "number" ? heldOrder.amount : undefined;
+      if (
+        needsRepriceAcceptance(totals?.grandTotal, heldAuthoritative, acceptedServerAmount.current)
+      ) {
         // Nothing is in flight while the customer decides — never leave the
         // sync re-entry guard held behind a dialog (CUS-07).
         payInFlight.current = false;
@@ -477,9 +517,9 @@ function PaymentPage() {
         }
 
         const reconUid = useAuthStore.getState().user?.id ?? null;
-      clearPaymentReconciliation(reconUid);
-      usePaymentStore.getState().clearReconciliation();
-      setStatus("success");
+        clearPaymentReconciliation(reconUid);
+        usePaymentStore.getState().clearReconciliation();
+        setStatus("success");
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
@@ -741,6 +781,11 @@ function PaymentPage() {
       ? activeStore?.etaMinutes
       : (activeStore?.pickupEtaMinutes ?? activeStore?.etaMinutes);
   const grandTotal = acceptedServerTotal ?? totals?.grandTotal ?? 0;
+  // The gateway order is minted with the persisted tip included, so the "To
+  // Pay" figure must show it too — otherwise the customer sees a smaller
+  // number than the amount they are charged.
+  const finalPayable =
+    grandTotal + (typeof tipAmount === "number" && Number.isFinite(tipAmount) ? tipAmount : 0);
 
   const instructions =
     fulfillment === "delivery"
@@ -751,6 +796,16 @@ function PaymentPage() {
 
   const isDelivery = fulfillment === "delivery";
   const selectedCashLabel = isDelivery ? "Cash on Delivery" : "Pay at Store";
+  // Fail closed on a missing/unsupported mode: /payment is a public route, so
+  // a deep link or an outlet switch while checkout was open must not authorise
+  // a payment on a guessed mode.
+  const fulfillmentSupported =
+    !!activeStore && !!fulfillment && storeSupportsFulfillment(activeStore, fulfillment);
+  const fulfillmentBlockMessage = !activeStore
+    ? "Choose an outlet to continue."
+    : !fulfillment
+      ? "Choose how you'd like this order: delivery, takeaway or dine-in."
+      : "This outlet is not offering your selected order type right now.";
 
   return (
     <AppShell
@@ -767,7 +822,7 @@ function PaymentPage() {
                 To Pay
               </span>
               <span className="type-title-large font-black text-text tabular-nums">
-                {totals && quoteView.showTotal ? formatINR(grandTotal) : "—"}
+                {totals && quoteView.showTotal ? formatINR(finalPayable) : "—"}
               </span>
             </div>
             <AppButton
@@ -775,49 +830,80 @@ function PaymentPage() {
               className="flex-1 max-w-[280px] h-12 rounded-xl text-base font-bold shadow-md shadow-primary/20 active:scale-[0.98] transition-transform"
               onClick={() => void startPayment()}
               loading={busy && !payBlocked}
-              disabled={grandTotal <= 0 || !isOnline || payBlocked || !quoteView.payEnabled}
-              title={
+              disabled={
+                !fulfillmentSupported ||
+                grandTotal <= 0 ||
+                !isOnline ||
+                payBlocked ||
                 !quoteView.payEnabled
-                  ? (quoteView.message ?? "Getting delivery price")
-                  : storeNotLinked
-                    ? failure?.message
-                    : payBlocked
-                      ? "We are confirming your payment — please do not pay again"
-                      : !isOnline
-                        ? "Back online to place your order"
-                        : totalsFailed
-                          ? "Couldn't compute your bill — retry above"
-                          : undefined
               }
-              iconLeft={method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined}
+              title={
+                !fulfillmentSupported
+                  ? !fulfillment
+                    ? "Choose a fulfillment method"
+                    : fulfillmentBlockMessage
+                  : !quoteView.payEnabled
+                    ? (quoteView.message ?? "Getting delivery price")
+                    : storeNotLinked
+                      ? failure?.message
+                      : payBlocked
+                        ? "We are confirming your payment — please do not pay again"
+                        : !isOnline
+                          ? "Back online to place your order"
+                          : totalsFailed
+                            ? "Couldn't compute your bill — retry above"
+                            : totals === null
+                              ? "The bill is still being computed"
+                              : undefined
+              }
+              iconLeft={
+                method === "online" && !payBlocked ? <Lock className="h-4 w-4" /> : undefined
+              }
             >
-              {!quoteView.payEnabled
-                ? quoteView.storeNotLinked
-                  ? "Ordering unavailable"
-                  : quoteView.status === "idle" || quoteView.status === "loading"
-                    ? isDelivery
-                      ? "Getting delivery price"
-                      : "Getting your order price"
-                    : isDelivery
-                      ? "Delivery unavailable"
-                      : "Price unavailable"
-                : storeNotLinked
-                  ? "Ordering unavailable"
-                  : payBlocked
-                    ? "Payment under review"
-                    : status === "failed" || status === "cancelled"
-                      ? "Retry checkout"
-                      : method === "online"
-                        ? "Pay Online"
-                        : isDelivery
-                          ? "Place COD Order"
-                          : "Place Order"}
+              {!fulfillmentSupported
+                ? "Choose fulfillment"
+                : !quoteView.payEnabled
+                  ? quoteView.storeNotLinked
+                    ? "Ordering unavailable"
+                    : quoteView.status === "idle" || quoteView.status === "loading"
+                      ? isDelivery
+                        ? "Getting delivery price"
+                        : "Getting your order price"
+                      : isDelivery
+                        ? "Delivery unavailable"
+                        : "Price unavailable"
+                  : storeNotLinked
+                    ? "Ordering unavailable"
+                    : payBlocked
+                      ? "Payment under review"
+                      : status === "failed" || status === "cancelled"
+                        ? "Retry checkout"
+                        : method === "online"
+                          ? "Pay Online"
+                          : isDelivery
+                            ? "Place COD Order"
+                            : "Place Order"}
             </AppButton>
           </div>
         </div>
       }
     >
       <div className="mx-auto max-w-[560px] space-y-5 px-4 py-4">
+        {!fulfillmentSupported && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-warning/40 bg-warning/10 p-4 type-body-medium text-warning-text"
+          >
+            <span>{fulfillmentBlockMessage}</span>
+            <button
+              type="button"
+              onClick={() => void navigate({ to: "/checkout" })}
+              className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-warning/20 px-4 type-button-sm transition-colors hover:bg-warning/30"
+            >
+              Review Checkout
+            </button>
+          </div>
+        )}
         {/* Step 1: Payment Method Selection */}
         <section aria-labelledby="payment-section-title" className="space-y-3">
           <div className="flex flex-col gap-1">
@@ -1075,8 +1161,8 @@ function PaymentPage() {
         {method === "online" && !hasLiveRazorpayKey && isDevBuild && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
             <Text variant="bodyMedium" className="font-bold">
-              Demo payments: no live Razorpay key is configured, so online payment will simulate
-              and then fail verification — no money moves. Use cash, or configure keys.
+              Demo payments: no live Razorpay key is configured, so online payment will simulate and
+              then fail verification — no money moves. Use cash, or configure keys.
             </Text>
           </div>
         )}

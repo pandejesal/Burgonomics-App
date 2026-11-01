@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 
 import { cartRepository, useCartStore, selectItemCount, PromoInput } from "@/features/cart";
 import type { CartTotals } from "@/features/cart/models";
-import { useStoreSelection } from "@/features/stores/state/storeStore";
+import { useStoreSelection, storeSupportsFulfillment } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { DEFAULT_DELIVERY_RADIUS_KM } from "@/features/stores/utils/serviceArea";
 import {
@@ -243,7 +243,7 @@ export function CheckoutPage() {
   const legacyNotesPending = hasUnreviewedLegacyNotes(legacyOrderNotes, lines);
   // The two review reasons read differently to the customer, so the alert
   // below must not claim "longer than 240 characters" for an item note.
-  const legacyDraftPending = legacyOrderNotes.trim().length > 0;
+  const legacyDraftPending = (legacyOrderNotes ?? "").trim().length > 0;
   const lineNotesPending = linesWithLegacyNotes.length > 0;
 
   // Outlet/account lifecycle fence for the note draft (shared with the cart).
@@ -323,6 +323,16 @@ export function CheckoutPage() {
   const isDelivery = fulfillment === "delivery";
   const isTakeaway = fulfillment === "takeaway";
   const isDineIn = fulfillment === "dinein";
+  // Fail closed when the persisted mode is missing or the selected outlet does
+  // not offer it (legacy cache, deep link, or a menu switch that landed while
+  // checkout was open). No preflight/order/payment may run on a guessed mode.
+  const fulfillmentSupported =
+    !!activeStore && !!fulfillment && storeSupportsFulfillment(activeStore, fulfillment);
+  const fulfillmentBlockMessage = !activeStore
+    ? "Select an outlet to continue."
+    : !fulfillment
+      ? "Choose how you'd like your order: delivery, takeaway or dine-in."
+      : "This outlet is not offering your selected order type right now.";
 
   const rawGrandTotal = totals?.grandTotal ?? 0;
   // The delivery tip is a real charge: the server reprices with the same
@@ -362,6 +372,11 @@ export function CheckoutPage() {
   async function handlePlaceOrder() {
     setValidationError(null);
     setOrderingUnavailable(false);
+
+    if (!fulfillmentSupported) {
+      setValidationError(fulfillmentBlockMessage);
+      return;
+    }
 
     const uid = useAuthStore.getState().user?.id ?? null;
     const pendingRecon =
@@ -937,6 +952,7 @@ export function CheckoutPage() {
                 reconciliationPending ||
                 legacyNotesPending ||
                 orderingUnavailable ||
+                !fulfillmentSupported ||
                 !quoteView.payEnabled
               }
               aria-disabled={
@@ -948,56 +964,63 @@ export function CheckoutPage() {
                 reconciliationPending ||
                 legacyNotesPending ||
                 orderingUnavailable ||
+                !fulfillmentSupported ||
                 !quoteView.payEnabled
               }
               title={
-                orderingUnavailable
-                  ? "This outlet isn't taking online orders yet."
-                  : !quoteView.payEnabled
-                    ? (quoteView.message ?? "Getting delivery price")
-                    : reconciliationPending
-                      ? "We are confirming your payment — please do not pay again"
-                      : legacyNotesPending
-                        ? "Review your saved cooking note in the cart first"
-                        : !kitchen.isOpen
-                          ? KITCHEN_CLOSED_MESSAGE
-                          : !isOnline
-                            ? "Back online to place your order"
-                            : totalsFailed
-                              ? "Couldn't compute your bill — retry above"
-                              : totals === null
-                                ? "Bill is still being computed"
-                                : undefined
+                !fulfillmentSupported
+                  ? !fulfillment
+                    ? "Choose a fulfillment method"
+                    : fulfillmentBlockMessage
+                  : orderingUnavailable
+                    ? "This outlet isn't taking online orders yet."
+                    : !quoteView.payEnabled
+                      ? (quoteView.message ?? "Getting delivery price")
+                      : reconciliationPending
+                        ? "We are confirming your payment — please do not pay again"
+                        : legacyNotesPending
+                          ? "Review your saved cooking note in the cart first"
+                          : !kitchen.isOpen
+                            ? KITCHEN_CLOSED_MESSAGE
+                            : !isOnline
+                              ? "Back online to place your order"
+                              : totalsFailed
+                                ? "Couldn't compute your bill — retry above"
+                                : totals === null
+                                  ? "Bill is still being computed"
+                                  : undefined
               }
               className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 type-button text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
               <Lock className="h-4 w-4 stroke-[2.5px]" />
               <span>
-                {orderingUnavailable
-                  ? "Online ordering unavailable"
-                  : !quoteView.payEnabled
-                    ? quoteView.storeNotLinked
-                      ? "Online ordering unavailable"
-                      : quoteView.status === "idle" || quoteView.status === "loading"
-                        ? isDelivery
-                          ? "Pay — getting delivery price"
-                          : "Pay — getting order price"
-                        : isDelivery
-                          ? "Pay — delivery unavailable"
-                          : "Pay — price unavailable"
-                    : reconciliationPending
-                      ? "Payment under review"
-                      : busy
-                        ? "Processing Order..."
-                        : !kitchen.isOpen
-                          ? "Kitchen closed"
-                          : !isOnline
-                            ? "Offline — reconnect to pay"
-                            : totalsFailed
-                              ? "Pay — bill unavailable"
-                              : totals === null
-                                ? "Pay — checking bill"
-                                : `Pay ${formatINR(finalPayable)} securely`}
+                {!fulfillmentSupported
+                  ? "Choose fulfillment"
+                  : orderingUnavailable
+                    ? "Online ordering unavailable"
+                    : !quoteView.payEnabled
+                      ? quoteView.storeNotLinked
+                        ? "Online ordering unavailable"
+                        : quoteView.status === "idle" || quoteView.status === "loading"
+                          ? isDelivery
+                            ? "Pay — getting delivery price"
+                            : "Pay — getting order price"
+                          : isDelivery
+                            ? "Pay — delivery unavailable"
+                            : "Pay — price unavailable"
+                      : reconciliationPending
+                        ? "Payment under review"
+                        : busy
+                          ? "Processing Order..."
+                          : !kitchen.isOpen
+                            ? "Kitchen closed"
+                            : !isOnline
+                              ? "Offline — reconnect to pay"
+                              : totalsFailed
+                                ? "Pay — bill unavailable"
+                                : totals === null
+                                  ? "Pay — checking bill"
+                                  : `Pay ${formatINR(finalPayable)} securely`}
               </span>
             </button>
           </div>
@@ -1109,13 +1132,28 @@ export function CheckoutPage() {
         )}
 
         {/* 1. Fulfillment Mode Details */}
-        <FulfillmentDetailsCard
-          fulfillment={fulfillment ?? "delivery"}
-          store={activeStore}
-          selectedAddress={selectedAddress}
-          tableNumber={tableNumber}
-          onTableNumberChange={(t) => setTableNumber(t)}
-        />
+        {!fulfillmentSupported ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-warning/40 bg-warning/10 p-4 type-body-medium text-warning-text"
+          >
+            <span>{fulfillmentBlockMessage}</span>
+            <Link
+              to="/stores"
+              className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-warning/20 px-4 type-button-sm transition-colors hover:bg-warning/30"
+            >
+              Choose Outlet
+            </Link>
+          </div>
+        ) : (
+          <FulfillmentDetailsCard
+            fulfillment={fulfillment}
+            store={activeStore}
+            selectedAddress={selectedAddress}
+            tableNumber={tableNumber}
+            onTableNumberChange={(t) => setTableNumber(t)}
+          />
+        )}
 
         {/* Address Selection with Geofencing (Delivery Mode Only) — Standard Delivery only */}
         {isDelivery && (
