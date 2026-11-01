@@ -14,6 +14,7 @@ const values = {
   VITE_RAZORPAY_KEY_ID: 'rzp_test_ci_compile_only', VITE_PUSH_ENABLED: 'false', VITE_FCM_ENABLED: 'false'
 };
 writeFileSync('.env.staging', Object.entries(values).map(([k,v]) => `${k}=${JSON.stringify(v)}`).join('\n') + '\n');
+writeFileSync('.env', Object.entries(values).map(([k,v]) => `${k}=${JSON.stringify(v)}`).join('\n') + '\n');
 writeFileSync('ios/App/App/GoogleService-Info.plist', `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
