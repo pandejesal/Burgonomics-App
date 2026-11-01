@@ -21,6 +21,7 @@ import {
   OrderTimeline,
   FulfillmentPanel,
   InvoiceDownloadButton,
+  orderPayableAmount,
   type Order,
   type OrderTrackingSnapshot,
 } from "@/features/orders";
@@ -303,7 +304,9 @@ function OrderDetailsPage() {
                   : order.payment.status === "PAY_AT_STORE"
                     ? "Pay at Store"
                     : order.payment.status === "pending"
-                      ? "Awaiting Payment"
+                      ? orderPayableAmount(order) === 0
+                        ? "No payment due"
+                        : "Awaiting Payment"
                       : order.payment.status === "failed"
                         ? "Payment Failed"
                         : order.payment.status === "refunded"

@@ -88,6 +88,6 @@ export function hasUnreviewedLegacyNotes(
   legacyOrderNotes: string,
   lines: readonly NoteBearingLine[],
 ): boolean {
-  if (legacyOrderNotes.trim().length > 0) return true;
+  if ((legacyOrderNotes ?? "").trim().length > 0) return true;
   return lines.some((line) => (line.notes ?? "").trim().length > 0);
 }

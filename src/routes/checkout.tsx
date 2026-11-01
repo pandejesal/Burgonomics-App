@@ -378,6 +378,28 @@ export function CheckoutPage() {
       return;
     }
 
+    // Re-read the LIVE selection: the outlet or mode can change after mount
+    // (another tab, the store sheet, a menu switch) without this screen
+    // re-rendering. Authorising the rendered snapshot would place the order
+    // under the wrong mode/outlet.
+    const live = useStoreSelection.getState();
+    if (live.activeStore?.id !== activeStore?.id || live.fulfillment !== fulfillment) {
+      setValidationError("Your checkout details changed — review them before paying.");
+      return;
+    }
+    if (
+      !live.activeStore ||
+      !live.fulfillment ||
+      !storeSupportsFulfillment(live.activeStore, live.fulfillment)
+    ) {
+      setValidationError(
+        live.fulfillment
+          ? "Choose how you'd like your order: this outlet is not offering the selected order type."
+          : "Choose how you'd like your order: delivery, takeaway or dine-in.",
+      );
+      return;
+    }
+
     const uid = useAuthStore.getState().user?.id ?? null;
     const pendingRecon =
       usePaymentStore.getState().reconciliationPending || !!loadPaymentReconciliation(uid);

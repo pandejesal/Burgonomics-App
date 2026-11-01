@@ -287,6 +287,12 @@ export function BannerCarousel({ banners, className }: Props) {
               // Client-side routing, but the href keeps the slide focusable,
               // Enter-activatable and openable in a new tab.
               if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              // Belt-and-braces behind the container capture handler: a drag
+              // that ended outside the capture path must still not navigate.
+              if (suppressDragClickRef.current && e.detail !== 0) {
+                suppressDragClickRef.current = false;
+                return;
+              }
               e.preventDefault();
               void HapticService.selection();
               void navigate({ to: b.ctaHref });
