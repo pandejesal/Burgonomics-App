@@ -23,6 +23,7 @@ const orderFixture = (id: string, code: string, terminal: boolean, updatedAt?: u
 const productFixture = (id: string, inStock: boolean, price = 250): Product =>
   ({
     id,
+    categoryId: "cat_burgers",
     name: id,
     description: "",
     price,
@@ -199,6 +200,10 @@ describe("stress sweep P1 repairs (customer app)", () => {
     beforeEach(() => {
       listProducts.mockReset();
       useMenuStore.setState({
+        // loadMore is store-scoped: without an active store it correctly
+        // refuses to page, so the race below could never start.
+        storeId: "store_race",
+        epoch: 1,
         buckets: {},
         categories: [],
         activeCategoryId: undefined,

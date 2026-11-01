@@ -45,6 +45,9 @@ const fixture = vi.hoisted(() => {
       expiresAt: 9_999_999_999_999,
     },
     setOrderNotes: vi.fn(),
+    bindNotesScope: vi.fn(),
+    captureNotesDraft: vi.fn(() => ({ uid: "cust_wave2", storeId: "store-A", revision: 0 })),
+    clearNotesAfterCompletedOrder: vi.fn(),
     setTableNumber: vi.fn(),
     setLoyaltyPointsToRedeem: vi.fn(),
   };
@@ -175,6 +178,7 @@ vi.mock("@/features/cart", () => ({
       Refresh bill
     </button>
   ),
+  CookingInstructionsSection: () => null,
 }));
 vi.mock("@/features/checkout", () => {
   return {
@@ -203,8 +207,14 @@ vi.mock("@/features/checkout/components/QuickAuthSheet", () => ({ QuickAuthSheet
 vi.mock("@/features/stores/state/storeStore", () => {
   const state = {
     activeStore: { id: "store-A", name: "Surat Vesu", lat: 21.15, lng: 72.77 },
-    fulfillment: fixture.fulfillment,
-    setFulfillment: fixture.setFulfillment,
+    // Live read: each test sets `fixture.fulfillment` before mounting.
+    get fulfillment() {
+      return fixture.fulfillment;
+    },
+    setFulfillment: (next: typeof fixture.fulfillment) => {
+      fixture.fulfillment = next;
+      fixture.setFulfillment(next);
+    },
   };
   return {
     useStoreSelection: Object.assign((select: (s: typeof state) => unknown) => select(state), {
@@ -353,7 +363,7 @@ async function mount(Page: React.ComponentType) {
 
 function buttonWithText(text: string): HTMLButtonElement | undefined {
   return Array.from(container.querySelectorAll("button")).find((b) =>
-    b.textContent?.includes(text),
+    b.textContent?.toLowerCase().includes(text.toLowerCase()),
   );
 }
 

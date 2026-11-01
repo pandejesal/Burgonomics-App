@@ -331,6 +331,8 @@ describe("checkout selections reset after every successful order path", () => {
     fixture.cart.calculateTotals.mockResolvedValue(totals(500, 0));
     fixture.createOrder.mockResolvedValue({ success: true, data: { id: "ord_free_reset" } });
     seedSelections();
+    // A persisted tip is payable even when the food is fully discounted.
+    useCheckoutStore.getState().setTipAmount(0);
 
     await mount();
     await placeOrder();
@@ -349,7 +351,7 @@ describe("checkout selections reset after every successful order path", () => {
       success: true,
       data: {
         orderId: "order_rzp_reset",
-        amount: 420,
+        amount: 520,
         currency: "INR",
         receipt: "rcpt_reset",
         keyId: "rzp_test_key",

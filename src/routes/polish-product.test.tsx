@@ -151,7 +151,12 @@ describe("product purchase-path accent tokens", () => {
         unitPrice: 199,
       }),
     );
-    expect(toast.success).toHaveBeenCalledWith("Added 1x Test Burger to cart!");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Added 1x Test Burger to cart!",
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "View Cart" }),
+      }),
+    );
     expect(fixture.navigate).toHaveBeenCalledWith({ to: "/menu" });
   });
 

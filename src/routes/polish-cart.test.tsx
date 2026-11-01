@@ -94,6 +94,9 @@ vi.mock("@/features/checkout", () => {
     tipAmount: 0,
     loyaltyPointsToRedeem: 0,
     setOrderNotes: vi.fn(),
+    bindNotesScope: vi.fn(),
+    captureNotesDraft: vi.fn(() => ({ uid: null, storeId: "store_1", revision: 0 })),
+    clearNotesAfterCompletedOrder: vi.fn(),
     setTipAmount: vi.fn(),
     setLoyaltyPointsToRedeem: vi.fn(),
   };
@@ -132,6 +135,7 @@ vi.mock("@/features/cart", () => ({
   DeliveryTipSelector: () => null,
   OrderSummary: () => null,
   PromoInput: () => null,
+  CookingInstructionsSection: () => null,
 }));
 vi.mock("@/features/cart/state/cartStore", () => ({
   useCartStore: (select: (state: typeof fixture.cartState) => unknown) => select(fixture.cartState),
@@ -241,25 +245,24 @@ describe("cart purchase-path accent tokens", () => {
     );
     expect(cta, "empty-cart Explore Menu CTA").toBeDefined();
     const tokens = classTokens(cta!);
-    expect(tokens).toContain("bg-accent");
-    expect(tokens).toContain("text-accent-foreground");
-    expect(tokens).toContain("hover:bg-[var(--accent-hover)]");
-    expect(tokens).toContain("dark:bg-[var(--accent-hover)]");
+    expect(tokens).toContain("bg-primary");
+    expect(tokens).toContain("text-primary-foreground");
+    expect(tokens).toContain("hover:bg-primary-hover");
+    expect(tokens).toContain("min-h-11");
+    expect(cta!.getAttribute("href")).toBe("/menu");
     expect(container.innerHTML).not.toContain("#FF6600");
     expect(container.innerHTML).not.toContain("#e05a00");
   });
 
-  it("renders the branded mascot in empty cart state instead of raw emoji", async () => {
+  it("explains the empty basket and provides a focusable menu exit", async () => {
     await mount(<CartPage />);
 
-    const mascot = container.querySelector<HTMLImageElement>('img[alt="BURGONOMICS mascot"]');
-    expect(mascot, "BrandMascot img").not.toBeNull();
-    expect(mascot!.getAttribute("width")).toBe("120");
-    expect(mascot!.getAttribute("height")).toBe("120");
-    expect(mascot!.className).toContain("animate-mascot-float");
-
-    expect(container.innerHTML).not.toContain("📦");
-    expect(container.textContent).toContain("Your burger box is empty!");
+    expect(container.querySelector("h2")?.textContent).toBe("Your burger box is empty");
+    const exit = container.querySelector<HTMLAnchorElement>('a[href="/menu"]')!;
+    expect(exit.textContent).toContain("Explore Menu");
+    exit.focus();
+    expect(document.activeElement).toBe(exit);
+    expect(container.querySelector("button[disabled]")).toBeNull();
   });
 
   it("renders the checkout CTA and inline actions with the semantic accent pair", async () => {
@@ -286,10 +289,10 @@ describe("cart purchase-path accent tokens", () => {
     expect(checkout, "Proceed to Checkout button").toBeDefined();
     expect(classTokens(checkout!)).toEqual(
       expect.arrayContaining([
-        "bg-accent",
-        "text-accent-foreground",
-        "hover:bg-[var(--accent-hover)]",
-        "dark:bg-[var(--accent-hover)]",
+        "bg-primary",
+        "text-primary-foreground",
+        "hover:bg-primary-hover",
+        "min-h-12",
       ]),
     );
 
@@ -297,20 +300,22 @@ describe("cart purchase-path accent tokens", () => {
       (node) => node.textContent?.trim() === "Change",
     );
     expect(change, "fulfillment Change button").toBeDefined();
-    expect(classTokens(change!)).toEqual(
-      expect.arrayContaining(["text-accent", "dark:text-accent-foreground"]),
-    );
+    expect(classTokens(change!)).toEqual(expect.arrayContaining(["text-primary-text", "min-h-11"]));
 
     const addMore = Array.from(container.querySelectorAll("a")).find((node) =>
       node.textContent?.includes("+ Add more items from menu"),
     );
     expect(addMore, "add-more link").toBeDefined();
     expect(classTokens(addMore!)).toEqual(
-      expect.arrayContaining(["text-accent", "dark:text-accent-foreground"]),
+      expect.arrayContaining(["text-primary-text", "min-h-11"]),
     );
 
     expect(container.innerHTML).not.toContain("#FF6600");
     expect(container.innerHTML).not.toContain("#e05a00");
+    fixture.validateCart.mockResolvedValue({ success: true, data: { valid: true, issues: [] } });
+    fixture.prepareCheckout.mockResolvedValue({ success: true, data: {} });
+    await act(async () => checkout!.click());
+    expect(fixture.navigate).toHaveBeenCalledWith({ to: "/checkout" });
   });
 });
 
@@ -336,17 +341,12 @@ describe("floating cart accent tokens", () => {
     expect(link, "floating cart link").not.toBeNull();
     expect(link!.textContent).toContain("View Cart");
 
-    const pill = Array.from(link!.querySelectorAll("div")).find((node) =>
-      node.textContent?.includes("View Cart"),
+    const pill = Array.from(link!.querySelectorAll("span")).find(
+      (node) => node.classList.contains("inline-flex") && node.textContent?.includes("View Cart"),
     );
     expect(pill, "View Cart pill").toBeDefined();
     expect(classTokens(pill!)).toEqual(
-      expect.arrayContaining([
-        "bg-accent",
-        "text-accent-foreground",
-        "hover:bg-[var(--accent-hover)]",
-        "dark:bg-[var(--accent-hover)]",
-      ]),
+      expect.arrayContaining(["bg-primary-foreground", "text-primary", "min-h-[44px]"]),
     );
 
     const badge = Array.from(link!.querySelectorAll("span")).find(
@@ -354,11 +354,7 @@ describe("floating cart accent tokens", () => {
     );
     expect(badge, "floating cart count badge").toBeDefined();
     expect(classTokens(badge!)).toEqual(
-      expect.arrayContaining([
-        "bg-accent",
-        "text-accent-foreground",
-        "dark:bg-[var(--accent-hover)]",
-      ]),
+      expect.arrayContaining(["bg-accent", "text-accent-foreground"]),
     );
 
     expect(link!.innerHTML).not.toContain("#FF6600");

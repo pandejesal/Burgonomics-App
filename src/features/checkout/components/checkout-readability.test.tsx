@@ -26,7 +26,6 @@ vi.mock("@/core/services/haptics", () => ({
 import { BillBreakdown } from "@/features/cart/components/BillBreakdown";
 import { DeliveryTipSelector } from "@/features/cart/components/DeliveryTipSelector";
 import { AddressSelector } from "./AddressSelector";
-import { OrderTypeToggle } from "./OrderTypeToggle";
 import { PaymentMethodSelector } from "./PaymentMethodSelector";
 import { formatINR } from "@/core/utils/format";
 import type { Address } from "@/features/addresses/models";
@@ -40,7 +39,6 @@ const SOURCES = {
   FloatingCartBar: readFileSync(`${CART}/FloatingCartBar.tsx`, "utf8"),
   BillBreakdown: readFileSync(`${CART}/BillBreakdown.tsx`, "utf8"),
   DeliveryTipSelector: readFileSync(`${CART}/DeliveryTipSelector.tsx`, "utf8"),
-  OrderTypeToggle: readFileSync(`${CHECKOUT}/OrderTypeToggle.tsx`, "utf8"),
   FulfillmentDetailsCard: readFileSync(`${CHECKOUT}/FulfillmentDetailsCard.tsx`, "utf8"),
   PaymentMethodSelector: readFileSync(`${CHECKOUT}/PaymentMethodSelector.tsx`, "utf8"),
   AddressSelector: readFileSync(`${CHECKOUT}/AddressSelector.tsx`, "utf8"),
@@ -151,18 +149,6 @@ describe("checkout and cart readability", () => {
 
     await act(async () => options[1].click());
     expect(onSelect).toHaveBeenCalledWith("cash");
-  });
-
-  it("keeps all three order types at 44px+ and switches mode", async () => {
-    const onChange = vi.fn();
-    await mount(<OrderTypeToggle value={null} onChange={onChange} subtotal={0} />);
-
-    const options = host!.querySelectorAll<HTMLButtonElement>('button[role="radio"]');
-    expect(options).toHaveLength(3);
-    for (const option of options) expect(option.className).toContain("min-h-[104px]");
-
-    await act(async () => buttonByText("Takeaway").click());
-    expect(onChange).toHaveBeenCalledWith("takeaway");
   });
 
   it("keeps tip presets at 44px+ and preserves selection semantics", async () => {

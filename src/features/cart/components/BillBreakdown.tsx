@@ -136,7 +136,7 @@ export function BillBreakdown({
               {packagingKnown ? (
                 formatINR(actualPackagingFee)
               ) : (
-                <span className="text-[10px] font-black uppercase">Calculated at checkout</span>
+                <span className="type-caption font-medium">Calculated at checkout</span>
               )}
             </span>
           </div>
@@ -150,7 +150,7 @@ export function BillBreakdown({
               {deliveryFeeKnown ? (
                 formatINR(actualDeliveryFee)
               ) : (
-                <span className="text-[10px] font-black uppercase">Calculated at checkout</span>
+                <span className="type-caption font-medium">Calculated at checkout</span>
               )}
             </span>
           </div>

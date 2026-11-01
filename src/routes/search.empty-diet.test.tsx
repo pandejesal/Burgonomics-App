@@ -126,9 +126,8 @@ describe("search empty diet-filter copy", () => {
 
     expect(container.textContent).toContain("No matching items for this diet filter");
     expect(container.textContent).toContain(
-      "Try selecting 'Any Diet' or a different diet filter tag.",
+      "Try selecting 'All Items' or a different diet filter tag.",
     );
-    expect(container.textContent).not.toContain("'All Items'");
     expect(container.textContent).not.toContain("Classic Burger");
 
     const clearFilter = Array.from(container.querySelectorAll("button")).find((button) =>

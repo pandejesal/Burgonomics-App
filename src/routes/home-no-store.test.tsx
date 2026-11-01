@@ -42,14 +42,14 @@ vi.mock("@/features/home", () => ({
   ),
 }));
 vi.mock("@/features/home/components/CategoryPills", () => ({ CategoryPills: () => null }));
-vi.mock("@/features/menu/components/CategoryPills", () => ({ CategoryPills: () => null }));vi.mock("@/features/home/components/BrandHeader", () => ({ BrandHeader: () => null }));
+vi.mock("@/features/menu/components/CategoryPills", () => ({ CategoryPills: () => null }));
+vi.mock("@/features/home/components/BrandHeader", () => ({ BrandHeader: () => null }));
 vi.mock("@/features/home/components/BannerCarousel", () => ({ BannerCarousel: () => null }));
 vi.mock("@/features/home/components/CategoryGrid", () => ({ CategoryGrid: () => null }));
 vi.mock("@/features/home/components/HorizontalRail", () => ({ HorizontalRail: () => null }));
 vi.mock("@/features/home/components/SectionHeader", () => ({ SectionHeader: () => null }));
 vi.mock("@/features/home/components/BestSellerCard", () => ({ BestSellerCard: () => null }));
 vi.mock("@/features/home/components/ComboCard", () => ({ ComboCard: () => null }));
-vi.mock("@/features/home/components/QuickReorderRail", () => ({ QuickReorderRail: () => null }));
 vi.mock("@/features/home/components/HomeSkeleton", () => ({ HomeSkeleton: () => null }));
 vi.mock("@/features/cart/components/FloatingCartBar", () => ({ FloatingCartBar: () => null }));
 vi.mock("@/features/orders/hooks/useReorderItems", () => ({
@@ -73,8 +73,8 @@ vi.mock("@/core/state/appConfigStore", () => ({
 
 import { Route as HomeRoute } from "./home";
 
-const HomePage = (HomeRoute as unknown as { options: { component: React.ComponentType } })
-  .options.component;
+const HomePage = (HomeRoute as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

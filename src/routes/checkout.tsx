@@ -193,6 +193,9 @@ export function CheckoutPage() {
   // The server total already accepted, so re-entry does not loop on the same
   // difference (the divergence is structural, not a one-off).
   const acceptedServerAmount = React.useRef<number | null>(null);
+  // CUS-11: once the customer accepts the server's total, the To Pay bar must
+  // show that figure while Razorpay is open — not the stale client estimate.
+  const [acceptedServerTotal, setAcceptedServerTotal] = React.useState<number | null>(null);
   // Fail-closed billing: when the totals computation fails (e.g. no store
   // pricing available), PAY must stay disabled instead of charging ₹0.
   const [totalsFailed, setTotalsFailed] = React.useState(false);
@@ -224,6 +227,9 @@ export function CheckoutPage() {
   // always refuse to create a gateway order. Keep PAY disabled instead of
   // inviting a retry that cannot succeed.
   const [orderingUnavailable, setOrderingUnavailable] = React.useState(false);
+  // The refusal belongs to the payment path that earned it. A method switch is
+  // a new path, so clear it rather than leaving PAY dead forever.
+  React.useEffect(() => setOrderingUnavailable(false), [paymentMethod]);
   const [authSheetOpen, setAuthSheetOpen] = React.useState(false);
   // Kitchen-hours gate: PAY must lock itself at 23:00 IST even if this screen
   // has been sitting open since noon (the hook re-checks on tick + focus).
@@ -334,6 +340,10 @@ export function CheckoutPage() {
       ? "Choose how you'd like your order: delivery, takeaway or dine-in."
       : "This outlet is not offering your selected order type right now.";
 
+  // An unlinked outlet refuses ONLINE payment only. Cash/Pay-at-counter is a
+  // different path and must stay offerable once the customer switches to it;
+  // switching back to online re-offers the attempt (the server answers again).
+  const onlineOrderingUnavailable = orderingUnavailable && paymentMethod !== "cash";
   const rawGrandTotal = totals?.grandTotal ?? 0;
   // The delivery tip is a real charge: the server reprices with the same
   // `tipAmount` this screen reads, so it must already sit inside To Pay —
@@ -601,8 +611,8 @@ export function CheckoutPage() {
       try {
         const free = await orderRepository.createFromCurrentContext({
           paymentMethod: "online",
-          paymentStatus: "paid",
-          paymentLabel: "Paid Online (₹0)",
+          paymentStatus: "pending",
+          paymentLabel: "No payment due",
         });
         setBusy(false);
         placeOrderInFlight.current = false;
@@ -678,7 +688,7 @@ export function CheckoutPage() {
       // on a different number than the one the customer just reviewed. No rate
       // is invented here and no fee is sent - we only surface the authoritative
       // total and require acceptance when it changed.
-      const displayedTotal = totals?.grandTotal;
+      const displayedTotal = finalPayable;
       const authoritativeTotal =
         typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
       if (
@@ -959,7 +969,9 @@ export function CheckoutPage() {
             <div>
               <p className="text-sm font-medium text-text-secondary">To Pay</p>
               <p className="type-price whitespace-nowrap text-xl text-text-primary">
-                {totals && quoteView.showTotal ? formatINR(finalPayable) : "—"}
+                {totals && quoteView.showTotal
+                  ? formatINR(acceptedServerTotal ?? finalPayable)
+                  : "—"}
               </p>
             </div>
             <button
@@ -973,7 +985,7 @@ export function CheckoutPage() {
                 !kitchen.isOpen ||
                 reconciliationPending ||
                 legacyNotesPending ||
-                orderingUnavailable ||
+                onlineOrderingUnavailable ||
                 !fulfillmentSupported ||
                 !quoteView.payEnabled
               }
@@ -985,7 +997,7 @@ export function CheckoutPage() {
                 !kitchen.isOpen ||
                 reconciliationPending ||
                 legacyNotesPending ||
-                orderingUnavailable ||
+                onlineOrderingUnavailable ||
                 !fulfillmentSupported ||
                 !quoteView.payEnabled
               }
@@ -994,7 +1006,7 @@ export function CheckoutPage() {
                   ? !fulfillment
                     ? "Choose a fulfillment method"
                     : fulfillmentBlockMessage
-                  : orderingUnavailable
+                  : onlineOrderingUnavailable
                     ? "This outlet isn't taking online orders yet."
                     : !quoteView.payEnabled
                       ? (quoteView.message ?? "Getting delivery price")
@@ -1018,7 +1030,7 @@ export function CheckoutPage() {
               <span>
                 {!fulfillmentSupported
                   ? "Choose fulfillment"
-                  : orderingUnavailable
+                  : onlineOrderingUnavailable
                     ? "Online ordering unavailable"
                     : !quoteView.payEnabled
                       ? quoteView.storeNotLinked
@@ -1345,7 +1357,9 @@ export function CheckoutPage() {
             <div className="flex items-start justify-between gap-3 text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
-                {quoteView.packagingFee !== null ? (
+                {!totals ? (
+                  <span className="text-warning-text">unavailable</span>
+                ) : quoteView.packagingFee !== null ? (
                   isDineIn && quoteView.packagingFee === 0 ? (
                     <span className="font-semibold text-success">FREE</span>
                   ) : (
@@ -1361,7 +1375,9 @@ export function CheckoutPage() {
               <div className="flex items-start justify-between gap-3 text-text-secondary">
                 <span>Delivery Fee</span>
                 <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
-                  {quoteView.showDeliveryFee && quoteView.deliveryFee !== null ? (
+                  {!totals ? (
+                    <span className="text-warning-text">unavailable</span>
+                  ) : quoteView.showDeliveryFee && quoteView.deliveryFee !== null ? (
                     formatINR(quoteView.deliveryFee)
                   ) : (
                     <span className="text-warning-text">
@@ -1450,6 +1466,7 @@ export function CheckoutPage() {
         onConfirm={() => {
           if (!repricePrompt) return;
           acceptedServerAmount.current = repricePrompt.authoritative;
+          setAcceptedServerTotal(repricePrompt.authoritative);
           setRepricePrompt(null);
           void handlePlaceOrderRef.current();
         }}

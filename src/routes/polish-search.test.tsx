@@ -154,13 +154,7 @@ describe("search sticky header and accent tokens", () => {
     );
     expect(spicy, "active Spicy chip").toBeDefined();
     expect(classTokens(spicy!)).toEqual(
-      expect.arrayContaining([
-        "bg-accent",
-        "text-accent-foreground",
-        "border-accent",
-        "dark:bg-[var(--accent-hover)]",
-        "dark:border-[var(--accent-hover)]",
-      ]),
+      expect.arrayContaining(["bg-primary", "text-primary-foreground", "border-primary"]),
     );
 
     const clearAll = Array.from(container.querySelectorAll("button")).find(
@@ -168,25 +162,37 @@ describe("search sticky header and accent tokens", () => {
     );
     expect(clearAll, "Clear all button").toBeDefined();
     expect(classTokens(clearAll!)).toEqual(
-      expect.arrayContaining(["text-accent", "dark:text-accent-foreground"]),
+      expect.arrayContaining(["text-primary-text", "min-h-11"]),
     );
 
+    await act(async () => clearAll!.click());
+    // The mocked store actions are the seam; the control must drive the real one.
+    const searchStore = (await import("@/features/menu/state/searchStore")) as unknown as {
+      clearRecent: { mock: { calls: unknown[] } };
+    };
+    expect(searchStore.clearRecent.mock.calls).toHaveLength(1);
     expect(container.innerHTML).not.toContain("#FF6600");
     expect(container.innerHTML).not.toContain("#e05a00");
   });
 
-  it("renders diet filter chip with 'Any Diet' label and visible scroll cue without 'All Items'", async () => {
+  it("clears the diet filter through All Items in the horizontal filter strip", async () => {
     await mount();
 
     const anyDietChip = Array.from(container.querySelectorAll("button")).find(
-      (node) => node.textContent?.trim() === "Any Diet",
+      (node) => node.textContent?.trim() === "All Items",
     );
-    expect(anyDietChip, "Any Diet chip").toBeDefined();
-    expect(container.textContent).not.toContain("All Items");
+    expect(anyDietChip, "All Items chip").toBeDefined();
+    expect(classTokens(anyDietChip!)).toContain("min-h-11");
+    await act(async () => anyDietChip!.click());
+    expect(fixture.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/search", replace: true }),
+    );
+    const navigation = fixture.navigate.mock.calls.at(-1)![0];
+    expect(navigation.search({ filter: "spicy" }).filter).toBeUndefined();
 
     const scrollContainer = anyDietChip!.closest(".overflow-x-auto");
     expect(scrollContainer, "diet chips horizontal scroll container").not.toBeNull();
     expect(scrollContainer!.className).toContain("overflow-x-auto");
-    expect(scrollContainer!.className).toContain("mask-image");
+    expect(scrollContainer!.querySelectorAll("button").length).toBeGreaterThan(1);
   });
 });

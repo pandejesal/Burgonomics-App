@@ -254,6 +254,12 @@ function PaymentPage() {
   // simulated (that reads as "money may or may not move").
   const isDevBuild = appConfig.env === "development";
 
+  // The bill the customer was shown includes the persisted delivery tip, and
+  // the server charges it. Comparing the gateway amount against a tip-less
+  // total raised a bogus "total has been updated" prompt on every tipped order.
+  const displayedBillTotal =
+    totals === null ? undefined : Math.max(0, totals.grandTotal + tipAmount);
+
   const loadTotals = React.useCallback(async () => {
     try {
       const r = await cartRepository.calculateTotals();
@@ -439,7 +445,7 @@ function PaymentPage() {
     if (heldOrder) {
       const heldAuthoritative = typeof heldOrder.amount === "number" ? heldOrder.amount : undefined;
       if (
-        needsRepriceAcceptance(totals?.grandTotal, heldAuthoritative, acceptedServerAmount.current)
+        needsRepriceAcceptance(displayedBillTotal, heldAuthoritative, acceptedServerAmount.current)
       ) {
         // Nothing is in flight while the customer decides — never leave the
         // sync re-entry guard held behind a dialog (CUS-07).
@@ -447,7 +453,7 @@ function PaymentPage() {
         setStatus("idle");
         quoteRepricePrompt.current = false;
         setRepricePrompt({
-          displayed: totals?.grandTotal as number,
+          displayed: displayedBillTotal as number,
           authoritative: heldAuthoritative as number,
         });
         return;
@@ -494,6 +500,24 @@ function PaymentPage() {
       setStatus("waiting");
 
       try {
+        const fresh = await cartRepository.calculateTotals();
+        if (!fresh.success) {
+          throw new Error("Cash bill could not be refreshed");
+        }
+        if (
+          needsRepriceAcceptance(
+            totals.grandTotal,
+            fresh.data.grandTotal,
+            acceptedServerAmount.current,
+          )
+        ) {
+          setTotals(fresh.data);
+          payInFlight.current = false;
+          setStatus("idle");
+          quoteRepricePrompt.current = true;
+          setRepricePrompt({ displayed: totals.grandTotal, authoritative: fresh.data.grandTotal });
+          return;
+        }
         const isDelivery = fulfillment === "delivery";
         const paymentStatus: PaymentDisplayStatus = isDelivery ? "CASH_PENDING" : "PAY_AT_STORE";
         const paymentLabel = isDelivery ? "Cash on Delivery" : "Pay at Store";
@@ -558,7 +582,7 @@ function PaymentPage() {
           payInFlight.current = false;
           setStatus("idle");
           setFailure(null);
-          const displayed = totals?.grandTotal ?? null;
+          const displayed = displayedBillTotal ?? null;
           const next = await refreshQuote();
           const recalculated = await cartRepository.calculateTotals();
           if (next.status !== "ready" || !recalculated.success) {
@@ -601,7 +625,7 @@ function PaymentPage() {
       // Same authoritative-quote gate as checkout.tsx: never open the gateway
       // on a number the customer was not shown. If the server's validated
       // total differs, ask for explicit acceptance first.
-      const displayedTotal = totals?.grandTotal;
+      const displayedTotal = displayedBillTotal;
       const authoritativeTotal =
         typeof orderRes.data.amount === "number" ? orderRes.data.amount : undefined;
       if (

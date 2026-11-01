@@ -251,7 +251,7 @@ function SearchPage() {
         {/* Sticky Search Header & Filter Bar */}
         <form
           onSubmit={handleSubmit}
-          className="sticky top-0 z-20 bg-surface/95 px-4 py-3 backdrop-blur-md border-b border-divider shadow-xs"
+          className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 px-4 py-3 backdrop-blur-md border-b border-divider shadow-xs"
         >
           {/* Input Box */}
           <label className="search-field flex min-h-12 items-center gap-2 rounded-2xl border border-divider bg-bg-secondary px-4 py-2 focus-within:border-primary focus-within:bg-surface transition-colors">
@@ -263,7 +263,7 @@ function SearchPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search smashed burgers, sides, drinks…"
               aria-label="Search the menu"
-              className="min-w-0 flex-1 appearance-none rounded-[inherit] bg-transparent outline-none type-body-large placeholder:text-text-placeholder"
+              className="min-w-0 flex-1 appearance-none rounded-[inherit] bg-transparent outline-none type-body-large placeholder:text-text-placeholder scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))]"
             />
             {query && (
               <button

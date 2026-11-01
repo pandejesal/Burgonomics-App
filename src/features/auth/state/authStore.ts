@@ -132,6 +132,8 @@ function clearPersistedSession() {
 }
 
 import { notificationsService } from "@/features/notifications/services/notificationsService";
+import { writePendingUnlink } from "@/features/notifications/services/pendingUnlink";
+import { getCachedDeviceToken, clearCachedDeviceToken } from "@/shared/platform/pushNotifications";
 
 /**
  * CUS-05 — hard cap on the pre-sign-out FCM unlink. The unregister call needs
@@ -150,19 +152,30 @@ export const DEVICE_UNLINK_TIMEOUT_MS = 2_000;
  */
 async function unlinkDeviceTokenBeforeSignOut(userId?: string): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const token = getCachedDeviceToken();
   try {
-    await Promise.race([
-      Promise.resolve(notificationsService.unlinkUserFromDeviceToken(userId)).then(
-        () => undefined,
-        (e: unknown) =>
+    const outcome = await Promise.race([
+      Promise.resolve(notificationsService.unlinkUserFromDeviceToken(userId)).catch(
+        (e: unknown) => {
           logger.warn("auth.device_unlink_failed", {
             message: e instanceof Error ? e.message : String(e),
-          }),
+          });
+          return "failed" as const;
+        },
       ),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, DEVICE_UNLINK_TIMEOUT_MS);
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => {
+          logger.warn("auth.device_unlink_failed", { message: "unlink timed out" });
+          resolve("timeout");
+        }, DEVICE_UNLINK_TIMEOUT_MS);
       }),
     ]);
+    // A failed or timed-out unlink must not lose the token silently: keep a
+    // bounded retry record plus a retry-only secure copy (contract F3/B2).
+    if (userId && token && (outcome === "failed" || outcome === "timeout")) {
+      await writePendingUnlink({ uid: userId, token, reason: outcome });
+      clearCachedDeviceToken();
+    }
   } catch (e: unknown) {
     logger.warn("auth.device_unlink_failed", {
       message: e instanceof Error ? e.message : String(e),

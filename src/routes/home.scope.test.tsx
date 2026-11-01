@@ -89,7 +89,6 @@ vi.mock("@/features/home/components/FavoritesRail", () => ({
       <section aria-label="Your favourites">{fixture.favoriteName}</section>
     ) : null,
 }));
-vi.mock("@/features/home/components/QuickReorderRail", () => ({ QuickReorderRail: () => null }));
 vi.mock("@/features/home/components/HomeSkeleton", () => ({
   HomeSkeleton: () => <div>Home loading</div>,
 }));

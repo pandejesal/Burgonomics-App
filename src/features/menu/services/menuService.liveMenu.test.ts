@@ -52,6 +52,7 @@ function productDocs(count: number, restId: string) {
 function snapshotOf(docs: ReturnType<typeof productDocs>) {
   return {
     forEach: (cb: (d: { id: string; data: () => unknown }) => void) => docs.forEach(cb),
+    docChanges: () => [],
   };
 }
 
@@ -69,16 +70,14 @@ describe("menuService live menu subscription", () => {
     });
 
     const results: any[] = [];
-    const unsub = menuService.subscribeProducts("store_large", undefined, (res) =>
-      results.push(res),
-    );
+    const unsub = menuService.subscribeStoreProducts("store_large", (res) => results.push(res));
 
     await vi.waitFor(() => expect(results.length).toBe(1));
 
     const page = results[0].data;
     expect(results[0].success).toBe(true);
-    expect(page.items).toHaveLength(45);
-    expect(page.total).toBe(45);
+    expect(page.products).toHaveLength(45);
+    expect(new Set(page.products.map((p: any) => p.id)).size).toBe(45);
     // The listener held the complete query result, so absence is a deletion.
     expect(page.complete).toBe(true);
     // Scoped read only: no unscoped fallback, no artificial page cap.
@@ -88,7 +87,7 @@ describe("menuService live menu subscription", () => {
     unsub();
   });
 
-  it("keeps the category filter but still sends every product in that category", async () => {
+  it("keeps every category in the whole-store stream so changing categories loses no products", async () => {
     const docs = productDocs(45, "rest_cat");
     firestore.getDoc.mockResolvedValue({ data: () => ({ petpoojaRestId: "rest_cat" }) });
     firestore.onSnapshot.mockImplementation((_q, next) => {
@@ -97,27 +96,29 @@ describe("menuService live menu subscription", () => {
     });
 
     const results: any[] = [];
-    menuService.subscribeProducts("store_cat", "burgers", (res) => results.push(res));
+    menuService.subscribeStoreProducts("store_cat", (res) => results.push(res));
 
     await vi.waitFor(() => expect(results.length).toBe(1));
 
-    expect(results[0].data.items).toHaveLength(23);
-    expect(results[0].data.items.every((p: any) => p.categoryId === "burgers")).toBe(true);
-    expect(results[0].data.total).toBe(23);
+    expect(results[0].data.products).toHaveLength(45);
+    expect(results[0].data.products.filter((p: any) => p.categoryId === "burgers")).toHaveLength(
+      23,
+    );
+    expect(results[0].data.products.filter((p: any) => p.categoryId === "sides")).toHaveLength(22);
     expect(results[0].data.complete).toBe(true);
   });
 
-  it("returns an empty snapshot and never reads the unscoped collection when the store scope is unresolved", async () => {
+  it("reports unresolved scope and never reads the unscoped collection", async () => {
     firestore.onSnapshot.mockImplementation(() => () => {});
 
     const results: any[] = [];
-    const unsub = menuService.subscribeProducts(undefined, undefined, (res) => results.push(res));
+    const unsub = menuService.subscribeStoreProducts(undefined, (res) => results.push(res));
 
     await vi.waitFor(() => expect(results.length).toBe(1));
 
     expect(results[0]).toMatchObject({
-      success: true,
-      data: { items: [], total: 0, complete: true },
+      success: false,
+      error: { code: "MENU_SCOPE_UNRESOLVED" },
     });
     expect(firestore.onSnapshot).not.toHaveBeenCalled();
     expect(firestore.limit).not.toHaveBeenCalled();
@@ -132,7 +133,7 @@ describe("menuService live menu subscription", () => {
 
     await vi.waitFor(() => expect(results.length).toBe(1));
 
-    expect(results[0]).toMatchObject({ success: true, data: [] });
+    expect(results[0]).toMatchObject({ success: false, error: { code: "MENU_SCOPE_UNRESOLVED" } });
     expect(firestore.onSnapshot).not.toHaveBeenCalled();
     expect(firestore.limit).not.toHaveBeenCalled();
     expect(() => unsub()).not.toThrow();

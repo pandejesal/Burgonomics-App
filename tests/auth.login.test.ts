@@ -10,16 +10,13 @@ import {
 import { useCartStore } from "../src/features/cart/state/cartStore";
 import { useAuthStore } from "../src/features/auth/state/authStore";
 import { authRepository } from "../src/features/auth/repositories/AuthRepository";
-import type { OtpChallenge } from "../src/features/auth/state/authStore";
+type OtpChallenge = NonNullable<ReturnType<typeof useAuthStore.getState>["challenge"]>;
 
 const otpChallenge = (overrides: Partial<OtpChallenge> = {}): OtpChallenge => ({
-  handle: "handle_test",
+  otpToken: "handle_test",
   phone: "+919825012345",
-  maskedPhone: "******2345",
   requestedAt: Date.now(),
-  issuedAt: Date.now(),
   resendAfterSec: 60,
-  displayExpiresAt: Date.now() + 300_000,
   deliveryMethod: "sms",
   ...overrides,
 });
@@ -131,7 +128,7 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
 
   describe("4b. OTP resend is delegated to the attempt-layer cooldown", () => {
     it("surfaces the attempt-layer cooldown without touching the SDK", async () => {
-      const resend = vi.spyOn(authRepository, "resendOtp").mockResolvedValue({
+      const resend = vi.spyOn(authRepository, "requestOtp").mockResolvedValue({
         success: false,
         error: {
           code: "AUTH_OTP_COOLDOWN",
@@ -142,7 +139,8 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
         status: "otp_sent",
         challenge: otpChallenge(),
       });
-      const res = await useAuthStore.getState().resendOtp("login");
+      const res = await useAuthStore.getState().resendOtp();
+      expect(resend).not.toHaveBeenCalled();
       resend.mockRestore();
       expect(res.ok).toBe(false);
       expect(res.error).toMatch(/wait \d+s/);
@@ -151,7 +149,7 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
     });
 
     it("refuses resend with no active challenge", async () => {
-      const resend = vi.spyOn(authRepository, "resendOtp").mockResolvedValue({
+      const resend = vi.spyOn(authRepository, "requestOtp").mockResolvedValue({
         success: false,
         error: {
           code: "NO_CHALLENGE",
@@ -159,18 +157,19 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
         },
       });
       useAuthStore.setState({ challenge: null });
-      const res = await useAuthStore.getState().resendOtp("login");
+      const res = await useAuthStore.getState().resendOtp();
+      expect(resend).not.toHaveBeenCalled();
       resend.mockRestore();
       expect(res.ok).toBe(false);
-      expect(res.code).toBe("NO_CHALLENGE");
+      expect(res.error).toBe("No active OTP request.");
     });
 
     it("opens the gate after the cooldown and swaps in the new handle", async () => {
       const issuedAt = Date.now() + 1;
-      const resend = vi.spyOn(authRepository, "resendOtp").mockResolvedValue({
+      const resend = vi.spyOn(authRepository, "requestOtp").mockResolvedValue({
         success: true,
         data: {
-          handle: "handle_new",
+          otpToken: "handle_new",
           flow: "login",
           phone: "+919825012345",
           maskedPhone: "******2345",
@@ -183,12 +182,13 @@ describe("Prompt 02: Customer Auth, Phone SMS OTP & Guest Session Merge", () => 
       });
       useAuthStore.setState({
         status: "otp_sent",
-        challenge: otpChallenge({ issuedAt: Date.now() - 61 * 1000 }),
+        challenge: otpChallenge({ requestedAt: Date.now() - 61 * 1000 }),
       });
-      const res = await useAuthStore.getState().resendOtp("login");
+      const res = await useAuthStore.getState().resendOtp();
+      expect(resend).toHaveBeenCalledWith("+919825012345", "sms", undefined);
       resend.mockRestore();
       expect(res.ok).toBe(true);
-      expect(useAuthStore.getState().challenge?.handle).toBe("handle_new");
+      expect(useAuthStore.getState().challenge?.otpToken).toBe("handle_new");
     });
   });
 

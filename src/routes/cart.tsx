@@ -248,7 +248,7 @@ function CartPage() {
               <p className="type-price whitespace-nowrap text-xl text-text-primary">
                 {formatINR(finalToPay)}
               </p>
-              <p className="text-[10px] font-semibold text-text-secondary">
+              <p className="type-caption font-semibold text-text-secondary">
                 Packaging and delivery fee calculated at checkout
               </p>
             </div>

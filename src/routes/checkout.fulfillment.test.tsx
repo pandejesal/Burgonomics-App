@@ -297,12 +297,6 @@ function payButton(): HTMLButtonElement {
   return button as HTMLButtonElement;
 }
 
-function radio(value: Fulfillment): HTMLInputElement {
-  const input = container.querySelector<HTMLInputElement>(`input[type="radio"][value="${value}"]`);
-  expect(input).not.toBeNull();
-  return input!;
-}
-
 describe("checkout — null fulfillment is an honest, blocking state", () => {
   it("shows the unselected chooser and disables PAY before any preflight can run", async () => {
     await mount();
@@ -374,21 +368,27 @@ describe("checkout — null fulfillment is an honest, blocking state", () => {
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
   });
 
-  it("never offers a mode the outlet does not support", async () => {
-    seedSelection(null, { ...store, supports: { delivery: false, takeaway: true, dineIn: false } });
+  it("refuses a persisted unsupported mode instead of silently choosing the supported one", async () => {
+    seedSelection("delivery", {
+      ...store,
+      supports: { delivery: false, takeaway: true, dineIn: false },
+    });
     await mount();
 
     expect(container.querySelector('input[value="delivery"]')).toBeNull();
     expect(container.querySelector('input[value="dinein"]')).toBeNull();
-    expect(radio("takeaway")).not.toBeNull();
+    expect(container.textContent).toContain("This outlet is not offering");
     expect(payButton().disabled).toBe(true);
+    await act(async () => payButton().click());
+    expect(fixture.createOrder).not.toHaveBeenCalled();
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
   });
 
-  it("wires an explicit supported choice through setFulfillment and unblocks PAY", async () => {
+  it("unblocks PAY when the menu/store flow supplies an explicit supported choice", async () => {
     await mount();
     expect(payButton().disabled).toBe(true);
 
-    await act(async () => radio("takeaway").click());
+    await act(async () => useStoreSelection.getState().setFulfillment("takeaway"));
     await act(async () => {});
 
     // Real store selection now holds the explicit choice; no default was guessed.

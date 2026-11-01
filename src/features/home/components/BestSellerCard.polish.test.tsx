@@ -157,7 +157,7 @@ describe("Home best-seller quick add", () => {
     );
     expect(add, "named ADD button").not.toBeNull();
     expect(add!.tagName).toBe("BUTTON");
-    expect(classTokens(add!)).toContain("min-h-[44px]");
+    expect(classTokens(add!)).toContain("min-h-11");
     expect(container.querySelectorAll("a button")).toHaveLength(0);
 
     await act(async () => add!.click());
@@ -178,15 +178,15 @@ describe("Home best-seller quick add", () => {
     await mount();
 
     const increase = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Increase quantity of Truffle Mushroom Smash"]',
+      'button[aria-label="Add one Truffle Mushroom Smash"]',
     );
     const decrease = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Decrease quantity of Truffle Mushroom Smash"]',
+      'button[aria-label="Remove one Truffle Mushroom Smash"]',
     );
     expect(increase, "named increase button").not.toBeNull();
     expect(decrease, "named decrease button").not.toBeNull();
-    expect(classTokens(increase!)).toContain("min-h-[44px]");
-    expect(classTokens(decrease!)).toContain("min-h-[44px]");
+    expect(classTokens(increase!)).toContain("h-11");
+    expect(classTokens(decrease!)).toContain("h-11");
 
     await act(async () => increase!.click());
     expect(fixture.updateQuantity).toHaveBeenCalledWith("line_truffle", 3);
@@ -200,10 +200,10 @@ describe("Home best-seller quick add", () => {
     await mount();
 
     const remove = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Remove Truffle Mushroom Smash from cart"]',
+      'button[aria-label="Remove one Truffle Mushroom Smash"]',
     );
     expect(remove, "named remove button at quantity 1").not.toBeNull();
-    expect(classTokens(remove!)).toContain("min-h-[44px]");
+    expect(classTokens(remove!)).toContain("h-11");
 
     await act(async () => remove!.click());
     expect(fixture.removeItem).toHaveBeenCalledWith("line_truffle");

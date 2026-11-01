@@ -245,7 +245,16 @@ export const useCheckoutStore = create<CheckoutState>()(
         // under the SAME account/outlet while this order was being paid. Only
         // the exact revision captured before the order clears.
         if (!sameDraft) return;
-        set({ orderNotes: "", legacyOrderNotes: "", notesRevision: current.notesRevision + 1 });
+        set({
+          orderNotes: "",
+          legacyOrderNotes: "",
+          notesRevision: current.notesRevision + 1,
+          tipAmount: 0,
+          loyaltyPointsToRedeem: 0,
+          deliveryInstructions: "",
+          pickupInstructions: "",
+          diningNotes: "",
+        });
       },
       reset: () => set((current) => ({ ...initial, notesRevision: current.notesRevision + 1 })),
     }),

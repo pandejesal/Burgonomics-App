@@ -65,6 +65,8 @@ vi.mock("@/features/home", () => ({
       bundle: fixture.bundle,
       error: null,
       load: fixture.load,
+      lastLoadedStoreId: "store_1",
+      lastLoadedUserId: "customer_1",
     }),
 }));
 vi.mock("@/features/home/components/BrandHeader", () => ({
@@ -85,12 +87,11 @@ vi.mock("@/features/home/components/BestSellerCard", () => ({
 vi.mock("@/features/home/components/ComboCard", () => ({
   ComboCard: () => null,
 }));
-vi.mock("@/features/home/components/QuickReorderRail", () => ({
-  QuickReorderRail: () => null,
-}));
 vi.mock("@/features/home/components/HomeSkeleton", () => ({
   HomeSkeleton: () => null,
 }));
+vi.mock("@/features/home/components/HomeAnnouncements", () => ({ HomeAnnouncements: () => null }));
+vi.mock("@/features/home/components/FavoritesRail", () => ({ FavoritesRail: () => null }));
 vi.mock("@/features/menu/components/CategoryPills", () => ({
   CategoryPills: () => null,
 }));
@@ -158,7 +159,7 @@ describe("home section landmarks", () => {
   it("resolves every aria-labelledby to the matching visible SectionHeader h2", async () => {
     await mount();
 
-    const expectedHeadings = ["Explore Menu", "Reorder in 1-Tap", "Bestsellers", "Value Combos"];
+    const expectedHeadings = ["On the menu", "Best sellers", "Make it a meal"];
     const sections = Array.from(
       container.querySelectorAll<HTMLElement>("section[aria-labelledby]"),
     );
