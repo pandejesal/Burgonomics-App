@@ -73,6 +73,8 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>BURGONOMICS uses your location to show nearby stores and calculate delivery options.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>BURGONOMICS uses your location to show nearby stores and calculate delivery options.</string>
 	<!-- No NSCameraUsageDescription / NSPhotoLibraryUsageDescription: no camera
