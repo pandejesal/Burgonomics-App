@@ -27,6 +27,7 @@ import {
 import {
   scopedNamespacedStorage,
   browserOrMemoryStorage,
+  currentScopedUid,
   onAuthUidChange,
   readScopedPersisted,
 } from "@/features/auth/utils/scopedPersistence";
@@ -136,6 +137,12 @@ interface CheckoutState {
   reset: () => void;
 }
 
+/**
+ * Uid that authored the live draft (runtime only, never persisted). Null means
+ * a guest wrote it — those keystrokes must survive a mid-flow sign-in.
+ */
+let lastNotesAuthorUid: string | null = null;
+
 const initial = {
   orderNotes: "",
   legacyOrderNotes: "",
@@ -160,6 +167,10 @@ export const useCheckoutStore = create<CheckoutState>()(
         const current = get();
         const result = applyOrderNotesEdit(current.orderNotes, v);
         if (!result.ok) return false;
+        // Remember WHO authored the draft. The screen also binds scope on
+        // mount, but a guest→login switch must be able to tell a guest draft
+        // from another account's even before that effect runs.
+        lastNotesAuthorUid = currentScopedUid();
         set({ orderNotes: result.value, notesRevision: current.notesRevision + 1 });
         return true;
       },
@@ -353,11 +364,32 @@ function readCheckoutScope(uid: string | null): ScopedCheckout {
 }
 
 onAuthUidChange((uid) => {
-  useCheckoutStore.setState((current) => ({
-    ...readCheckoutScope(uid),
-    notesScope: null,
-    // A new identity is a new draft generation: an in-flight order from the
-    // previous account must not clear what this one is writing.
-    notesRevision: (current.notesRevision ?? 0) + 1,
-  }));
+  useCheckoutStore.setState((current) => {
+    // Guest → signed-in mid-flow (the checkout QuickAuthSheet): the live draft
+    // is the customer's note. Loading the account's persisted row instead
+    // wiped it whenever that row was empty — including the common case of an
+    // older empty scoped row, which also defeats the legacy guest fallback.
+    // Keep what they typed; the account's own scope starts from it. A draft
+    // authored under another signed-in account is never carried across.
+    const keepGuestDraft = lastNotesAuthorUid === null && uid !== null;
+    if (keepGuestDraft) lastNotesAuthorUid = uid;
+    return {
+      ...readCheckoutScope(uid),
+      ...(keepGuestDraft
+        ? {
+            orderNotes: current.orderNotes,
+            legacyOrderNotes: current.legacyOrderNotes,
+            deliveryInstructions: current.deliveryInstructions,
+            pickupInstructions: current.pickupInstructions,
+            diningNotes: current.diningNotes,
+            tableNumber: current.tableNumber,
+            tipAmount: current.tipAmount,
+          }
+        : {}),
+      notesScope: null,
+      // A new identity is a new draft generation: an in-flight order from the
+      // previous account must not clear what this one is writing.
+      notesRevision: (current.notesRevision ?? 0) + 1,
+    };
+  });
 });
