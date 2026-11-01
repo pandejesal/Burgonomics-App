@@ -135,13 +135,32 @@ async function authHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
-/** Base URL of the live Cloud Functions backend (same resolution as the
- * Petpooja gateway — env override, then the canonical project URL). */
+/**
+ * Base URL of the live Cloud Functions backend (same resolution as the
+ * Petpooja gateway — env override, then the canonical project URL).
+ */
 function liveFunctionsBase(): string {
   const env = import.meta.env as Record<string, string | undefined>;
   if (env.VITE_FUNCTIONS_API_URL) return env.VITE_FUNCTIONS_API_URL.replace(/\/$/, "");
   const projectId = env.VITE_FIREBASE_PROJECT_ID || "burgonomics-7faa8";
   return `https://asia-south1-${projectId}.cloudfunctions.net/api`;
+}
+
+/**
+ * Auth + App Check headers for a live Cloud Functions call. Single-sourced so
+ * every route (tickets, feedback) attests identically — an un-attested route
+ * would fail the moment App Check is enforced.
+ */
+async function liveCallHeaders(): Promise<Record<string, string>> {
+  const headers = await authHeaders();
+  try {
+    const { getAppCheckToken } = await import("@/core/config/firebase");
+    const appCheckToken = await getAppCheckToken();
+    if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
+  } catch {
+    // Attestation unavailable — server runs monitor mode until enforced.
+  }
+  return headers;
 }
 
 /** Input shape for the LIVE POST /tickets/create route (server schema). */
@@ -165,46 +184,6 @@ export interface LiveTicketSubmitInput {
 
 export const supportService = {
   /**
-   * ROUTE AUDIT: `GET /v1/support/faqs` does NOT exist. The backend registers
-   * 52 routes (functions/src/index.ts) and none of them serves FAQs, so this
-   * used to 404 into `ok([])` — a false empty state that told the customer
-   * "there are no FAQs" when there was simply no endpoint. Returns an honest
-   * failure; the Help screen renders an error with Retry.
-   */
-  async listFaqs(): Promise<ApiResult<FaqItem[]>> {
-    return fail(
-      "SUPPORT_CONTENT_UNAVAILABLE",
-      "Help articles aren't available right now. Please try again later.",
-      true,
-    );
-  },
-
-  /**
-   * ROUTE AUDIT: `GET /v1/support/channels` does NOT exist. Same reasoning as
-   * listFaqs — no endpoint, so never report an empty channel list as truth.
-   */
-  async listChannels(): Promise<ApiResult<SupportChannel[]>> {
-    return fail(
-      "SUPPORT_CONTENT_UNAVAILABLE",
-      "Contact channels aren't available right now. Please try again later.",
-      true,
-    );
-  },
-
-  /**
-   * ROUTE AUDIT: `GET /v1/support/issue-categories` does NOT exist. The
-   * picker falls back to its own built-in category list, and this failure is
-   * reported rather than masked as an empty taxonomy.
-   */
-  async listIssueCategories(): Promise<ApiResult<IssueCategory[]>> {
-    return fail(
-      "SUPPORT_CONTENT_UNAVAILABLE",
-      "Issue categories aren't available right now.",
-      true,
-    );
-  },
-
-  /**
    * ROUTE AUDIT: no HTTP route lists a customer's tickets either.
    *
    * `GET /v1/support/tickets` never existed; this used to swallow the 404 and
@@ -222,27 +201,13 @@ export const supportService = {
   },
 
   /**
-   * ROUTE AUDIT: `POST /v1/support/tickets` does not exist.
-   *
-   * The only real creation route is `POST /tickets/create`
-   * (functions/src/index.ts:1105), and its schema REQUIRES `branchId` plus a
-   * `description` field and takes evidence under `attachments`. This legacy
-   * input shape has no branchId, uses `message`, and used to send `photoUrls`,
-   * so the server would reject it even if the path existed (and the schema
-   * would silently drop the photos). Rather than guess a branch, it fails
-   * honestly and points callers at submitTicketToLiveBackend, which speaks the
-   * real contract. Nothing currently routes real submissions through here.
+   * REMOVED: submitTicket targeted `POST /v1/support/tickets`, which never
+   * existed. The only real creation route is `POST /tickets/create`
+   * (functions/src/index.ts), spoken by submitTicketToLiveBackend below, whose
+   * schema requires branchId/description and takes evidence under
+   * `attachments`. Nothing called this method, so it is deleted rather than
+   * left as a trap that silently drops photos.
    */
-  async submitTicket(input: SupportTicketInput): Promise<ApiResult<SupportTicket>> {
-    if (!input.subject.trim() || !input.message.trim()) {
-      return fail("INVALID_TICKET", "Please add a subject and a short message.");
-    }
-    return fail(
-      "TICKET_ROUTE_MISMATCH",
-      "This submit path is retired — tickets are created through the live ticket service.",
-      false,
-    );
-  },
 
   /**
    * Upload photo evidence to Firebase Storage and return download URLs.
@@ -273,20 +238,68 @@ export const supportService = {
   },
 
   /**
-   * ROUTE AUDIT: `POST /v1/support/feedback` does not exist. Returning a
-   * fabricated success (the old code also invented `id`/`createdAt` locally)
-   * told the customer their feedback was recorded when nothing received it.
-   * Fails honestly until a feedback route ships.
+   * ROUTE: POST /support/feedback (functions/src/index.ts) — LIVE.
+   *
+   * POST /v1/support/feedback never existed, and the old code fabricated an id
+   * and createdAt locally so the customer saw a success that recorded nothing.
+   * This posts the real contract (supportFeedbackSchema: rating 1..5 int,
+   * optional comment <= 2000, optional orderId <= 128) with the same base URL
+   * and auth/App Check header approach as submitTicketToLiveBackend, and only
+   * reports success on a real 2xx.
    */
   async submitFeedback(input: FeedbackInput): Promise<ApiResult<FeedbackRecord>> {
     if (!Number.isFinite(input.rating) || input.rating < 1 || input.rating > 5) {
       return fail("INVALID_RATING", "Please select a rating between 1 and 5.");
     }
-    return fail(
-      "FEEDBACK_UNAVAILABLE",
-      "Feedback can't be submitted right now — no feedback service is connected yet.",
-      false,
-    );
+    try {
+      const headers = await liveCallHeaders();
+      const res = await fetch(`${liveFunctionsBase()}/support/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          // The server requires an integer 1..5; a fractional score would be a
+          // 400, so round the star rating the UI produced.
+          rating: Math.round(input.rating),
+          comment: input.comment?.trim() || undefined,
+          orderId: input.orderId,
+          // A suggestion is folded into the comment the server stores; the
+          // route has no separate field, and dropping it silently would lose
+          // what the customer typed.
+          ...(input.suggestion?.trim()
+            ? {
+                comment: [input.comment?.trim(), input.suggestion.trim()]
+                  .filter(Boolean)
+                  .join("\n\n"),
+              }
+            : {}),
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return fail(
+          "FEEDBACK_SUBMIT_FAILED",
+          `Feedback was not recorded (HTTP ${res.status})${text ? `: ${text.slice(0, 200)}` : ""}`,
+          res.status >= 500,
+        );
+      }
+      const data = (await res.json().catch(() => ({}))) as { id?: string };
+      if (typeof data.id !== "string" || !data.id) {
+        // A 2xx without an id means the server did not confirm a record; do not
+        // claim the feedback was saved.
+        return fail("FEEDBACK_SUBMIT_FAILED", "Feedback service returned no confirmation.", true);
+      }
+      return ok({
+        id: data.id,
+        createdAt: Date.now(),
+        rating: Math.round(input.rating),
+        comment: input.comment,
+        suggestion: input.suggestion,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not send feedback. Please try again.";
+      return fail("FEEDBACK_SUBMIT_FAILED", message, true);
+    }
   },
 
   /**
@@ -302,14 +315,7 @@ export const supportService = {
     ApiResult<{ id: string; ticketNumber?: string; status?: string; createdAt?: string | number }>
   > {
     try {
-      const headers = await authHeaders();
-      try {
-        const { getAppCheckToken } = await import("@/core/config/firebase");
-        const appCheckToken = await getAppCheckToken();
-        if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
-      } catch {
-        // Attestation unavailable — server runs monitor mode until enforced.
-      }
+      const headers = await liveCallHeaders();
       const res = await fetch(`${liveFunctionsBase()}/tickets/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headers },

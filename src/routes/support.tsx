@@ -29,12 +29,7 @@ import { CreateTicketForm } from "@/features/support/components/CreateTicketForm
 import { TicketListAccordion } from "@/features/support/components/TicketListAccordion";
 import { useOrdersStore } from "@/features/orders";
 import type { Order } from "@/features/orders";
-import type {
-  FaqItem,
-  IssueCategory,
-  IssueCategoryId,
-  SupportChannel,
-} from "@/features/support/models";
+import type { FaqItem, IssueCategory, SupportChannel } from "@/features/support/models";
 import { toast } from "sonner";
 import { toUserMessage } from "@/core/errors/userMessages";
 
@@ -74,11 +69,18 @@ function Page() {
   // retype it — and support gets the one field they need to trace the money.
   const search = Route.useSearch();
   const paymentPrefill = search.topic === "payment" && search.paymentId ? search : null;
-  const [faqs, setFaqs] = React.useState<FaqItem[] | null>(null);
-  const [faqsError, setFaqsError] = React.useState(false);
-  const [channels, setChannels] = React.useState<SupportChannel[] | null>(null);
-  const [channelsError, setChannelsError] = React.useState(false);
-  const [categories, setCategories] = React.useState<IssueCategory[]>([]);
+  // FAQs, channels and categories are LOCAL app data (features/support/data):
+  // there is no /v1/support/* route, and they cannot fail, so there is no
+  // loading and no error state for them. Only genuinely remote work (tickets,
+  // feedback) keeps error handling.
+  const faqs: FaqItem[] = React.useMemo(() => {
+    const res = supportRepository.listFaqs();
+    return res.success ? res.data : [];
+  }, []);
+  const channels: SupportChannel[] = React.useMemo(() => {
+    const res = supportRepository.listChannels();
+    return res.success ? res.data : [];
+  }, []);
   const [faqQuery, setFaqQuery] = React.useState("");
   const [openTicket, setOpenTicket] = React.useState(!!paymentPrefill);
   const [openFeedback, setOpenFeedback] = React.useState(false);
@@ -93,29 +95,7 @@ function Page() {
     return orderIds.map((id) => st.byId[id]).filter(Boolean) as Order[];
   }, [orderIds]);
 
-  // M6: a failed load previously left `faqs`/`channels` at null, so the pulse
-  // skeleton below rendered forever. Track failure per surface instead, so the
-  // section can show an honest error with a retry.
-  const loadSupportContent = React.useCallback(() => {
-    setFaqsError(false);
-    setChannelsError(false);
-    void supportRepository.listFaqs().then((r) => {
-      if (r.success) setFaqs(r.data);
-      else setFaqsError(true);
-    });
-    void supportRepository.listChannels().then((r) => {
-      if (r.success) setChannels(r.data);
-      else setChannelsError(true);
-    });
-  }, []);
-
-  React.useEffect(() => {
-    loadSupportContent();
-    void supportRepository.listIssueCategories().then((r) => r.success && setCategories(r.data));
-  }, [loadSupportContent]);
-
-  const filteredFaqs = React.useMemo(() => {
-    if (!faqs) return null;
+  const filteredFaqs: FaqItem[] = React.useMemo(() => {
     const q = faqQuery.trim().toLowerCase();
     if (!q) return faqs;
     return faqs.filter(
@@ -180,24 +160,17 @@ function Page() {
           )}
         </section>
 
-        {/* Direct Contact Channels */}
+        {/* Direct Contact Channels — local APP values + in-app ticketing.
+            Only real configured values are listed; a channel with no value in
+            APP is omitted rather than invented. */}
         <section className="space-y-3">
           <Text variant="titleMedium" className="font-semibold">
             Direct Contact Channels
           </Text>
-          {channelsError ? (
+          {channels.length === 0 ? (
             <EmptyState
-              title="Couldn't load contact channels"
-              description="We couldn't load our contact channels. Please try again."
-              actionLabel="Try Again"
-              onAction={loadSupportContent}
-            />
-          ) : channels === null ? (
-            <div className="h-24 animate-pulse rounded-2xl bg-bg-secondary" />
-          ) : channels.length === 0 ? (
-            <EmptyState
-              title="No channels"
-              description="Contact channels are currently unavailable."
+              title="Raise a ticket in the app"
+              description="Contact details aren't configured yet. You can still raise a support ticket above and track the reply here."
             />
           ) : (
             <ul className="space-y-2">
@@ -236,35 +209,27 @@ function Page() {
               Frequently Asked Questions
             </Text>
           </div>
-          {faqs && faqs.length > 0 && (
+          {faqs.length > 0 && (
             <label className="flex h-12 items-center gap-2 rounded-2xl border border-divider bg-surface px-4 focus-within:border-primary">
               <input
                 type="search"
                 value={faqQuery}
                 onChange={(e) => setFaqQuery(e.target.value)}
-                placeholder="Search FAQs (e.g. refund, delivery time, coins)…"
+                placeholder="Search FAQs (e.g. refund, delivery fee, GST)…"
                 aria-label="Search frequently asked questions"
                 className="flex-1 bg-transparent text-base text-text outline-none placeholder:text-text-secondary"
               />
             </label>
           )}
-          {faqsError ? (
+          {faqs.length === 0 ? (
             <EmptyState
-              title="Couldn't load FAQs"
-              description="We couldn't load the help articles. Please try again."
-              actionLabel="Try Again"
-              onAction={loadSupportContent}
+              title="No FAQs"
+              description="Check back later — we're expanding our help center."
             />
-          ) : filteredFaqs === null ? (
-            <div className="h-40 animate-pulse rounded-2xl bg-bg-secondary" />
           ) : filteredFaqs.length === 0 ? (
             <EmptyState
-              title={faqQuery ? "No matching FAQs" : "No FAQs"}
-              description={
-                faqQuery
-                  ? "Try a different word or contact our store above."
-                  : "Check back later — we're expanding our help center."
-              }
+              title="No matching FAQs"
+              description="Try a different word, or raise a ticket above and our team will answer directly."
             />
           ) : (
             <ul className="overflow-hidden rounded-3xl border border-divider bg-surface divide-y divide-divider">

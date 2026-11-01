@@ -15,8 +15,15 @@ export interface SupportChannel {
   helper?: string;
 }
 
-/** Repository-driven categories for the Report Issue form. */
-export type IssueCategoryId = "order" | "payment" | "delivery" | "technical" | "other";
+/**
+ * Repository-driven categories for the Report Issue form.
+ *
+ * The ids ARE the app's canonical TicketCategory codes (useCustomerTickets),
+ * so the help-centre list and the ticket form share one vocabulary and the
+ * backend's ticketCategorySchema maps onto them without a translation table.
+ */
+export type IssueCategoryId =
+  "LATE_DELIVERY" | "MISSING_ITEM" | "FOOD_QUALITY" | "WRONG_ORDER" | "PAYMENT_ISSUE" | "OTHER";
 
 export interface IssueCategory {
   id: IssueCategoryId;
@@ -65,6 +72,8 @@ export interface FeedbackInput {
   rating: number; // 1..5
   comment?: string;
   suggestion?: string;
+  /** Optional ticket/order context; the server schema accepts it (max 128). */
+  orderId?: string;
 }
 
 export interface FeedbackRecord extends FeedbackInput {

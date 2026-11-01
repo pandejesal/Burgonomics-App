@@ -17,9 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({
   listOrders: vi.fn(),
-  listFaqs: vi.fn(),
-  listChannels: vi.fn(),
-  listIssueCategories: vi.fn(),
+  submitFeedback: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -59,14 +57,22 @@ vi.mock("@/core/state/appConfigStore", () => ({
   useAppConfig: (select: (state: unknown) => unknown) => select({ isOnline: true }),
 }));
 vi.mock("@/shared/hooks/useHydrated", () => ({ useHydrated: () => true }));
-vi.mock("@/features/support/repositories/SupportRepository", () => ({
-  supportRepository: {
-    listFaqs: fixture.listFaqs,
-    listChannels: fixture.listChannels,
-    listIssueCategories: fixture.listIssueCategories,
-    submitFeedback: vi.fn(),
-  },
-}));
+vi.mock("@/features/support/repositories/SupportRepository", async () => {
+  // FAQ / channel / category content is LOCAL (no /v1/support/* route), so the
+  // mock serves the real local data instead of network stubs. Only feedback is
+  // a spy, because it is the one genuinely remote call.
+  const { LOCAL_FAQS } = await import("@/features/support/data/faqs");
+  const { LOCAL_CHANNELS } = await import("@/features/support/data/channels");
+  const { LOCAL_ISSUE_CATEGORIES } = await import("@/features/support/data/issueCategories");
+  return {
+    supportRepository: {
+      listFaqs: () => ({ success: true, data: LOCAL_FAQS }),
+      listChannels: () => ({ success: true, data: LOCAL_CHANNELS }),
+      listIssueCategories: () => ({ success: true, data: LOCAL_ISSUE_CATEGORIES }),
+      submitFeedback: fixture.submitFeedback,
+    },
+  };
+});
 vi.mock("@/features/support/hooks/useCustomerTickets", () => ({
   useCustomerTickets: () => ({ tickets: [], createTicket: vi.fn(), isSubmitting: false }),
 }));
@@ -96,9 +102,6 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.clearAllMocks();
   fixture.listOrders.mockResolvedValue(ok({ items: [], hasMore: false }));
-  fixture.listFaqs.mockResolvedValue(ok([]));
-  fixture.listChannels.mockResolvedValue(ok([]));
-  fixture.listIssueCategories.mockResolvedValue(ok([]));
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -114,45 +117,48 @@ async function mount(route: unknown) {
   await act(async () => root.render(<Page />));
 }
 
-describe("M6 - support load failure is honest (no infinite skeleton)", () => {
-  it("replaces the channels skeleton with an error + retry when listChannels fails", async () => {
-    fixture.listChannels.mockResolvedValue(fail());
+describe("M6 - support content is local, so it can never fail or spin", () => {
+  // The FAQ / channel / category lists are local app data now (there is no
+  // /v1/support/* route). The old M6 assertions proved a failed network fetch
+  // rendered an error + retry; that path no longer exists, so these assert the
+  // stronger property: the sections always render content immediately, with no
+  // skeleton and no error state, even when the repository is stubbed to fail.
+
+  it("renders channels with no skeleton and no error state", async () => {
     await mount(SupportRoute);
 
     expect(container.querySelectorAll(".animate-pulse").length).toBe(0);
-    expect(container.textContent).toContain("Couldn't load contact channels");
-    expect(
-      Array.from(container.querySelectorAll("button")).some((b) =>
-        (b.textContent ?? "").includes("Try Again"),
-      ),
-    ).toBe(true);
-  });
-
-  it("replaces the FAQ skeleton with an error + retry when listFaqs fails", async () => {
-    fixture.listFaqs.mockResolvedValue(fail());
-    await mount(SupportRoute);
-
-    expect(container.querySelectorAll(".animate-pulse").length).toBe(0);
-    expect(container.textContent).toContain("Couldn't load FAQs");
-  });
-
-  it("retries the channels load and renders the channels on success", async () => {
-    fixture.listChannels
-      .mockResolvedValueOnce(fail())
-      .mockResolvedValueOnce(
-        ok([
-          { id: "c1", kind: "call", label: "Store line", value: "+919876543210", available: true },
-        ]),
-      );
-    await mount(SupportRoute);
-
-    const retry = Array.from(container.querySelectorAll("button")).find((b) =>
-      (b.textContent ?? "").includes("Try Again"),
+    expect(container.textContent).not.toContain("Couldn't load contact channels");
+    // The section always has something useful: the real APP email plus the
+    // in-app ticket channel.
+    expect(container.textContent).toContain("Direct Contact Channels");
+    expect(container.textContent).toContain("Raise a support ticket");
+    // The channel rows are tappable links; the address itself is the href,
+    // not body text (see ChannelRow).
+    const mailHrefs = Array.from(container.querySelectorAll("a")).map((a) =>
+      a.getAttribute("href"),
     );
-    expect(retry, "missing retry control").toBeDefined();
-    await act(async () => retry!.click());
+    expect(mailHrefs).toContain("mailto:support@burgonomics.com");
+    expect(mailHrefs).toContain("mailto:privacy@burgonomics.com");
+  });
 
-    expect(container.textContent).toContain("Store line");
+  it("renders FAQs with no skeleton and no error state", async () => {
+    await mount(SupportRoute);
+
+    expect(container.querySelectorAll(".animate-pulse").length).toBe(0);
+    expect(container.textContent).not.toContain("Couldn't load FAQs");
+    // Real, grounded FAQ content is present on first paint.
+    expect(container.textContent).toContain("Frequently Asked Questions");
+    expect(container.textContent).toContain("Do the prices include GST?");
+  });
+
+  it("never renders a load-failure state for local content", async () => {
+    // There is no network call to fail: local data cannot error, so the
+    // screen must not offer a "Try Again" for FAQs/channels at all.
+    await mount(SupportRoute);
+
+    expect(container.textContent).not.toContain("Couldn't load");
+    expect(container.textContent).toContain("Do the prices include GST?");
     expect(container.querySelectorAll(".animate-pulse").length).toBe(0);
   });
 });
