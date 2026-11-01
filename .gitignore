@@ -86,3 +86,6 @@ ios/App/DerivedData
 # Playwright runner output (never evidence — evidence lives outside the repo)
 test-results/
 playwright-report/
+
+# Generated only with a real TEAM_ID; never commit a placeholder.
+public/.well-known/apple-app-site-association

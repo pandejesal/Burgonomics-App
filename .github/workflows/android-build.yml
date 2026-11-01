@@ -7,6 +7,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+env:
+  TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
 jobs:
   build-android:
     name: Build & Assemble Android Release APK

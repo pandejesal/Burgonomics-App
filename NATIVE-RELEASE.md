@@ -11,3 +11,6 @@ Preparation fails with the missing key name, never its value. Ignored generated 
 ## Apple distribution secrets
 
 ASC_API_KEY_BASE64 (base64 .p8), ASC_KEY_ID, ASC_ISSUER_ID, APPLE_TEAM_ID, IOS_CERTIFICATE_BASE64 (base64 distribution .p12), IOS_CERTIFICATE_PASSWORD, IOS_PROFILE_BASE64 (base64 App Store profile with exact bundle and production push). None set means unsigned archive; partial configuration fails with missing names. All present enables signed archive and IPA export only, never automatic upload. Temporary keychain/private files/profile are cleaned in finally.
+
+## Apple web association
+Set build environment TEAM_ID to the real Apple application-identifier prefix. Native CI maps APPLE_TEAM_ID secret to TEAM_ID. Every npm production/mobile build generates AASA; unset omits it, invalid fails and removes stale output. Host generated JSON without redirects; merge both app entries when sharing a host. No placeholder document is committed.

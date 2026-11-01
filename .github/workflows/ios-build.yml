@@ -32,6 +32,9 @@ on:
 permissions:
   contents: read
 
+env:
+  TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
 jobs:
   build-ios:
     name: Build & Export iOS Simulator App
