@@ -34,6 +34,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const result = prepareConfig(process.env, process.argv[2]);
     writeFileSync('.env.production', result.dotenv, { mode: 0o600 });
+    writeFileSync('.env', result.dotenv, { mode: 0o600 });
     writeFileSync(result.nativePath, result.native, { mode: 0o600 });
     console.log('Native production configuration validated (no values logged).');
   } catch (error) { console.error(`::error::${error.message}`); process.exitCode = 1; }
