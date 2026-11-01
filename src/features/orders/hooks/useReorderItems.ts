@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 1-Tap Reorder — validate the LIVE outlet before touching the basket.
  *
  * Contract (D31–D33 / cart-reorder rewrite):

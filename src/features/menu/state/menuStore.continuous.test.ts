@@ -1,11 +1,11 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product } from "@/features/menu/models";
 
 /**
  * Continuous-menu store behaviour: paged sections, store/epoch ownership,
  * bounded concurrency and live updates that never invent or delete products.
  *
- * The repository is the only seam â€” the real store, its scheduler and its
+ * The repository is the only seam — the real store, its scheduler and its
  * snapshot merge all run here.
  */
 
@@ -315,7 +315,7 @@ describe("live menu snapshots", () => {
       .map((item) => ({ ...item }));
 
     // A page-shaped payload without any explicit removal says nothing about
-    // items 21..60 â€” they must all survive.
+    // items 21..60 — they must all survive.
     liveCallback!({ success: true, data: { products: firstPageOnly, removedIds: [] } });
     expect(useMenuStore.getState().buckets.cat_a.items).toHaveLength(60);
 

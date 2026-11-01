@@ -1,4 +1,4 @@
-﻿import * as React from "react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 import type { Fulfillment } from "@/features/stores/models/Store";

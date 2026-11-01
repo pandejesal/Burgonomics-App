@@ -71,14 +71,14 @@ interface AuthState {
 
 /**
  * Live Firebase uid, or null when no Firebase session exists. Single seam
- * for the bootstrap trust gate â€” injectable in tests (module-mock
+ * for the bootstrap trust gate — injectable in tests (module-mock
  * interception is importer-dependent and cannot pin this gate; see Loop 9).
  */
 export async function getFirebaseSessionUid(): Promise<string | null> {
   try {
     await firebaseAuth.authStateReady();
   } catch {
-    // authStateReady failure â€” fall through to the currentUser check.
+    // authStateReady failure — fall through to the currentUser check.
   }
   return firebaseAuth.currentUser?.uid ?? null;
 }
@@ -626,7 +626,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 // Selector helpers to avoid re-renders. Single definition of
 // "authenticated" for the whole app (mirrors useRequireAuth's identity
 // check): status + token + user identity (id + phone). A token-only
-// session (corrupt/partial restore) is NOT authenticated anywhere â€”
+// session (corrupt/partial restore) is NOT authenticated anywhere —
 // payment, checkout, and repository gates all share this.
 export const selectIsAuthenticated = (s: AuthState) =>
   s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone;
@@ -634,7 +634,7 @@ export const selectIsAuthenticated = (s: AuthState) =>
 export const selectIsGuest = (s: AuthState) => s.status !== "authenticated";
 
 // Loop 36/120 (finding 6): publish the uid source to the shared scoping
-// helper (which deliberately does NOT import this module â€” see its header
+// helper (which deliberately does NOT import this module — see its header
 // for the import-cycle rationale). Every user-owned persisted store
 // (orders / notifications / checkout / loyalty) keys its storage by the
 // uid reported here and re-scopes on change.

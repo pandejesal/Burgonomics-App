@@ -1,4 +1,4 @@
-﻿import * as React from "react";
+import * as React from "react";
 import { Link } from "@tanstack/react-router";
 import { MapPin, ChevronDown, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";

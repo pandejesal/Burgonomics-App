@@ -1,4 +1,4 @@
-﻿/** @vitest-environment jsdom */
+/** @vitest-environment jsdom */
 /**
  * Compact grid container (owner request 2026-10-29): two product columns from
  * 320 CSS px, 8px gap, and tighter grid-only section spacing — so a 360px phone

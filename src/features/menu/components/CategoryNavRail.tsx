@@ -1,4 +1,4 @@
-﻿import * as React from "react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 import { HapticService } from "@/core/services/haptics";
 import { centerScrollLeft } from "../utils/categoryScroll";
@@ -15,8 +15,8 @@ interface CategoryNavRailProps {
  * Find the chip for a category by its `data-category-id`.
  *
  * A `querySelector` + `CSS.escape` build works, but ids come from Petpooja and
- * not every WebView we ship to is guaranteed to expose `CSS.escape` â€” a missing
- * one would throw and blank the whole rail. Scanning the (â‰¤ ~20) children
+ * not every WebView we ship to is guaranteed to expose `CSS.escape` — a missing
+ * one would throw and blank the whole rail. Scanning the (≤ ~20) children
  * cannot throw on an id, and costs less than escaping + parsing a selector.
  */
 function findChip(container: HTMLElement, categoryId: string): HTMLButtonElement | null {
@@ -38,7 +38,7 @@ interface AlignedGeometry {
 }
 
 /**
- * CategoryNavRail â€” sticky horizontal category navigation.
+ * CategoryNavRail — sticky horizontal category navigation.
  *
  * This is a nav of in-page jumps over ONE continuous menu, not a tab set:
  * every category section stays mounted in natural vertical flow and the chip
@@ -58,7 +58,7 @@ export function CategoryNavRail({
   /**
    * Centre `categoryId`'s chip. Records the geometry it centred on so the
    * drift check below can tell "the chips re-flowed" (a real reason to
-   * re-centre) from "the user dragged the rail" (scrollLeft only â€” leave it).
+   * re-centre) from "the user dragged the rail" (scrollLeft only — leave it).
    */
   const centerOn = React.useCallback((categoryId: string, behavior: ScrollBehavior) => {
     const container = scrollRef.current;
@@ -81,14 +81,14 @@ export function CategoryNavRail({
       clientWidth: geometry.clientWidth,
       scrollWidth: container.scrollWidth,
     });
-    // Already centred (within sub-pixel rounding): skip â€” a redundant
+    // Already centred (within sub-pixel rounding): skip — a redundant
     // `scrollTo` would restart any in-flight animation for no visual change.
     if (Math.abs(container.scrollLeft - target) < 0.5) return;
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     container.scrollTo({ left: target, behavior: reduced ? "instant" : behavior });
   }, []);
 
-  // Selection changed â†’ bring the active chip to the middle of the rail.
+  // Selection changed → bring the active chip to the middle of the rail.
   // The first alignment (mount / `?category=` deep link) jumps; later taps glide.
   React.useLayoutEffect(() => {
     if (!activeCategoryId) return;
