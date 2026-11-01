@@ -33,6 +33,12 @@ export interface DeliveryQuoteView {
   showDeliveryFee: boolean;
   /** True when every bill figure on screen is server-quoted and final. */
   showTotal: boolean;
+  /**
+   * True when the shown total excludes packaging the server has not priced
+   * yet (non-delivery only). The screen says so instead of presenting the
+   * figure as final.
+   */
+  packagingPending?: boolean;
   deliveryFee: number | null;
   /** Server packaging figure, when known. */
   packagingFee: number | null;
@@ -63,48 +69,33 @@ export function deliveryQuoteView(input: {
   const storeNotLinked = state.status === "error" && state.code === STORE_NOT_LINKED;
 
   if (!isDelivery) {
-    if (state.status === "ready") {
-      return {
-        status: "ready",
-        payEnabled: true,
-        showDeliveryFee: false,
-        showTotal: true,
-        deliveryFee: 0,
-        packagingFee: state.packagingFee,
-        deliveryQuoteId: null,
-        expiresAt: null,
-        message: null,
-        canRetry: false,
-        takeawaySelectable: false,
-      };
-    }
-    if (state.status === "idle" || state.status === "loading") {
-      return {
-        status: state.status,
-        payEnabled: false,
-        showDeliveryFee: false,
-        showTotal: false,
-        deliveryFee: null,
-        packagingFee: null,
-        deliveryQuoteId: null,
-        expiresAt: null,
-        message: GETTING_ORDER_PRICE,
-        canRetry: false,
-        takeawaySelectable: false,
-      };
-    }
+    // CUS-18: non-delivery needs no courier, so a packaging quote that has not
+    // landed yet (or failed) must never blind the whole bill. The item total
+    // and its included GST are already known and are shown; only packaging is
+    // still unpriced, and Pay stays disabled until the server prices it. The
+    // screen labels that pending packaging so the figure is never read as the
+    // final amount.
+    const packagingPending = state.status !== "ready";
+    const quoteFailed = state.status === "error";
     return {
       status: state.status,
-      payEnabled: false,
+      payEnabled: state.status === "ready",
       showDeliveryFee: false,
-      showTotal: false,
-      deliveryFee: null,
-      packagingFee: state.status === "unserviceable" ? state.packagingFee : null,
+      showTotal: true,
+      packagingPending,
+      deliveryFee: 0,
+      packagingFee: state.status === "ready" ? state.packagingFee : null,
       deliveryQuoteId: null,
       expiresAt: null,
-      message: storeNotLinked ? STORE_NOT_LINKED_MESSAGE : FEES_UNAVAILABLE_COPY,
-      canRetry: !storeNotLinked,
-      storeNotLinked,
+      message: !quoteFailed
+        ? packagingPending
+          ? GETTING_ORDER_PRICE
+          : null
+        : storeNotLinked
+          ? STORE_NOT_LINKED_MESSAGE
+          : FEES_UNAVAILABLE_COPY,
+      canRetry: quoteFailed && !storeNotLinked,
+      ...(storeNotLinked ? { storeNotLinked } : {}),
       takeawaySelectable: false,
     };
   }

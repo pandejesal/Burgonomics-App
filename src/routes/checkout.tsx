@@ -51,7 +51,17 @@ import {
   PaymentMethodSelector,
   calculateHaversineKm,
 } from "@/features/checkout";
-import { useAddressStore, selectAddresses, selectSelectedAddress } from "@/features/addresses";
+import {
+  useAddressStore,
+  selectAddresses,
+  selectSelectedAddress,
+  addressRepository,
+} from "@/features/addresses";
+import {
+  ADDRESS_LOAD_FAILED_COPY,
+  ADDRESS_LOADING_COPY,
+  classifyAddressLoad,
+} from "@/features/addresses/utils/addressLoadState";
 import { usePaymentStore, paymentRepository, razorpayAdapter } from "@/features/payments";
 import type { PaymentMethod, PaymentResult } from "@/features/payments/models";
 import {
@@ -150,6 +160,62 @@ export function CheckoutPage() {
   const addresses = useAddressStore(selectAddresses);
   const selectedAddress = useAddressStore(selectSelectedAddress);
   const selectAddress = useAddressStore((s) => s.select);
+
+  // CUS-18: checkout reads the ACCOUNT's addresses, not just this browser's
+  // localStorage. Only the Manage Addresses screen used to seed the store, so
+  // a fresh profile / second device showed "No saved delivery addresses found"
+  // for an account that has them. A read in flight and a failed read are their
+  // own states — neither is "you have no addresses".
+  const [addressLoad, setAddressLoad] = React.useState<{
+    loading: boolean;
+    error: string | null;
+  }>({ loading: true, error: null });
+  const [addressReload, setAddressReload] = React.useState(0);
+  React.useEffect(() => {
+    if (!hydrated) return;
+    // Signed-out visitors have no server collection; the local (guest) list is
+    // all there is and it needs no read.
+    if (!isAuthenticated) {
+      setAddressLoad({ loading: false, error: null });
+      return;
+    }
+    let active = true;
+    setAddressLoad({ loading: true, error: null });
+    // Optional call: isolated view hosts and route test doubles may replace the
+    // addresses module wholesale and expose no repository. A missing export
+    // from such a double must not crash checkout.
+    let seed: ReturnType<typeof addressRepository.hydrate> | undefined;
+    try {
+      seed = addressRepository?.hydrate?.();
+    } catch {
+      seed = undefined;
+    }
+    if (!seed) {
+      setAddressLoad({ loading: false, error: null });
+      return;
+    }
+    void seed.then(
+      (res) => {
+        if (!active) return;
+        setAddressLoad({
+          loading: false,
+          error: res.success ? null : res.error.message,
+        });
+      },
+      () => {
+        if (!active) return;
+        setAddressLoad({ loading: false, error: ADDRESS_LOAD_FAILED_COPY });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [hydrated, isAuthenticated, user?.id, addressReload]);
+  const addressLoadState = classifyAddressLoad({
+    loading: addressLoad.loading,
+    error: addressLoad.error,
+    count: addresses.length,
+  });
 
   // R8: live server quote for delivery + packaging. Quotes on entry and on any
   // change of address/store/fulfillment; stale answers are dropped in the store.
@@ -1196,14 +1262,50 @@ export function CheckoutPage() {
         {/* Address Selection with Geofencing (Delivery Mode Only) — Standard Delivery only */}
         {isDelivery && (
           <div className="space-y-4 rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
-            <AddressSelector
-              addresses={addresses}
-              selectedAddress={selectedAddress}
-              activeStore={activeStore}
-              onSelectAddress={(addr) => selectAddress(addr.id)}
-              onSwitchToTakeaway={() => setFulfillment("takeaway")}
-            />
-
+            {/* CUS-18: the read's own states. An in-flight or failed read is
+                never rendered as "no saved addresses". */}
+            {addressLoadState === "loading" && addresses.length === 0 ? (
+              <div role="status" aria-live="polite" className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="type-title-medium text-text-primary">Delivery Address</h4>
+                  <span className="type-caption text-text-secondary">{ADDRESS_LOADING_COPY}</span>
+                </div>
+                <Skeleton className="h-20 w-full rounded-[var(--radius-large)]" />
+              </div>
+            ) : addressLoadState === "error" && addresses.length === 0 ? (
+              <div
+                role="alert"
+                className="space-y-3 rounded-[var(--radius-large)] border border-warning/40 bg-warning/10 p-4"
+              >
+                <p className="type-body-medium font-semibold text-warning-text">
+                  {addressLoad.error ?? ADDRESS_LOAD_FAILED_COPY}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddressReload((value) => value + 1)}
+                    className="inline-flex min-h-11 items-center rounded-full bg-warning/20 px-4 type-button-sm text-warning-text transition-colors hover:bg-warning/30"
+                  >
+                    Try again
+                  </button>
+                  <Link
+                    to="/addresses/create"
+                    search={{ returnTo: "/checkout" }}
+                    className="inline-flex min-h-11 items-center rounded-full border border-divider bg-surface px-4 type-button-sm text-text transition-colors hover:bg-bg-secondary"
+                  >
+                    Add Delivery Address
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <AddressSelector
+                addresses={addresses}
+                selectedAddress={selectedAddress}
+                activeStore={activeStore}
+                onSelectAddress={(addr) => selectAddress(addr.id)}
+                onSwitchToTakeaway={() => setFulfillment("takeaway")}
+              />
+            )}
             <div className="pt-2 border-t border-divider">
               <div className="flex flex-wrap items-start gap-2.5 rounded-[var(--radius-medium)] border border-primary/30 bg-primary/5 p-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary text-primary-foreground">
@@ -1418,11 +1520,18 @@ export function CheckoutPage() {
             ) : null}
 
             <div className="flex items-start justify-between gap-3 border-t border-divider pt-3 type-title-medium text-text-primary">
-              <span>To Pay</span>
+              <span>
+                {quoteView.packagingPending ? "Total so far" : "To Pay"}
+              </span>
               <span className="type-price shrink-0 whitespace-nowrap text-right text-lg text-text-primary">
                 {totals && quoteView.showTotal ? formatINR(finalPayable) : "—"}
               </span>
             </div>
+            {quoteView.packagingPending && (
+              <p className="text-right type-caption text-text-secondary">
+                Excludes packaging, which this outlet prices at checkout.
+              </p>
+            )}
           </div>
         </section>
 
