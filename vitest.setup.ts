@@ -48,6 +48,47 @@ process.env.VITE_PORTAL_MODE = "partner";
 process.env.VITEST = "true";
 process.env.NODE_ENV = "test";
 
+// jsdom implements no pointer-capture API. Components that manage a mouse drag
+// (the home banner carousel) and Radix primitives both call it on pointer
+// gestures, so without a stub an event dispatched after the test's own stubs
+// are removed throws `el.hasPointerCapture is not a function` as an unhandled
+// error and fails an otherwise green run. Install the API only where the
+// environment lacks it; real browsers are untouched.
+if (typeof Element !== "undefined") {
+  const proto = Element.prototype as typeof Element.prototype & {
+    setPointerCapture?: (pointerId: number) => void;
+    releasePointerCapture?: (pointerId: number) => void;
+    hasPointerCapture?: (pointerId: number) => boolean;
+    scrollIntoView?: (options?: unknown) => void;
+  };
+  const captures = new WeakMap<Element, Set<number>>();
+  const capturedBy = (el: Element) => {
+    const current = captures.get(el) ?? new Set<number>();
+    captures.set(el, current);
+    return current;
+  };
+  if (typeof proto.setPointerCapture !== "function") {
+    proto.setPointerCapture = function setPointerCapture(pointerId: number) {
+      capturedBy(this).add(pointerId);
+    };
+  }
+  if (typeof proto.hasPointerCapture !== "function") {
+    proto.hasPointerCapture = function hasPointerCapture(pointerId: number) {
+      return capturedBy(this).has(pointerId);
+    };
+  }
+  if (typeof proto.releasePointerCapture !== "function") {
+    proto.releasePointerCapture = function releasePointerCapture(pointerId: number) {
+      capturedBy(this).delete(pointerId);
+    };
+  }
+  if (typeof proto.scrollIntoView !== "function") {
+    // jsdom has no layout, so this can only be a no-op, but Radix focus
+    // management calls it unconditionally.
+    proto.scrollIntoView = function scrollIntoView() {};
+  }
+}
+
 Object.defineProperty(import.meta, "env", {
   value: {
     ...import.meta.env,

@@ -309,8 +309,19 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
     Object.defineProperty(el, "clientWidth", { value: width, configurable: true });
   };
 
+  // Snapshot the environment's own descriptors (vitest.setup installs the
+  // jsdom pointer-capture stub) and restore them instead of deleting: a leaked
+  // pointer event after cleanup must not meet a missing method.
+  let savedDescriptors: Array<[object, string, PropertyDescriptor | undefined]> = [];
+
+  const override = (target: object, key: string, value: unknown) => {
+    savedDescriptors.push([target, key, Object.getOwnPropertyDescriptor(target, key)]);
+    Object.defineProperty(target, key, { value, configurable: true, writable: true });
+  };
+
   beforeEach(() => {
     scrollWrites.length = 0;
+    savedDescriptors = [];
     const capturedPointers = new Set<number>();
     setCapture = vi.fn((id: number) => {
       capturedPointers.add(id);
@@ -318,23 +329,16 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
     releaseCapture = vi.fn((id: number) => {
       capturedPointers.delete(id);
     });
-    Object.defineProperty(Element.prototype, "setPointerCapture", {
-      value: setCapture,
-      configurable: true,
-      writable: true,
-    });
-    Object.defineProperty(Element.prototype, "releasePointerCapture", {
-      value: releaseCapture,
-      configurable: true,
-      writable: true,
-    });
-    Object.defineProperty(Element.prototype, "hasPointerCapture", {
-      value: (id: number) => capturedPointers.has(id),
-      configurable: true,
-      writable: true,
-    });
+    override(Element.prototype, "setPointerCapture", setCapture);
+    override(Element.prototype, "releasePointerCapture", releaseCapture);
+    override(Element.prototype, "hasPointerCapture", (id: number) => capturedPointers.has(id));
     // jsdom has no layout, so scrollLeft would not retain writes; keep a real
     // backing store so the drag arithmetic is observable.
+    savedDescriptors.push([
+      HTMLElement.prototype,
+      "scrollLeft",
+      Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollLeft"),
+    ]);
     Object.defineProperty(HTMLElement.prototype, "scrollLeft", {
       get(this: HTMLElement) {
         return scrollPositions.get(this) ?? 0;
@@ -348,10 +352,11 @@ describe("banner gesture contracts — native touch/pen and mouse-only dragging"
   });
 
   afterEach(() => {
-    Reflect.deleteProperty(Element.prototype, "setPointerCapture");
-    Reflect.deleteProperty(Element.prototype, "releasePointerCapture");
-    Reflect.deleteProperty(Element.prototype, "hasPointerCapture");
-    Reflect.deleteProperty(HTMLElement.prototype, "scrollLeft");
+    for (const [target, key, descriptor] of savedDescriptors.reverse()) {
+      if (descriptor) Object.defineProperty(target, key, descriptor);
+      else Reflect.deleteProperty(target, key);
+    }
+    savedDescriptors = [];
   });
 
   it("allows both native axes and pinch zoom while preserving y-axis scroll chaining", async () => {
