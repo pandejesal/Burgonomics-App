@@ -76,6 +76,7 @@ jobs:
         run: |
           npm run build:mobile
           npx cap sync ios
+          node scripts/configure-ios-firebase.mjs
 
       - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
         # Order is load-bearing: cap sync regenerates CapApp-SPM/Package.swift
@@ -188,6 +189,7 @@ jobs:
         run: |
           npm run build:mobile
           npx cap sync ios
+          node scripts/configure-ios-firebase.mjs
 
       - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
         # Was missing here while present in build-ios: without the patch this
