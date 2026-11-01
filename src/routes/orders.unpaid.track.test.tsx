@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({
   orderId: "ord_1793523404362_PKKeDF",
   order: null as unknown,
+  getOrderResult: null as unknown,
   navigate: vi.fn(),
   cancelOrder: vi.fn(),
 }));
@@ -89,7 +90,9 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock("@/features/orders/repositories/OrderRepository", () => ({
   orderRepository: {
-    getOrder: vi.fn(async () => ({ success: true, data: fixture.order })),
+    getOrder: vi.fn(
+      async () => (fixture.getOrderResult as any) ?? { success: true, data: fixture.order },
+    ),
     subscribeTracking: vi.fn(() => ({ stop: () => {}, refresh: async () => {} })),
     buildTrackUrl: vi.fn(() => "/track"),
   },
@@ -170,6 +173,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useOrdersStore.setState({ byId: {}, orderIds: [], activeOrderId: null } as never);
   fixture.cancelOrder.mockResolvedValue({ success: true, data: null });
+  fixture.getOrderResult = null;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -229,6 +233,31 @@ describe("CUS-16 — tracking derives status from the real payment state", () =>
     const text = container.textContent ?? "";
     expect(text).toContain("Order Placed & Confirmed");
     expect(text).not.toContain("Payment not completed");
+  });
+
+  it("shows a load failure with Retry, never 'Order not found', when the read fails", async () => {
+    // Live incident: a signed-in customer deep-linked to a real order while
+    // Firebase Auth was still restoring; the denied read rendered "Order not
+    // found". A failed read must be visibly a failure.
+    fixture.order = null;
+    fixture.getOrderResult = {
+      success: false,
+      error: {
+        code: "ORDER_READ_FAILED",
+        message: "We couldn't load this order. Please check your connection and try again.",
+        retryable: true,
+      },
+    };
+    await mount();
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("Couldn't load this order");
+    expect(text).not.toContain("Order not found");
+    expect(
+      Array.from(container.querySelectorAll("button")).some(
+        (button) => button.textContent?.trim() === "Try again",
+      ),
+    ).toBe(true);
   });
 
   it("cancelling the unpaid order uses the existing cancel flow", async () => {

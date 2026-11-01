@@ -15,6 +15,8 @@ import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { AppShell } from "@/shared/layouts/AppShell";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { EmptyState } from "@/shared/components/feedback/EmptyState";
+import { FailureState } from "@/shared/components/feedback/FailureState";
+import { toUserMessage } from "@/core/errors/userMessages";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { HapticService } from "@/core/services/haptics";
 import { formatINR } from "@/core/utils/format";
@@ -56,6 +58,8 @@ function TrackOrderPage() {
   const cachedOrder = useOrdersStore(selectOrderById(orderId));
   const [order, setOrder] = React.useState<Order | null>(cachedOrder);
   const [loadingOrder, setLoadingOrder] = React.useState(!cachedOrder);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [reloadToken, setReloadToken] = React.useState(0);
   const [receiptOpen, setReceiptOpen] = React.useState(false);
 
   const trackingHook = useOrderTracking(hydrated ? orderId : null);
@@ -68,19 +72,27 @@ function TrackOrderPage() {
       .getOrder(orderId)
       .then((res) => {
         if (cancelled) return;
-        // Preserve the cached order on ok(null): a backend miss/denial must
-        // not masquerade as "not found" nor wipe the just-placed order.
-        if (res.success && res.data) setOrder(res.data);
+        // Preserve the cached order on ok(null): a genuine miss must not wipe
+        // the just-placed order. A READ FAILURE is different: never render it
+        // as "Order not found" — say the load failed and offer a retry.
+        if (res.success) {
+          if (res.data) setOrder(res.data);
+        } else {
+          setLoadError(toUserMessage(res));
+        }
         setLoadingOrder(false);
       })
       .catch(() => {
         // Rejection must end loading — otherwise the skeleton spins forever.
-        if (!cancelled) setLoadingOrder(false);
+        if (!cancelled) {
+          setLoadError("We couldn't load this order. Please try again.");
+          setLoadingOrder(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [hydrated, orderId]);
+  }, [hydrated, orderId, reloadToken]);
 
   React.useEffect(() => {
     if (!order || !trackingHook.snapshot) return;
@@ -90,6 +102,26 @@ function TrackOrderPage() {
   }, [order, trackingHook.snapshot]);
 
   if (!hydrated || loadingOrder) return <TrackSkeleton />;
+
+  // A failed read is not an absent order. The customer gets the real reason
+  // and a retry instead of a false "Order not found".
+  if (loadError && !order) {
+    return (
+      <ProtectedRoute>
+        <AppShell title="Track order" backTo="/orders" showTabs={false} showTopBar>
+          <FailureState
+            title="Couldn't load this order"
+            message={loadError}
+            onRetry={() => {
+              setLoadError(null);
+              setLoadingOrder(true);
+              setReloadToken((value) => value + 1);
+            }}
+          />
+        </AppShell>
+      </ProtectedRoute>
+    );
+  }
 
   if (!order) {
     return (

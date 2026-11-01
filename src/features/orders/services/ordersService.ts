@@ -958,6 +958,14 @@ export const ordersService = {
     try {
       const { auth, db } = await import("@/core/config/firebase");
       const { collection, getDocs, query: fsQuery, where } = await import("firebase/firestore");
+      // Live incident (75cf5f4): on a fresh page load the route read ran
+      // before Firebase Auth finished restoring the persisted session, so
+      // `currentUser` was null, no query was issued, and the customer saw
+      // "No Orders Found" despite 12 orders. Wait for the initial auth state
+      // (guarded: older test doubles do not implement the promise).
+      if (typeof auth.authStateReady === "function") {
+        await auth.authStateReady().catch(() => undefined);
+      }
       // Re-anchor the session cache to the CURRENT account before serving
       // or merging anything (R03): an account change without a reload used
       // to keep serving the previous account's orders from this map.
@@ -1015,6 +1023,14 @@ export const ordersService = {
       logger.warn("ordersService.history_read_failed", {
         message: err instanceof Error ? err.message : String(err),
       });
+      // A failed read is NOT an empty history. The previous fall-through
+      // rendered "No Orders Found" for permission/timeout failures, which is
+      // the same lie the live tracking screen told.
+      return fail(
+        "ORDERS_READ_FAILED",
+        "We couldn't load your orders. Please check your connection and try again.",
+        true,
+      );
     }
 
     // Advance every order's status before returning.
@@ -1084,6 +1100,12 @@ export const ordersService = {
 
   async getOrder(id: string): Promise<ApiResult<Order | null>> {
     const { auth } = await import("@/core/config/firebase");
+    // Same persisted-session race as listOrders: a deep link opened before
+    // Auth restored read the doc unauthenticated, was denied, and told the
+    // customer the order does not exist.
+    if (typeof auth.authStateReady === "function") {
+      await auth.authStateReady().catch(() => undefined);
+    }
     // The memory map is a per-account cache — re-anchor before reading it
     // so a cached order can never be served to a different account (R03).
     syncCacheScope(auth.currentUser);
@@ -1120,6 +1142,11 @@ export const ordersService = {
           id,
           message: err instanceof Error ? err.message : String(err),
         });
+        return fail(
+          "ORDER_READ_FAILED",
+          "We couldn't load this order. Please check your connection and try again.",
+          true,
+        );
       }
     }
     const existing = orders.get(id);

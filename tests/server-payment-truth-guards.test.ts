@@ -210,9 +210,11 @@ const currentUid = () => authState.currentUser?.uid ?? "";
 async function expectCacheUntouched(id: string) {
   mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
   const after = await ordersService.getOrder(id);
-  expect(after.success).toBe(true);
-  if (!after.success) return;
-  expect(after.data).toBeNull();
+  // A denied read is a FAILURE, not "this order does not exist" — and it must
+  // never seed the cache with a false record.
+  expect(after.success).toBe(false);
+  if (after.success) return;
+  expect(after.error.code).toBe("ORDER_READ_FAILED");
 }
 
 let testSeq = 0;
@@ -390,9 +392,9 @@ describe("C. markPaymentFailed scope and auth honesty (R03 preserved)", () => {
 
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     const forNew = await ordersService.getOrder("ord_c02_switch");
-    expect(forNew.success).toBe(true);
-    if (!forNew.success) return;
-    expect(forNew.data).toBeNull();
+    expect(forNew.success).toBe(false);
+    if (forNew.success) return;
+    expect(forNew.error.code).toBe("ORDER_READ_FAILED");
   });
 
   it("foreign-owner doc → NOT_OWNER without caching it, zero writes", async () => {

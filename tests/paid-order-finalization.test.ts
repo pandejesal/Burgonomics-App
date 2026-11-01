@@ -242,9 +242,9 @@ describe("B. honest failures — never a false order, never a minted id", () => 
     // No false order landed in the cache: a raw read (denied) reads null.
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     const after = await ordersService.getOrder("ord_pending_1");
-    expect(after.success).toBe(true);
-    if (!after.success) return;
-    expect(after.data).toBeNull();
+    expect(after.success).toBe(false);
+    if (after.success) return;
+    expect(after.error.code).toBe("ORDER_READ_FAILED");
   });
 
   it("flags a client-written 'paid' literal instead of trusting it (SERVER_DOC_SHAPE_INVALID)", async () => {
@@ -292,9 +292,10 @@ describe("B. honest failures — never a false order, never a minted id", () => 
 
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     const after = await ordersService.getOrder("ord_foreign");
-    expect(after.success).toBe(true);
-    if (!after.success) return;
-    expect(after.data).toBeNull();
+    // Denied read = failure (never a false "not found" order).
+    expect(after.success).toBe(false);
+    if (after.success) return;
+    expect(after.error.code).toBe("ORDER_READ_FAILED");
     expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
@@ -314,9 +315,11 @@ describe("B. honest failures — never a false order, never a minted id", () => 
     // The NEW session's cache never received the previous session's read.
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     const forNew = await ordersService.getOrder("ord_mid_switch");
-    expect(forNew.success).toBe(true);
-    if (!forNew.success) return;
-    expect(forNew.data).toBeNull();
+    // The new session's cache is empty AND the denied read is a failure, not
+    // a false "this order does not exist".
+    expect(forNew.success).toBe(false);
+    if (forNew.success) return;
+    expect(forNew.error.code).toBe("ORDER_READ_FAILED");
     expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
@@ -334,9 +337,10 @@ describe("B. honest failures — never a false order, never a minted id", () => 
     // Nothing was cached: the raw read (still failing) reads not-found.
     mockGetDoc.mockRejectedValueOnce(new Error("unavailable"));
     const after = await ordersService.getOrder("ord_read_fail");
-    expect(after.success).toBe(true);
-    if (!after.success) return;
-    expect(after.data).toBeNull();
+    // Honest failure, not a false "not found" and never a minted/cached row.
+    expect(after.success).toBe(false);
+    if (after.success) return;
+    expect(after.error.code).toBe("ORDER_READ_FAILED");
   });
 
   it("missing doc → NOT_FOUND (does not mint the confirmed id)", async () => {

@@ -171,10 +171,11 @@ describe("A. account switch drops the previous account's caches", () => {
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
 
     const res = await ordersService.getOrder("ord_a1");
-    expect(res.success).toBe(true);
-    if (!res.success) return;
-    // Old behaviour returned A's cached record here — the leak R03 closes.
-    expect(res.data).toBeNull();
+    // The denied read must not serve A's cached record (leak R03 closes); it
+    // is a visible failure, not a false "order not found".
+    expect(res.success).toBe(false);
+    if (res.success) return;
+    expect(res.error.code).toBe("ORDER_READ_FAILED");
   });
 
   it("getTracking fails safe for B on A's order id (orders + progression dropped)", async () => {
@@ -282,9 +283,11 @@ describe("B. late in-flight history fetch across an auth change", () => {
     // B's cache never received it: raw-id read fails safe as not-found.
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     const forB = await ordersService.getOrder(landedId);
-    expect(forB.success).toBe(true);
-    if (!forB.success) return;
-    expect(forB.data).toBeNull();
+    // B never receives A's just-written order; the denied read is a failure,
+    // not a false "order not found".
+    expect(forB.success).toBe(false);
+    if (forB.success) return;
+    expect(forB.error.code).toBe("ORDER_READ_FAILED");
 
     // And B's identical-fingerprint checkout mints a fresh id — no leak of
     // A's landed order id into B's create path.

@@ -109,6 +109,13 @@ export const addressService = {
     try {
       const { auth, db } = await import("@/core/config/firebase");
       const { collection, getDocs } = await import("firebase/firestore");
+      // Persisted-session race: the store can load before Firebase Auth has
+      // restored the user, which made a signed-in customer's saved addresses
+      // look empty ("no saved address" at checkout). Wait for the first state
+      // (guarded: older test doubles do not implement the promise).
+      if (typeof auth.authStateReady === "function") {
+        await auth.authStateReady().catch(() => undefined);
+      }
       const user = auth.currentUser;
       if (!user) return failWith("AUTH_REQUIRED", "Please sign in to view your saved addresses.");
 
