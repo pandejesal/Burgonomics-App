@@ -46,7 +46,7 @@ function Body() {
       toast.success("Account deleted. Order history anonymized, all personal data removed.");
       setTimeout(async () => {
         const { useAuthStore } = await import("@/features/auth/state/authStore");
-        await useAuthStore.getState().logout();
+        await useAuthStore.getState().logout({ purgeLocalCaches: true });
       }, 1000);
     } else {
       // Raw exception goes to the console only — never to the customer.

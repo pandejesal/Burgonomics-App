@@ -9,7 +9,11 @@ import { logger } from "@/core/logging/logger";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { isDev } from "@/core/config/env";
-import { configureAuthUidSource } from "@/features/auth/utils/scopedPersistence";
+import {
+  configureAuthUidSource,
+  purgeScopedLocalCaches,
+} from "@/features/auth/utils/scopedPersistence";
+import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { fail } from "@/core/network/http";
 
 export type AuthStatus =
@@ -57,7 +61,7 @@ interface AuthState {
   verifyOtp: (code: string) => Promise<{ ok: boolean; error?: string }>;
   resendOtp: () => Promise<{ ok: boolean; error?: string }>;
   changePhone: () => void;
-  logout: () => Promise<void>;
+  logout: (options?: { purgeLocalCaches?: boolean }) => Promise<void>;
   clearError: () => void;
 }
 
@@ -271,6 +275,22 @@ let bootstrapInFlight: Promise<void> | null = null;
 function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
+
+/**
+ * F11: the loyalty balance is a server-truth CACHE. Every restore/verify path
+ * that adopts a session refreshes it beside device-token linking, otherwise the
+ * wallet renders yesterday's (or zero) balance for the whole session.
+ */
+function refreshLoyaltyInBackground(uid: string): void {
+  void useLoyaltyStore
+    .getState()
+    .refreshFromServer(uid)
+    .catch((e: unknown) =>
+      logger.warn("auth.loyalty_refresh_failed", {
+        message: e instanceof Error ? e.message : String(e),
+      }),
+    );
+}
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "idle",
   user: null,
@@ -349,6 +369,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               message: e instanceof Error ? e.message : String(e),
             }),
           );
+          refreshLoyaltyInBackground(user.id);
           set({
             status: "authenticated",
             user,
@@ -381,6 +402,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               message: e instanceof Error ? e.message : String(e),
             }),
           );
+          refreshLoyaltyInBackground(user.id);
           set({
             status: "authenticated",
             user,
@@ -477,9 +499,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const epoch = challengeEpoch;
     // Only the current epoch blocks a new attempt; an orphaned verify from an
-    // abandoned challenge is released in changePhone/logout below.
+    // abandoned challenge is released in changePhone/logout below. A second
+    // submit for the SAME challenge shares the in-flight verify instead of
+    // reporting a failure: WebOTP autofill, a paste and a button tap can all
+    // fire in one tick, and the caller that raced must still see success
+    // (one repository call, one code confirmation).
     if (verifyInFlight && verifyInFlight.epoch === epoch) {
-      return { ok: false, error: "Verification is already in progress." };
+      return verifyInFlight.promise;
     }
     const promise = (async () => {
       set({ status: "verifying", error: null });
@@ -544,6 +570,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           message: e instanceof Error ? e.message : String(e),
         }),
       );
+      refreshLoyaltyInBackground(res.data.user.id);
       set({
         status: "authenticated",
         user: res.data.user,
@@ -592,22 +619,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
-  async logout() {
+  async logout(options) {
     // Fence first: a verify resolving after this call must not restore a session.
     nextChallengeEpoch();
     identityEpoch += 1;
     requestInFlight = null;
     verifyInFlight = null;
-    repo().cancelChallenge();
+    repo().cancelChallenge?.();
     const { refreshToken, user: currentUser } = get();
+    const uid = currentUser?.id;
     // CUS-05: await the unlink BEFORE sign-out so the unregister call still
     // holds a valid auth token (fire-and-forget raced the sign-out and lost
     // it). Bounded by DEVICE_UNLINK_TIMEOUT_MS so a dead network cannot trap
     // the user signed in; a failed/timed-out unlink never blocks sign-out.
-    await unlinkDeviceTokenBeforeSignOut(currentUser?.id);
+    // A guest has no device token to unlink — calling the service with
+    // `undefined` used to hit the endpoint for a session that does not exist.
+    if (uid) await unlinkDeviceTokenBeforeSignOut(uid);
     await repo().logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();
+    // DPDP erasure: a deleted account's uid never comes back, so its scoped
+    // localStorage rows (addresses, notification bodies, cart, notes, loyalty)
+    // must not linger on the device. Ordinary logout keeps them for the
+    // returning customer.
+    if (options?.purgeLocalCaches && uid) {
+      const removed = purgeScopedLocalCaches(uid);
+      if (removed.length > 0) logger.info("auth.purged_scoped_caches", { count: removed.length });
+    }
     set({
       status: "guest",
       user: null,
