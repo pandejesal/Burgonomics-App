@@ -1,3 +1,4 @@
+import { releaseConfigGuard } from "./scripts/release-config";
 /**
  * Mobile / Capacitor build config.
  *
@@ -16,6 +17,7 @@ import path from "node:path";
 
 export default defineConfig({
   plugins: [
+    releaseConfigGuard(),
     TanStackRouterVite({
       target: "react",
       autoCodeSplitting: true,
