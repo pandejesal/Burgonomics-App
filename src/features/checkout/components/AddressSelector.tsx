@@ -124,7 +124,17 @@ export function AddressSelector({
                   type="button"
                   role="radio"
                   aria-checked={isSelected}
+                  tabIndex={0}
                   onClick={() => selectAddress(addr)}
+                  onKeyDown={(event) => {
+                    // Native buttons already activate on Enter/Space; handling
+                    // it explicitly also covers synthetic/AT activation and
+                    // lets a nested control keep its own key semantics.
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    selectAddress(addr);
+                  }}
                   className="flex min-h-11 w-full cursor-pointer flex-wrap items-start justify-between gap-2 rounded-[var(--radius-medium)] text-left"
                 >
                   <div className="flex min-w-0 flex-1 items-start gap-2.5">

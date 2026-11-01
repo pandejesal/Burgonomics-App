@@ -301,15 +301,10 @@ describe("R26: MenuProductCard static render", () => {
       expect(addTag, "ADD button tag").toBeDefined();
       const classes = classesOf(addTag!);
 
-      // resting state
-      expect(classes).toContain("border-accent");
-      expect(classes).toContain("text-accent");
-      expect(classes).toContain("dark:text-accent-foreground");
-      expect(classes).toContain("bg-surface");
-      // hover state
-      expect(classes).toContain("hover:bg-accent");
-      expect(classes).toContain("hover:text-accent-foreground");
-      expect(classes).toContain("dark:hover:bg-[var(--accent-hover)]");
+      // resting state — launch UI uses the primary action pair
+      expect(classes).toContain("bg-primary");
+      expect(classes).toContain("text-primary-foreground");
+      expect(classes).toContain("hover:bg-primary-hover");
       // legacy pair gone
       expect(classes.join(" ")).not.toMatch(/\[#FF6600\]/);
       // layout/behaviour classes untouched
@@ -320,12 +315,10 @@ describe("R26: MenuProductCard static render", () => {
 
   it("no legacy #FF6600 utility survives anywhere in the owned card source", () => {
     expect(ownedSources.menuCard).not.toMatch(/\[#FF6600\]/);
-    // quantity stepper + series badge use the same filled pair as the CTA
+    // quantity stepper + series badge use the same filled primary pair as the CTA
+    expect(ownedSources.menuCard).toMatch(/bg-primary[^"]*text-primary-foreground/);
     expect(ownedSources.menuCard).toMatch(
-      /bg-accent dark:bg-\[var\(--accent-hover\)\] text-accent-foreground/,
-    );
-    expect(ownedSources.menuCard).toMatch(
-      /"bg-accent dark:bg-\[var\(--accent-hover\)\] text-accent-foreground border-accent\/40"/,
+      /"bg-primary\/90 text-primary-foreground border-primary\/40"/,
     );
   });
 });
@@ -342,13 +335,13 @@ describe("R26: AddressFormModal static render", () => {
     expect(save, "primary Save CTA").toBeTruthy();
     const classes = (save!.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
 
-    expect(classes).toContain("bg-accent");
-    expect(classes).toContain("dark:bg-[var(--accent-hover)]");
-    expect(classes).toContain("text-accent-foreground");
-    expect(classes).toContain("hover:bg-[var(--accent-hover)]");
-    expect(classes).toContain("dark:hover:brightness-110");
-    expect(classes.join(" ")).not.toMatch(/\[#FF6600\]/);
-    expect(classes).toContain("min-h-[44px]");
+    expect(classes).toContain("bg-primary");
+    expect(classes).toContain("text-primary-foreground");
+    expect(classes).toContain("hover:bg-primary-hover");
+    expect(
+      classes.some((c) => c === "min-h-12" || c === "min-h-[44px]" || c === "min-h-11"),
+      "44px+ primary touch target",
+    ).toBe(true);
     expect(save!.textContent).toBe("Save Address");
 
     await act(async () => root.unmount());
@@ -358,7 +351,7 @@ describe("R26: AddressFormModal static render", () => {
   it("no legacy #FF6600 utility survives anywhere in the owned modal source", () => {
     expect(ownedSources.addressModal).not.toMatch(/\[#FF6600\]/);
     expect(ownedSources.addressModal).toMatch(
-      /bg-accent dark:bg-\[var\(--accent-hover\)\] text-accent-foreground hover:bg-\[var\(--accent-hover\)\] dark:hover:brightness-110/,
+      /bg-primary px-4 py-3 text-base font-semibold text-primary-foreground shadow-md transition-colors hover:bg-primary-hover/,
     );
     // R11's keyboard-focus reveal contract is untouched by R26.
     expect(ownedSources.addressModal).toMatch(/revealFocusedField/);

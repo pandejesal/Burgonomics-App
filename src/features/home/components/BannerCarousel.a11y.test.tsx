@@ -231,8 +231,12 @@ describe("L3 — carousel keyboard access and motion preferences", () => {
 
     const scroller = host!.querySelector<HTMLElement>(".snap-x")!;
     const link = slideControls()[0]!;
-    const pointer = (type: string, x: number, y: number) =>
-      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    const pointer = (type: string, x: number, y: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      Object.defineProperty(event, "pointerType", { value: "mouse" });
+      return event;
+    };
 
     await act(async () => {
       scroller.dispatchEvent(pointer("pointerdown", 200, 100));

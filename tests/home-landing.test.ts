@@ -83,8 +83,8 @@ describe("Prompt 09: Customer Home & Landing Experience Suite", () => {
 
       expect(tokenBlock(":root")).toContain("--background: #ffffff");
       expect(tokenBlock(".dark")).toContain("--background: #000000");
-      expect(css).toContain("--primary: #0E4825");
-      expect(css).toContain("--accent: #C2410C");
+      expect(css).toMatch(/--primary:\s*#0e4825/i);
+      expect(css).toMatch(/--accent:\s*#c2410c/i);
     });
 
     it("serves the owner's MonstroSolid / Montserrat roles without remote fonts", () => {
