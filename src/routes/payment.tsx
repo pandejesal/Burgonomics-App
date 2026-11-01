@@ -224,7 +224,13 @@ function PaymentPage() {
       void navigate({
         to: "/auth/login",
         replace: true,
-        search: { redirect: "/payment" },
+        // Keep the resume id across sign-in, or the next attempt would mint a
+        // second order instead of paying the abandoned one.
+        search: {
+          redirect: resumeOrderId
+            ? `/payment?orderId=${encodeURIComponent(resumeOrderId)}`
+            : "/payment",
+        },
       });
     }
   }, [hydrated, isBootstrapped, isAuthenticated, navigate]);
