@@ -184,6 +184,9 @@ vi.mock("@/features/payments/components/PaymentRecoveryPanel", () => ({
 
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
+vi.mock("@/features/checkout/services/checkoutQuote", () => ({
+  quoteCheckoutFees: vi.fn(async () => ({ status: "ready" })),
+}));
 import { useCheckoutStore } from "@/features/checkout";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { Route as CheckoutRoute } from "./checkout";
@@ -252,6 +255,19 @@ beforeEach(() => {
   fixture.createOrder.mockResolvedValue({ success: true, data: { id: "ord_fulfill" } });
   usePaymentStore.getState().reset();
   useCheckoutStore.getState().reset();
+  // R8: these cases test order/cleanup behaviour, not the quote state machine;
+  // seed a live ready quote so PAY is gated on the flow under test.
+  useCheckoutStore.setState({
+    checkoutFees: {
+      status: "ready",
+      orderType: "delivery",
+      packagingFee: 0,
+      deliveryFee: 0,
+      deliveryQuoteId: "q_test",
+      provider: "test",
+      expiresAt: Date.now() + 3_600_000,
+    },
+  });
   seedSelection(null, store);
   container = document.createElement("div");
   document.body.append(container);
@@ -272,7 +288,9 @@ function payButton(): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((b) => {
     const text = b.textContent ?? "";
     return (
-      text.includes("PAY") || text.includes("FULFILLMENT") || text.includes("PAYMENT UNDER REVIEW")
+      /fulfillment/i.test(text) ||
+      /^pay\b/i.test(text.trim()) ||
+      text.includes("PAYMENT UNDER REVIEW")
     );
   });
   expect(button).toBeDefined();
@@ -293,7 +311,7 @@ describe("checkout — null fulfillment is an honest, blocking state", () => {
     expect(container.textContent).not.toContain("1. Delivery Details");
     expect(payButton().disabled).toBe(true);
     expect(payButton().getAttribute("aria-disabled")).toBe("true");
-    expect(payButton().textContent).toContain("CHOOSE FULFILLMENT");
+    expect(payButton().textContent).toContain("Choose fulfillment");
     expect(payButton().title).toContain("fulfillment");
 
     // Belt-and-braces: even a programmatic activation must not reach cart

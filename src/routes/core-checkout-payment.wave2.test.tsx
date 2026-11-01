@@ -49,7 +49,8 @@ const fixture = vi.hoisted(() => {
     setLoyaltyPointsToRedeem: vi.fn(),
   };
   const noop = vi.fn();
-  const quote = {    status: "ready" as string,
+  const quote = {
+    status: "ready" as string,
     payEnabled: true,
     showDeliveryFee: true,
     showTotal: true,
@@ -199,14 +200,19 @@ vi.mock("@/features/checkout", () => {
   };
 });
 vi.mock("@/features/checkout/components/QuickAuthSheet", () => ({ QuickAuthSheet: () => null }));
-vi.mock("@/features/stores/state/storeStore", () => ({
-  useStoreSelection: (select: (s: unknown) => unknown) =>
-    select({
-      activeStore: { id: "store-A", name: "Surat Vesu", lat: 21.15, lng: 72.77 },
-      fulfillment: fixture.fulfillment,
-      setFulfillment: fixture.setFulfillment,
+vi.mock("@/features/stores/state/storeStore", () => {
+  const state = {
+    activeStore: { id: "store-A", name: "Surat Vesu", lat: 21.15, lng: 72.77 },
+    fulfillment: fixture.fulfillment,
+    setFulfillment: fixture.setFulfillment,
+  };
+  return {
+    useStoreSelection: Object.assign((select: (s: typeof state) => unknown) => select(state), {
+      getState: () => state,
     }),
-}));
+    storeSupportsFulfillment: () => true,
+  };
+});
 vi.mock("@/features/auth/state/authStore", () => {
   const authState = {
     user: { id: "cust_wave2", name: "Test Customer", phone: "+910000000000" },
@@ -241,9 +247,12 @@ vi.mock("@/features/addresses", () => {
   };
 });
 vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
-  useLoyaltyStore: Object.assign((select: (s: { balance: number }) => unknown) => select({ balance: 0 }), {
-    getState: () => ({ refreshFromServer: vi.fn() }),
-  }),
+  useLoyaltyStore: Object.assign(
+    (select: (s: { balance: number }) => unknown) => select({ balance: 0 }),
+    {
+      getState: () => ({ refreshFromServer: vi.fn() }),
+    },
+  ),
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
@@ -1015,4 +1024,3 @@ describe("R8 — payment is gated on a live delivery quote", () => {
     expect(document.body.textContent).toContain("36.00");
   });
 });
-

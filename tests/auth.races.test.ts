@@ -103,8 +103,6 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
     const second = useAuthStore.getState().verifyOtp("111111");
 
     expect(service.verifyOtp).toHaveBeenCalledTimes(1);
-    const secondResult = await second;
-    expect(secondResult.ok).toBe(false);
 
     gate.resolve(
       ok({
@@ -113,7 +111,11 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
         user: USER_A,
       }),
     );
-    expect((await first).ok).toBe(true);
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    // A duplicate submit shares the one in-flight confirm: both callers see
+    // the same outcome instead of the loser being told it failed.
+    expect(secondResult.ok).toBe(true);
+    expect(firstResult.ok).toBe(true);
     expect(useAuthStore.getState().user?.id).toBe(USER_A.id);
   });
 

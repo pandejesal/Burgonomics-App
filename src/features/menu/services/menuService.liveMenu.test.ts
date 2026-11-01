@@ -26,6 +26,7 @@ const firestore = vi.hoisted(() => ({
   getDoc: vi.fn(),
   getDocs: vi.fn(),
   onSnapshot: vi.fn(),
+  initializeFirestore: vi.fn(() => ({ kind: "firestore" })),
 }));
 
 vi.mock("firebase/firestore", () => ({

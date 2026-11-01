@@ -229,6 +229,9 @@ vi.mock("@/features/payments/components/PaymentRecoveryPanel", () => ({
   PaymentRecoveryPanel: () => null,
 }));
 
+vi.mock("@/features/checkout/services/checkoutQuote", () => ({
+  quoteCheckoutFees: vi.fn(async () => ({ status: "ready" })),
+}));
 import { useCheckoutStore } from "@/features/checkout";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { Route as CheckoutRoute } from "./checkout";
@@ -265,6 +268,19 @@ beforeEach(() => {
   fixture.selection.fulfillment = "delivery";
   usePaymentStore.getState().reset();
   useCheckoutStore.getState().reset();
+  // R8: these cases test order/cleanup behaviour, not the quote state machine;
+  // seed a live ready quote so PAY is gated on the flow under test.
+  useCheckoutStore.setState({
+    checkoutFees: {
+      status: "ready",
+      orderType: "delivery",
+      packagingFee: 0,
+      deliveryFee: 0,
+      deliveryQuoteId: "q_test",
+      provider: "test",
+      expiresAt: Date.now() + 3_600_000,
+    },
+  });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -278,7 +294,7 @@ afterEach(async () => {
 
 function payButton(): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((b) =>
-    b.textContent?.includes("PAY"),
+    /^(pay|choose fulfillment)\b/i.test((b.textContent ?? "").trim()),
   );
   expect(button).toBeDefined();
   return button as HTMLButtonElement;

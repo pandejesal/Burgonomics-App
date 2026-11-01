@@ -146,7 +146,7 @@ describe("OrderDetailsPage — hook order (P1-1)", () => {
 
   it("renders the out-of-stock reorder modal for this consumer", async () => {
     const { container, unmount } = await mount();
-    expect(container.textContent).toContain("Some Items Unavailable");
+    expect(container.textContent).toContain("Some items can't be reordered");
     expect(container.textContent).toContain("Burger");
     await unmount();
   });

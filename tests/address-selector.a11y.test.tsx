@@ -169,7 +169,7 @@ describe("AddressSelector radio semantics + keyboard selection (F1)", () => {
       />,
     );
 
-    const pinLink = radios()[1].querySelector("a");
+    const pinLink = radios()[1].parentElement?.querySelector("a");
     expect(pinLink).not.toBeNull();
     await keydown(pinLink as HTMLElement, "Enter");
     expect(onSelect).not.toHaveBeenCalled();
