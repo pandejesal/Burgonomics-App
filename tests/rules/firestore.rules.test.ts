@@ -848,14 +848,6 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("56. [BRAND-WORKFLOW-UPDATE-ALLOW] Brand owner can still advance a delivery order through a non-terminal workflow status", async () => {
-    const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
-    await assertSucceeds(
-      updateDoc(doc(brandDb, "orders", "ord_deliver_01"), {
-        status: { code: "READY_FOR_PICKUP", label: "Ready", kind: "in_progress", terminal: false },
-      }),
-    );
-  });
 
   // =========================================================================
   // R17: users/{uid} tenant/trust field protection
@@ -959,28 +951,12 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
   // suppressed the real branch settlement. Only the display fields the apps
   // write (method/label/status/transactionId/paidAt) may be born client-side.
   // =========================================================================
-  it("5b. [BRANCHES-SIGNEDIN-ALLOW] Any signed-in user can read branches (customer app never reads branches/*; partner hooks are signed-in)", async () => {
+  it("5b. [BRANCHES-SIGNEDIN-DENY] A plain signed-in customer cannot read branches (SEC-06: restIDs/payout account)", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
-    await assertSucceeds(getDoc(doc(custDb, "branches", "branch_01")));
+    await assertFails(getDoc(doc(custDb, "branches", "branch_01")));
   });
 
-  it("13. [BRANCH-STATUS-UPDATE] Branch Owner of branch_01 can update order status at branch_01", async () => {
-    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
-    await assertSucceeds(
-      updateDoc(doc(branch1Db, "orders", "order_501"), {
-        status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
-      }),
-    );
-  });
 
-  it("24. [TAKEAWAY-DELIVER-ALLOW] Branch staff CAN complete a takeaway order directly", async () => {
-    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
-    await assertSucceeds(
-      updateDoc(doc(branch1Db, "orders", "ord_takeaway_01"), {
-        status: { kind: "completed", code: "DELIVERED" },
-      }),
-    );
-  });
 
   it("33a. [ORDERS-CREATE-NESTED-SETTLEMENT-DENY] Customer create cannot mint a nested payment.status settlement marker", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
@@ -1186,23 +1162,6 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("52. [ORDERS-UPDATE-LEGIT-STATUS-ALLOW] Legitimate branch-staff status transition on an order in their branch still SUCCEEDS", async () => {
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), "admins", "branch_staff_1"), {
-        email: "staff1@burgonomics.com",
-        role: "branch_staff",
-        branchId: "branch_01",
-        name: "Navrangpura Staff",
-      });
-    });
-
-    const branchStaffDb = testEnv.authenticatedContext("branch_staff_1").firestore();
-    await assertSucceeds(
-      updateDoc(doc(branchStaffDb, "orders", "order_501"), {
-        status: { kind: "in_progress", code: "READY_FOR_PICKUP" },
-      }),
-    );
-  });
 
   it("53. [ORDERS-CREATE-WITH-ITEMS-ALLOW] Order creation with `items` (customer and walk-in lanes) still SUCCEEDS", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
@@ -1234,12 +1193,8 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
 
   it("54. [ORDERS-UPDATE-BRAND-OWNER-BYPASS-SUPERSEDED] brand_owner protected-field patch is DENIED (DEC-01, was allowed Phase-1 baseline)", async () => {
     const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
-    await assertSucceeds(
-      updateDoc(doc(brandDb, "orders", "order_501"), {
-        // Masked noncritical workflow field: brand retains the safe lane.
-        status: { code: "READY_FOR_PICKUP", kind: "in_progress", label: "Ready", terminal: false },
-      }),
-    );
+    // SEC-04: status itself is server-only (POST /orders/bumpStatus); the mask
+    // below is asserted on non-status fields.
     await assertFails(
       updateDoc(doc(brandDb, "orders", "order_501"), {
         items: [
