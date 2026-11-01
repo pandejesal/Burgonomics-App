@@ -22,6 +22,8 @@ import {
   FulfillmentPanel,
   InvoiceDownloadButton,
   orderPayableAmount,
+  displayOrderStatus,
+  orderPaymentState,
   type Order,
   type OrderTrackingSnapshot,
 } from "@/features/orders";
@@ -134,6 +136,23 @@ function OrderDetailsPage() {
     }
   };
 
+  // CUS-16: cancelling an unpaid order uses the existing repository cancel,
+  // then reloads the server's result into this page's state.
+  const [cancelling, setCancelling] = React.useState(false);
+  const handleCancelUnpaid = async () => {
+    if (!order) return;
+    if (!window.confirm("Cancel this unpaid order?")) return;
+    setCancelling(true);
+    const res = await orderRepository.cancelOrder(order.id);
+    setCancelling(false);
+    if (res.success && res.data) {
+      setOrder(res.data);
+      toast.success("Order cancelled.");
+    } else {
+      toast.error("We couldn't cancel this order. Please try again.");
+    }
+  };
+
   if (!hydrated || loading) return <DetailsSkeleton />;
 
   // A backend/network failure loading the order is NOT "not found" — it
@@ -220,7 +239,9 @@ function OrderDetailsPage() {
                   {order.store.address}
                 </Text>
               </div>
-              <OrderStatusBadge status={order.status} />
+              {/* CUS-16: status is derived from the server payment state, so
+                  an unpaid online order never reads as confirmed. */}
+              <OrderStatusBadge status={displayOrderStatus(order) ?? order.status} />
             </div>
           </section>
 
@@ -246,6 +267,40 @@ function OrderDetailsPage() {
               }
               onCheckOrders={() => void navigate({ to: "/orders" })}
             />
+          )}
+
+          {/* CUS-16: an unpaid online order has no kitchen progress to show.
+              Offer the same two real paths as tracking. */}
+          {orderPaymentState(order) === "unpaid" && (
+            <section
+              data-testid="unpaid-order-notice"
+              className="space-y-3 rounded-[var(--radius-large)] border border-warning/40 bg-warning/10 p-4"
+            >
+              <div>
+                <Text variant="titleLarge">Payment not completed</Text>
+                <Text variant="bodyMedium" tone="secondary">
+                  This order has not been paid, so the kitchen has not received it. Complete the
+                  payment to send it, or cancel the order.
+                </Text>
+              </div>
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <AppButton
+                  variant="cta"
+                  onClick={() =>
+                    void navigate({ to: "/payment", search: { orderId: order.id } })
+                  }
+                >
+                  Complete payment
+                </AppButton>
+                <AppButton
+                  variant="secondary"
+                  disabled={cancelling}
+                  onClick={() => void handleCancelUnpaid()}
+                >
+                  {cancelling ? "Cancelling…" : "Cancel order"}
+                </AppButton>
+              </div>
+            </section>
           )}
 
           {/* Timeline */}

@@ -28,6 +28,7 @@ import {
   orderRepository,
   useOrdersStore,
   selectOrderById,
+  orderPaymentState,
   OrderStatusBadge,
   OrderPriceSummary,
   OrderSuccessCelebration,
@@ -66,6 +67,20 @@ function OrderConfirmationPage() {
   // stamped with a boolean at creation.
   const [whatsappOptIn, setWhatsappOptIn] = React.useState(cachedOrder?.whatsappOptIn === true);
   const [waBusy, setWaBusy] = React.useState(false);
+  const [cancellingUnpaid, setCancellingUnpaid] = React.useState(false);
+  const cancelUnpaid = async () => {
+    if (!order) return;
+    if (!window.confirm("Cancel this unpaid order?")) return;
+    setCancellingUnpaid(true);
+    const res = await orderRepository.cancelOrder(order.id);
+    setCancellingUnpaid(false);
+    if (res.success && res.data) {
+      setOrder(res.data);
+      toast.success("Order cancelled.");
+    } else {
+      toast.error("We couldn't cancel this order. Please try again.");
+    }
+  };
   // Sync the toggle once the order document arrives (cache-miss deep
   // links): it must reflect the stored opt-in, never a hardcoded default.
   React.useEffect(() => {
@@ -174,6 +189,60 @@ function OrderConfirmationPage() {
           actionLabel="Back to Home"
           onAction={() => navigate({ to: "/home" })}
         />
+      </AppShell>
+    );
+  }
+
+  // CUS-16: this screen may be reopened/deep-linked for an online order whose
+  // payment never completed. "Order Confirmed" would be false, so show the
+  // payment truth and the two real paths (pay, or cancel via the repository).
+  const paymentState = orderPaymentState(order);
+  if (paymentState === "unpaid" || paymentState === "confirming") {
+    return (
+      <AppShell
+        title={paymentState === "unpaid" ? "Payment not completed" : "Confirming payment"}
+        showTabs={false}
+        showTopBar={false}
+      >
+        <div className="mx-auto max-w-[560px] space-y-5 px-4 pb-12 pt-8 sm:px-6">
+          <section className="space-y-4 rounded-2xl border border-warning/40 bg-warning/10 p-5 shadow-xs">
+            <h1 className="text-xl font-semibold text-text">
+              {paymentState === "unpaid" ? "Payment not completed" : "Confirming payment"}
+            </h1>
+            <p className="text-sm leading-relaxed text-text-secondary">
+              Order {order.shortCode} —{" "}
+              {paymentState === "unpaid"
+                ? "this order has not been paid, so the kitchen has not received it. Complete the payment to send it, or cancel the order."
+                : "we're confirming your payment with the bank. This usually takes a few seconds — please don't pay again."}
+            </p>
+            {paymentState === "unpaid" && (
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <AppButton
+                  variant="cta"
+                  onClick={() =>
+                    void navigate({ to: "/payment", search: { orderId: order.id } })
+                  }
+                >
+                  Complete payment
+                </AppButton>
+                <AppButton
+                  variant="secondary"
+                  disabled={cancellingUnpaid}
+                  onClick={() => void cancelUnpaid()}
+                >
+                  {cancellingUnpaid ? "Cancelling…" : "Cancel order"}
+                </AppButton>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void navigate({ to: "/orders" })}
+              className="min-h-11 text-sm font-semibold text-primary-text underline-offset-2 hover:underline"
+            >
+              View all orders
+            </button>
+          </section>
+        </div>
       </AppShell>
     );
   }

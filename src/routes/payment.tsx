@@ -117,6 +117,12 @@ function orderFailureMessage(error: { code: string; message: string }): string {
 }
 
 export const Route = createFileRoute("/payment")({
+  // CUS-16 resume: an unpaid order's "Complete payment" opens /payment with
+  // the existing order id so the gateway binds to it instead of minting a
+  // second order.
+  validateSearch: (search: Record<string, unknown>) => ({
+    orderId: typeof search.orderId === "string" ? search.orderId : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Payment — Burgonomics" },
@@ -129,6 +135,14 @@ export const Route = createFileRoute("/payment")({
 function PaymentPage() {
   const navigate = useNavigate();
   const hydrated = useHydrated();
+  // Test harnesses may mount this component without a router context; the
+  // resume id is optional, so a missing hook simply means a normal checkout.
+  const search =
+    (Route as unknown as { useSearch?: () => { orderId?: unknown } }).useSearch?.() ?? {};
+  const resumeOrderId =
+    typeof search.orderId === "string" && search.orderId.trim()
+      ? search.orderId.trim()
+      : undefined;
 
   const lines = useCartStore((s) => s.lines);
   const promo = useCartStore((s) => s.promo);
@@ -230,6 +244,13 @@ function PaymentPage() {
       }
     };
   }, [resetPayment]);
+
+  // CUS-16: resume an abandoned unpaid order — bind this attempt to the id in
+  // the URL so the gateway order, verification and finalize all name that
+  // order, and no second `orders/{id}` is ever written.
+  React.useEffect(() => {
+    if (resumeOrderId) usePaymentStore.getState().setInternalOrderId(resumeOrderId);
+  }, [resumeOrderId]);
 
   // Loop 11: release the pay re-entry guard on every terminal status so a
   // failed/cancelled payment is retryable but never double-fired.
@@ -574,6 +595,8 @@ function PaymentPage() {
           isDelivery && quoteForPayment.status === "ready"
             ? (quoteForPayment.deliveryQuoteId ?? undefined)
             : undefined,
+        // CUS-16: pay the EXISTING unpaid order; never create another one.
+        resumeOrderId,
       });
       if (!orderRes.success) {
         // Stale/missing quote: re-quote, then show the updated figure through

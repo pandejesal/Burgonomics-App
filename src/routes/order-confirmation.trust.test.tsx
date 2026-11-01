@@ -80,6 +80,8 @@ vi.mock("@/features/orders", () => ({
   selectOrderById: (id: string) => (state: { orders: Array<{ id: string }> }) =>
     state.orders.find((order) => order.id === id) ?? null,
   orderPayableAmount: () => 219,
+  // CUS-16 gate: this fixture is a paid receipt, so it keeps the success view.
+  orderPaymentState: () => "paid",
   OrderStatusBadge: () => null,
   OrderPriceSummary: () => null,
   OrderSuccessCelebration: () => null,

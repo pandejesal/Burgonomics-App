@@ -204,6 +204,12 @@ export class PaymentRepository {
      * (delivery only) so a screen cannot accidentally send a payment without it.
      */
     deliveryQuoteId?: string;
+    /**
+     * CUS-16: finish paying for an order that already exists (created before
+     * Razorpay opened, then abandoned). The server asserts that doc is unpaid
+     * and owned by this customer; the client must NOT create another order.
+     */
+    resumeOrderId?: string;
   }): Promise<ApiResult<PaymentOrder>> {
     const uid = useAuthStore.getState().user?.id ?? null;
     const pendingRecon = loadPaymentReconciliation(uid);
@@ -296,7 +302,7 @@ export class PaymentRepository {
     // A gateway order already minted for this exact checkout is reused as-is:
     // exactly ONE Razorpay order per attempt, on the server's own amount, and
     // no second order write or network round-trip.
-    if (recorded?.gatewayOrder) {
+    if (!opts?.resumeOrderId && recorded?.gatewayOrder) {
       usePaymentStore.getState().setInternalOrderId(recorded.internalOrderId);
       usePaymentStore
         .getState()
@@ -322,7 +328,15 @@ export class PaymentRepository {
     // reuse it — never write it again (the second write is an UPDATE, which
     // firestore.rules deny, and it surfaced as PERSIST_FAILED).
     let internalOrderId: string;
-    if (recorded) {
+    const resumeOrderId = opts?.resumeOrderId?.trim() || null;
+    if (resumeOrderId) {
+      // RESUMING an abandoned unpaid order: the document already exists and
+      // firestore.rules allow create only, so writing it again would be denied
+      // (the CUS-09 trap) and would also duplicate the order in the customer's
+      // history. Bind the gateway order to the existing id.
+      internalOrderId = resumeOrderId;
+      usePaymentStore.getState().setInternalOrderId(resumeOrderId);
+    } else if (recorded) {
       internalOrderId = recorded.internalOrderId;
     } else {
       const pending = await orderRepository.createFromCurrentContext({

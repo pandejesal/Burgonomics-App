@@ -15,6 +15,7 @@ import { formatINR } from "@/core/utils/format";
 import { InvoiceDownloadButton } from "./InvoiceDownloadButton";
 import { ReorderDialogs } from "./ReorderDialogs";
 import { useReorderItems } from "../hooks/useReorderItems";
+import { displayOrderStatus, orderPaymentState } from "../utils/paymentState";
 import type { Order } from "../models";
 
 interface OrderHistoryCardProps {
@@ -57,9 +58,14 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
   const isTerminal =
     order.status.terminal || order.status.kind === "completed" || order.status.kind === "cancelled";
   const statusCode = typeof order.status?.code === "string" ? order.status.code : "";
-  const statusLabel = order.status?.label || statusCode || "Status unavailable";
+  // CUS-16: a pending online order is not confirmed. Derive the visible label
+  // from the server's payment state; paid/cash orders keep their label.
+  const paymentState = orderPaymentState(order);
+  const statusLabel =
+    displayOrderStatus(order)?.label || statusCode || "Status unavailable";
   const isCancelled =
     order.status?.kind === "cancelled" || statusCode.toUpperCase().includes("CANCEL");
+  const isUnpaid = paymentState === "unpaid";
 
   const dateFormatted = new Date(order.placedAt || Date.now()).toLocaleDateString("en-IN", {
     day: "numeric",
@@ -97,7 +103,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
             <span className="type-price text-base text-text-primary">#{shortCode}</span>
             <span
               className={`rounded-full border px-2.5 py-1 type-caption font-medium ${
-                isCancelled
+                isCancelled || isUnpaid
                   ? "border-error/30 bg-error/10 text-error"
                   : isTerminal
                     ? "border-success/30 bg-success/10 text-success"

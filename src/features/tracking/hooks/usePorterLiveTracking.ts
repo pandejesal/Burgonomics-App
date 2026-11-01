@@ -4,6 +4,7 @@ import {
   DEFAULT_COURIER_NAME,
   courierDisplayName,
 } from "@/features/orders/utils/courierName";
+import { orderPaymentState, type CustomerPaymentState } from "@/features/orders/utils/paymentState";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 
 export interface GeoCoordinates {
@@ -31,6 +32,8 @@ export interface PorterTrackingState {
   isDelivered: boolean;
   isCancelled: boolean;
   isReconnecting: boolean;
+  /** Server-derived payment state; unpaid/confirming stages are honest. */
+  paymentState: CustomerPaymentState;
 }
 
 /**
@@ -96,6 +99,9 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
   // Refund claims are only made when the SERVER wrote a refunded payment
   // marker — the client initiates no refund anywhere.
   const serverRefunded = order?.payment?.status === "refunded";
+  // An online order created before Razorpay opened is NOT confirmed until the
+  // server records the payment. Never advance a kitchen stage on status alone.
+  const paymentState = orderPaymentState(order);
 
   const addressLat = (order?.address as any)?.lat ?? (order as any)?.deliveryAddress?.lat;
   const addressLng = (order?.address as any)?.lng ?? (order as any)?.deliveryAddress?.lng;
@@ -125,6 +131,7 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
       isDelivered: false,
       isCancelled: true,
       isReconnecting: false,
+      paymentState,
     };
   }
 
@@ -145,6 +152,31 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
       isDelivered: false,
       isCancelled: true,
       isReconnecting: false,
+      paymentState,
+    };
+  }
+
+  // CUS-16: a pending online order has no kitchen stage. Show the real payment
+  // state and, while the gateway/webhook is still landing, "confirming" —
+  // never "payment failed" for someone who just paid.
+  if (paymentState === "unpaid" || paymentState === "confirming") {
+    return {
+      currentStage: 1,
+      stageName: paymentState === "unpaid" ? "Payment not completed" : "Confirming payment",
+      stageDescription:
+        paymentState === "unpaid"
+          ? "Your payment didn't complete, so the kitchen has not received this order. Complete payment or cancel it below."
+          : "We're confirming your payment with the bank. This usually takes a few seconds — please don't pay again.",
+      etaMinutes: null,
+      storeLocation,
+      dropLocation,
+      riderLocation: null,
+      partnerName,
+      isTakeawayOrDineIn: isTakeaway,
+      isDelivered: false,
+      isCancelled: false,
+      isReconnecting: false,
+      paymentState,
     };
   }
 
@@ -209,6 +241,7 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     isDelivered: stage === 4,
     isCancelled: false,
     isReconnecting: false,
+    paymentState,
   };
 }
 

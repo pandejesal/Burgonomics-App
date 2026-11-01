@@ -1,6 +1,12 @@
 export * from "./repositories/OrderRepository";
 export * from "./state/ordersStore";
 export * from "./models";
+export {
+  orderPaymentState,
+  displayOrderStatus,
+  PAYMENT_CONFIRMING_WINDOW_MS,
+  type CustomerPaymentState,
+} from "./utils/paymentState";
 export * from "./hooks/useOrderTracking";
 export * from "./hooks/useReorderItems";
 export { OrderTimeline } from "./components/OrderTimeline";
