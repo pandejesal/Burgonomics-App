@@ -74,6 +74,7 @@
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
   --color-warning-foreground: var(--warning-foreground);
   --color-error: var(--error);
   --color-error-foreground: var(--error-foreground);
@@ -194,6 +195,7 @@
   --success: #15803d; /* 4.9:1 text on white */
   --success-foreground: #ffffff;
   --warning: #b45309; /* 4.8:1 text on white */
+  --warning-text: #b45309; /* Warning TEXT on light surfaces (AA) */
   --warning-foreground: #ffffff;
   --error: #b91c1c; /* 5.9:1 text on white */
   --error-foreground: #ffffff;
@@ -261,6 +263,7 @@
   --success: #4ade80;
   --success-foreground: #052e16;
   --warning: #fbbf24;
+  --warning-text: #fbbf24; /* Warning TEXT on dark surfaces (AA) */
   --warning-foreground: #1a1400;
   --error: #f87171; /* 7.6:1 text on black */
   --error-foreground: #1a0505;

@@ -74,7 +74,9 @@ describe("A11Y-03 — checkout FREE / warning copy on its real background", () =
     expect(checkout).not.toMatch(/(?<!dark:)text-\[#4ADE80\]/);
     expect(checkout).not.toMatch(/className="text-warning"/);
     expect(checkout).toContain("text-warning-text");
-    expect(checkout).toContain("dark:text-[#4ADE80]");
+    // Launch markup paints success copy with the semantic token, never the
+    // old 1.74:1 raw green anywhere (light or dark).
+    expect(checkout).not.toMatch(/#4ADE80/i);
   });
 });
 

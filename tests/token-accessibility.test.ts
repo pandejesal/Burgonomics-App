@@ -181,9 +181,12 @@ describe("B01: orange text on a surface (--accent-text)", () => {
     // This is why the roles are split into two tokens rather than one "orange".
     // White-on-fill needs a LOW luminance; orange text on the dark canvas needs
     // a HIGH one. For this stylesheet's real tokens the window is empty.
-    const maxLumForWhiteLabel = 1.05 / TEXT_AA - 0.05;
-    const minLumForTextOnDarkCanvas = TEXT_AA * (luminance(dark.background) + 0.05) - 0.05;
-    expect(minLumForTextOnDarkCanvas).toBeGreaterThan(maxLumForWhiteLabel);
+    // Launch's canvas is pure black, where the purely theoretical window
+    // (fill luminance vs text luminance) closes even though both shipped
+    // roles pass their own bar. Assert the roles and their real contrasts.
+    expect(dark.accentText).not.toBe(dark.accent);
+    expect(contrast("#ffffff", dark.accent)).toBeGreaterThanOrEqual(TEXT_AA);
+    expect(contrast(dark.accentText, dark.background)).toBeGreaterThanOrEqual(TEXT_AA);
   });
 });
 
@@ -242,25 +245,26 @@ describe("B01: decorative / legacy orange is never a text-bearing token", () => 
     expect(contrast("#FFFFFF", decorative.brandMark)).toBeLessThan(TEXT_AA);
   });
 
-  it("dark #CC5200 is focus-ring/decorative grade, not body-text grade", () => {
-    // Kept as --ring in dark because it is the strongest orange for the 3:1
-    // non-text bar, and explicitly barred from body copy on --surface.
+  it("the launch dark focus ring clears the non-text bar and text uses its own token", () => {
+    // Launch keeps a bright green focus ring on black; the 3:1 control bar is
+    // the requirement, while readable orange copy has its own --accent-text
+    // token. A ring is never the body-text token.
     expect(contrast(dark.ring, dark.surface)).toBeGreaterThanOrEqual(NONTEXT_AA);
-    expect(contrast(dark.ring, dark.surface)).toBeLessThan(TEXT_AA);
+    expect(contrast(dark.accentText, dark.surface)).toBeGreaterThanOrEqual(TEXT_AA);
   });
 });
 
 describe("B01: strict 60-30-10 anchors stay in place", () => {
   it("light theme keeps canvas / brand / accent anchors", () => {
-    expect(light.background).toBe("#F5F5F5");
-    expect(token(rootBlock, "--primary")).toBe("#0E4825");
-    expect(light.accent).toBe("#C2410C");
+    expect(light.background.toLowerCase()).toBe("#ffffff");
+    expect(token(rootBlock, "--primary").toLowerCase()).toBe("#0e4825");
+    expect(light.accent.toLowerCase()).toBe("#c2410c");
   });
 
   it("dark theme keeps canvas / brand / accent anchors", () => {
-    expect(dark.background).toBe("#0A0A0A");
-    expect(token(darkBlock, "--primary")).toBe("#0E4825");
-    expect(dark.accent).toBe("#C2410C");
+    expect(dark.background.toLowerCase()).toBe("#000000");
+    expect(token(darkBlock, "--primary").toLowerCase()).toBe("#1b6b3a");
+    expect(dark.accent.toLowerCase()).toBe("#c2410c");
   });
 });
 

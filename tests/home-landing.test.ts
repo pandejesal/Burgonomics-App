@@ -81,7 +81,7 @@ describe("Prompt 09: Customer Home & Landing Experience Suite", () => {
       expect(css).not.toContain("#0A0A0A");
       expect(css).not.toContain("#FF6600");
 
-      expect(tokenBlock(":root")).toContain("--background: #FFFFFF");
+      expect(tokenBlock(":root")).toContain("--background: #ffffff");
       expect(tokenBlock(".dark")).toContain("--background: #000000");
       expect(css).toContain("--primary: #0E4825");
       expect(css).toContain("--accent: #C2410C");

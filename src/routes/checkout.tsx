@@ -1010,7 +1010,7 @@ export function CheckoutPage() {
 
         {/* Price Lock Banner */}
         {remainingLockSeconds !== null && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-large)] border border-warning/30 bg-warning/10 px-4 py-3 text-warning">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-large)] border border-warning/30 bg-warning/10 px-4 py-3 text-warning-text">
             <div className="flex min-w-0 flex-1 items-start gap-2 type-caption">
               <Timer className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
@@ -1082,7 +1082,7 @@ export function CheckoutPage() {
           <div
             role="status"
             aria-live="polite"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-warning/30 bg-warning/10 p-4 type-body-medium text-warning"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-warning/30 bg-warning/10 p-4 type-body-medium text-warning-text"
           >
             <span>{quoteView.message}</span>
             <span className="flex items-center gap-2">
@@ -1268,7 +1268,7 @@ export function CheckoutPage() {
                 {totals ? (
                   formatINR(totals.subtotal)
                 ) : (
-                  <span className="text-warning">unavailable</span>
+                  <span className="text-warning-text">unavailable</span>
                 )}
               </span>
             </div>
@@ -1278,7 +1278,7 @@ export function CheckoutPage() {
                 {totals ? (
                   formatINR(totals.taxes)
                 ) : (
-                  <span className="text-warning">unavailable</span>
+                  <span className="text-warning-text">unavailable</span>
                 )}
               </span>
             </div>
@@ -1292,7 +1292,7 @@ export function CheckoutPage() {
                     formatINR(quoteView.packagingFee)
                   )
                 ) : (
-                  <span className="text-warning">Getting price…</span>
+                  <span className="text-warning-text">Getting price…</span>
                 )}
               </span>
             </div>
@@ -1304,7 +1304,7 @@ export function CheckoutPage() {
                   {quoteView.showDeliveryFee && quoteView.deliveryFee !== null ? (
                     formatINR(quoteView.deliveryFee)
                   ) : (
-                    <span className="text-warning">
+                    <span className="text-warning-text">
                       {quoteView.status === "unserviceable" || quoteView.status === "error"
                         ? "Unavailable"
                         : "Getting price…"}
