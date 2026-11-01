@@ -31,53 +31,12 @@
         }
       }
     </style>
-    <!-- Apply the saved or system appearance before any React paint. Mirrors
+    <!-- Apply the saved or system appearance before any React paint. The
+         hosting CSP allows `script-src 'self'` only, so this must stay an
+         external same-origin file rather than an inline script. Mirrors
          --background / applyThemePreference in src/styles.css and
          src/features/settings/state/settingsStore.ts. -->
-    <script>
-      (function () {
-        var root = document.documentElement;
-        var resolved = "light";
-        try {
-          var raw = window.localStorage.getItem("burg.settings");
-          var theme = "system";
-          if (raw) {
-            var parsed = JSON.parse(raw);
-            var state =
-              parsed && typeof parsed === "object"
-                ? parsed.state && typeof parsed.state === "object"
-                  ? parsed.state
-                  : parsed
-                : null;
-            if (
-              state &&
-              (state.theme === "system" || state.theme === "light" || state.theme === "dark")
-            ) {
-              theme = state.theme;
-            }
-          }
-          if (theme === "system") {
-            resolved =
-              window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light";
-          } else {
-            resolved = theme;
-          }
-        } catch (error) {
-          resolved =
-            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-              ? "dark"
-              : "light";
-        }
-        root.classList.toggle("dark", resolved === "dark");
-        root.setAttribute("data-theme", resolved);
-        root.style.colorScheme = resolved;
-        root.style.setProperty("--boot-canvas", resolved === "dark" ? "#000000" : "#FFFFFF");
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute("content", resolved === "dark" ? "#000000" : "#FFFFFF");
-      })();
-    </script>
+    <script src="/theme-boot.js"></script>
     <title>BURGONOMICS — The House of DAMN GOOD BURGERS</title>
   </head>
   <body>

@@ -3,8 +3,14 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 
 const html = readFileSync("index.html", "utf8");
-const source = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+// The bootstrap is a same-origin file because the hosting CSP allows no inline
+// scripts. It still has to run in <head>, before React and before the first
+// paint, which this suite proves by executing the exact shipped file.
+const source = readFileSync("public/theme-boot.js", "utf8");
 if (!source) throw new Error("Missing pre-paint appearance bootstrap");
+if (!html.includes('src="/theme-boot.js"')) {
+  throw new Error("index.html no longer loads the pre-paint appearance bootstrap");
+}
 
 function boot(raw: string | null, dark: boolean, blocked = false) {
   document.head.innerHTML = '<meta name="theme-color" content="#FFFFFF">';
