@@ -24,8 +24,6 @@ import { EmptyState } from "@/shared/components/feedback/EmptyState";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { HapticService } from "@/core/services/haptics";
-import { cartRepository } from "@/features/cart";
-import { usePaymentStore } from "@/features/payments";
 import {
   orderRepository,
   useOrdersStore,
@@ -68,13 +66,11 @@ function OrderConfirmationPage() {
   // stamped with a boolean at creation.
   const [whatsappOptIn, setWhatsappOptIn] = React.useState(cachedOrder?.whatsappOptIn === true);
   const [waBusy, setWaBusy] = React.useState(false);
-
   // Sync the toggle once the order document arrives (cache-miss deep
   // links): it must reflect the stored opt-in, never a hardcoded default.
   React.useEffect(() => {
     if (typeof order?.whatsappOptIn === "boolean") setWhatsappOptIn(order.whatsappOptIn);
   }, [order?.id, order?.whatsappOptIn]);
-  const resetPayment = usePaymentStore((s) => s.reset);
 
   // Loyalty sync hook lives here (above ALL early returns): it was below the
   // `!order` return, so cache-miss→data transitions changed this component's
@@ -95,12 +91,11 @@ function OrderConfirmationPage() {
     }
   }, [order]);
 
-  // Guarantee cart is cleared and payment state is reset on arrival
-  React.useEffect(() => {
-    void cartRepository.clear();
-    resetPayment();
-    void HapticService.notification("success");
-  }, [resetPayment]);
+  // The confirmation screen is a READ-ONLY receipt. Completion (cart clear,
+  // payment reset, success haptic) belongs to the flow that actually finished
+  // the order (checkout/payment success handlers). Re-running it here destroyed
+  // a NEWER in-progress order's checkout form and pending reconciliation just
+  // because an old receipt was opened from order history.
 
   // Real-time Firestore snapshot subscription with fallback to repository
   React.useEffect(() => {

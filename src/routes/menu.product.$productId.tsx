@@ -31,7 +31,7 @@ export const Route = createFileRoute("/menu/product/$productId")({
       { title: "Product Details — Burgonomics (100% Pure Vegetarian)" },
       {
         name: "description",
-        content: "100% Pure Vegetarian handcrafted smash burger with customizable modifiers.",
+        content: "View product details, prices and customization options at Burgonomics.",
       },
     ],
   }),
@@ -407,8 +407,7 @@ function ProductPage() {
             <div>
               <h1 className="text-2xl font-black text-text leading-tight">{p.name}</h1>
               <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                {p.description ||
-                  "Freshly grilled smash patty layered with crisp greens and gourmet house sauce."}
+                {p.description || "Description coming soon"}
               </p>
             </div>
             <div className="shrink-0 text-right">

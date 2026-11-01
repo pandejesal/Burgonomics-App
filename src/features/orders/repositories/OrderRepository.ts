@@ -203,7 +203,7 @@ export class OrderRepository {
       // quote id on a takeaway/dine-in order would be meaningless (and the
       // service refuses to write one off-delivery anyway).
       deliveryQuoteId:
-        sel.fulfillment === "delivery" && checkout.checkoutFees.status === "ready"
+        sel.fulfillment === "delivery" && checkout.checkoutFees?.status === "ready"
           ? (checkout.checkoutFees.deliveryQuoteId ?? undefined)
           : undefined,
       payment,
