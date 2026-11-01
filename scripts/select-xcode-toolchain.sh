@@ -63,6 +63,20 @@ ver_to_int() {
 
 major_of() { local v="${1%% *}"; v="${v%%.*}"; v="${v//[^0-9]/}"; echo "${v:-0}"; }
 
+# iOS SDK version of one Developer dir. Xcode has no xcrun of its own on current
+# runner images, so fall back to the system /usr/bin/xcrun, which honours
+# DEVELOPER_DIR. xcodebuild prints "SDKVersion: 26.5"; older output said
+# "SDK version: 26.5".
+sdk_version_of() {
+  local dev="$1" xcrun_bin="$1/usr/bin/xcrun" v=""
+  [ -x "$xcrun_bin" ] || xcrun_bin="/usr/bin/xcrun"
+  v="$(DEVELOPER_DIR="$dev" "$xcrun_bin" --sdk iphoneos --show-sdk-version 2>/dev/null)" || true
+  if [ -z "$v" ]; then
+    v="$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcodebuild" -sdk iphoneos -version 2>/dev/null | awk '{ if ($1=="SDKVersion:") { print $2; exit } if (tolower($1)=="sdk" && tolower($2)=="version:") { print $3; exit } }')" || true
+  fi
+  printf '%s' "$v"
+}
+
 # ---- 1. Gather candidate Developer dirs ------------------------------------
 # Current xcode-select path + every $XCODE_SEARCH_ROOT/Xcode*.app on the machine.
 candidates=""
@@ -97,12 +111,7 @@ while IFS= read -r dev; do
     log "skip (unreadable -version): $dev"
     continue
   fi
-  # xcrun respects DEVELOPER_DIR and prints just "26.5" — far more stable to
-  # parse than xcodebuild -sdk ... -version prose. Fallback parses the prose.
-  sdk_ver="$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcrun" --sdk iphoneos --show-sdk-version 2>/dev/null)" || true
-  if [ -z "$sdk_ver" ]; then
-    sdk_ver="$(DEVELOPER_DIR="$dev" "$xcodebuild_bin" -sdk iphoneos -version 2>/dev/null | awk '{ if (tolower($1)=="sdk" && tolower($2)=="version:") { print $3; exit } }')" || true
-  fi
+  sdk_ver="$(sdk_version_of "$dev")"
   if [ -z "$sdk_ver" ]; then
     log "skip (no iphoneos SDK): $dev (Xcode $xcode_ver)"
     continue
@@ -160,10 +169,7 @@ fi
 # switching), in print mode, and under the test fixture (no PATH xcodebuild
 # needed). xcodebuild and xcrun both honor DEVELOPER_DIR.
 sel_ver="$(DEVELOPER_DIR="$best_dev" "$best_dev/usr/bin/xcodebuild" -version 2>/dev/null | awk '/^Xcode/{print $2; exit}')" || true
-sel_sdk="$(DEVELOPER_DIR="$best_dev" "$best_dev/usr/bin/xcrun" --sdk iphoneos --show-sdk-version 2>/dev/null)" || true
-if [ -z "$sel_sdk" ]; then
-  sel_sdk="$(DEVELOPER_DIR="$best_dev" "$best_dev/usr/bin/xcodebuild" -sdk iphoneos -version 2>/dev/null | awk '{ if (tolower($1)=="sdk" && tolower($2)=="version:") { print $3; exit } }')" || true
-fi
+sel_sdk="$(sdk_version_of "$best_dev")"
 sel_xcode_major="$(major_of "${sel_ver:-0}")"
 sel_sdk_major="$(major_of "${sel_sdk:-0}")"
 log "selected: Xcode ${sel_ver:-unknown} (major $sel_xcode_major), iOS SDK ${sel_sdk:-unknown} (major $sel_sdk_major) at $best_dev"
