@@ -7,21 +7,22 @@ import type { Product, ProductPage } from "@/features/menu/models";
  * Live-merge regression (HIGH: live menu truncation).
  *
  * menuStore used to treat a live page as the complete catalog: every product
- * absent from that page was deleted from its category bucket. With a live page
- * capped at 40 items, opening a >40-product store and then receiving a POS
- * sync permanently dropped the tail of the menu for the session.
+ * absent from that page was deleted from its category bucket. The current
+ * store pages 20 items at a time and the live listener is a whole-store
+ * snapshot (`subscribeStoreProducts` -> {products, removedIds, complete});
+ * only a PROVEN complete snapshot may prune membership. These cases pin that
+ * behaviour through the paged API.
  */
 const repo = vi.hoisted(() => ({
   listCategories: vi.fn(),
   listProducts: vi.fn(),
   subscribeCategories: vi.fn(),
-  subscribeProducts: vi.fn(),
-  subscribeProduct: vi.fn(),
+  subscribeStoreProducts: vi.fn(),
 }));
 
 vi.mock("@/features/menu/repositories/MenuRepository", () => ({ menuRepository: repo }));
 
-import { useMenuStore } from "./menuStore";
+import { useMenuStore, MENU_PAGE_SIZE } from "./menuStore";
 
 const ok = <T>(data: T): ApiResult<T> => ({ success: true, data });
 
@@ -54,7 +55,9 @@ const categories: MenuCategory[] = [
 
 /** Swap in a repository whose catalog is `all`, and keep the live callback. */
 function primeRepository(all: Product[]) {
-  let liveCb: ((res: ApiResult<any>) => void) | null = null;
+  let liveCb:
+    | ((res: ApiResult<{ products: Product[]; removedIds: string[]; complete: boolean }>) => void)
+    | null = null;
   repo.listCategories.mockResolvedValue(ok(categories));
   repo.listProducts.mockImplementation(
     async (_store: string, categoryId: string | undefined, page: number, pageSize: number) => {
@@ -63,25 +66,36 @@ function primeRepository(all: Product[]) {
     },
   );
   repo.subscribeCategories.mockImplementation(() => () => {});
-  repo.subscribeProducts.mockImplementation(
-    (_store: string, _cat: string | undefined, cb: (res: ApiResult<ProductPage>) => void) => {
+  repo.subscribeStoreProducts.mockImplementation(
+    (
+      _store: string,
+      cb: (
+        res: ApiResult<{ products: Product[]; removedIds: string[]; complete: boolean }>,
+      ) => void,
+    ) => {
       liveCb = cb;
       return () => {};
     },
   );
   return {
-    emit(payload: { items: Product[]; total: number; complete: boolean }) {
+    emit(payload: { items: Product[]; complete: boolean; removedIds?: string[] }) {
       liveCb?.(
         ok({
-          items: payload.items,
-          page: 1,
-          pageSize: payload.items.length,
-          total: payload.total,
+          products: payload.items,
+          removedIds: payload.removedIds ?? [],
           complete: payload.complete,
-        } as ProductPage),
+        }),
       );
     },
   };
+}
+
+/** Page a section until the server total is fully loaded. */
+async function loadAll(categoryId: string) {
+  await useMenuStore.getState().loadMore(categoryId);
+  while (useMenuStore.getState().buckets[categoryId]?.hasMore) {
+    await useMenuStore.getState().loadMore(categoryId);
+  }
 }
 
 describe("menuStore live merge never deletes products it did not see", () => {
@@ -96,10 +110,11 @@ describe("menuStore live merge never deletes products it did not see", () => {
     const live = primeRepository(all);
 
     await useMenuStore.getState().load("store_45");
+    await loadAll("burgers");
     expect(useMenuStore.getState().buckets.burgers.items).toHaveLength(45);
 
     const unsub = useMenuStore.getState().subscribeToLiveMenu("store_45");
-    live.emit({ items: all, total: 45, complete: true });
+    live.emit({ items: all, complete: true });
 
     const bucket = useMenuStore.getState().buckets.burgers;
     expect(bucket.items).toHaveLength(45);
@@ -115,14 +130,16 @@ describe("menuStore live merge never deletes products it did not see", () => {
     const live = primeRepository(all);
 
     await useMenuStore.getState().load("store_partial");
+    await loadAll("burgers");
     expect(useMenuStore.getState().buckets.burgers.items).toHaveLength(45);
 
     const unsub = useMenuStore.getState().subscribeToLiveMenu("store_partial");
-    // A legacy/partial live page (the old default) must merge-only.
-    live.emit({ items: all.slice(0, 40), total: 45, complete: false });
+    // A limited/partial live page must merge-only.
+    live.emit({ items: all.slice(0, 40), complete: false });
 
     const bucket = useMenuStore.getState().buckets.burgers;
     expect(bucket.items).toHaveLength(45);
+    expect(bucket.hasMore).toBe(false);
     const ids = new Set(bucket.items.map((p) => p.id));
     for (const p of all) expect(ids.has(p.id)).toBe(true);
     unsub();
@@ -133,10 +150,11 @@ describe("menuStore live merge never deletes products it did not see", () => {
     const live = primeRepository(all);
 
     await useMenuStore.getState().load("store_delete");
+    await loadAll("burgers");
     const remaining = all.filter((p) => p.id !== "prod_burgers_7");
 
     const unsub = useMenuStore.getState().subscribeToLiveMenu("store_delete");
-    live.emit({ items: remaining, total: 44, complete: true });
+    live.emit({ items: remaining, complete: true });
 
     const bucket = useMenuStore.getState().buckets.burgers;
     expect(bucket.items).toHaveLength(44);
@@ -149,10 +167,10 @@ describe("menuStore live merge never deletes products it did not see", () => {
     primeRepository(all);
 
     await useMenuStore.getState().load("store_120");
-    expect(useMenuStore.getState().buckets.burgers.items).toHaveLength(100);
+    expect(useMenuStore.getState().buckets.burgers.items).toHaveLength(MENU_PAGE_SIZE);
     expect(useMenuStore.getState().buckets.burgers.hasMore).toBe(true);
 
-    await useMenuStore.getState().loadMore("burgers");
+    await loadAll("burgers");
 
     const bucket = useMenuStore.getState().buckets.burgers;
     expect(bucket.items).toHaveLength(120);

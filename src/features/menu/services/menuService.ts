@@ -188,26 +188,22 @@ export function mapProductDoc(data: any, docId: string): Product {
     imageUrls: data.imageUrls || (imageUrl ? [imageUrl] : []),
     fallbackImageUrl: data.fallbackImageUrl,
     inStock:
-      // Consumer truth signal, so it fails CLOSED. A doc with no availability
-      // field must never render as sellable: nothing downstream re-checks
-      // (the payments pricing engine never reads inStock, and the cart's only
-      // gate is this boolean), so "we do not know" would become "order it".
-      // Strict `=== true` also closes the truthiness trap where a string
-      // "false" from a bad writer used to become available.
+      // Server parity (reviewer ruling 2026-10-30): a missing availability
+      // field is SELLABLE. The pricing gate prices those docs as available, and
+      // legacy/manual/combo/import rows never carried the flag — treating
+      // unknown as unsellable made every combo unbuyable. An explicit
+      // non-boolean still fails closed (the truthiness trap below), and an
+      // explicit false is an 86.
       data.inStock !== undefined
         ? data.inStock === true
         : data.isAvailable !== undefined
           ? data.isAvailable === true
-          : false,
+          : true,
     customizable: customizations.length > 0 || Boolean(data.customizable),
     prepTimeMinutes: toPrepMinutes(data.prepTimeMinutes),
     badges,
     tags: data.tags || [],
-    unavailableReason:
-      data.unavailableReason ??
-      (data.inStock === undefined && data.isAvailable === undefined
-        ? "Availability unknown"
-        : undefined),
+    unavailableReason: data.unavailableReason,
   };
 }
 
