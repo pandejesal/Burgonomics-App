@@ -44,6 +44,16 @@ export type ResolvedTheme = "light" | "dark";
 export const isThemePreference = isTheme;
 export const isLanguagePreference = isLanguage;
 
+/** True when every present enum field in a patch is a supported value. */
+export function isValidSettingsPatch(patch: {
+  theme?: unknown;
+  language?: unknown;
+}): boolean {
+  if (patch.theme !== undefined && !isTheme(patch.theme)) return false;
+  if (patch.language !== undefined && !isLanguage(patch.language)) return false;
+  return true;
+}
+
 const memoryFallback = new Map<string, string>();
 
 function isTheme(value: unknown): value is ThemePreference {
@@ -60,9 +70,15 @@ function isLanguage(value: unknown): value is LanguagePreference {
  * untouched in legacy storage for the per-uid migration prompt to inspect.
  */
 function migrateLegacyUiPayload(): string | null {
-  if (typeof window === "undefined" || !window.localStorage) return null;
+  let storage: Storage | null = null;
   try {
-    const raw = window.localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
+    storage = typeof window !== "undefined" ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     const container =
@@ -87,36 +103,68 @@ function migrateLegacyUiPayload(): string | null {
 
 /** localStorage when available, memory otherwise; legacy read-only fallback. */
 function uiSettingsStorage(): Storage {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return {
-      getItem: (key: string) => memoryFallback.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        memoryFallback.set(key, value);
-      },
-      removeItem: (key: string) => {
-        memoryFallback.delete(key);
-      },
-      clear: () => {
-        memoryFallback.clear();
-      },
-      length: memoryFallback.size,
-      key: (index: number) => Array.from(memoryFallback.keys())[index] ?? null,
-    } as Storage;
+  let browserStorage: Storage | null = null;
+  try {
+    browserStorage = typeof window !== "undefined" ? window.localStorage : null;
+  } catch {
+    browserStorage = null;
   }
-  return {
-    getItem: (key: string) =>
-      window.localStorage.getItem(key) ?? migrateLegacyUiPayload(),
+  const memoryOnly = {
+    getItem: (key: string) => memoryFallback.get(key) ?? null,
     setItem: (key: string, value: string) => {
-      window.localStorage.setItem(key, value);
+      memoryFallback.set(key, value);
     },
     removeItem: (key: string) => {
-      window.localStorage.removeItem(key);
+      memoryFallback.delete(key);
     },
-    clear: () => window.localStorage.clear(),
+    clear: () => {
+      memoryFallback.clear();
+    },
+    length: memoryFallback.size,
+    key: (index: number) => Array.from(memoryFallback.keys())[index] ?? null,
+  } as Storage;
+  return {
+    getItem: (key: string) => {
+      try {
+        const value = browserStorage?.getItem(key) ?? null;
+        if (value !== null) {
+          memoryFallback.set(key, value);
+          return value;
+        }
+      } catch {
+        browserStorage = null;
+      }
+      return memoryFallback.get(key) ?? migrateLegacyUiPayload();
+    },
+    setItem: (key: string, value: string) => {
+      memoryFallback.set(key, value);
+      try {
+        browserStorage?.setItem(key, value);
+      } catch {
+        // Quota/private-mode failure: keep this session's choice in memory.
+        browserStorage = null;
+      }
+    },
+    removeItem: (key: string) => {
+      memoryFallback.delete(key);
+      try {
+        browserStorage?.removeItem(key);
+      } catch {
+        browserStorage = null;
+      }
+    },
+    clear: () => {
+      memoryFallback.clear();
+      try {
+        browserStorage?.clear();
+      } catch {
+        browserStorage = null;
+      }
+    },
     get length() {
-      return window.localStorage.length;
+      return browserStorage?.length ?? memoryOnly.length;
     },
-    key: (index: number) => window.localStorage.key(index),
+    key: (index: number) => browserStorage?.key(index) ?? memoryOnly.key(index),
   };
 }
 
@@ -127,7 +175,15 @@ export const useSettingsStore = create<SettingsState>()(
       // Seed the pre-paint appearance so the first render already matches the
       // customer's saved choice (no light-then-dark flash).
       theme: readStoredThemePreference(),
-      update: (patch) => set((s) => ({ ...s, ...patch })),
+      update: (patch) =>
+        set((s) => ({
+          ...s,
+          ...patch,
+          // Runtime guard: a stale caller or a hand-edited object cannot write
+          // an unsupported enum value back into the store.
+          theme: isTheme(patch.theme) ? patch.theme : s.theme,
+          language: isLanguage(patch.language) ? patch.language : s.language,
+        })),
       reset: () => set({ ...DEFAULTS }),
     }),
     {
@@ -135,6 +191,21 @@ export const useSettingsStore = create<SettingsState>()(
       version: 1,
       storage: createJSONStorage(uiSettingsStorage),
       skipHydration: true,
+      migrate: (persisted) => persisted as SettingsState,
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppSettings>;
+        return {
+          ...current,
+          theme: isTheme(p.theme) ? p.theme : current.theme,
+          language: isLanguage(p.language) ? p.language : current.language,
+          analyticsOptIn:
+            typeof p.analyticsOptIn === "boolean" ? p.analyticsOptIn : current.analyticsOptIn,
+          personalizedAdsOptIn:
+            typeof p.personalizedAdsOptIn === "boolean"
+              ? p.personalizedAdsOptIn
+              : current.personalizedAdsOptIn,
+        };
+      },
       partialize: (s) => ({
         theme: s.theme,
         language: s.language,
@@ -152,10 +223,15 @@ export const useSettingsStore = create<SettingsState>()(
  * blob (read-only migration), tolerating a bare settings object.
  */
 export function readStoredThemePreference(
-  storage: Pick<Storage, "getItem"> | null = typeof window !== "undefined"
-    ? window.localStorage
-    : null,
+  storage?: Pick<Storage, "getItem"> | null,
 ): ThemePreference {
+  if (storage === undefined) {
+    try {
+      storage = typeof window !== "undefined" ? window.localStorage : null;
+    } catch {
+      storage = null;
+    }
+  }
   if (!storage) return "system";
   for (const key of [UI_SETTINGS_STORAGE_KEY, LEGACY_SETTINGS_STORAGE_KEY]) {
     try {

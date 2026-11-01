@@ -8,7 +8,7 @@ vi.mock("../src/core/config/firebase", () => ({
   auth: { currentUser: { uid: "customer" } },
   db: {},
 }));
-vi.mock("firebase/firestore", () => ({ doc: vi.fn(), setDoc }));
+vi.mock("firebase/firestore", () => ({ doc: vi.fn(), setDoc, getDoc: vi.fn() }));
 vi.mock("../src/core/integrations/petpooja", () => ({
   petpoojaGateway: { pushOrder: vi.fn().mockResolvedValue(undefined) },
 }));

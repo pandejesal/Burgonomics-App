@@ -29,7 +29,12 @@ vi.mock("@/features/notifications/services/notificationsService", () => ({
   },
 }));
 vi.mock("@/features/auth/repositories/AuthRepository", () => ({
-  authRepository: { logout: fixture.logout },
+  authRepository: {
+    logout: fixture.logout,
+    cancelChallenge: vi.fn(),
+    clearRecaptcha: vi.fn(),
+    initRecaptcha: vi.fn(),
+  },
 }));
 vi.mock("@/features/profile/repositories/ProfileRepository", () => ({
   profileRepository: { clearCache: fixture.clearCache, refresh: vi.fn() },

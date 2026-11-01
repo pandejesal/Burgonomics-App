@@ -9,7 +9,10 @@
  */
 import { fail, ok, type ApiResult } from "@/core/network/http";
 import { settingsService } from "@/features/settings/services/settingsService";
-import { useSettingsStore } from "@/features/settings/state/settingsStore";
+import {
+  isValidSettingsPatch,
+  useSettingsStore,
+} from "@/features/settings/state/settingsStore";
 import {
   useNotificationPrefsStore,
 } from "@/features/settings/state/notificationPrefsStore";
@@ -59,6 +62,9 @@ export class SettingsRepository {
   }
 
   async update(patch: Partial<AppSettings>): Promise<ApiResult<void>> {
+    if (!isValidSettingsPatch(patch)) {
+      return fail("INVALID_SETTINGS", "Unsupported appearance or language value.");
+    }
     useSettingsStore.getState().update(patch);
     const res = await settingsService.update(patch);
     if (!res.success) return res;

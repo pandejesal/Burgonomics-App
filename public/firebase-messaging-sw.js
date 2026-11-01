@@ -17,18 +17,10 @@ try {
     appId: "1:738930066637:web:fc1aa0f0e2a52a19df9584",
   });
 
-  var messaging = firebase.messaging();
-
-  messaging.onBackgroundMessage(function (payload) {
-    var title = (payload.notification && payload.notification.title) || "Burgonomics";
-    var options = {
-      body: (payload.notification && payload.notification.body) || "Order update available",
-      icon: "/burgonomics-logo.png",
-      badge: "/favicon.ico",
-      data: payload.data || {},
-    };
-    return self.registration.showNotification(title, options);
-  });
+  // Initializes the SDK's push handler. The SDK displays the notification
+  // payload exactly once; registering onBackgroundMessage as well would show
+  // every background push twice. The click handler below still deep-links.
+  firebase.messaging();
 
   self.addEventListener("notificationclick", function (event) {
     event.notification.close();

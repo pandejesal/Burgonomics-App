@@ -15,7 +15,7 @@ vi.mock("@/shared/platform/pushNotifications", () => ({
   requestPushPermissions: vi.fn(),
 }));
 
-const STORAGE_KEY = "burg.settings";
+const STORAGE_KEY = "burg.settings.ui.v1";
 
 interface PersistedEnvelope {
   state: Record<string, unknown>;

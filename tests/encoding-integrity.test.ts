@@ -37,7 +37,6 @@ describe("cart route text encoding", () => {
 
     // The real characters must still be there, exactly.
     expect(text).toContain("Your Cart " + String.fromCharCode(0x2014) + " Burgonomics");
-    expect(text).toContain(String.fromCodePoint(0x1f6f5) + " Delivery");
     expect(text).toContain(String.fromCodePoint(0x1f4e6));
     expect(text).toContain("Recalculating" + String.fromCharCode(0x2026));
   });

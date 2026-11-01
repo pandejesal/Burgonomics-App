@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { authRepository } from "@/features/auth/repositories/AuthRepository";
+import { authRepository, type AuthRepository } from "@/features/auth/repositories/AuthRepository";
+import type { AuthSessionRef } from "@/features/auth/services/authService";
 import { isJwtExpired } from "@/features/auth/utils/validators";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
@@ -8,16 +9,8 @@ import { logger } from "@/core/logging/logger";
 import { useProfileStore } from "@/features/profile/state/profileStore";
 import { profileRepository } from "@/features/profile/repositories/ProfileRepository";
 import { isDev } from "@/core/config/env";
-import { configureAuthUidSource, purgeScopedLocalCaches } from "@/features/auth/utils/scopedPersistence";
-import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
-import { clearCachedDeviceToken, getCachedDeviceToken } from "@/shared/platform/pushNotifications";
-import {
-  readPendingUnlink,
-  retryPendingUnlinkOnBoot,
-  writePendingUnlink,
-} from "@/features/notifications/services/pendingUnlink";
-import { authService } from "@/features/auth/services/authService";
-import type { AuthErrorDetails, AuthFlowId } from "@/features/auth/utils/authErrors";
+import { configureAuthUidSource } from "@/features/auth/utils/scopedPersistence";
+import { fail } from "@/core/network/http";
 
 export type AuthStatus =
   | "idle" // initial, pre-bootstrap
@@ -36,23 +29,13 @@ export interface AuthUser {
   name?: string;
 }
 
-export interface OtpChallenge {
-  /** Opaque app-scoped handle. Never the phone and never placed in a URL. */
-  handle: string;
+interface OtpChallenge {
+  otpToken: string;
   phone: string;
-  maskedPhone: string;
   requestedAt: number;
-  issuedAt: number;
   resendAfterSec: number;
-  displayExpiresAt: number;
-  deliveryMethod: "sms";
-}
-
-export interface AuthActionResult {
-  ok: boolean;
-  error?: string;
   code?: string;
-  details?: AuthErrorDetails;
+  deliveryMethod?: "whatsapp" | "sms";
 }
 
 interface AuthState {
@@ -63,42 +46,63 @@ interface AuthState {
   challenge: OtpChallenge | null;
   isBootstrapped: boolean;
   error: string | null;
-  /** UID-only marker for an SDK user left by a cancelled attempt. */
-  quarantinedUid: string | null;
 
   // Actions
   bootstrap: (sessionProbe?: () => Promise<string | null>) => Promise<void>;
   requestOtp: (
-    flow: AuthFlowId,
     phone: string,
     deliveryMethod?: "whatsapp" | "sms",
     otpToken?: string,
-  ) => Promise<AuthActionResult>;
-  verifyOtp: (flow: AuthFlowId, handle: string, code: string) => Promise<AuthActionResult>;
-  resendOtp: (flow: AuthFlowId) => Promise<AuthActionResult>;
+  ) => Promise<{ ok: boolean; error?: string }>;
+  verifyOtp: (code: string) => Promise<{ ok: boolean; error?: string }>;
+  resendOtp: () => Promise<{ ok: boolean; error?: string }>;
   changePhone: () => void;
-  resetAuthAttempts: () => void;
-  signOutUnfinishedSession: () => Promise<void>;
-  logout: (options?: { purgeLocalCaches?: boolean }) => Promise<void>;
+  logout: () => Promise<void>;
   clearError: () => void;
 }
 
 /**
- * Session persistence goes through `secureStorage` so the swap to native
- * Keychain / Keystore is a single-file change. Tokens never round-trip
- * through Zustand's raw localStorage persist middleware.
+ * Session persistence goes through `secureStorage` (see
+ * shared/services/secureStorage.ts) so the swap to native Keychain /
+ * Keystore is a single-file change. We deliberately do NOT use
+ * Zustand's `persist` middleware here because tokens must round-trip
+ * through the secure abstraction, not raw `localStorage`.
  */
 
+/**
+ * Live Firebase uid, or null when no Firebase session exists. Single seam
+ * for the bootstrap trust gate â€” injectable in tests (module-mock
+ * interception is importer-dependent and cannot pin this gate; see Loop 9).
+ */
 export async function getFirebaseSessionUid(): Promise<string | null> {
   try {
     await firebaseAuth.authStateReady();
   } catch {
-    // authStateReady failure — fall through to the currentUser check.
+    // authStateReady failure â€” fall through to the currentUser check.
   }
   return firebaseAuth.currentUser?.uid ?? null;
 }
 
-async function persistSession(user: AuthUser, accessToken: string, refreshToken: string) {
+/**
+ * Session persistence runs through one queue.
+ *
+ * Persist, release and clear are read-modify-write sequences. Interleaving two
+ * of them lets an ownership check pass, then a newer login write, then the
+ * older cleanup delete the newer tokens. Serializing removes that window.
+ */
+let sessionStorageQueue: Promise<unknown> = Promise.resolve();
+
+function withSessionStorageLock<T>(operation: () => Promise<T>): Promise<T> {
+  const run = sessionStorageQueue.then(operation, operation);
+  sessionStorageQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+/** Callers must already hold `withSessionStorageLock`. */
+async function persistSessionLocked(user: AuthUser, accessToken: string, refreshToken: string) {
   await Promise.all([
     secureStorage.set(SECURE_KEYS.ACCESS_TOKEN, accessToken),
     secureStorage.set(SECURE_KEYS.REFRESH_TOKEN, refreshToken),
@@ -106,7 +110,8 @@ async function persistSession(user: AuthUser, accessToken: string, refreshToken:
   ]);
 }
 
-async function clearPersistedSession() {
+/** Callers must already hold `withSessionStorageLock`. */
+async function clearPersistedSessionLocked() {
   await Promise.all([
     secureStorage.remove(SECURE_KEYS.ACCESS_TOKEN),
     secureStorage.remove(SECURE_KEYS.REFRESH_TOKEN),
@@ -114,153 +119,158 @@ async function clearPersistedSession() {
   ]);
 }
 
-function isUid(value: string | null | undefined): value is string {
-  return typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+function persistSession(user: AuthUser, accessToken: string, refreshToken: string) {
+  return withSessionStorageLock(() => persistSessionLocked(user, accessToken, refreshToken));
 }
 
-async function readQuarantinedUid(): Promise<string | null> {
-  const value = await secureStorage.get(SECURE_KEYS.AUTH_QUARANTINED_UID);
-  return isUid(value) ? value : null;
+function clearPersistedSession() {
+  return withSessionStorageLock(() => clearPersistedSessionLocked());
 }
 
-async function writeQuarantinedUid(uid: string): Promise<void> {
-  if (isUid(uid)) await secureStorage.set(SECURE_KEYS.AUTH_QUARANTINED_UID, uid);
-}
+import { notificationsService } from "@/features/notifications/services/notificationsService";
 
 /**
- * Bound on the pre-signout device-token unlink. The unlink endpoint is
- * auth-gated, so it MUST be awaited BEFORE `authRepository.logout()` — the old
- * fire-and-forget call lost its credential mid-flight and left the token bound
- * to the old user. It must also never hold sign-out hostage: past this bound
- * we log and continue signing out.
+ * CUS-05 — hard cap on the pre-sign-out FCM unlink. The unregister call needs
+ * the CURRENT auth token, so it must finish before `auth.signOut()` tears the
+ * session down (it used to be fire-and-forget and raced the sign-out, losing
+ * the token and leaving the device linked to the account that just left).
+ * A dead network must never trap the user in a signed-in state, so sign-out
+ * proceeds after this many ms regardless of the unlink result.
  */
-export const DEVICE_UNLINK_TIMEOUT_MS = 3000;
+export const DEVICE_UNLINK_TIMEOUT_MS = 2_000;
 
-export type BoundedUnlinkOutcome = "ok" | "timeout" | "failed";
-
-async function unlinkDeviceTokenBounded(
-  uid: string | null | undefined,
-): Promise<BoundedUnlinkOutcome> {
-  if (!uid) return "ok";
+/**
+ * Unlinks the device token from `userId` before credentials are dropped,
+ * bounded by {@link DEVICE_UNLINK_TIMEOUT_MS}. Never throws and never rejects:
+ * failing to unregister is logged and sign-out still completes.
+ */
+async function unlinkDeviceTokenBeforeSignOut(userId?: string): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-  const timeout = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => {
-      timedOut = true;
-      resolve("timeout");
-    }, DEVICE_UNLINK_TIMEOUT_MS);
-  });
   try {
-    const outcome = await Promise.race([
-      notificationsService.unlinkUserFromDeviceToken(uid),
-      timeout,
+    await Promise.race([
+      Promise.resolve(notificationsService.unlinkUserFromDeviceToken(userId)).then(
+        () => undefined,
+        (e: unknown) =>
+          logger.warn("auth.device_unlink_failed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, DEVICE_UNLINK_TIMEOUT_MS);
+      }),
     ]);
-    if (outcome === "ok") return "ok";
-    if (timedOut || outcome === "timeout") {
-      logger.warn("auth.device_unlink_timeout", { timeoutMs: DEVICE_UNLINK_TIMEOUT_MS });
-      return "timeout";
-    }
-    logger.warn("auth.device_unlink_failed", { uid });
-    return "failed";
   } catch (e: unknown) {
     logger.warn("auth.device_unlink_failed", {
-      code: e && typeof e === "object" && "code" in e ? String((e as any).code) : "unknown",
+      message: e instanceof Error ? e.message : String(e),
     });
-    return "failed";
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
 
 /**
- * F3/B2: when the unlink is unconfirmed, keep a bounded retry entry plus a
- * retry-only token copy, then clear the operational cache so nothing else
- * reads it. Registration never reads the secure copy.
+ * Repository resolution seam.
+ *
+ * Production resolves the singleton. Race/epoch tests inject a synthetic
+ * `AuthRepository` here so they can control resolution order without booting
+ * Firebase Auth (module mocking of `@/core/config/firebase` proved
+ * importer-dependent in this repo — see tests/auth.bootstrap.test.ts).
  */
-async function persistFailedUnlink(
-  uid: string | null,
-  outcome: Exclude<BoundedUnlinkOutcome, "ok">,
-): Promise<void> {
-  if (!uid) return;
-  const token = getCachedDeviceToken();
-  if (!token) {
-    logger.warn("auth.pending_unlink_no_token", { reason: outcome });
-    return;
-  }
-  const recorded = await writePendingUnlink({ uid, token, reason: outcome });
-  if (recorded) clearCachedDeviceToken();
-}
+let authRepositoryOverride: AuthRepository | null = null;
 
 /**
- * Before any register/link, replay a same-uid pending unlink. When there is
- * no entry the link call stays synchronous (existing boot contract/tests);
- * when an entry exists the retry must finish first so the new association
- * cannot race a stale binding.
+ * Test-runtime check that does not trust DEV alone: a suite may set
+ * `PROD`/`DEV` explicitly, so VITEST/MODE/NODE_ENV decide.
  */
-function resumeDeviceNotifications(uid: string): void {
-  if (!readPendingUnlink()) {
-    void notificationsService
-      .linkUserToDeviceToken(uid)
-      .catch((e: unknown) =>
-        logger.warn("auth.device_link_failed", {
-          code: e && typeof e === "object" && "code" in e ? String((e as any).code) : "unknown",
-        }),
-      );
-    return;
-  }
-  void (async () => {
-    await retryPendingUnlinkOnBoot(uid);
-    await notificationsService.linkUserToDeviceToken(uid);
-  })().catch((e: unknown) =>
-    logger.warn("auth.device_link_failed", {
-      code: e && typeof e === "object" && "code" in e ? String((e as any).code) : "unknown",
-    }),
+function isTestRuntime(): boolean {
+  const env = (import.meta as { env?: Record<string, unknown> }).env;
+  if (!env) return false;
+  return (
+    env.VITEST === true || env.VITEST === "true" || env.MODE === "test" || env.NODE_ENV === "test"
   );
 }
 
-/** F11: balance follows the server on every session restore (never minted). */
-function refreshLoyaltyFromServer(uid: string | null | undefined): void {
-  void useLoyaltyStore
-    .getState()
-    .refreshFromServer(uid)
-    .catch((e: unknown) =>
-      logger.warn("auth.loyalty_refresh_failed", {
-        code: e && typeof e === "object" && "code" in e ? String((e as any).code) : "unknown",
-      }),
-    );
+export function __setAuthRepositoryForTests(next: AuthRepository | null): void {
+  if (!isTestRuntime()) return;
+  authRepositoryOverride = next;
 }
-
-type VerifyOtpResult = AuthActionResult;
 
 /**
- * Single-flight gate for OTP verification (F12). WebOTP autofill, a paste and
- * a button tap can land in the same tick; without this each one fired its own
- * confirm() call. Cleared on settle so a failed attempt can be retried.
+ * Resolved per call, never cached at module init: this module participates in
+ * an import cycle (cart/router -> authStore -> AuthRepository), so reading the
+ * binding here — after all modules evaluate — is what keeps it defined.
  */
-let verifyOtpInFlight: Promise<VerifyOtpResult> | null = null;
-
-import { notificationsService } from "@/features/notifications/services/notificationsService";
-
-function challengeFrom(data: {
-  handle: string;
-  phone: string;
-  maskedPhone: string;
-  issuedAt: number;
-  resendAfterSec: number;
-  displayExpiresAt: number;
-}): OtpChallenge {
-  return {
-    handle: data.handle,
-    phone: data.phone,
-    maskedPhone: data.maskedPhone,
-    requestedAt: data.issuedAt,
-    issuedAt: data.issuedAt,
-    resendAfterSec: data.resendAfterSec,
-    displayExpiresAt: data.displayExpiresAt,
-    deliveryMethod: "sms",
-  };
+function repo(): AuthRepository {
+  return authRepositoryOverride ?? authRepository;
 }
 
+type RequestOtpResult = Awaited<ReturnType<AuthRepository["requestOtp"]>>;
+type VerifyOtpResult = Awaited<ReturnType<AuthRepository["verifyOtp"]>>;
+
+/**
+ * Challenge epoch. Bumped whenever the active challenge is abandoned
+ * (changePhone, logout, or a superseding request). Async auth work captures
+ * the epoch it started under and must not write state, persist tokens, or
+ * report success once the epoch has moved on.
+ */
+let challengeEpoch = 0;
+
+function nextChallengeEpoch(): number {
+  challengeEpoch += 1;
+  return challengeEpoch;
+}
+
+/**
+ * Identity epoch. Bumped when the signed-in identity is abandoned (logout) or
+ * replaced (a verify commits). Bootstrap captures it so a logout that lands
+ * while storage/probe awaits cannot be undone by a stale bootstrap result.
+ */
+let identityEpoch = 0;
+
+/**
+ * Removes persisted tokens only when they are still the ones this attempt
+ * wrote. A newer login may have replaced them while the storage await was in
+ * flight, and clearing then would sign the new user out.
+ */
+function releasePersistedTokensIfOwned(accessToken: string): Promise<void> {
+  // Runs inside the storage lock, so the read and the delete cannot be
+  // separated by a newer login's write.
+  return withSessionStorageLock(async () => {
+    const stored = await secureStorage.get(SECURE_KEYS.ACCESS_TOKEN);
+    // Strict equality: null means someone already cleared it (or never wrote
+    // it), which is NOT proof of ownership. Never delete a session we do not own.
+    if (stored !== accessToken) return;
+    await clearPersistedSessionLocked();
+  }).catch(() => undefined);
+}
+
+/**
+ * Signs out the Firebase session a cancelled verify created, but only when no
+ * newer operation has claimed that identity. Never touches another user.
+ */
+async function discardFencedSession(sessionRef: AuthSessionRef | undefined): Promise<void> {
+  if (!sessionRef) return;
+  if (useAuthStore.getState().user?.id === sessionRef.uid) return;
+  await repo().discardConfirmedSession(sessionRef);
+}
+
+/** Single owner for a send, so a double tap cannot burn two SMS. */
+let requestInFlight: { phone: string; promise: Promise<{ ok: boolean; error?: string }> } | null =
+  null;
+/**
+ * Single owner for a confirm, keyed by the epoch it started in. An abandoned
+ * (fenced) verify must not block a new code for the rest of the session: its
+ * ownership is dropped on cancel/logout/changePhone, and the transport keeps
+ * its own generation guard so the orphaned confirm still cannot adopt.
+ */
+let verifyInFlight: { epoch: number; promise: Promise<{ ok: boolean; error?: string }> } | null =
+  null;
+/** Single owner for bootstrap, so guards/deep links share one session probe. */
+let bootstrapInFlight: Promise<void> | null = null;
+
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "idle",
   user: null,
@@ -269,234 +279,271 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   challenge: null,
   isBootstrapped: false,
   error: null,
-  quarantinedUid: null,
 
   async bootstrap(sessionProbe?: () => Promise<string | null>) {
     if (get().isBootstrapped) return;
-    try {
-      const [accessToken, refreshToken, userJson, quarantined] = await Promise.all([
-        secureStorage.get(SECURE_KEYS.ACCESS_TOKEN),
-        secureStorage.get(SECURE_KEYS.REFRESH_TOKEN),
-        secureStorage.get(SECURE_KEYS.USER),
-        readQuarantinedUid(),
-      ]);
+    // Root layout, the route guard and a deep link all bootstrap on first paint.
+    // Without a shared owner each pass re-read storage and re-links the device
+    // token; the second pass could also overwrite the first pass's decision.
+    if (bootstrapInFlight) return bootstrapInFlight;
 
-      if (!accessToken || !refreshToken || !userJson) {
+    const run = (async () => {
+      const startIdentityEpoch = identityEpoch;
+      /** True when a logout/login superseded this pass; never restores state. */
+      const stale = (): boolean => {
+        if (identityEpoch === startIdentityEpoch) return false;
+        set({ isBootstrapped: true });
+        return true;
+      };
+      try {
+        const [accessToken, refreshToken, userJson] = await Promise.all([
+          secureStorage.get(SECURE_KEYS.ACCESS_TOKEN),
+          secureStorage.get(SECURE_KEYS.REFRESH_TOKEN),
+          secureStorage.get(SECURE_KEYS.USER),
+        ]);
+
+        if (!accessToken || !refreshToken || !userJson) {
+          if (stale()) return;
+          set({ status: "guest", isBootstrapped: true });
+          return;
+        }
+
+        const parsed: unknown = JSON.parse(userJson);
+        // Shape-guard the persisted session: valid JSON like `"corrupt"`, `123`,
+        // or `{id:"other"}` used to cast cleanly and either crash downstream or
+        // orphan orders under an empty contact. Mismatch clears the session.
+        const user =
+          parsed &&
+          typeof parsed === "object" &&
+          typeof (parsed as any).id === "string" &&
+          typeof (parsed as any).phone === "string"
+            ? (parsed as AuthUser)
+            : null;
+        if (!user) {
+          await clearPersistedSession();
+          set({ status: "guest", isBootstrapped: true });
+          return;
+        }
+
+        // The persisted tokens are real Firebase tokens, so a stolen
+        // localStorage copy alone must never restore a session: require a live
+        // Firebase session for the SAME uid before trusting anything stored.
         const fbUid = await (sessionProbe ?? getFirebaseSessionUid)();
-        if (fbUid) {
-          await writeQuarantinedUid(fbUid);
-          set({ status: "guest", isBootstrapped: true, quarantinedUid: fbUid });
-        } else {
-          await secureStorage.remove(SECURE_KEYS.AUTH_QUARANTINED_UID);
-          set({ status: "guest", isBootstrapped: true, quarantinedUid: null });
+        if (!fbUid || fbUid !== user.id) {
+          await clearPersistedSession();
+          set({ status: "guest", isBootstrapped: true });
+          return;
         }
-        return;
-      }
 
-      const parsed: unknown = JSON.parse(userJson);
-      // Shape-guard the persisted session: valid JSON like `"corrupt"`, `123`,
-      // or `{id:"other"}` used to cast cleanly and either crash downstream or
-      // orphan orders under an empty contact. Mismatch clears the session.
-      const user =
-        parsed && typeof parsed === "object" && typeof (parsed as any).id === "string" && typeof (parsed as any).phone === "string"
-          ? (parsed as AuthUser)
-          : null;
-      if (!user) {
-        await clearPersistedSession();
-        set({ status: "guest", isBootstrapped: true, quarantinedUid: quarantined });
-        return;
-      }
-
-      // The persisted tokens are real Firebase tokens, so a stolen
-      // localStorage copy alone must never restore a session: require a live
-      // Firebase session for the SAME uid before trusting anything stored.
-      const fbUid = await (sessionProbe ?? getFirebaseSessionUid)();
-      if (!fbUid || fbUid !== user.id) {
-        await clearPersistedSession();
-        if (fbUid) await writeQuarantinedUid(fbUid);
-        set({
-          status: "guest",
-          isBootstrapped: true,
-          quarantinedUid: fbUid ?? quarantined,
-        });
-        return;
-      }
-
-      await secureStorage.remove(SECURE_KEYS.AUTH_QUARANTINED_UID);
-
-      if (!isJwtExpired(accessToken)) {
-        useProfileStore.getState().hydrateFromAuth(user);
-        profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
-        resumeDeviceNotifications(user.id);
-        refreshLoyaltyFromServer(user.id);
-        set({
-          status: "authenticated",
-          user,
-          accessToken,
-          refreshToken,
-          isBootstrapped: true,
-          quarantinedUid: null,
-        });
-        return;
-      }
-
-      // Try to refresh silently.
-      const refreshed = await authRepository.refresh(refreshToken);
-      if (refreshed.success) {
-        await persistSession(user, refreshed.data.accessToken, refreshed.data.refreshToken);
-        useProfileStore.getState().hydrateFromAuth(user);
-        profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
-        // Same linking as fresh login — otherwise refreshed sessions silently
-        // stop receiving order status pushes.
-        resumeDeviceNotifications(user.id);
-        refreshLoyaltyFromServer(user.id);
-        set({
-          status: "authenticated",
-          user,
-          accessToken: refreshed.data.accessToken,
-          refreshToken: refreshed.data.refreshToken,
-          isBootstrapped: true,
-          quarantinedUid: null,
-        });
-      } else {
-        await clearPersistedSession();
-        set({
-          status: "session_expired",
-          user: null,
-          accessToken: null,
-          refreshToken: null,
-          isBootstrapped: true,
-        });
-      }
-    } catch {
-      set({ status: "guest", isBootstrapped: true });
-    }
-  },
-
-  async requestOtp(flow, phone, deliveryMethod = DEFAULT_DELIVERY_METHOD, otpToken) {
-    const epochAtEntry = authService.getIntentEpoch();
-    set({ status: "authenticating", error: null });
-    const res = await authRepository.requestOtp(flow, phone, deliveryMethod, otpToken);
-    if (!res.success) {
-      if (!authService.isIntentEpochCurrent(epochAtEntry) || res.error.code === "STALE_EPOCH") {
-        set({
-          status: "guest",
-          challenge: null,
-          error: "Your sign-in attempt was cancelled. Please try again.",
-        });
-        return {
-          ok: false,
-          error: "Your sign-in attempt was cancelled. Please try again.",
-          code: "STALE_EPOCH",
-        };
-      }
-      set({ status: "error", error: res.error.message });
-      return {
-        ok: false,
-        error: res.error.message,
-        code: res.error.code,
-        details: res.error.details,
-      };
-    }
-    if (!authService.isIntentEpochCurrent(epochAtEntry)) {
-      set({
-        status: "guest",
-        challenge: null,
-        error: "Your sign-in attempt was cancelled. Please try again.",
-      });
-      return {
-        ok: false,
-        error: "Your sign-in attempt was cancelled. Please try again.",
-        code: "STALE_EPOCH",
-      };
-    }
-    set({
-      status: "otp_sent",
-      challenge: challengeFrom(res.data),
-      error: null,
-    });
-    return { ok: true };
-  },
-
-  async verifyOtp(flow, handle, code) {
-    if (verifyOtpInFlight) return verifyOtpInFlight;
-    const run = (async (): Promise<VerifyOtpResult> => {
-      const { challenge } = get();
-      if (!challenge) {
-        return { ok: false, error: "Please request an OTP first.", code: "NO_CHALLENGE" };
-      }
-      const epochAtEntry = authService.getIntentEpoch();
-      set({ status: "verifying", error: null });
-      const res = await authRepository.verifyOtp(flow, handle, code);
-      if (!res.success) {
-        if (!authService.isIntentEpochCurrent(epochAtEntry)) {
+        if (!isJwtExpired(accessToken)) {
+          // A logout that landed during the probe must win over this restore.
+          if (stale()) return;
+          useProfileStore.getState().hydrateFromAuth(user);
+          profileRepository.refresh().catch((e: unknown) =>
+            logger.warn("auth.profile_refresh_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) =>
+            logger.warn("auth.device_link_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
           set({
-            status: "guest",
-            challenge: null,
-            error: "Your sign-in was cancelled. Please request a new code.",
+            status: "authenticated",
+            user,
+            accessToken,
+            refreshToken,
+            isBootstrapped: true,
           });
-          return {
-            ok: false,
-            error: "Your sign-in was cancelled. Please request a new code.",
-            code: "STALE_EPOCH",
-          };
+          return;
         }
-        const code = res.error.code;
-        if (code === "AUTH_CODE_EXPIRED") {
-          set({ status: "otp_sent", challenge: null, error: res.error.message });
+
+        // Try to refresh silently.
+        const refreshed = await repo().refresh(refreshToken);
+        if (refreshed.success) {
+          await persistSession(user, refreshed.data.accessToken, refreshed.data.refreshToken);
+          // Re-check after the storage await: release only this attempt's tokens.
+          if (stale()) {
+            await releasePersistedTokensIfOwned(refreshed.data.accessToken);
+            return;
+          }
+          useProfileStore.getState().hydrateFromAuth(user);
+          profileRepository.refresh().catch((e: unknown) =>
+            logger.warn("auth.profile_refresh_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+          // Same linking as fresh login — otherwise refreshed sessions silently
+          // stop receiving order status pushes.
+          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) =>
+            logger.warn("auth.device_link_failed", {
+              message: e instanceof Error ? e.message : String(e),
+            }),
+          );
+          set({
+            status: "authenticated",
+            user,
+            accessToken: refreshed.data.accessToken,
+            refreshToken: refreshed.data.refreshToken,
+            isBootstrapped: true,
+          });
         } else {
-          set({ status: "otp_sent", error: res.error.message });
+          await clearPersistedSession();
+          set({
+            status: "session_expired",
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+            isBootstrapped: true,
+          });
         }
-        return { ok: false, error: res.error.message, code, details: res.error.details };
+      } catch {
+        set({ status: "guest", isBootstrapped: true });
+      }
+    })();
+
+    bootstrapInFlight = run;
+    try {
+      await run;
+    } finally {
+      if (bootstrapInFlight === run) bootstrapInFlight = null;
+    }
+  },
+
+  async requestOtp(phone, deliveryMethod = DEFAULT_DELIVERY_METHOD, otpToken) {
+    // One owner per send: a double tap (or a second tab) must not burn two SMS
+    // nor race two challenges into the same store slot.
+    const inFlight = requestInFlight;
+    if (inFlight) {
+      if (inFlight.phone === phone) return inFlight.promise;
+      return {
+        ok: false,
+        error: "A verification code is already being requested for another number.",
+      };
+    }
+
+    const epoch = nextChallengeEpoch();
+    const promise = (async () => {
+      set({ status: "authenticating", error: null });
+      let res: RequestOtpResult;
+      try {
+        res = await repo().requestOtp(phone, deliveryMethod, otpToken);
+      } catch (err) {
+        res = fail("AUTH_OTP_REQUEST_FAILED", messageOf(err, "Failed to send verification code."));
       }
 
-      const attemptEpoch =
-        typeof res.data.attemptEpoch === "number" ? res.data.attemptEpoch : epochAtEntry;
-      if (attemptEpoch !== epochAtEntry || !authService.isIntentEpochCurrent(epochAtEntry)) {
-        await authService.cleanupStaleUser(res.data.sdkUser, epochAtEntry);
-        await clearPersistedSession();
-        set({
-          status: "guest",
-          user: null,
-          accessToken: null,
-          refreshToken: null,
-          challenge: null,
-          error: "Your sign-in was cancelled. Please request a new code.",
-        });
-        return { ok: false, error: "Your sign-in was cancelled. Please request a new code.", code: "STALE_EPOCH" };
+      if (!res || !res.success) {
+        const message = res?.error?.message ?? "Failed to send verification code.";
+        // A failed request must drop the previous challenge on BOTH sides, or a
+        // code issued for the old number stays confirmable.
+        repo().cancelChallenge();
+        if (epoch === challengeEpoch) set({ status: "error", error: message, challenge: null });
+        return { ok: false, error: message };
+      }
+
+      // Superseded by a newer request while this one was in flight.
+      if (epoch !== challengeEpoch) return { ok: false, error: "Superseded by a newer request." };
+
+      set({
+        status: "otp_sent",
+        challenge: {
+          otpToken: res.data.otpToken,
+          phone,
+          requestedAt: Date.now(),
+          resendAfterSec: res.data.resendAfterSec,
+          code: res.data.code,
+          deliveryMethod: res.data.deliveryMethod || deliveryMethod,
+        },
+      });
+      return { ok: true };
+    })();
+
+    requestInFlight = { phone, promise };
+    try {
+      return await promise;
+    } finally {
+      if (requestInFlight && requestInFlight.promise === promise) requestInFlight = null;
+    }
+  },
+
+  async verifyOtp(code) {
+    // A second submit (auto-complete plus the Verify button, or a double tap)
+    // must not confirm the same code twice.
+    const { challenge } = get();
+    if (!challenge) {
+      return { ok: false, error: "Please request an OTP first." };
+    }
+
+    const epoch = challengeEpoch;
+    // Only the current epoch blocks a new attempt; an orphaned verify from an
+    // abandoned challenge is released in changePhone/logout below.
+    if (verifyInFlight && verifyInFlight.epoch === epoch) {
+      return { ok: false, error: "Verification is already in progress." };
+    }
+    const promise = (async () => {
+      set({ status: "verifying", error: null });
+      let res: VerifyOtpResult;
+      try {
+        res = await repo().verifyOtp(challenge.otpToken, code);
+      } catch (err) {
+        res = fail("AUTH_OTP_VERIFY_FAILED", messageOf(err, "Verification failed."));
+      }
+
+      if (!res || !res.success) {
+        const message = res?.error?.message ?? "Verification failed.";
+        if (epoch === challengeEpoch) set({ status: "otp_sent", error: message });
+        return { ok: false, error: message };
+      }
+
+      // Epoch fence: changePhone / logout / a new request happened while this
+      // code was in flight. confirm() already minted a Firebase session, so
+      // discard exactly that one before returning.
+      if (epoch !== challengeEpoch) {
+        await discardFencedSession(res.data.sessionRef);
+        return { ok: false, error: "Verification was cancelled." };
       }
 
       try {
         await persistSession(res.data.user, res.data.accessToken, res.data.refreshToken);
-      } catch (error) {
-        logger.warn("auth.session_persist_failed", {
-          code: error && typeof error === "object" && "code" in error ? String((error as any).code) : "unknown",
-        });
-        await authService.cleanupStaleUser(res.data.sdkUser, -1);
-        set({ status: "guest", user: null, accessToken: null, refreshToken: null, challenge: null, error: "Sign-in could not be saved. Please try again." });
-        return { ok: false, error: "Sign-in could not be saved. Please try again.", code: "AUTH_SESSION_PERSIST_FAILED" };
+      } catch (err) {
+        // A device that cannot store the session must not present as signed in
+        // AND must not leave a live Firebase session that no store owns.
+        await clearPersistedSession().catch(() => undefined);
+        await discardFencedSession(res.data.sessionRef);
+        const message = "We could not save your session on this device. Please try again.";
+        logger.warn("auth.session_persist_failed", { message: messageOf(err, message) });
+        set({ status: "otp_sent", error: message });
+        return { ok: false, error: message };
       }
 
-      // Re-check after the awaited write: logout may have happened while the
-      // tokens were being persisted.
-      if (!authService.isIntentEpochCurrent(epochAtEntry)) {
-        await clearPersistedSession();
-        await authService.cleanupStaleUser(res.data.sdkUser, epochAtEntry);
-        set({
-          status: "guest",
-          user: null,
-          accessToken: null,
-          refreshToken: null,
-          challenge: null,
-          error: "Your sign-in was cancelled. Please request a new code.",
-        });
-        return { ok: false, error: "Your sign-in was cancelled. Please request a new code.", code: "STALE_EPOCH" };
+      // logout / changePhone can land during the storage await. Re-check before
+      // adopting, and release only the tokens this attempt wrote.
+      if (epoch !== challengeEpoch) {
+        await releasePersistedTokensIfOwned(res.data.accessToken);
+        await discardFencedSession(res.data.sessionRef);
+        return { ok: false, error: "Verification was cancelled." };
       }
 
+      // Identity changed underneath us (a newer verify or a logout): do not
+      // overwrite the newer owner's state.
+      if (get().user !== null && get().user?.id !== res.data.user.id) {
+        await releasePersistedTokensIfOwned(res.data.accessToken);
+        return { ok: false, error: "Verification was cancelled." };
+      }
+
+      identityEpoch += 1;
       useProfileStore.getState().hydrateFromAuth(res.data.user);
-      profileRepository.refresh().catch((e: unknown) => logger.warn("auth.profile_refresh_failed", { message: e instanceof Error ? e.message : String(e) }));
-      resumeDeviceNotifications(res.data.user.id);
-      refreshLoyaltyFromServer(res.data.user.id);
+      profileRepository.refresh().catch((e: unknown) =>
+        logger.warn("auth.profile_refresh_failed", {
+          message: e instanceof Error ? e.message : String(e),
+        }),
+      );
+      void notificationsService.linkUserToDeviceToken(res.data.user.id).catch((e: unknown) =>
+        logger.warn("auth.device_link_failed", {
+          message: e instanceof Error ? e.message : String(e),
+        }),
+      );
       set({
         status: "authenticated",
         user: res.data.user,
@@ -507,55 +554,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       return { ok: true };
     })();
-    verifyOtpInFlight = run;
+
+    const owned = { epoch, promise };
+    verifyInFlight = owned;
     try {
-      return await run;
+      return await promise;
     } finally {
-      if (verifyOtpInFlight === run) verifyOtpInFlight = null;
+      if (verifyInFlight === owned) verifyInFlight = null;
     }
   },
 
-  async resendOtp(flow) {
-    const epochAtEntry = authService.getIntentEpoch();
-    const res = await authRepository.resendOtp(flow);
-    if (!res.success) {
-      if (!authService.isIntentEpochCurrent(epochAtEntry) || res.error.code === "STALE_EPOCH") {
-        set({
-          status: "guest",
-          challenge: null,
-          error: "Your sign-in attempt was cancelled. Please try again.",
-        });
-        return {
-          ok: false,
-          error: "Your sign-in attempt was cancelled. Please try again.",
-          code: "STALE_EPOCH",
-        };
-      }
-      set({ error: res.error.message });
-      return { ok: false, error: res.error.message, code: res.error.code, details: res.error.details };
+  async resendOtp() {
+    const { challenge } = get();
+    if (!challenge) return { ok: false, error: "No active OTP request." };
+    // Store-enforced cooldown (the screen countdown is bypassable via direct
+    // store calls, second tabs, or remounts — each bypass burns a real SMS).
+    const elapsedSec = (Date.now() - challenge.requestedAt) / 1000;
+    const remainingSec = Math.ceil(challenge.resendAfterSec - elapsedSec);
+    if (remainingSec > 0) {
+      return { ok: false, error: `Please wait ${remainingSec}s before requesting a new code.` };
     }
-    if (!authService.isIntentEpochCurrent(epochAtEntry)) {
-      set({
-        status: "guest",
-        challenge: null,
-        error: "Your sign-in attempt was cancelled. Please try again.",
-      });
-      return {
-        ok: false,
-        error: "Your sign-in attempt was cancelled. Please try again.",
-        code: "STALE_EPOCH",
-      };
-    }
-    set({
-      status: "otp_sent",
-      challenge: challengeFrom(res.data),
-      error: null,
-    });
-    return { ok: true };
+    return get().requestOtp(challenge.phone, challenge.deliveryMethod || DEFAULT_DELIVERY_METHOD);
   },
 
   changePhone() {
-    authService.invalidateAuthAttempts("changePhone");
+    // Abandon the challenge on both sides; an in-flight verify is fenced out.
+    // The send owner is released so the next request is not blocked by an
+    // abandoned one that is still waiting on the network.
+    nextChallengeEpoch();
+    requestInFlight = null;
+    verifyInFlight = null;
+    repo().cancelChallenge();
     set({
       status: "unauthenticated",
       challenge: null,
@@ -563,63 +592,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
-  resetAuthAttempts() {
-    authService.invalidateAuthAttempts("userReset");
-    const authenticated = get().status === "authenticated";
-    set({
-      status: authenticated ? "authenticated" : "unauthenticated",
-      challenge: null,
-      error: null,
-    });
-  },
-
-  async signOutUnfinishedSession() {
-    const quarantined = get().quarantinedUid;
-    const current = firebaseAuth.currentUser;
-    if (current && (!quarantined || current.uid === quarantined)) {
-      try {
-        await firebaseAuth.signOut();
-      } catch (error) {
-        logger.warn("auth.quarantine_signout_failed", {
-          code: error && typeof error === "object" && "code" in error ? String((error as any).code) : "unknown",
-        });
-        return;
-      }
-    } else if (current && quarantined && current.uid !== quarantined) {
-      // A newer legitimate user is signed in; never sign it out.
-      return;
-    }
-    await secureStorage.remove(SECURE_KEYS.AUTH_QUARANTINED_UID);
-    set({
-      quarantinedUid: null,
-      status: get().status === "authenticated" ? "authenticated" : "guest",
-    });
-  },
-
-  async logout(options?: { purgeLocalCaches?: boolean }) {
+  async logout() {
+    // Fence first: a verify resolving after this call must not restore a session.
+    nextChallengeEpoch();
+    identityEpoch += 1;
+    requestInFlight = null;
+    verifyInFlight = null;
+    repo().cancelChallenge();
     const { refreshToken, user: currentUser } = get();
-    const uid = currentUser?.id ?? null;
-
-    // Epoch invalidation happens BEFORE the awaited unlink: a late verify
-    // completion must never authenticate after this point, even if the
-    // network unlink takes the full timeout.
-    authService.invalidateAuthAttempts("logout");
-    set({ challenge: null, error: null });
-
-    const unlinkOutcome = await unlinkDeviceTokenBounded(uid);
-    if (unlinkOutcome !== "ok") {
-      await persistFailedUnlink(uid, unlinkOutcome);
-    }
-
-    // F10 privacy: after account DELETION the uid no longer exists server
-    // side, so purge its device-local scoped caches. Normal logout keeps them
-    // (a returning customer expects their saved addresses/cart back).
-    if (options?.purgeLocalCaches && uid) {
-      const removed = purgeScopedLocalCaches(uid);
-      logger.info("auth.deleted_account_caches_purged", { removedCount: removed.length });
-    }
-
-    await authRepository.logout(refreshToken);
+    // CUS-05: await the unlink BEFORE sign-out so the unregister call still
+    // holds a valid auth token (fire-and-forget raced the sign-out and lost
+    // it). Bounded by DEVICE_UNLINK_TIMEOUT_MS so a dead network cannot trap
+    // the user signed in; a failed/timed-out unlink never blocks sign-out.
+    await unlinkDeviceTokenBeforeSignOut(currentUser?.id);
+    await repo().logout(refreshToken);
     await clearPersistedSession();
     profileRepository.clearCache();
     set({
@@ -638,12 +624,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 }));
 
 // Selector helpers to avoid re-renders. Single definition of
-// "authenticated" for the whole app: status + token + user identity.
+// "authenticated" for the whole app (mirrors useRequireAuth's identity
+// check): status + token + user identity (id + phone). A token-only
+// session (corrupt/partial restore) is NOT authenticated anywhere â€”
+// payment, checkout, and repository gates all share this.
 export const selectIsAuthenticated = (s: AuthState) =>
   s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone;
 
 export const selectIsGuest = (s: AuthState) => s.status !== "authenticated";
 
+// Loop 36/120 (finding 6): publish the uid source to the shared scoping
+// helper (which deliberately does NOT import this module â€” see its header
+// for the import-cycle rationale). Every user-owned persisted store
+// (orders / notifications / checkout / loyalty) keys its storage by the
+// uid reported here and re-scopes on change.
 configureAuthUidSource({
   getUid: () => useAuthStore.getState().user?.id ?? null,
   subscribe: (listener) => useAuthStore.subscribe(listener as (s: AuthState) => void),

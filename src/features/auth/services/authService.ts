@@ -1,143 +1,287 @@
-import { ok, type ApiResult } from "@/core/network/http";
+import { fail, ok, type ApiResult } from "@/core/network/http";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import { auth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
-import {
-  authAttempts,
-  __resetAuthAttemptsForTests,
-  type IssuedView,
-  type RequestOtpView,
-} from "@/features/auth/state/authAttempts";
-import {
-  bindHost as bindRecaptchaHost,
-  releaseHost as releaseRecaptchaHost,
-  __resetAuthBindingsForTests,
-  type BindResult,
-} from "@/features/auth/state/authBinding";
-import {
-  authFail,
-  firebaseAuthCode,
-  type AuthApiResult,
-  type AuthErrorDetails,
-  type AuthFlowId,
-} from "@/features/auth/utils/authErrors";
+import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
 
-export type { AuthFlowId };
-
-export interface RequestOtpResponse extends RequestOtpView {}
+export interface RequestOtpResponse {
+  otpToken: string;
+  expiresInSec: number;
+  resendAfterSec: number;
+  code?: string;
+  deliveryMethod?: "whatsapp" | "sms";
+}
 
 export interface VerifyOtpResponse {
   accessToken: string;
   refreshToken: string;
   user: { id: string; phone: string; name?: string; email?: string };
+  /** Exact session this operation created; used to discard only it. */
+  sessionRef?: { uid: string; refreshToken: string };
   payload?: any;
-  /** Local-only guard for the store's post-persist epoch check. */
-  sdkUser?: unknown;
-  attemptEpoch: number;
 }
 
-export interface AuthRequestResult extends RequestOtpResponse {
-  code?: string;
-  details?: AuthErrorDetails;
-}
-
-export interface AuthVerifyResult extends VerifyOtpResponse {}
+let recaptchaVerifier: RecaptchaVerifier | null = null;
+let confirmationResult: ConfirmationResult | null = null;
 
 /**
- * Transport + orchestration seam. All challenge ownership lives in
- * `authAttempts`; this module adds only Firestore profile sync and session
- * refresh/logout. Provider error text never crosses this boundary.
+ * Bumped on every cancel / new request. A Firebase callback that resolves
+ * after the user moved on must not install itself as the current challenge,
+ * and a confirm that lands late must not leave its session behind.
  */
-export const authService = {
-  bindHost: (flow: AuthFlowId, hostId: string, element: HTMLElement, measure?: () => number): BindResult =>
-    bindRecaptchaHost(flow, hostId, element, measure),
+let challengeGeneration = 0;
 
-  releaseHost: (flow: AuthFlowId, hostId: string): void => {
-    releaseRecaptchaHost(flow, hostId);
+/** One confirm per service instance: prevents two owned verifies for one uid. */
+let verifyInFlight = false;
+
+export interface AuthSessionRef {
+  uid: string;
+  refreshToken: string;
+}
+
+const normalizePhoneE164 = (phone: string): string => {
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  if (cleaned.startsWith("+")) return cleaned;
+  if (cleaned.startsWith("91") && cleaned.length === 12) return `+${cleaned}`;
+  return `+91${cleaned.replace(/^0+/, "")}`;
+};
+
+export const authService = {
+  /**
+   * Initializes real RecaptchaVerifier bound to the specified container.
+   * Uses explicit render for reliable operation inside Capacitor WebViews.
+   */
+  initRecaptcha(containerId: string = "recaptcha-container") {
+    if (typeof window === "undefined") return;
+    const element = document.getElementById(containerId);
+    if (!element) {
+      console.warn(`[Auth] Recaptcha container #${containerId} not found in DOM`);
+      return;
+    }
+    try {
+      if (recaptchaVerifier) {
+        try {
+          recaptchaVerifier.clear();
+        } catch {
+          // ignore
+        }
+        recaptchaVerifier = null;
+      }
+      recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
+        size: "normal",
+        callback: () => {
+          // reCAPTCHA solved
+        },
+        "expired-callback": () => {
+          console.warn("[Auth] reCAPTCHA expired, will re-render on next request.");
+        },
+      });
+      window.recaptchaVerifier = recaptchaVerifier;
+    } catch (err) {
+      console.error("[Auth] Failed to initialize RecaptchaVerifier:", err);
+    }
   },
 
-  requestOtp: (
-    flow: AuthFlowId,
+  /**
+   * Drops the in-flight Firebase phone challenge.
+   *
+   * `confirmationResult` is module-global, so without this a challenge issued
+   * for a previous number (or a previous session) can still be confirmed after
+   * the user changed number, logged out, or the request failed. Callers own the
+   * lifecycle: changePhone / logout / failed request all cancel here.
+   */
+  cancelChallenge() {
+    confirmationResult = null;
+    challengeGeneration += 1;
+  },
+
+  clearRecaptcha() {
+    if (recaptchaVerifier) {
+      try {
+        recaptchaVerifier.clear();
+      } catch {
+        // ignore
+      }
+      recaptchaVerifier = null;
+    }
+  },
+
+  async requestOtp(
     phone: string,
     deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
-    otpToken?: string,
-  ): Promise<AuthApiResult<RequestOtpResponse>> =>
-    authAttempts.requestOtp(flow, phone, deliveryMethod, otpToken),
+    _otpToken?: string,
+  ): Promise<ApiResult<RequestOtpResponse>> {
+    // Drop the previous challenge before the first await: a request that is
+    // superseded mid-flight must not leave an older code confirmable.
+    challengeGeneration += 1;
+    const generation = challengeGeneration;
+    confirmationResult = null;
+    try {
+      const formattedPhone = normalizePhoneE164(phone);
 
-  resendOtp: (flow: AuthFlowId): Promise<AuthApiResult<RequestOtpResponse>> =>
-    authAttempts.resendOtp(flow),
+      if (!recaptchaVerifier) {
+        authService.initRecaptcha("recaptcha-container");
+      }
 
-  verifyOtp: async (
-    flow: AuthFlowId,
-    handle: string,
-    code: string,
-  ): Promise<AuthApiResult<VerifyOtpResponse>> => {
-    const result = await authAttempts.verifyOtp(flow, handle, code);
-    if (!result.success) return result;
+      if (!recaptchaVerifier) {
+        return fail(
+          "RECAPTCHA_UNAVAILABLE",
+          "Verification check failed to load. Please refresh the page and try again.",
+        );
+      }
 
-    const sdkUser = result.data.sdkUser;
-    const returnedUser: { id: string; phone: string; name?: string; email?: string } = {
-      id: result.data.user.id,
-      phone: result.data.user.phone,
-    };
+      // Explicitly trigger render if not yet rendered
+      try {
+        await recaptchaVerifier.render();
+      } catch {
+        // Container might already have widget rendered
+      }
+
+      const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifier);
+      if (generation !== challengeGeneration) {
+        // Cancelled / superseded while the SMS was being dispatched.
+        return fail("AUTH_OTP_SUPERSEDED", "This code request was cancelled. Please try again.");
+      }
+      confirmationResult = result;
+
+      return ok({
+        otpToken: formattedPhone,
+        expiresInSec: 300,
+        resendAfterSec: 60,
+        deliveryMethod,
+      });
+    } catch (error: any) {
+      // Code only: the raw Firebase error embeds the phone in message/customData.
+      logger.error("auth.otp_request_failed", error, { code: error?.code });
+      // Reset reCAPTCHA widget on error so user can retry cleanly
+      if (recaptchaVerifier) {
+        try {
+          recaptchaVerifier.clear();
+        } catch {
+          // ignore
+        }
+        recaptchaVerifier = null;
+        authService.initRecaptcha("recaptcha-container");
+      }
+      // A failed request must not leave the previous challenge confirmable.
+      authService.cancelChallenge();
+      return fail(
+        error.code || "AUTH_OTP_REQUEST_FAILED",
+        error.message ||
+          "Failed to send SMS verification code. Please check the number and try again.",
+      );
+    }
+  },
+
+  async verifyOtp(otpToken: string, code: string): Promise<ApiResult<VerifyOtpResponse>> {
+    // One confirm per service instance: two owned verifies for the same uid
+    // would race each other and make "which session is mine" ambiguous.
+    if (verifyInFlight) {
+      return fail("VERIFY_IN_PROGRESS", "A verification is already in progress.");
+    }
+    if (!confirmationResult) {
+      return fail(
+        "NO_CHALLENGE",
+        "No active verification session found. Please request a new code.",
+      );
+    }
+
+    const generation = challengeGeneration;
+    const challenge = confirmationResult;
+    verifyInFlight = true;
 
     try {
-      const { db } = await import("@/core/config/firebase");
-      const { doc, getDoc, setDoc } = await import("firebase/firestore");
-      const userRef = doc(db, "users", returnedUser.id);
-      const userSnap = await getDoc(userRef);
+      const userCredential = await challenge.confirm(code.trim());
+      const user = userCredential.user;
 
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          id: returnedUser.id,
-          phone: returnedUser.phone,
-          createdAt: new Date().toISOString(),
-        });
-      } else {
-        const profile = userSnap.data();
-        returnedUser.name = profile?.fullName || profile?.name;
-        if (!isSyntheticEmail(profile?.email)) {
-          returnedUser.email = profile?.email;
-        }
+      const accessToken = await user.getIdToken();
+      const refreshToken = user.refreshToken;
+      const uid = user.uid;
+      const sessionRef: AuthSessionRef = { uid, refreshToken };
+
+      // Cancelled while the code was confirming. Firebase has already minted a
+      // session, so discard exactly this one — never another identity.
+      if (generation !== challengeGeneration) {
+        await authService.discardConfirmedSession(sessionRef);
+        return fail(
+          "AUTH_VERIFY_CANCELLED",
+          "Verification was cancelled. Please request a new code.",
+        );
       }
-    } catch (error) {
-      // Profile sync is best-effort and must not leak Firestore internals.
-      logger.warn("auth.profile_sync_failed", { code: firebaseAuthCode(error) ?? "unknown" });
-    }
 
-    if (!authAttempts.isIntentEpochCurrent(result.data.attemptEpoch)) {
-      await authAttempts.cleanupStaleUser(sdkUser, result.data.attemptEpoch);
-      return authFail("STALE_EPOCH");
-    }
+      // Firestore user profile sync
+      const returnedUser: { id: string; phone: string; name?: string; email?: string } = {
+        id: uid,
+        phone: user.phoneNumber || otpToken,
+      };
 
-    return ok({
-      accessToken: result.data.accessToken,
-      refreshToken: result.data.refreshToken,
-      user: returnedUser,
-      sdkUser,
-      attemptEpoch: result.data.attemptEpoch,
-    } satisfies VerifyOtpResponse);
+      try {
+        const { db } = await import("@/core/config/firebase");
+        const { doc, getDoc, setDoc } = await import("firebase/firestore");
+        const userRef = doc(db, "users", uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            id: uid,
+            phone: returnedUser.phone,
+            createdAt: new Date().toISOString(),
+          });
+        } else {
+          const profile = userSnap.data();
+          returnedUser.name = profile?.fullName || profile?.name;
+          // P1-4: legacy docs may carry the fabricated `<phone>@burgonomics.in`
+          // address — never let it into the persisted auth user (it feeds the
+          // Razorpay prefill + secureStorage cache).
+          if (!isSyntheticEmail(profile?.email)) {
+            returnedUser.email = profile?.email;
+          }
+        }
+      } catch (dbError) {
+        console.warn("[Auth] Firestore user profile sync warning:", dbError);
+      }
+
+      return ok({
+        accessToken,
+        refreshToken,
+        user: returnedUser,
+        sessionRef,
+      });
+    } catch (error: any) {
+      logger.error("auth.otp_verify_failed", error, { code: error?.code });
+      return fail(
+        error.code || "AUTH_OTP_VERIFY_FAILED",
+        error.message || "Invalid verification code. Please check and try again.",
+      );
+    } finally {
+      verifyInFlight = false;
+    }
   },
 
-  adoptChallenge: (
-    toFlow: AuthFlowId,
-    handle: string,
-  ): { ok: true } | { ok: false; code: "CHALLENGE_MISMATCH" | "STALE_EPOCH" } =>
-    authAttempts.adoptChallenge(toFlow, handle),
-
-  resumeChallenge: (flow: AuthFlowId): IssuedView | null => authAttempts.resumeChallenge(flow),
-
-  invalidateAuthAttempts: (reason: "logout" | "changePhone" | "userReset"): void => {
-    authAttempts.invalidateAuthAttempts(reason);
+  /**
+   * Signs out ONLY the session that a specific verify operation created.
+   *
+   * `confirm()` mutates Firebase auth state before it returns, so cancelling
+   * after that point leaves a live session with no owner. This compares the
+   * exact uid AND refresh token captured from that operation, so a different
+   * user, or a re-login that produced a new refresh token, is never touched.
+   */
+  async discardConfirmedSession(ref: AuthSessionRef): Promise<void> {
+    try {
+      const current = auth.currentUser;
+      if (!current) return;
+      // Without a captured refresh token there is nothing to compare against,
+      // so we cannot prove this session is ours. Refuse rather than guess:
+      // a uid-only match would sign out a NEWER session for the same user.
+      if (!ref.refreshToken) return;
+      if (current.uid !== ref.uid) return;
+      if (current.refreshToken !== ref.refreshToken) return;
+      await auth.signOut();
+    } catch {
+      // Cleanup is best effort and must never throw into the auth flow.
+    }
   },
-
-  getIntentEpoch: (): number => authAttempts.getIntentEpoch(),
-
-  isIntentEpochCurrent: (epoch: number): boolean => authAttempts.isIntentEpochCurrent(epoch),
-
-  cleanupStaleUser: (user: unknown, attemptEpoch: number): Promise<void> =>
-    authAttempts.cleanupStaleUser(user, attemptEpoch),
 
   async refresh(
     _refreshToken: string,
@@ -146,34 +290,34 @@ export const authService = {
       await auth.authStateReady();
       const user = auth.currentUser;
       if (!user) {
-        return authFail("AUTH_REFRESH_FAILED");
+        return fail("AUTH_REFRESH_FAILED", "No active firebase session.");
       }
       const accessToken = await user.getIdToken(true);
       return ok({
         accessToken,
         refreshToken: user.refreshToken,
       });
-    } catch (error) {
-      logger.warn("auth.refresh_failed", { code: firebaseAuthCode(error) ?? "unknown" });
-      return authFail("AUTH_REFRESH_FAILED");
+    } catch (error: any) {
+      return fail("AUTH_REFRESH_FAILED", error.message || "Session refresh failed.");
     }
   },
 
   async logout(_refreshToken: string | null): Promise<ApiResult<null>> {
     try {
+      authService.cancelChallenge();
       await auth.signOut();
       return ok(null);
-    } catch (error) {
-      logger.warn("auth.logout_failed", { code: firebaseAuthCode(error) ?? "unknown" });
+    } catch (_error) {
       return ok(null);
     }
-  },
-
-  /** Test-only reset for the module-level attempt/binding singletons. */
-  __resetForTests(): void {
-    __resetAuthAttemptsForTests();
-    __resetAuthBindingsForTests();
   },
 };
 
 export type AuthService = typeof authService;
+
+declare global {
+  interface Window {
+    recaptchaVerifier?: any;
+    grecaptcha?: any;
+  }
+}

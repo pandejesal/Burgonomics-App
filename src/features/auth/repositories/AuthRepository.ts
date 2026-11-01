@@ -3,39 +3,58 @@
  * behaviour. Wraps the transport (`authService`) so screens and stores
  * never touch the transport directly.
  *
- * The leading `flow` (and `handle` on verify) is the accepted C-06 contract:
- * a challenge is owned by a mounted surface, not by a process-global slot.
+ * Backend integration: swap the injected `service` with a real
+ * `httpClient`-backed implementation. The public surface (method names,
+ * argument shapes, `ApiResult` returns) must stay unchanged so no UI
+ * code needs to move.
  */
-import { authService, type AuthService } from "@/features/auth/services/authService";
+import {
+  authService,
+  type AuthService,
+  type AuthSessionRef,
+} from "@/features/auth/services/authService";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
-import type { AuthFlowId } from "@/features/auth/utils/authErrors";
+import type { ApiResult } from "@/core/network/http";
 
 export class AuthRepository {
   constructor(private readonly service: AuthService = authService) {}
 
   requestOtp(
-    flow: AuthFlowId,
     phone: string,
     deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
     otpToken?: string,
   ) {
-    return this.service.requestOtp(flow, phone, deliveryMethod, otpToken);
+    return this.service.requestOtp(phone, deliveryMethod, otpToken);
   }
 
-  resendOtp(flow: AuthFlowId) {
-    return this.service.resendOtp(flow);
-  }
-
-  verifyOtp(flow: AuthFlowId, handle: string, code: string) {
-    return this.service.verifyOtp(flow, handle, code);
+  verifyOtp(otpToken: string, code: string) {
+    return this.service.verifyOtp(otpToken, code);
   }
 
   refresh(refreshToken: string) {
     return this.service.refresh(refreshToken);
   }
 
-  logout(refreshToken: string | null) {
+  logout(refreshToken: string | null): Promise<ApiResult<null>> {
     return this.service.logout(refreshToken);
+  }
+
+  /**
+   * Drops any in-flight OTP challenge on the transport.
+   *
+   * Optional on the seam so injected/fake services without challenge state
+   * still satisfy the repository contract.
+   */
+  cancelChallenge(): void {
+    this.service.cancelChallenge?.();
+  }
+
+  /**
+   * Signs out only the session a cancelled verify created. Optional on the
+   * seam so injected services without session state still satisfy it.
+   */
+  discardConfirmedSession(ref: AuthSessionRef): Promise<void> {
+    return this.service.discardConfirmedSession?.(ref) ?? Promise.resolve();
   }
 }
 

@@ -532,7 +532,7 @@ export const ordersService = {
           // ack was lost). setDoc over it is an UPDATE the customer rules deny
           // — verify the existing doc belongs to THIS checkout, then skip.
           const existing = await getDoc(orderRef);
-          if (existing.exists()) {
+          if (existing && typeof existing.exists === "function" && existing.exists()) {
             const data = existing.data();
             if (data.customerId !== uid || data.userId !== uid) {
               return fail("NOT_OWNER", "This order belongs to a different account.", false);

@@ -57,8 +57,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const handle = `+91${sanitizePhone(phone)}`;
-    const res = await requestOtp("checkout", handle, "whatsapp");
+    const res = await requestOtp(`+91${sanitizePhone(phone)}`, "whatsapp");
     setBusy(false);
 
     if (res.ok) {
@@ -66,7 +65,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
       toast.success("OTP sent to your number!");
     } else {
       // P1-13: the store hands back the raw Firebase message — never toast it.
-      console.error("[auth] checkout OTP request failed:", res.error);
+      console.error("[auth] checkout OTP request failed");
       toast.error(toUserMessage(res));
     }
   };
@@ -82,8 +81,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const handle = `+91${sanitizePhone(phone)}`;
-    const res = await verifyOtp("checkout", handle, String(otp));
+    const res = await verifyOtp(otp);
     setBusy(false);
 
     if (res.ok) {
@@ -102,7 +100,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
       onClose();
     } else {
       // P1-13: raw `Firebase: Error (auth/invalid-verification-code).` etc.
-      console.error("[auth] checkout OTP verify failed:", res.error);
+      console.error("[auth] checkout OTP verify failed");
       toast.error(toUserMessage(res));
     }
   };
