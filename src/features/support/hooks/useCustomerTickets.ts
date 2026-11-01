@@ -54,6 +54,27 @@ const CATEGORY_LABELS: Record<TicketCategory, string> = {
   OTHER: "General Query or Feedback",
 };
 
+/**
+ * Maps the backend's category enum (createTicketSchema: wrong_item,
+ * late_delivery, food_quality, payment_issue, app_bug, general_inquiry) onto the
+ * customer UI's vocabulary. Unknown values fall back to OTHER rather than
+ * inventing a category.
+ */
+export function categoryFromBackend(raw: string | undefined): TicketCategory {
+  switch (raw) {
+    case "late_delivery":
+      return "LATE_DELIVERY";
+    case "wrong_item":
+      return "WRONG_ORDER";
+    case "food_quality":
+      return "FOOD_QUALITY";
+    case "payment_issue":
+      return "PAYMENT_ISSUE";
+    default:
+      return "OTHER";
+  }
+}
+
 const LEGACY_TICKETS_KEY = "burgonomics_customer_tickets";
 const MAX_CACHED_TICKETS = 20;
 
@@ -141,80 +162,67 @@ export function useCustomerTickets() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Initial server sync: backend list wins; client-known detail (category,
-  // description, photos) is preserved by id for tickets created here.
+  // Initial server sync: the Firestore-backed read wins; client-known detail
+  // (category, photos, priority) is preserved by id for tickets created here.
+  // A failed read surfaces as listError so the UI can offer Retry — it must
+  // NEVER look like "you have no tickets".
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setListError(null);
     try {
       const res = await supportService.listTickets();
       if (!res.success) {
-        // Offline with no cache is still an honest empty state —
-        // surface the failure so the UI can offer retry.
-        setListError("Could not load tickets. Please try again.");
+        setListError(res.error.message || "Could not load tickets. Please try again.");
         return;
       }
       setTickets((prev) => {
         const prevById = new Map(prev.map((t) => [t.id, t]));
-        const merged: CustomerTicket[] = res.data.map((raw) => {
-          const nested = raw.ticket;
-          const id =
-            nested?.id ?? (typeof raw.id === "string" ? raw.id : `tkt_${Date.now().toString(36)}`);
-          const cached = prevById.get(id);
-          const statusRaw = (nested?.status ?? raw.status ?? "open").toLowerCase();
+        const merged: CustomerTicket[] = res.data.map((row) => {
+          const cached = prevById.get(row.id);
           const status: TicketStatus =
-            statusRaw === "resolved" || statusRaw === "closed" || statusRaw === "done"
+            row.status === "RESOLVED"
               ? "RESOLVED"
-              : statusRaw === "in_progress" || statusRaw === "in-progress"
+              : row.status === "IN_PROGRESS"
                 ? "IN_PROGRESS"
-                : "OPEN";
-          const created = nested?.createdAt ?? raw.createdAt ?? raw.created_at ?? cached?.createdAt;
-          const createdAt =
-            typeof created === "number"
-              ? new Date(created).toISOString()
-              : typeof created === "string"
-                ? created
-                : new Date().toISOString();
-          const slaCandidates = [
-            raw.slaMinutes,
-            raw.sla_minutes,
-            raw.responseSlaMinutes,
-            nested?.slaMinutes,
-            nested?.sla_minutes,
-          ];
-          const sla =
-            slaCandidates.find(
-              (c): c is number => typeof c === "number" && Number.isFinite(c) && c > 0,
-            ) ?? null;
+                : row.status === "ESCALATED"
+                  ? "ESCALATED"
+                  : "OPEN";
+          const createdAt = cached?.createdAt ?? row.createdAt;
           return {
-            id,
-            ticketNumber:
-              nested?.ticketNumber ??
-              raw.ticketNumber ??
-              raw.ticket_number ??
-              cached?.ticketNumber ??
-              id.toUpperCase(),
-            orderId: cached?.orderId,
+            id: row.id,
+            ticketNumber: row.ticketNumber || cached?.ticketNumber || row.id.toUpperCase(),
+            orderId: row.orderId ?? cached?.orderId,
             orderShortCode: cached?.orderShortCode,
-            category: cached?.category ?? "OTHER",
-            categoryLabel: cached?.categoryLabel ?? "Support request",
-            description: cached?.description ?? "",
-            photos: cached?.photos ?? [],
+            category: cached?.category ?? categoryFromBackend(row.category),
+            categoryLabel:
+              cached?.categoryLabel ?? CATEGORY_LABELS[categoryFromBackend(row.category)],
+            description: row.description || cached?.description || row.subject,
+            // Server attachments are authoritative; keep cached ones only when
+            // the read did not carry any (older tickets).
+            photos:
+              row.attachments.length > 0
+                ? row.attachments.filter(isRemotePhotoUrl).slice(0, 3)
+                : (cached?.photos ?? []),
             status,
-            priority: cached?.priority ?? "normal",
+            priority: row.priority === "urgent" ? "urgent" : (cached?.priority ?? "normal"),
             escalationLevel: cached?.escalationLevel ?? 1,
-            branchId: cached?.branchId,
-            managerResponse: cached?.managerResponse,
+            branchId: row.branchId ?? cached?.branchId,
+            managerResponse: row.managerResponse ?? cached?.managerResponse,
             createdAt,
-            resolvedAt: status === "RESOLVED" ? (cached?.resolvedAt ?? createdAt) : undefined,
-            slaMinutes: sla,
+            resolvedAt: status === "RESOLVED" ? (row.resolvedAt ?? cached?.resolvedAt) : undefined,
+            slaMinutes: cached?.slaMinutes ?? null,
           };
         });
         persistTickets(storageKey, merged);
         return merged;
       });
-    } catch {
-      setListError("Could not load tickets. Please try again.");
+    } catch (err) {
+      // A thrown read is still a failure, reported honestly.
+      setListError(
+        err instanceof Error
+          ? "Could not load tickets. Please try again."
+          : "Could not load tickets. Please try again.",
+      );
     } finally {
       setIsLoading(false);
     }

@@ -1,33 +1,30 @@
 /**
- * SupportService — live-backend implementation of
- *   GET  /v1/support/faqs
- *   GET  /v1/support/channels
- *   GET  /v1/support/issue-categories
- *   GET  /v1/support/tickets
- *   POST /v1/support/tickets
- *   POST /v1/support/feedback
+ * SupportService — live-backend implementation of the REAL routes.
+ *
+ * ROUTE AUDIT (backend functions/src/index.ts registers 52 routes):
+ *   LIVE  POST /tickets/create    (requireAuth, createTicketSchema) index.ts:1105
+ *         → submitTicketToLiveBackend below. Response is the stored
+ *           support_tickets document (tickets.service.ts createTicket 364-392).
+ *   LIVE  reads of support_tickets for the owner → Firestore, not HTTP
+ *         (services/ticketReads.ts); no GET ticket route exists.
+ *   DEAD  GET  /v1/support/faqs | channels | issue-categories
+ *   DEAD  POST /v1/support/tickets
+ *   DEAD  POST /v1/support/feedback
+ *         None of the /v1/support/* paths exist. They used to 404 into an
+ *         empty list or a locally fabricated success; each now fails honestly.
  *
  * Honesty contract (H-R4/H-R6/H-R7, M12/M13):
- * - No mock FAQs, channels, or categories. List calls hit the backend and
- *   resolve to `ok([])` when the backend is unreachable so the UI renders
- *   its honest empty state instead of fabricated content.
+ * - No mock FAQs, channels, or categories, and no fake "empty" success either:
+ *   a missing route is a reported failure the UI renders with Retry.
  * - SLA/response-time copy is NEVER invented here. Ticket responses may
  *   carry a backend SLA field (`slaMinutes`); callers gate all SLA wording
  *   on its presence.
  * - Photo evidence is uploaded to Firebase Storage (storage-backed URLs).
  *   Base64 data-URLs are never produced or persisted by this module.
- *
- * Backend contract assumption (Batch-5 S1 owns the ticket/notify API):
- * POST /v1/support/tickets exists and returns the created ticket, which
- * may include a backend SLA field. Shapes are parsed defensively —
- * `{ ticket: {...} }` or the ticket object directly, `slaMinutes` or
- * `sla_minutes` — and if the landed contract differs, adapt here, never
- * invent a parallel one.
  */
 import { fail, ok, type ApiResult } from "@/core/network/http";
-import { httpClient } from "@/core/network/httpClient";
 import { auth } from "@/core/config/firebase";
-import { isLiveApiBaseUrl } from "@/core/config/env";
+import { fetchMyTickets, type TicketReadRow } from "@/features/support/services/ticketReads";
 import type {
   BackendTicket,
   FaqItem,
@@ -109,18 +106,6 @@ function normalizeCreatedAt(raw: BackendTicketResponse): number {
   return Date.now();
 }
 
-function asArray<T>(data: unknown, key?: string): T[] {
-  if (Array.isArray(data)) return data as T[];
-  if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-    if (key && Array.isArray(obj[key])) return obj[key] as T[];
-    for (const k of ["items", "data", "results"]) {
-      if (Array.isArray(obj[k])) return obj[k] as T[];
-    }
-  }
-  return [];
-}
-
 function isChannel(v: unknown): v is SupportChannel {
   if (!v || typeof v !== "object") return false;
   const c = v as Record<string, unknown>;
@@ -179,115 +164,84 @@ export interface LiveTicketSubmitInput {
 }
 
 export const supportService = {
+  /**
+   * ROUTE AUDIT: `GET /v1/support/faqs` does NOT exist. The backend registers
+   * 52 routes (functions/src/index.ts) and none of them serves FAQs, so this
+   * used to 404 into `ok([])` — a false empty state that told the customer
+   * "there are no FAQs" when there was simply no endpoint. Returns an honest
+   * failure; the Help screen renders an error with Retry.
+   */
   async listFaqs(): Promise<ApiResult<FaqItem[]>> {
-    // No live backend (`.example` fixture base URL) — skip the doomed fetch
-    // (it only trips CSP violations and console noise) and resolve honest [].
-    if (!isLiveApiBaseUrl()) return ok([]);
-    try {
-      const res = await httpClient.get<unknown>("/v1/support/faqs", {
-        headers: await authHeaders(),
-      });
-      const items = asArray<FaqItem>(res.data, "faqs").filter(isFaq);
-      return ok(items);
-    } catch (err) {
-      // Backend unreachable — honest empty list, never mock FAQs.
-      if (import.meta.env?.DEV) {
-        console.warn("[support] listFaqs failed, returning []", err);
-      }
-      return ok([]);
-    }
+    return fail(
+      "SUPPORT_CONTENT_UNAVAILABLE",
+      "Help articles aren't available right now. Please try again later.",
+      true,
+    );
   },
 
+  /**
+   * ROUTE AUDIT: `GET /v1/support/channels` does NOT exist. Same reasoning as
+   * listFaqs — no endpoint, so never report an empty channel list as truth.
+   */
   async listChannels(): Promise<ApiResult<SupportChannel[]>> {
-    if (!isLiveApiBaseUrl()) return ok([]);
-    try {
-      const res = await httpClient.get<unknown>("/v1/support/channels", {
-        headers: await authHeaders(),
-      });
-      const items = asArray<SupportChannel>(res.data, "channels").filter(isChannel);
-      return ok(items);
-    } catch (err) {
-      // Backend unreachable — honest empty list, never fabricated channels.
-      if (import.meta.env?.DEV) {
-        console.warn("[support] listChannels failed, returning []", err);
-      }
-      return ok([]);
-    }
+    return fail(
+      "SUPPORT_CONTENT_UNAVAILABLE",
+      "Contact channels aren't available right now. Please try again later.",
+      true,
+    );
   },
 
+  /**
+   * ROUTE AUDIT: `GET /v1/support/issue-categories` does NOT exist. The
+   * picker falls back to its own built-in category list, and this failure is
+   * reported rather than masked as an empty taxonomy.
+   */
   async listIssueCategories(): Promise<ApiResult<IssueCategory[]>> {
-    if (!isLiveApiBaseUrl()) return ok([]);
-    try {
-      const res = await httpClient.get<unknown>("/v1/support/issue-categories", {
-        headers: await authHeaders(),
-      });
-      const items = asArray<IssueCategory>(res.data, "categories").filter(isIssueCategory);
-      return ok(items);
-    } catch (err) {
-      if (import.meta.env?.DEV) {
-        console.warn("[support] listIssueCategories failed, returning []", err);
-      }
-      return ok([]);
-    }
+    return fail(
+      "SUPPORT_CONTENT_UNAVAILABLE",
+      "Issue categories aren't available right now.",
+      true,
+    );
   },
 
-  async listTickets(): Promise<ApiResult<BackendTicketResponse[]>> {
-    if (!isLiveApiBaseUrl()) return ok([]);
-    try {
-      const res = await httpClient.get<unknown>("/v1/support/tickets", {
-        headers: await authHeaders(),
-      });
-      return ok(asArray<BackendTicketResponse>(res.data, "tickets"));
-    } catch (err) {
-      if (import.meta.env?.DEV) {
-        console.warn("[support] listTickets failed, returning []", err);
-      }
-      return ok([]);
-    }
+  /**
+   * ROUTE AUDIT: no HTTP route lists a customer's tickets either.
+   *
+   * `GET /v1/support/tickets` never existed; this used to swallow the 404 and
+   * return `ok([])`, which is exactly the false empty state that hid a
+   * customer's own tickets from them. The list is now read from Firestore as
+   * the signed-in customer (see services/ticketReads.ts and the security model
+   * in backend/firestore.rules), which is where tickets actually live.
+   *
+   * Kept as a thin delegation so existing callers keep working; it never
+   * returns an empty success on failure.
+   */
+  async listTickets(): Promise<ApiResult<TicketReadRow[]>> {
+    const uid = auth.currentUser?.uid ?? "";
+    return fetchMyTickets(uid);
   },
 
+  /**
+   * ROUTE AUDIT: `POST /v1/support/tickets` does not exist.
+   *
+   * The only real creation route is `POST /tickets/create`
+   * (functions/src/index.ts:1105), and its schema REQUIRES `branchId` plus a
+   * `description` field and takes evidence under `attachments`. This legacy
+   * input shape has no branchId, uses `message`, and used to send `photoUrls`,
+   * so the server would reject it even if the path existed (and the schema
+   * would silently drop the photos). Rather than guess a branch, it fails
+   * honestly and points callers at submitTicketToLiveBackend, which speaks the
+   * real contract. Nothing currently routes real submissions through here.
+   */
   async submitTicket(input: SupportTicketInput): Promise<ApiResult<SupportTicket>> {
     if (!input.subject.trim() || !input.message.trim()) {
       return fail("INVALID_TICKET", "Please add a subject and a short message.");
     }
-    if (!isLiveApiBaseUrl()) {
-      return fail(
-        "BACKEND_UNAVAILABLE",
-        "Support backend is not connected yet. Please try again later.",
-      );
-    }
-    try {
-      const res = await httpClient.post<BackendTicketResponse>(
-        "/v1/support/tickets",
-        {
-          subject: input.subject.trim(),
-          message: input.message.trim(),
-          category: input.category,
-          orderId: input.orderId,
-          photoUrls: input.photoUrls ?? [],
-        },
-        { headers: await authHeaders() },
-      );
-      const raw = (res.data ?? {}) as BackendTicketResponse;
-      const fallbackId =
-        typeof raw.id === "string" && raw.id ? raw.id : `tkt_${Date.now().toString(36)}`;
-      return ok({
-        id: normalizeTicketId(raw, fallbackId),
-        subject: input.subject.trim(),
-        message: input.message.trim(),
-        category: input.category,
-        orderId: input.orderId,
-        photoUrls: input.photoUrls ?? [],
-        ticketNumber: normalizeTicketNumber(raw, fallbackId.toUpperCase()),
-        status: normalizeStatus(raw),
-        createdAt: normalizeCreatedAt(raw),
-        slaMinutes: extractSlaMinutes(raw) ?? undefined,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Could not reach support. Please try again.";
-      return fail("TICKET_SUBMIT_FAILED", message, true);
-    }
+    return fail(
+      "TICKET_ROUTE_MISMATCH",
+      "This submit path is retired — tickets are created through the live ticket service.",
+      false,
+    );
   },
 
   /**
@@ -318,40 +272,21 @@ export const supportService = {
     }
   },
 
+  /**
+   * ROUTE AUDIT: `POST /v1/support/feedback` does not exist. Returning a
+   * fabricated success (the old code also invented `id`/`createdAt` locally)
+   * told the customer their feedback was recorded when nothing received it.
+   * Fails honestly until a feedback route ships.
+   */
   async submitFeedback(input: FeedbackInput): Promise<ApiResult<FeedbackRecord>> {
     if (!Number.isFinite(input.rating) || input.rating < 1 || input.rating > 5) {
       return fail("INVALID_RATING", "Please select a rating between 1 and 5.");
     }
-    if (!isLiveApiBaseUrl()) {
-      return fail(
-        "BACKEND_UNAVAILABLE",
-        "Support backend is not connected yet. Please try again later.",
-      );
-    }
-    try {
-      const res = await httpClient.post<{ id?: string; createdAt?: number }>(
-        "/v1/support/feedback",
-        {
-          rating: input.rating,
-          comment: input.comment,
-          suggestion: input.suggestion,
-        },
-        { headers: await authHeaders() },
-      );
-      const data = (res.data ?? {}) as { id?: string; createdAt?: number };
-      return ok({
-        id: typeof data.id === "string" && data.id ? data.id : `fb_${Date.now().toString(36)}`,
-        createdAt:
-          typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
-            ? data.createdAt
-            : Date.now(),
-        ...input,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Could not send feedback. Please try again.";
-      return fail("FEEDBACK_SUBMIT_FAILED", message, true);
-    }
+    return fail(
+      "FEEDBACK_UNAVAILABLE",
+      "Feedback can't be submitted right now — no feedback service is connected yet.",
+      false,
+    );
   },
 
   /**

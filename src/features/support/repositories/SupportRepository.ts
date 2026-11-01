@@ -1,15 +1,18 @@
 /**
- * SupportRepository — UI-facing surface for the help center. Content
- * is intentionally repository-driven: FAQs, channels, issue
- * categories, ticket submission and feedback all resolve through this
- * class so a live backend can take over without touching UI.
+ * SupportRepository — UI-facing surface for the help center.
  *
- * Future integration points:
- *   listFaqs()             → GET  /v1/support/faqs
- *   listChannels()         → GET  /v1/support/channels
- *   listIssueCategories()  → GET  /v1/support/issue-categories
- *   submitTicket()         → POST /v1/support/tickets
- *   submitFeedback()       → POST /v1/support/feedback
+ * ROUTE AUDIT (against backend functions/src/index.ts, 52 routes):
+ *   listFaqs()             → DEAD. No GET /v1/support/faqs route exists.
+ *   listChannels()         → DEAD. No GET /v1/support/channels route exists.
+ *   listIssueCategories()  → DEAD. No GET /v1/support/issue-categories route.
+ *   submitTicket()         → DEAD. No POST /v1/support/tickets route exists;
+ *                            the live create route is POST /tickets/create.
+ *   submitFeedback()       → DEAD. No POST /v1/support/feedback route exists.
+ *
+ * Each of these now returns an honest failure with a retryable flag instead of
+ * an empty list, so the UI can say "couldn't load" rather than "there is
+ * nothing". Ticket reads come from Firestore (services/ticketReads.ts) because
+ * no HTTP route lists a customer's tickets.
  */
 import type { ApiResult } from "@/core/network/http";
 import { supportService } from "@/features/support/services/supportService";

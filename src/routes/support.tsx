@@ -83,7 +83,7 @@ function Page() {
   const [openTicket, setOpenTicket] = React.useState(!!paymentPrefill);
   const [openFeedback, setOpenFeedback] = React.useState(false);
 
-  const { tickets, createTicket, isSubmitting } = useCustomerTickets();
+  const { tickets, createTicket, isSubmitting, listError, refresh } = useCustomerTickets();
   // NOTE: never subscribe with selectAllOrders here — it derives a fresh
   // array per snapshot, which never stabilizes getSnapshot and loops
   // React into error #185. Subscribe to the stable `ids` ref instead.
@@ -166,7 +166,18 @@ function Page() {
               Your Active &amp; Past Tickets ({tickets.length})
             </Text>
           </div>
-          <TicketListAccordion tickets={tickets} onOpenNewTicket={() => setOpenTicket(true)} />
+          {/* A failed read must never render as "No tickets yet": that would
+              tell the customer their tickets are gone when the load failed. */}
+          {listError ? (
+            <EmptyState
+              title="Couldn't load your tickets"
+              description={listError}
+              actionLabel="Try Again"
+              onAction={() => void refresh()}
+            />
+          ) : (
+            <TicketListAccordion tickets={tickets} onOpenNewTicket={() => setOpenTicket(true)} />
+          )}
         </section>
 
         {/* Direct Contact Channels */}
