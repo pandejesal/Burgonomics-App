@@ -56,7 +56,10 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
   const shortCode = order.shortCode || order.id.slice(-6).toUpperCase();
   const isTerminal =
     order.status.terminal || order.status.kind === "completed" || order.status.kind === "cancelled";
-  const isCancelled = order.status.kind === "cancelled" || order.status.code.includes("CANCEL");
+  const statusCode = typeof order.status?.code === "string" ? order.status.code : "";
+  const statusLabel = order.status?.label || statusCode || "Status unavailable";
+  const isCancelled =
+    order.status?.kind === "cancelled" || statusCode.toUpperCase().includes("CANCEL");
 
   const dateFormatted = new Date(order.placedAt || Date.now()).toLocaleDateString("en-IN", {
     day: "numeric",
@@ -101,7 +104,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
                     : "border-warning/30 bg-warning/10 text-warning"
               }`}
             >
-              {order.status.label || order.status.code}
+              {statusLabel}
             </span>
           </div>
 

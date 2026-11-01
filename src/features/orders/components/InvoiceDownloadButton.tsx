@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Download, FileText, CheckCircle2, Printer } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
 import { includedGst } from "@/shared/pricing/pricingEngine";
-import { APP } from "@/core/constants/app";
+import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
 import type { Order } from "../models";
 
 interface InvoiceDownloadButtonProps {
@@ -104,8 +104,10 @@ export function InvoiceDownloadButton({
 
         <div class="header">
           <div class="brand">BURGONOMICS</div>
-          <div style="font-size: 11px; color: #555;">Burgonomics Foodworks Pvt. Ltd.</div>
-          <div style="font-size: 10px; color: #777;">GST/FSSAI registration particulars available on request. This is an order receipt, not a GST tax invoice.</div>
+          <div style="font-size: 11px; color: #555;">${esc(APP.legalEntity)}</div>
+          <div style="font-size: 10px; color: #777;">${esc(APP.registeredAddress)}${
+            isUnsetRegistrationValue(APP.gstin) ? "" : ` · GSTIN ${esc(APP.gstin)}`
+          }<br>This is an order receipt, not a GST tax invoice.</div>
         </div>
 
         <div class="meta-grid">
