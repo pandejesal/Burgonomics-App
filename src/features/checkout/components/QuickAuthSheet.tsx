@@ -4,6 +4,7 @@ import { X, ShieldCheck, ArrowRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/features/auth/state/authStore";
+import { RecaptchaHost } from "@/features/auth/components/RecaptchaHost";
 import { sanitizePhone, validateOtp, validatePhone } from "@/features/auth/utils/validators";
 import { HapticService } from "@/core/services/haptics";
 import { toUserMessage } from "@/core/errors/userMessages";
@@ -57,7 +58,9 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(true);
     void HapticService.impact("medium");
 
-    const res = await requestOtp(`+91${sanitizePhone(phone)}`, "whatsapp");
+    // The sheet owns its own reCAPTCHA host, so the service must use that one
+    // instead of looking for the login screen's legacy container.
+    const res = await requestOtp(`+91${sanitizePhone(phone)}`, "whatsapp", undefined, "checkout");
     setBusy(false);
 
     if (res.ok) {
@@ -182,6 +185,7 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
                   <span>{busy ? "Sending OTP..." : "Get Verification Code"}</span>
                   <ArrowRight className="h-4 w-4" aria-hidden />
                 </button>
+                <RecaptchaHost flow="checkout" />
               </form>
             ) : (
               <form onSubmit={handleVerifyOtp} className="mt-4 space-y-4">

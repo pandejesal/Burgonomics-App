@@ -3,6 +3,7 @@ import { authRepository, type AuthRepository } from "@/features/auth/repositorie
 import type { AuthSessionRef } from "@/features/auth/services/authService";
 import { isJwtExpired } from "@/features/auth/utils/validators";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
+import type { AuthFlowId } from "@/features/auth/utils/authErrors";
 import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
 import { auth as firebaseAuth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
@@ -57,6 +58,8 @@ interface AuthState {
     phone: string,
     deliveryMethod?: "whatsapp" | "sms",
     otpToken?: string,
+    /** Which mounted reCAPTCHA host owns this attempt (default: login). */
+    flow?: AuthFlowId,
   ) => Promise<{ ok: boolean; error?: string }>;
   verifyOtp: (code: string) => Promise<{ ok: boolean; error?: string }>;
   resendOtp: () => Promise<{ ok: boolean; error?: string }>;
@@ -446,7 +449,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  async requestOtp(phone, deliveryMethod = DEFAULT_DELIVERY_METHOD, otpToken) {
+  async requestOtp(phone, deliveryMethod = DEFAULT_DELIVERY_METHOD, otpToken, flow) {
     // One owner per send: a double tap (or a second tab) must not burn two SMS
     // nor race two challenges into the same store slot.
     const inFlight = requestInFlight;
@@ -463,7 +466,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ status: "authenticating", error: null });
       let res: RequestOtpResult;
       try {
-        res = await repo().requestOtp(phone, deliveryMethod, otpToken);
+        res = flow
+          ? await repo().requestOtp(phone, deliveryMethod, otpToken, flow)
+          : await repo().requestOtp(phone, deliveryMethod, otpToken);
       } catch (err) {
         res = fail("AUTH_OTP_REQUEST_FAILED", messageOf(err, "Failed to send verification code."));
       }

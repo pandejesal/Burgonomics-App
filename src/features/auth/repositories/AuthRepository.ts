@@ -14,6 +14,7 @@ import {
   type AuthSessionRef,
 } from "@/features/auth/services/authService";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
+import type { AuthFlowId } from "@/features/auth/utils/authErrors";
 import type { ApiResult } from "@/core/network/http";
 
 export class AuthRepository {
@@ -23,8 +24,14 @@ export class AuthRepository {
     phone: string,
     deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
     otpToken?: string,
+    flow?: AuthFlowId,
   ) {
-    return this.service.requestOtp(phone, deliveryMethod, otpToken);
+    // Callers that do not name a flow keep the launch login default. A caller
+    // with its own mounted reCAPTCHA host (the checkout sheet) passes it so the
+    // service never looks for a container that screen does not render.
+    return flow
+      ? this.service.requestOtp(phone, deliveryMethod, otpToken, flow)
+      : this.service.requestOtp(phone, deliveryMethod, otpToken);
   }
 
   verifyOtp(otpToken: string, code: string) {

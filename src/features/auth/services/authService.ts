@@ -4,6 +4,12 @@ import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import { auth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
+import {
+  acquireForFlow,
+  dirtyFlow,
+  isFlowMounted,
+} from "@/features/auth/state/authBinding";
+import type { AuthFlowId } from "@/features/auth/utils/authErrors";
 
 export interface RequestOtpResponse {
   otpToken: string;
@@ -107,10 +113,36 @@ export const authService = {
     }
   },
 
+  /**
+   * The verifier for a screen, from the surface that actually rendered one.
+   *
+   * The launch login form mounts `<RecaptchaHost flow="login" />`, which owns a
+   * per-mount element id — not the legacy `#recaptcha-container`. Looking up
+   * only the legacy id made every web sign-in fail with
+   * "Verification check failed to load" while the host was on screen. Prefer
+   * the bound host; fall back to the legacy container that the OTP screen (and
+   * native WebViews) still render.
+   */
+  verifierForFlow(flow: AuthFlowId): RecaptchaVerifier | null {
+    const acquired = acquireForFlow(flow);
+    if (acquired.ok) {
+      recaptchaVerifier = acquired.verifier;
+      return acquired.verifier;
+    }
+    if (isFlowMounted(flow)) {
+      // The host exists but is mid-render (or failed). Never construct a second
+      // verifier against a container this flow does not own.
+      return null;
+    }
+    if (!recaptchaVerifier) authService.initRecaptcha("recaptcha-container");
+    return recaptchaVerifier;
+  },
+
   async requestOtp(
     phone: string,
     deliveryMethod: "whatsapp" | "sms" = DEFAULT_DELIVERY_METHOD,
     _otpToken?: string,
+    flow: AuthFlowId = "login",
   ): Promise<ApiResult<RequestOtpResponse>> {
     // Drop the previous challenge before the first await: a request that is
     // superseded mid-flight must not leave an older code confirmable.
@@ -120,11 +152,8 @@ export const authService = {
     try {
       const formattedPhone = normalizePhoneE164(phone);
 
-      if (!recaptchaVerifier) {
-        authService.initRecaptcha("recaptcha-container");
-      }
-
-      if (!recaptchaVerifier) {
+      const verifier = authService.verifierForFlow(flow);
+      if (!verifier) {
         return fail(
           "RECAPTCHA_UNAVAILABLE",
           "Verification check failed to load. Please refresh the page and try again.",
@@ -133,12 +162,12 @@ export const authService = {
 
       // Explicitly trigger render if not yet rendered
       try {
-        await recaptchaVerifier.render();
+        await verifier.render();
       } catch {
         // Container might already have widget rendered
       }
 
-      const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifier);
+      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       if (generation !== challengeGeneration) {
         // Cancelled / superseded while the SMS was being dispatched.
         return fail("AUTH_OTP_SUPERSEDED", "This code request was cancelled. Please try again.");
@@ -154,8 +183,13 @@ export const authService = {
     } catch (error: any) {
       // Code only: the raw Firebase error embeds the phone in message/customData.
       logger.error("auth.otp_request_failed", error, { code: error?.code });
-      // Reset reCAPTCHA widget on error so user can retry cleanly
-      if (recaptchaVerifier) {
+      // Reset the widget on error so the customer can retry cleanly. A bound
+      // host is marked dirty and re-armed on the SAME element by the next
+      // attempt; a legacy container is rebuilt in place.
+      if (isFlowMounted(flow)) {
+        dirtyFlow(flow);
+        recaptchaVerifier = null;
+      } else if (recaptchaVerifier) {
         try {
           recaptchaVerifier.clear();
         } catch {
