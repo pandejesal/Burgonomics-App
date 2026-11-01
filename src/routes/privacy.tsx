@@ -4,7 +4,7 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
 import { Text } from "@/shared/components/common/Text";
 import { Shield, Lock, Eye, Trash2, Mail, FileText } from "lucide-react";
-import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
+import { APP, isUnsetRegistrationValue, legalEntityProse } from "@/core/constants/app";
 
 export const Route = createFileRoute("/privacy")({
   head: () => ({
@@ -46,8 +46,8 @@ function PrivacyPage() {
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
               {/* P1-7: registration IDs are rendered from APP constants only when
                   real values exist — masked X-filler is never shown (see app.ts). */}
-              <strong>Data Fiduciary:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio,
-              Ahmedabad, Gujarat, India – 380015
+              <strong>Data Fiduciary:</strong> {legalEntityProse}, trading as {APP.tradeName},{" "}
+              {APP.registeredAddress}, India
               {!isUnsetRegistrationValue(APP.cin) && (
                 <>
                   {" "}
@@ -163,11 +163,11 @@ function PrivacyPage() {
               Rules, 2021)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Grievance Officer:</strong> Manager — Legal, Burgonomics Foods Pvt Ltd
+              <strong>Grievance Officer:</strong> Manager — Legal, {legalEntityProse}
               <br />
               <strong>Email:</strong> privacy@burgonomics.com
               <br />
-              <strong>Address:</strong> Glassdoors Studio, Ahmedabad, Gujarat – 380015, India.
+              <strong>Address:</strong> {APP.registeredAddress}, India.
               <br />
               <strong>Nodal Contact Person:</strong> Same as Grievance Officer
               (nodal@burgonomics.com) for law-enforcement coordination.

@@ -31,3 +31,12 @@ export const APP = {
  */
 export const isUnsetRegistrationValue = (value: string | undefined): boolean =>
   !value || /X{4,}/i.test(value);
+
+/**
+ * `APP.legalEntity` in prose case ("Panchtatva Foods"). Legal surfaces write
+ * the registered entity in running text, and deriving it here keeps the name
+ * single-sourced — no screen retypes it.
+ */
+export const legalEntityProse: string = APP.legalEntity
+  .toLowerCase()
+  .replace(/(^|\s)\S/g, (word) => word.toUpperCase());

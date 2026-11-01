@@ -4,7 +4,7 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { AppCard } from "@/shared/components/common/AppCard";
 import { Text } from "@/shared/components/common/Text";
 import { FileText, ShoppingCart, Clock, RotateCcw, HelpCircle } from "lucide-react";
-import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
+import { APP, isUnsetRegistrationValue, legalEntityProse } from "@/core/constants/app";
 
 export const Route = createFileRoute("/terms")({
   head: () => ({
@@ -39,7 +39,8 @@ function TermsPage() {
               Terms & Conditions
             </Text>
             <Text variant="caption" tone="secondary">
-              Last updated: November 1, 2026 · Burgonomics Foods Pvt Ltd, India
+              Last updated: November 1, 2026 · {legalEntityProse}, trading as {APP.tradeName},
+              India
             </Text>
           </div>
         </div>
@@ -78,8 +79,8 @@ function TermsPage() {
               Protection E-Commerce Rules, 2020)
             </Text>
             <Text variant="bodySmall" tone="secondary" className="leading-relaxed">
-              <strong>Seller:</strong> Burgonomics Foods Pvt Ltd, Glassdoors Studio, Ahmedabad,
-              Gujarat – 380015, India.
+              <strong>Seller:</strong> {legalEntityProse}, trading as {APP.tradeName},{" "}
+              {APP.registeredAddress}, India.
               <br />
               {/* P1-7: registration IDs render only once real values replace the
                   X-masked placeholders — never print filler. */}
