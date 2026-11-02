@@ -108,6 +108,7 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   // collapsing to a generic "something went wrong".
   "ITEM_UNAVAILABLE",
   "ITEM_PRICE_UNVERIFIED",
+  "MIN_ORDER",
 ]);
 
 /**
