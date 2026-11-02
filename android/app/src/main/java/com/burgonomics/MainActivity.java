@@ -154,7 +154,7 @@ public class MainActivity extends BridgeActivity {
      * Android's own comment in Bridge.launchIntent treats `data` and `blob`
      * the same way.
      */
-    private static boolean isInternalScheme(String scheme) {
+    static boolean isInternalScheme(String scheme) {
         if (scheme == null) return true;
         switch (scheme) {
             case "about":
