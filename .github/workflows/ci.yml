@@ -16,7 +16,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # --mode staging: this is a CI compile check, not a release. A default
+      # (`production`) build has no release env here and releaseConfigGuard
+      # (vite.config.ts) correctly aborts it. A REAL production build must still
+      # fail without live values — that guard is untouched.
+      - run: npm run build -- --mode staging
       - run: npx tsc -p tsconfig.json --noEmit
       - run: npm run lint
       - run: npx tsx scripts/verify-dashboard-unit.ts
@@ -63,7 +67,10 @@ jobs:
           distribution: temurin
           java-version: "21"
       - run: npm ci
-      - run: npm run build:mobile
+      # --mode staging: CI compile check only (see the web job's note). The
+      # Capacitor shell is built for real by the signed iOS/Android release jobs,
+      # which keep the production guard intact.
+      - run: npm run build:mobile -- --mode staging
       - run: npx cap sync android
       - run: ./gradlew assembleDebug
         working-directory: android
