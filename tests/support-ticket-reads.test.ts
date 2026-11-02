@@ -184,3 +184,102 @@ describe("ticket list is served from Firestore for the signed-in customer", () =
     expect(res.data[0].createdAt).toBe("2026-10-30T09:15:00.000Z");
   });
 });
+
+describe("resolution is surfaced to the customer in BOTH stored forms", () => {
+  // tickets.service.ts resolveTicket() writes `resolution` as an OBJECT
+  // (line 828-837): { action, amount, couponCode, notes, refundResult,
+  // resolvedBy, resolvedByName, resolvedAt }. resolveNote() writes a plain
+  // STRING. A customer must see why their ticket closed in either case.
+  const RESOLVED_OBJECT = {
+    action: "partial_refund" as const,
+    amount: 150,
+    couponCode: null,
+    notes: "Burger arrived cold — ₹150 refunded to the original payment method.",
+    refundResult: { refundId: "pay_R1234", status: "processed" },
+    resolvedBy: "uid_staff_7",
+    resolvedByName: "Priya (Brand Support)",
+    resolvedAt: "2026-11-01T12:30:00.000Z",
+  };
+
+  it("reads the notes out of the resolveTicket resolution OBJECT", async () => {
+    getDocs.mockResolvedValue({
+      docs: [
+        docSnap(
+          "tkt_resolved",
+          storedTicket({ id: "tkt_resolved", status: "resolved", resolution: RESOLVED_OBJECT }),
+        ),
+      ],
+    });
+    const { fetchMyTickets } = await import(MODULE);
+
+    const res = await fetchMyTickets("uid_customer_1");
+
+    expect(res.success).toBe(true);
+    if (!res.success) return;
+    const t = res.data[0];
+    expect(t.status).toBe("RESOLVED");
+    // The actual reason, not "[object Object]" and not undefined.
+    expect(t.managerResponse).toBe(
+      "Burger arrived cold — ₹150 refunded to the original payment method.",
+    );
+    expect(t.managerResponse).not.toContain("[object Object]");
+  });
+
+  it("still reads a plain STRING resolution (resolveNote path)", async () => {
+    getDocs.mockResolvedValue({
+      docs: [
+        docSnap(
+          "tkt_note",
+          storedTicket({
+            id: "tkt_note",
+            status: "resolved",
+            resolution: "Resolved by staff after calling the customer.",
+          }),
+        ),
+      ],
+    });
+    const { fetchMyTickets } = await import(MODULE);
+
+    const res = await fetchMyTickets("uid_customer_1");
+
+    expect(res.success).toBe(true);
+    if (!res.success) return;
+    expect(res.data[0].managerResponse).toBe("Resolved by staff after calling the customer.");
+  });
+
+  it("uses resolvedAt from the resolution object when the doc has none", async () => {
+    getDocs.mockResolvedValue({
+      docs: [
+        docSnap(
+          "tkt_resolved",
+          storedTicket({
+            id: "tkt_resolved",
+            status: "resolved",
+            resolution: RESOLVED_OBJECT,
+            resolvedAt: undefined,
+          }),
+        ),
+      ],
+    });
+    const { fetchMyTickets } = await import(MODULE);
+
+    const res = await fetchMyTickets("uid_customer_1");
+
+    expect(res.success).toBe(true);
+    if (!res.success) return;
+    expect(res.data[0].resolvedAt).toBe("2026-11-01T12:30:00.000Z");
+  });
+
+  it("returns undefined (never a bogus string) when resolution is absent", async () => {
+    getDocs.mockResolvedValue({
+      docs: [docSnap("tkt_open", storedTicket({ id: "tkt_open", resolution: undefined }))],
+    });
+    const { fetchMyTickets } = await import(MODULE);
+
+    const res = await fetchMyTickets("uid_customer_1");
+
+    expect(res.success).toBe(true);
+    if (!res.success) return;
+    expect(res.data[0].managerResponse).toBeUndefined();
+  });
+});

@@ -116,11 +116,44 @@ export function mapTicketDoc(id: string, data: Record<string, unknown>): TicketR
     orderId: typeof data.orderId === "string" ? data.orderId : undefined,
     branchId: typeof data.branchId === "string" ? data.branchId : undefined,
     attachments: attachmentUrls(data.attachments),
-    managerResponse:
-      typeof data.resolution === "string" && data.resolution ? data.resolution : undefined,
+    managerResponse: resolutionText(data.resolution),
     createdAt: toIso(data.createdAt) ?? new Date(0).toISOString(),
-    resolvedAt: toIso(data.resolvedAt ?? data.closedAt) ?? undefined,
+    resolvedAt:
+      toIso(data.resolvedAt ?? data.closedAt) ?? resolutionResolvedAt(data.resolution),
   };
+}
+
+/**
+ * `resolution` is stored in TWO shapes depending on which staff route closed
+ * the ticket (backend modules/tickets/tickets.service.ts):
+ *  - resolveTicket(): an OBJECT { action, amount, couponCode, notes,
+ *    refundResult, resolvedBy, resolvedByName, resolvedAt } (line 828-837)
+ *  - resolveNote():   a plain STRING note
+ * Reading only the string form meant a customer never saw why a refunded ticket
+ * closed. Returns the human-readable reason, or undefined when there is none.
+ */
+export function resolutionText(raw: unknown): string | undefined {
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const notes = (raw as { notes?: unknown }).notes;
+    if (typeof notes === "string" && notes.trim()) return notes.trim();
+    // Fall back to a coupon/action description rather than surfacing an object
+    // as "[object Object]" — but never invent a reason that was not recorded.
+    const coupon = (raw as { couponCode?: unknown }).couponCode;
+    if (typeof coupon === "string" && coupon.trim()) return `Coupon issued: ${coupon.trim()}`;
+  }
+  return undefined;
+}
+
+/** `resolvedAt` may live on the document or inside the resolution object. */
+function resolutionResolvedAt(raw: unknown): string | undefined {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return toIso((raw as { resolvedAt?: unknown }).resolvedAt) ?? undefined;
+  }
+  return undefined;
 }
 
 /**
