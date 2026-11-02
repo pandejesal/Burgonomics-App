@@ -92,7 +92,13 @@ function PrivacyPage() {
               </li>
               <li>
                 <strong>Support information:</strong> Messages and order details you submit
-                when asking for help.
+                when asking for help, plus any photos you choose to attach to a support ticket.
+              </li>
+              <li>
+                <strong>Support ticket photos (optional):</strong> If you attach photos when
+                raising a support ticket, the images are uploaded and stored with that ticket so
+                the store team can see the issue. Attaching photos is always your choice — tickets
+                work without them.
               </li>
               <li>
                 <strong>Location (optional):</strong> Precise/approximate GPS to route to nearest
