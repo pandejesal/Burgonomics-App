@@ -77,4 +77,23 @@ public class MainActivityMapsHandoffTest {
         // Bank / OTP pages are arbitrary hosts and are never allowlisted.
         assertFalse(MainActivity.isGoogleMapsTarget("https", "netbanking.hdfcbank.com", "/login"));
     }
+
+    @Test
+    public void keepsPopupBootstrapSchemesInternal() {
+        // A popup starts at about:blank, and Razorpay's receipt window writes its
+        // document through these. Sending them to the OS would blank the popup.
+        assertTrue(MainActivity.isInternalScheme("about"));
+        assertTrue(MainActivity.isInternalScheme("data"));
+        assertTrue(MainActivity.isInternalScheme("blob"));
+        assertTrue(MainActivity.isInternalScheme("javascript"));
+        assertTrue(MainActivity.isInternalScheme("file"));
+        assertTrue(MainActivity.isInternalScheme("content"));
+        assertTrue(MainActivity.isInternalScheme(null));
+
+        // Real external schemes must still reach the OS (UPI, bank apps, dial).
+        assertFalse(MainActivity.isInternalScheme("upi"));
+        assertFalse(MainActivity.isInternalScheme("https"));
+        assertFalse(MainActivity.isInternalScheme("tel"));
+        assertFalse(MainActivity.isInternalScheme("intent"));
+    }
 }

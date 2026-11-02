@@ -71,9 +71,23 @@ public class MainActivity extends BridgeActivity {
                         // on an in-app page instead of the Maps app. Hand off ONLY strict Maps
                         // URLs; Razorpay and bank pages must keep loading here so
                         // window.opener can still report the payment result.
-                        if (isGoogleMapsUrl(url) && openExternally(url)) return true;
-                        // No Maps handler installed: load it here so the link still resolves
-                        // visibly instead of leaving a blank popup.
+                        if (isGoogleMapsUrl(url)) {
+                            if (openExternally(url)) {
+                                // The popup existed only to host this one link; leaving it up
+                                // would strand the customer on a blank black screen when they
+                                // came back from Maps. Razorpay flows never reach this branch.
+                                dialog.dismiss();
+                                return true;
+                            }
+                            // No Maps handler installed: fall through and load the link here
+                            // so it still resolves visibly instead of leaving a blank popup.
+                        }
+                        return false;
+                    }
+                    if (isInternalScheme(scheme)) {
+                        // about:blank / data: / blob: / javascript: are how the popup itself
+                        // boots (and how Razorpay's receipt window writes its content). Sending
+                        // these to the OS would be wrong.
                         return false;
                     }
                     // UPI and bank app links belong to other apps.
@@ -129,6 +143,30 @@ public class MainActivity extends BridgeActivity {
     private static boolean isGoogleMapsUrl(Uri url) {
         if (url == null) return false;
         return isGoogleMapsTarget(url.getScheme(), url.getHost(), url.getPath());
+    }
+
+    /**
+     * Schemes the popup handles itself and must never hand to the OS.
+     *
+     * A popup starts life at `about:blank` and Razorpay's receipt window writes
+     * its document through `javascript:`/`data:`/`blob:`. Sending those to an
+     * ACTION_VIEW intent would either throw or leave the popup blank.
+     * Android's own comment in Bridge.launchIntent treats `data` and `blob`
+     * the same way.
+     */
+    private static boolean isInternalScheme(String scheme) {
+        if (scheme == null) return true;
+        switch (scheme) {
+            case "about":
+            case "data":
+            case "blob":
+            case "javascript":
+            case "file":
+            case "content":
+                return true;
+            default:
+                return false;
+        }
     }
 
     /** Opens a URL outside this app. Returns false when nothing can handle it. */
