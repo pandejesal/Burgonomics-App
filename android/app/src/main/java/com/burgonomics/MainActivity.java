@@ -64,13 +64,20 @@ public class MainActivity extends BridgeActivity {
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     Uri url = request.getUrl();
                     String scheme = url.getScheme();
-                    if ("http".equals(scheme) || "https".equals(scheme)) return false;
-                    // UPI and bank app links belong to other apps.
-                    try {
-                        startActivity(new Intent(Intent.ACTION_VIEW, url));
-                    } catch (ActivityNotFoundException ignored) {
-                        // No app handles it; the checkout offers another method.
+                    if ("http".equals(scheme) || "https".equals(scheme)) {
+                        // Google Maps belongs to another app. Enabling multiple windows sent
+                        // every target="_blank" link (including the tracker's "Open in Google
+                        // Maps") into this popup, where loading the web map left the customer
+                        // on an in-app page instead of the Maps app. Hand off ONLY strict Maps
+                        // URLs; Razorpay and bank pages must keep loading here so
+                        // window.opener can still report the payment result.
+                        if (isGoogleMapsUrl(url) && openExternally(url)) return true;
+                        // No Maps handler installed: load it here so the link still resolves
+                        // visibly instead of leaving a blank popup.
+                        return false;
                     }
+                    // UPI and bank app links belong to other apps.
+                    openExternally(url);
                     return true;
                 }
             }
@@ -89,5 +96,48 @@ public class MainActivity extends BridgeActivity {
         transport.setWebView(popup);
         resultMsg.sendToTarget();
         return true;
+    }
+
+    /**
+     * Strict Google Maps hand-off allowlist, on primitives so it is unit
+     * testable without an Android runtime.
+     *
+     * Only the two HTTPS Maps shapes this app produces are accepted:
+     *   https://www.google.com/maps/...   (getDirectionsUrl / getPermanentMapUrl)
+     *   https://maps.google.com/maps/...
+     * The host is compared exactly, never by substring, so `evil-google.com` and
+     * `google.com.evil.tld` fail. Nothing else is externalised: Razorpay, bank
+     * and OTP pages keep loading inside the popup so `window.opener` can still
+     * report the payment result.
+     */
+    static boolean isGoogleMapsTarget(String scheme, String host, String path) {
+        if (!"https".equals(scheme)) return false;
+        if (host == null) return false;
+        String normalised = host.toLowerCase(java.util.Locale.ROOT);
+        if (
+            !"google.com".equals(normalised) &&
+            !"www.google.com".equals(normalised) &&
+            !"maps.google.com".equals(normalised)
+        ) {
+            return false;
+        }
+        if (path == null) return false;
+        // /maps and /maps/... only — never a lookalike such as /mapsfoo.
+        return path.equals("/maps") || path.startsWith("/maps/");
+    }
+
+    private static boolean isGoogleMapsUrl(Uri url) {
+        if (url == null) return false;
+        return isGoogleMapsTarget(url.getScheme(), url.getHost(), url.getPath());
+    }
+
+    /** Opens a URL outside this app. Returns false when nothing can handle it. */
+    private boolean openExternally(Uri url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, url));
+            return true;
+        } catch (ActivityNotFoundException e) {
+            return false;
+        }
     }
 }
