@@ -46,7 +46,15 @@ const { spawnSync } = require('node:child_process');
 const CUSTOMER_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(CUSTOMER_ROOT, '..');
 const CUSTOMER_WORKFLOW = path.join(CUSTOMER_ROOT, '.github', 'workflows', 'ios-build.yml');
-const PARTNER_WORKFLOW = path.join(REPO_ROOT, 'burgonomics-partner', '.github', 'workflows', 'ci.yml');
+// The app normally sits beside `burgonomics-partner/` in the monorepo. A review
+// worktree may instead expose the sibling as `partner/`, so resolve either — a
+// skipped cross-check is worth nothing.
+const PARTNER_WORKFLOW_CANDIDATES = [
+  path.join(REPO_ROOT, 'burgonomics-partner', '.github', 'workflows', 'ci.yml'),
+  path.join(REPO_ROOT, 'partner', '.github', 'workflows', 'ci.yml'),
+];
+const PARTNER_WORKFLOW =
+  PARTNER_WORKFLOW_CANDIDATES.find((p) => fs.existsSync(p)) ?? PARTNER_WORKFLOW_CANDIDATES[0];
 const TOOLCHAIN_SCRIPT = path.join(CUSTOMER_ROOT, 'scripts', 'select-xcode-toolchain.sh');
 
 // js-yaml is present in this app's node_modules (4.3.2, transitive). No
@@ -121,6 +129,98 @@ function stripYamlComments(text) {
     .split('\n')
     .filter((line) => !/^\s*#/.test(line))
     .join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Secret-scoped check.
+//
+// A blanket "no `secrets.` anywhere" rule is wrong: a workflow legitimately
+// wires a secret into a step's `env:` block (e.g. partner ci.yml passes
+// IOS_CERTIFICATE_BASE64 to scripts/archive_ios.py). What must never happen is
+// a secret being EXFILTRATED or LEAKED:
+//   1. echoed/printed into a log (run blocks echoing ${{ secrets.* }})
+//   2. interpolated into a command line / run script rather than env
+//   3. passed to a third-party action's `with:` inputs
+//   4. written into an upload path or artifact name
+// This helper enforces exactly those, and the negative fixtures below prove it
+// still fails on a real leak.
+// ---------------------------------------------------------------------------
+const SECRET_RE = /\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}/;
+
+/** Actions whose `with:` may not receive a secret (third-party supply chain). */
+function isTrustedFirstPartyAction(action) {
+  return (
+    typeof action === 'string' &&
+    (action.startsWith('actions/') || action.startsWith('./'))
+  );
+}
+
+/**
+ * Returns a list of leak descriptions for one job. Empty means clean.
+ * @param {object} job parsed job object
+ * @param {string} label job name for messages
+ */
+function findSecretLeaks(job, label) {
+  const leaks = [];
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  for (const step of steps) {
+    const stepName = step.name || step.uses || step.run || '(unnamed step)';
+    const runText = typeof step.run === 'string' ? step.run : '';
+    const env = step.env && typeof step.env === 'object' ? step.env : {};
+
+    // (1) A secret interpolated directly into the shell script (not via env).
+    // `${{ secrets.X }}` inside `run:` is expanded into the command line, which
+    // shows up in logs and process listings.
+    if (SECRET_RE.test(runText)) {
+      leaks.push(
+        `${label} / ${stepName}: \${{ secrets.* }} interpolated into a run script (use env:)`
+      );
+    }
+
+    // (2) A secret echoed/printed.
+    for (const [k, v] of Object.entries(env)) {
+      if (typeof v === 'string' && SECRET_RE.test(v)) {
+        const echoed = new RegExp(
+          `(echo|printf|cat|printenv|env)\\b[^\\n]*\\$\\{?${k}\\}?`,
+          'i'
+        );
+        if (echoed.test(runText)) {
+          leaks.push(`${label} / ${stepName}: secret env ${k} is echoed into the log`);
+        }
+      }
+    }
+
+    // (3) A secret handed to a third-party action input.
+    if (step.uses && !isTrustedFirstPartyAction(step.uses)) {
+      const withBlock = step.with && typeof step.with === 'object' ? step.with : {};
+      for (const [k, v] of Object.entries(withBlock)) {
+        if (typeof v === 'string' && SECRET_RE.test(v)) {
+          leaks.push(`${label} / ${stepName}: secret passed to third-party action ${step.uses} input ${k}`);
+        }
+      }
+    }
+
+    // (4) A secret used to build an artifact name/path.
+    if (step.with && typeof step.with === 'object') {
+      for (const key of ['name', 'path']) {
+        const v = step.with[key];
+        if (typeof v === 'string' && SECRET_RE.test(v)) {
+          leaks.push(`${label} / ${stepName}: secret used in artifact ${key}`);
+        }
+      }
+    }
+  }
+  return leaks;
+}
+
+/** Asserts no secret leak in any of the given jobs. */
+function assertNoSecretLeaks(doc, jobNames, prefix) {
+  const leaks = [];
+  for (const name of jobNames) {
+    if (!doc.jobs[name]) continue;
+    leaks.push(...findSecretLeaks(doc.jobs[name], `${prefix}${name}`));
+  }
+  assert.deepStrictEqual(leaks, [], `secret leaks found:\n  ${leaks.join('\n  ')}`);
 }
 
 test('customer: no hardcoded Xcode app path anywhere in the workflow', () => {
@@ -280,15 +380,115 @@ test('partner ci.yml: ios jobs on supported runners with the discovery gate (str
       assert.ok(toolIdx < firstXcodebuild, `partner ${name}: gate must run before the first xcodebuild step`);
     }
     const jobText = JSON.stringify(doc.jobs[name]);
-    assert.ok(!jobText.includes('secrets.'), `partner ${name}: references secrets`);
+    // Secret-SCOPED check: wiring a secret into a step's `env:` is legitimate
+    // (partner ios-archive passes signing material to scripts/archive_ios.py).
+    // Echoing it, interpolating it into a shell script, or handing it to a
+    // third-party action is not — findSecretLeaks enforces exactly that.
+    assertNoSecretLeaks(doc, [name], 'partner ');
     for (const token of FORBIDDEN_SIGNING_TOKENS) {
       assert.ok(!jobText.includes(token), `partner ${name}: forbidden signing/store token: ${token}`);
     }
   }
   const archiveRuns = jobSteps(doc, 'ios-archive').map(stepRun).join('\n');
+  // The partner keeps unsigned-archive enforcement in scripts/archive_ios.py
+  // (`run(*archive, 'CODE_SIGNING_ALLOWED=NO', ...)`, proven by the
+  // archive-signing test above), not as a literal in the workflow text. Accept
+  // either location rather than asserting a string the partner never had.
+  const partnerArchivePy = path.join(path.dirname(PARTNER_WORKFLOW), '..', '..', 'scripts', 'archive_ios.py');
+  const archivePyText = fs.existsSync(partnerArchivePy)
+    ? fs.readFileSync(partnerArchivePy, 'utf8')
+    : '';
   assert.ok(
-    archiveRuns.includes('CODE_SIGNING_ALLOWED=NO'),
-    'partner ios-archive must keep CODE_SIGNING_ALLOWED=NO'
+    archiveRuns.includes('CODE_SIGNING_ALLOWED=NO') || archivePyText.includes('CODE_SIGNING_ALLOWED=NO'),
+    'partner ios-archive must keep an unsigned (CODE_SIGNING_ALLOWED=NO) archive path'
   );
   assert.ok(!text.includes('Xcode_15'), 'partner: stale Xcode 15 reference');
+});
+
+// ---------------------------------------------------------------------------
+// Negative fixtures: the secret-scoped check must still catch a REAL leak.
+// These construct synthetic job objects (no files touched) so the guard cannot
+// rot into "permits everything" unnoticed.
+// ---------------------------------------------------------------------------
+test('secret-scope: permits a secret wired into a step env block', () => {
+  const doc = {
+    jobs: {
+      'ios-archive': {
+        steps: [
+          {
+            name: 'Archive',
+            run: 'python3 scripts/archive_ios.py',
+            env: { IOS_CERTIFICATE_BASE64: '${{ secrets.IOS_CERTIFICATE_BASE64 }}' },
+          },
+        ],
+      },
+    },
+  };
+  assert.deepStrictEqual(findSecretLeaks(doc.jobs['ios-archive'], 'fixture'), []);
+});
+
+test('secret-scope: FAILS when a secret is echoed into the log', () => {
+  const doc = {
+    jobs: {
+      j: {
+        steps: [
+          {
+            name: 'Leak',
+            run: 'echo "$CERT"',
+            env: { CERT: '${{ secrets.IOS_CERTIFICATE_BASE64 }}' },
+          },
+        ],
+      },
+    },
+  };
+  const leaks = findSecretLeaks(doc.jobs.j, 'fixture');
+  assert.strictEqual(leaks.length, 1);
+  assert.match(leaks[0], /echoed into the log/);
+});
+
+test('secret-scope: FAILS when a secret is interpolated into a run script', () => {
+  const doc = {
+    jobs: {
+      j: { steps: [{ name: 'Inline', run: 'curl -H "token: ${{ secrets.API_TOKEN }}" https://x.test' }] },
+    },
+  };
+  const leaks = findSecretLeaks(doc.jobs.j, 'fixture');
+  assert.strictEqual(leaks.length, 1);
+  assert.match(leaks[0], /interpolated into a run script/);
+});
+
+test('secret-scope: FAILS when a secret is passed to a third-party action', () => {
+  const doc = {
+    jobs: {
+      j: {
+        steps: [
+          {
+            uses: 'some-org/some-action@v1',
+            with: { token: '${{ secrets.API_TOKEN }}' },
+          },
+        ],
+      },
+    },
+  };
+  const leaks = findSecretLeaks(doc.jobs.j, 'fixture');
+  assert.strictEqual(leaks.length, 1);
+  assert.match(leaks[0], /third-party action/);
+});
+
+test('secret-scope: FAILS when a secret is used to build an artifact name', () => {
+  const doc = {
+    jobs: {
+      j: {
+        steps: [
+          {
+            uses: 'actions/upload-artifact@v4',
+            with: { name: 'build-${{ secrets.API_TOKEN }}', path: 'out.zip' },
+          },
+        ],
+      },
+    },
+  };
+  const leaks = findSecretLeaks(doc.jobs.j, 'fixture');
+  assert.strictEqual(leaks.length, 1);
+  assert.match(leaks[0], /artifact name/);
 });
