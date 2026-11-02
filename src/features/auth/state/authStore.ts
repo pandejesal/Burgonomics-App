@@ -307,6 +307,30 @@ function refreshLoyaltyInBackground(uid: string): void {
       }),
     );
 }
+
+/**
+ * Push-token linking, off the critical path. A failure is REPORTED by
+ * notificationsService (fail TOKEN_REGISTRATION_FAILED) — this must never
+ * reject into login/checkout, so it is fire-and-forget and only logged here.
+ * The boot path in shared/platform/pushNotifications re-registers the cached
+ * token on the next app start.
+ */
+function linkDeviceTokenInBackground(uid: string): void {
+  void notificationsService.linkUserToDeviceToken(uid).then(
+    (res) => {
+      if (!res.success) {
+        logger.warn("auth.device_link_failed", {
+          code: res.error.code,
+          message: res.error.message,
+        });
+      }
+    },
+    (e: unknown) =>
+      logger.warn("auth.device_link_failed", {
+        message: e instanceof Error ? e.message : String(e),
+      }),
+  );
+}
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "idle",
   user: null,
@@ -380,11 +404,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               message: e instanceof Error ? e.message : String(e),
             }),
           );
-          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) =>
-            logger.warn("auth.device_link_failed", {
-              message: e instanceof Error ? e.message : String(e),
-            }),
-          );
+          linkDeviceTokenInBackground(user.id);
           refreshLoyaltyInBackground(user.id);
           set({
             status: "authenticated",
@@ -413,11 +433,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           );
           // Same linking as fresh login — otherwise refreshed sessions silently
           // stop receiving order status pushes.
-          void notificationsService.linkUserToDeviceToken(user.id).catch((e: unknown) =>
-            logger.warn("auth.device_link_failed", {
-              message: e instanceof Error ? e.message : String(e),
-            }),
-          );
+          linkDeviceTokenInBackground(user.id);
           refreshLoyaltyInBackground(user.id);
           set({
             status: "authenticated",
@@ -583,11 +599,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           message: e instanceof Error ? e.message : String(e),
         }),
       );
-      void notificationsService.linkUserToDeviceToken(res.data.user.id).catch((e: unknown) =>
-        logger.warn("auth.device_link_failed", {
-          message: e instanceof Error ? e.message : String(e),
-        }),
-      );
+      linkDeviceTokenInBackground(res.data.user.id);
       refreshLoyaltyInBackground(res.data.user.id);
       set({
         status: "authenticated",

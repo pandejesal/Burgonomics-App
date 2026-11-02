@@ -303,7 +303,15 @@ export async function initPushNotifications(): Promise<void> {
       setCachedDeviceToken(token.value);
       const canRegister = await reconcileTokenBeforeRegister(token.value);
       if (!canRegister) return;
-      await notificationsService.registerDeviceToken(token.value);
+      // Registration is retryable and must never break the native callback:
+      // this fires again on the next app start with the same token.
+      const registered = await notificationsService.registerDeviceToken(token.value);
+      if (!registered.success) {
+        logger.warn("push.registerDeferred", {
+          code: registered.error.code,
+          message: registered.error.message,
+        });
+      }
     });
 
     // 2b. Listen for registration errors
@@ -372,7 +380,15 @@ async function setupWebPush(): Promise<string | null> {
   setCachedDeviceToken(token);
   const canRegister = await reconcileTokenBeforeRegister(token);
   if (canRegister) {
-    await notificationsService.registerDeviceToken(token);
+    // A failed registration is retried on the next boot: the token is cached
+    // and this boot path re-registers it. Never throw into the caller.
+    const registered = await notificationsService.registerDeviceToken(token);
+    if (!registered.success) {
+      logger.warn("push.registerDeferred", {
+        code: registered.error.code,
+        message: registered.error.message,
+      });
+    }
   }
 
   if (!webPushListenerAttached) {
