@@ -191,7 +191,11 @@ export function CategoryNavRail({
               aria-label={`${isSelected ? "Current category: " : "Jump to "}${cat.name}${countLabel}`}
               onClick={() => handleSelect(cat.id)}
               className={cn(
-                "group relative flex-none shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85 cursor-pointer min-h-[44px] border",
+                // `overflow-hidden` clips the active chip's underline marker to
+                // this pill's rounded box. Without it the 2px marker painted at
+                // the pill's bottom edge replaced the rounded green base with a
+                // flat white strip, which read as the fill not covering the pill.
+                "group relative flex-none shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full overflow-hidden text-sm font-bold whitespace-nowrap transition-all duration-150 ease-out select-none active:scale-[0.96] active:opacity-85 cursor-pointer min-h-[44px] border",
                 isSelected
                   ? "bg-primary text-primary-foreground border-primary shadow-sm font-extrabold"
                   : "bg-surface text-text-secondary border-divider hover:text-text hover:border-primary/40",
@@ -231,12 +235,15 @@ export function CategoryNavRail({
               )}
 
               {/* Selection marker beyond colour: a solid underline that also
-                  survives forced-colours / high-contrast modes. */}
+                  survives forced-colours / high-contrast modes.
+                  `bottom-1` keeps it 4px inside the pill instead of `-bottom-px`
+                  sitting on the rounded base, and the button's overflow-hidden
+                  clip guarantees it can never paint past the green fill. */}
               {isSelected && (
                 <span
                   aria-hidden
                   data-testid="category-rail-active-marker"
-                  className="pointer-events-none absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-primary-foreground"
+                  className="pointer-events-none absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-primary-foreground"
                 />
               )}
             </button>
