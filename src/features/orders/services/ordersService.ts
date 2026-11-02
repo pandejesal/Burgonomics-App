@@ -4,9 +4,13 @@
  * Every function returns the same `ApiResult<T>` envelope. Bodies are NOT
  * mock-only: createOrder/cancelOrder persist to Firestore `orders` (with the
  * partner-query mirrors userId/customerId/createdAt/branchId), listOrders/
- * getOrder live-read the same collection, and createOrder pushes the KOT via
- * the Petpooja gateway. Do NOT "finish the migration" by ripping out the
- * Firestore sync — the partner app reads these docs directly.
+ * getOrder live-read the same collection. Do NOT "finish the migration" by
+ * ripping out the Firestore sync — the partner app reads these docs directly.
+ *
+ * KOTs are NOT pushed from here: POST /petpooja/pushOrder is staff-only, so a
+ * customer call was a guaranteed 403 hidden in a local outbox. The server owns
+ * the push (payment capture/verify for online orders, the order-update trigger
+ * after staff accept/bump for COD).
  *
  * Backend map (live):
  *   Firestore `orders` (write + read)     → createOrder / listOrders /
@@ -16,7 +20,6 @@
  *                                            observation; never writes —
  *                                            paid/failed state is
  *                                            server-owned via verify/webhook)
- *   Petpooja gateway push                  → createOrder (KOT, best-effort)
  *   In-memory ticking                      → DEV-only status progression
  *                                            (compiled OUT of production:
  *                                            release builds never move an
@@ -458,23 +461,15 @@ export const ordersService = {
       ...(estimatedAt ? { estimatedAt } : {}),
     };
 
-    // Petpooja KOT push (best-effort): failures must surface on the order
-    // record + logs, never fail silently in console only (FR-003, FR-014).
-    let petpoojaStatus: Order["petpoojaStatus"] = "Pending";
-    let petpoojaError: string | null = null;
-    try {
-      const { petpoojaGateway } = await import("@/core/integrations/petpooja");
-      await petpoojaGateway.pushOrder(id, order);
-    } catch (err) {
-      petpoojaStatus = "Failed";
-      petpoojaError = err instanceof Error ? err.message : String(err);
-      const { logger } = await import("@/core/logging/logger");
-      logger.warn("ordersService.petpooja_push_failed", {
-        id,
-        message: petpoojaError,
-      });
-    }
-    order.petpoojaStatus = petpoojaStatus;
+    // NO client-side Petpooja push. POST /petpooja/pushOrder is staff-only
+    // (requireRole brand_owner/developer/branch_owner/branch_staff), so every
+    // customer call was a 403 that the old code hid in a localStorage outbox
+    // while the order claimed to be on its way to the POS. The KOT is owned
+    // server-side: the order-update trigger pushes a COD order after staff
+    // accept/bump it, and payment capture/verify pushes an online one. The
+    // in-memory order keeps the honest "Pending" set above; the field is
+    // server/webhook-owned and is stripped before the Firestore write below
+    // (firestore.rules denies petpoojaStatus at create).
 
     // Firestore write: a failure here is FATAL for this attempt — the order
     // exists nowhere Partner/KDS/POS can see it, so returning ok() told the
@@ -506,7 +501,6 @@ export const ordersService = {
           // firestore.rules requires BOTH ownership fields to equal the
           // caller's uid — customerId alone is no longer sufficient.
           userId: uid,
-          ...(petpoojaError ? { petpoojaError } : {}),
           // Query-compatible mirrors for the Partner app (additive only —
           // customer readers ignore unknown fields):
           // - Partner useCustomer queries where('customerId','==',…)
