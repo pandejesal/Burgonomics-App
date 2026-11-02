@@ -27,6 +27,16 @@ export function HorizontalRail({ children, className, itemClassName, ariaLabel }
         "flex gap-3 overflow-x-auto px-4 pb-1 touch-pan-y overscroll-x-contain no-scrollbar",
         className,
       )}
+      // `.no-scrollbar` (styles.css) is UNLAYERED and sets
+      // `overscroll-behavior: contain` on BOTH axes, so a Tailwind
+      // `overscroll-y-auto` utility would lose to it. That blanket
+      // containment is the bug: `overflow-x: auto` makes this element a
+      // vertical scroll container too (CSS Overflow §3 computes the visible
+      // axis to `auto`), so `contain` stopped the vertical gesture from
+      // chaining to the document — the page could not scroll at all when the
+      // finger started on a rail. Keep X contained (the rail must not fling
+      // the page sideways) and hand Y back to the browser.
+      style={{ overscrollBehaviorY: "auto" }}
     >
       {items.map((child, i) => (
         <div

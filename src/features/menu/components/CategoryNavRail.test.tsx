@@ -118,4 +118,40 @@ describe("category rail alignment", () => {
     await act(async () => root.unmount());
     delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollTo;
   });
+
+  it("lets a vertical swipe pan the page instead of trapping it in the chip row", async () => {
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(360);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(580);
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockReturnValue(130);
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(
+        <CategoryNavRail
+          categories={categories}
+          activeCategoryId="middle"
+          onSelectCategory={vi.fn()}
+        />,
+      ),
+    );
+
+    const rail = container.querySelector<HTMLElement>('nav[aria-label="Menu categories"]')!;
+    // `touch-action: pan-x` used to forbid vertical panning outright, so a
+    // swipe that began on a chip never scrolled the menu page.
+    expect(rail.className).not.toContain("touch-pan-x");
+    // X stays contained; Y chains to the document scrollport.
+    expect(rail.className).toContain("overscroll-x-contain");
+    expect(rail.style.overscrollBehaviorY).toBe("auto");
+
+    await act(async () => root.unmount());
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollTo;
+  });
 });

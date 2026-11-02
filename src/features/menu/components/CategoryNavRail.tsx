@@ -161,8 +161,20 @@ export function CategoryNavRail({
       <nav
         ref={scrollRef}
         aria-label="Menu categories"
-        className="relative flex items-center gap-2 overflow-x-auto no-scrollbar select-none py-1 touch-pan-x overscroll-x-contain"
-        style={{ WebkitOverflowScrolling: "touch" }}
+        className="relative flex items-center gap-2 overflow-x-auto no-scrollbar select-none py-1 overscroll-x-contain"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          // Two separate causes trapped a vertical swipe that started on the
+          // chip row:
+          //   1. `touch-action: pan-x` told the browser vertical panning was
+          //      not allowed here at all, so the page never moved.
+          //   2. `.no-scrollbar` sets `overscroll-behavior: contain` on BOTH
+          //      axes (unlayered, so it beats a Tailwind utility), which stops
+          //      the vertical gesture chaining to the document.
+          // Horizontal swipe stays native (`overflow-x: auto`); the browser now
+          // owns axis locking and vertical momentum, as it does on home rails.
+          overscrollBehaviorY: "auto",
+        }}
       >
         {categories.map((cat) => {
           const isSelected = activeCategoryId === cat.id;
