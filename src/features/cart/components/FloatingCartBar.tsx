@@ -56,8 +56,12 @@ export function FloatingCartBar({
           to="/cart"
           onClick={() => void HapticService.selection()}
           className={cn(
-            "pointer-events-auto flex min-h-[72px] w-full items-center justify-between gap-3 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-4 py-3 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer",
-            compact && "min-h-14",
+            // 56px, not 72px: the bar sits above the bottom tab bar, and a
+            // 72px shell plus the 44px "View Cart" pill read as a second
+            // navigation bar on a phone. The priced row keeps its full 44px
+            // tap target inside the shorter shell.
+            "pointer-events-auto flex min-h-14 w-full items-center justify-between gap-3 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-4 py-1.5 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer",
+            compact && "min-h-14 py-1",
           )}
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
