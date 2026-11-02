@@ -2,69 +2,50 @@ import { auth, db } from "@/core/config/firebase";
 import { defaultFunctionsBase } from "@/core/config/functionsBase";
 import {
   collection,
-  addDoc,
   getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
 } from "firebase/firestore";
-import { mapOrderToPetpoojaSaveOrder, type PetpoojaSaveOrderPayload } from "./mapper";
-import { useAuthStore } from "@/features/auth/state/authStore";
-import { useOrdersStore } from "@/features/orders/state/ordersStore";
-import type { Order } from "@/features/orders/models";
 import type {
   GatewayAlert,
   GatewayHealth,
   GatewayMetrics,
-  GatewayStore,
   PetpoojaGateway,
-  PetpoojaMenuSyncResult,
-  PetpoojaOrderPushResult,
   QueueOverview,
   StoreOperationalState,
   SyncLogRecord,
-  SyncReport,
   WebhookRecord,
 } from "./types";
 
 /**
  * HttpPetpoojaGateway — LIVE Petpooja implementation (implementation: "live").
  *
- * Selected by the gateway factory when VITE_PETPOOJA_ENABLED=true. Talks to
- * the Cloud Functions backend:
+ * Selected by the gateway factory when VITE_PETPOOJA_ENABLED=true. This is the
+ * CUSTOMER build, so it carries only what a customer app is allowed to do:
  *
- *   POST {functionsBase}/petpooja/pushOrder  { orderId, order? }
- *   POST {functionsBase}/petpooja/syncMenu   { branchId, mode? }
- *   POST {functionsBase}/petpooja/health     {}                 (optional)
+ *   GET  {functionsBase}/health              (public diagnostic)
+ *   Firestore petpooja_sync_logs / petpooja_webhook_logs (staff-written reads)
  *
- * Secrets (PETPOOJA_APP_KEY/SECRET/ACCESS_TOKEN) live ONLY in Functions env —
- * the browser sends the mapped payload with EMPTY credential fields plus the
- * Firebase ID token; the server injects credentials and forwards to Petpooja.
+ * Deliberately NOT here (api-contract-audit items 1-2):
+ *   POST /petpooja/pushOrder  staff-only (403 for every customer) — KOTs are
+ *                             pushed server-side from payment capture and from
+ *                             the order-update trigger after staff accept/bump.
+ *   POST /petpooja/syncMenu   staff-only (403) — menu sync is ops/scheduler.
+ *   POST /petpooja/stores     no such route (404) — outlets come from the
+ *                             Firestore `stores` directory, not the POS proxy.
  *
- * Failed order pushes land in a persistent localStorage outbox (replayable),
- * and a client-side circuit breaker sheds load after 5 consecutive failures.
- * Read-only getters never throw — failures surface via getHealth/getAlerts.
+ * Failures surface via getHealth/getAlerts; reads never throw.
  */
 
 export interface HttpGatewayOptions {
   functionsBaseUrl?: string;
   fetchImpl?: typeof fetch;
-  outboxKey?: string;
   breakerThreshold?: number;
   logWriteTimeoutMs?: number;
 }
 
-interface OutboxEntry {
-  id: string;
-  orderId: string;
-  payload: PetpoojaSaveOrderPayload;
-  enqueuedAt: string;
-  attempts: number;
-}
-
-const DEFAULT_OUTBOX_KEY = "burgonomics.petpooja.outbox.v1";
 const CACHE_TTL_MS = 60_000;
 /** Firestore log writes must never hang the UI — bounded best-effort. */
 const LOG_WRITE_TIMEOUT_MS = 4_000;
@@ -76,45 +57,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-/** localStorage when available (browser), in-memory fallback (SSR/tests). */
-function createKeyValueStore() {
-  const memory = new Map<string, string>();
-  const hasLocalStorage = (() => {
-    try {
-      return typeof localStorage !== "undefined" && !!localStorage.getItem;
-    } catch {
-      return false;
-    }
-  })();
-  return {
-    get(key: string): string | null {
-      try {
-        if (hasLocalStorage) return localStorage.getItem(key);
-      } catch {
-        // fall through to memory
-      }
-      return memory.has(key) ? (memory.get(key) as string) : null;
-    },
-    set(key: string, value: string) {
-      try {
-        if (hasLocalStorage) {
-          localStorage.setItem(key, value);
-          return;
-        }
-      } catch {
-        // fall through to memory
-      }
-      memory.set(key, value);
-    },
-  };
-}
-
 export class HttpPetpoojaGateway implements PetpoojaGateway {
   readonly implementation = "live" as const;
 
   private readonly base: string;
   private readonly fetchImpl: typeof fetch;
-  private readonly outboxKey: string;
   private readonly breakerThreshold: number;
   private readonly logTimeout: number;
 
@@ -122,7 +69,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     string,
     { state: "closed" | "open" | "half-open"; failures: number }
   >();
-  private readonly store = createKeyValueStore();
   private cache = new Map<string, { at: number; data: any }>();
   private calls = 0;
   private failures = 0;
@@ -132,7 +78,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   constructor(opts: HttpGatewayOptions = {}) {
     this.base = (opts.functionsBaseUrl || defaultFunctionsBase()).replace(/\/$/, "");
     this.fetchImpl = opts.fetchImpl || fetch.bind(globalThis);
-    this.outboxKey = opts.outboxKey || DEFAULT_OUTBOX_KEY;
     this.breakerThreshold = opts.breakerThreshold ?? 5;
     this.logTimeout = opts.logWriteTimeoutMs ?? LOG_WRITE_TIMEOUT_MS;
   }
@@ -207,42 +152,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     return (await res.json()) as T;
   }
 
-  private async post<T>(
-    route: string,
-    body: Record<string, any>,
-    breakerKey = "global",
-  ): Promise<T> {
-    const breaker = this.breakerFor(breakerKey);
-    if (breaker.state === "open") {
-      throw new Error(`Circuit breaker OPEN for ${breakerKey} — failing fast`);
-    }
-    const started = Date.now();
-    let res: Response;
-    try {
-      res = await this.fetchImpl(`${this.base}${route}`, {
-        method: "POST",
-        headers: await this.authHeaders(),
-        body: JSON.stringify(body),
-      });
-    } catch (err) {
-      this.recordFailure(breakerKey, err instanceof Error ? err.message : "Network error");
-      throw err;
-    }
-    if (!res.ok) {
-      let detail = `Server error ${res.status}`;
-      try {
-        const data = await res.json();
-        detail = (data as any)?.error || (data as any)?.message || detail;
-      } catch {
-        // keep status text
-      }
-      this.recordFailure(breakerKey, detail);
-      throw new Error(detail);
-    }
-    this.recordSuccess(breakerKey, Date.now() - started);
-    return (await res.json()) as T;
-  }
-
   private cached<T>(key: string, loader: () => Promise<T>): Promise<T> {
     const hit = this.cache.get(key);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return Promise.resolve(hit.data as T);
@@ -252,176 +161,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     });
   }
 
-  // -- outbox ------------------------------------------------------------
-
-  private readOutbox(): OutboxEntry[] {
-    try {
-      const raw = this.store.get(this.outboxKey);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private writeOutbox(entries: OutboxEntry[]) {
-    try {
-      this.store.set(this.outboxKey, JSON.stringify(entries.slice(-50)));
-    } catch {
-      // quota — drop silently, order already in Firestore
-    }
-  }
-
-  private enqueueOutbox(orderId: string, payload: PetpoojaSaveOrderPayload) {
-    const entries = this.readOutbox();
-    entries.push({
-      id: `ob_${Date.now()}_${Math.floor(Math.random() * 1e4)}`,
-      orderId,
-      payload,
-      enqueuedAt: new Date().toISOString(),
-      attempts: 0,
-    });
-    this.writeOutbox(entries);
-  }
-
-  // -- POS-critical paths --------------------------------------------------
-
-  async pushOrder(orderId: string, customOrder?: Order): Promise<PetpoojaOrderPushResult> {
-    let order = customOrder;
-    if (!order) {
-      order = useOrdersStore.getState().byId[orderId];
-    }
-    if (!order) {
-      throw new Error(`Order ${orderId} not found in client store.`);
-    }
-
-    const user = useAuthStore.getState().user;
-    const payload = mapOrderToPetpoojaSaveOrder(order, {
-      customerName: user?.name || undefined,
-      customerPhone: user?.phone || undefined,
-      customerEmail: "customer@burgonomics.com",
-    });
-
-    try {
-      const res = await this.post<{
-        success?: boolean;
-        petpoojaOrderId?: string;
-        kotNumber?: string;
-      }>("/petpooja/pushOrder", { orderId, order: payload }, `push:${payload.restID}`);
-      return {
-        acknowledged: res.success !== false,
-        kotNumber: res.kotNumber || res.petpoojaOrderId,
-        payload,
-      };
-    } catch (err) {
-      this.enqueueOutbox(orderId, payload);
-      return { acknowledged: false, payload };
-    }
-  }
-
-  async pushMenu(storeId: string): Promise<PetpoojaMenuSyncResult> {
-    try {
-      const res = await this.post<{
-        itemCount?: number;
-        categoriesCount?: number;
-        syncedItems?: number;
-        syncedCategories?: number;
-      }>("/petpooja/syncMenu", { branchId: storeId, mode: "full" }, `menu:${storeId}`);
-      const itemsSynced = res.itemCount ?? res.syncedItems ?? 0;
-      const categoriesCount = res.categoriesCount ?? res.syncedCategories ?? 0;
-      await this.writeSyncLog(storeId, "FULL", itemsSynced, categoriesCount, null);
-      return {
-        itemsSynced,
-        categoriesCount,
-        addonGroupsCount: 0,
-        syncedAt: new Date().toISOString(),
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Menu sync failed";
-      await this.writeSyncLog(storeId, "FULL", 0, 0, message);
-      return {
-        itemsSynced: 0,
-        categoriesCount: 0,
-        addonGroupsCount: 0,
-        syncedAt: new Date().toISOString(),
-      };
-    }
-  }
-
-  async runSync(
-    storeId: string,
-    mode: "full" | "incremental" | "stock" | "status",
-  ): Promise<SyncReport> {
-    const started = Date.now();
-    if (mode === "full" || mode === "incremental") {
-      const res = await this.pushMenu(storeId);
-      const ms = Date.now() - started;
-      return {
-        currentVersion: `live-${new Date().toISOString().slice(0, 10)}`,
-        lastSuccessfulVersion: res.itemsSynced > 0 ? "live" : "none",
-        started: new Date(started).toISOString(),
-        finished: new Date().toISOString(),
-        duration: `${(ms / 1000).toFixed(1)}s`,
-        created: 0,
-        updated: res.itemsSynced,
-        deleted: 0,
-        categories: res.categoriesCount,
-        modifiers: 0,
-        errors: res.itemsSynced > 0 ? 0 : 1,
-        warnings: 0,
-        conflicts: 0,
-      };
-    }
-    try {
-      await this.get("/health", `menu:${storeId}`);
-      const ms = Date.now() - started;
-      return {
-        currentVersion: "live-ping",
-        lastSuccessfulVersion: "live-ping",
-        started: new Date(started).toISOString(),
-        finished: new Date().toISOString(),
-        duration: `${(ms / 1000).toFixed(1)}s`,
-        created: 0,
-        updated: 0,
-        deleted: 0,
-        categories: 0,
-        modifiers: 0,
-        errors: 0,
-        warnings: 0,
-        conflicts: 0,
-      };
-    } catch {
-      const ms = Date.now() - started;
-      return {
-        currentVersion: "live-ping",
-        lastSuccessfulVersion: "none",
-        started: new Date(started).toISOString(),
-        finished: new Date().toISOString(),
-        duration: `${(ms / 1000).toFixed(1)}s`,
-        created: 0,
-        updated: 0,
-        deleted: 0,
-        categories: 0,
-        modifiers: 0,
-        errors: 1,
-        warnings: 0,
-        conflicts: 0,
-      };
-    }
-  }
-
   // -- reads ---------------------------------------------------------------
-
-  async getStores(): Promise<GatewayStore[]> {
-    // Optional server route; empty (not error) when unimplemented.
-    try {
-      const res = await this.cached("stores", () => this.post<any[]>("/petpooja/stores", {}));
-      return Array.isArray(res) ? (res as GatewayStore[]) : [];
-    } catch {
-      return [];
-    }
-  }
 
   async getStoreStatus(storeId: string): Promise<StoreOperationalState> {
     const breaker = this.breakerFor(`menu:${storeId}`);
@@ -437,7 +177,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         lastSyncTime: new Date().toISOString(),
         webhookStatus: "standby",
         circuitBreaker: breaker.state,
-        queueState: this.readOutbox().length > 0 ? "waiting" : "idle",
+        queueState: "idle",
         retryCount: 0,
         apiCredentialsLinked: true,
         webhookSecretLinked: false,
@@ -451,7 +191,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         lastSyncTime: "Never",
         webhookStatus: "degraded",
         circuitBreaker: breaker.state,
-        queueState: this.readOutbox().length > 0 ? "waiting" : "idle",
+        queueState: "idle",
         retryCount: 0,
         apiCredentialsLinked: true,
         webhookSecretLinked: false,
@@ -461,7 +201,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   }
 
   async getHealth(): Promise<GatewayHealth> {
-    const outboxDepth = this.readOutbox().length;
     let connected = false;
     let message = "Petpooja proxy unreachable";
     let latencyMs = 0;
@@ -470,11 +209,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
       const res = await this.get<{ status?: string }>("/health");
       latencyMs = Date.now() - started;
       connected = res?.status === "healthy";
-      message = !connected
-        ? "API reachable but reports unhealthy"
-        : outboxDepth > 0
-          ? `Live — ${outboxDepth} order(s) queued for retry`
-          : "Live — Petpooja bridge connected";
+      message = !connected ? "API reachable but reports unhealthy" : "Live — Petpooja bridge connected";
     } catch (err) {
       message = err instanceof Error ? err.message : message;
     }
@@ -488,12 +223,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
           status: connected ? "healthy" : "failing",
           latencyMs,
           details: connected ? `Live via ${this.base}` : message,
-        },
-        {
-          service: "Order Push Outbox",
-          status: outboxDepth > 0 ? "degraded" : "healthy",
-          latencyMs: 0,
-          details: `${outboxDepth} queued order(s)`,
         },
       ],
       circuitBreakers: [...this.breakers.entries()].map(([storeId, b]) => ({
@@ -521,7 +250,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         orderBy("createdAt", "desc"),
         limit(50),
       );
-      const snapshot = await getDocs(q);
+      const snapshot = await withTimeout(getDocs(q), this.logTimeout);
       return snapshot.docs.map((d) => {
         const data = d.data();
         return {
@@ -556,7 +285,7 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         orderBy("timestamp", "desc"),
         limit(50),
       );
-      const snapshot = await getDocs(q);
+      const snapshot = await withTimeout(getDocs(q), this.logTimeout);
       return snapshot.docs.map((d) => {
         const data = d.data();
         return {
@@ -615,40 +344,14 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
 
   // -- ops -------------------------------------------------------------------
 
-  async replayWebhook(_id: string): Promise<{ acknowledged: boolean }> {
-    const entries = this.readOutbox();
-    if (entries.length === 0) return { acknowledged: true };
-    const remaining: OutboxEntry[] = [];
-    for (const entry of entries) {
-      try {
-        const res = await this.post<{ success?: boolean }>(
-          "/petpooja/pushOrder",
-          { orderId: entry.orderId, order: entry.payload },
-          `push:${entry.payload.restID}`,
-        );
-        if (res.success === false) {
-          remaining.push({ ...entry, attempts: entry.attempts + 1 });
-        }
-      } catch {
-        remaining.push({ ...entry, attempts: entry.attempts + 1 });
-      }
-    }
-    this.writeOutbox(remaining);
-    return { acknowledged: remaining.length === 0 };
-  }
-
   async tripBreaker(storeId: string): Promise<void> {
     this.breakerFor(`menu:${storeId}`).state = "open";
-    this.breakerFor(`push:${storeId}`).state = "open";
   }
 
   async resetBreaker(storeId: string): Promise<void> {
     const m = this.breakerFor(`menu:${storeId}`);
     m.state = "closed";
     m.failures = 0;
-    const p = this.breakerFor(`push:${storeId}`);
-    p.state = "closed";
-    p.failures = 0;
   }
 
   async flushCache(): Promise<{ flushed: boolean; message: string }> {
@@ -658,14 +361,13 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
   }
 
   async getMetrics(): Promise<GatewayMetrics> {
-    const outboxDepth = this.readOutbox().length;
     const openBreakersCount = [...this.breakers.values()].filter((b) => b.state === "open").length;
     return {
       connectedStoresCount: 0,
       totalStoresCount: 0,
       syncSuccessRate: this.calls > 0 ? (this.calls - this.failures) / this.calls : 0,
       openBreakersCount,
-      queueStatusLabel: outboxDepth > 0 ? "WAITING" : "IDLE",
+      queueStatusLabel: "IDLE",
       timeSeries: [],
       menuSyncDuration: [],
       prometheusText: [
@@ -675,9 +377,6 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
         "# HELP petpooja_api_failures_total Failed Petpooja proxy calls",
         "# TYPE petpooja_api_failures_total counter",
         `petpooja_api_failures_total ${this.failures}`,
-        "# HELP petpooja_outbox_depth Queued order pushes awaiting retry",
-        "# TYPE petpooja_outbox_depth gauge",
-        `petpooja_outbox_depth ${outboxDepth}`,
         "# HELP petpooja_gateway_status Gateway operational status (0=Standby, 1=Live)",
         "# TYPE petpooja_gateway_status gauge",
         "petpooja_gateway_status 1",
@@ -687,23 +386,13 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
 
   async getAlerts(): Promise<GatewayAlert[]> {
     const alerts: GatewayAlert[] = [];
-    const outboxDepth = this.readOutbox().length;
-    if (outboxDepth > 0) {
-      alerts.push({
-        id: "outbox-depth",
-        type: "warning",
-        title: `${outboxDepth} order push(es) queued`,
-        message: "Orders are safe in the outbox — use Replay to retry the Petpooja push.",
-        timestamp: new Date().toISOString(),
-      });
-    }
     for (const [key, b] of this.breakers.entries()) {
       if (b.state === "open") {
         alerts.push({
           id: `breaker-${key}`,
           type: "error",
           title: `Circuit breaker OPEN (${key})`,
-          message: `${b.failures} consecutive failures — calls fail fast to the outbox.`,
+          message: `${b.failures} consecutive failures — calls fail fast.`,
           timestamp: new Date().toISOString(),
         });
       }
@@ -711,44 +400,19 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
     return alerts;
   }
 
+  /**
+   * The customer client no longer queues order pushes, so there is no local
+   * outbox: the queue is always empty (never an invented depth).
+   */
   async getQueues(): Promise<QueueOverview> {
-    const outbox = this.readOutbox();
     return {
-      status: outbox.length > 0 ? "active" : "standby",
+      status: "standby",
       activeJobsCount: 0,
-      waitingJobsCount: outbox.length,
+      waitingJobsCount: 0,
       failedJobsCount: 0,
       delayedJobsCount: 0,
       completedJobsCount: 0,
-      jobs: outbox.map((e) => ({
-        id: e.id,
-        name: `pushOrder ${e.orderId}`,
-        queue: "petpooja-outbox",
-        state: "waiting" as const,
-        attempts: e.attempts,
-        maxAttempts: 10,
-        createdAt: e.enqueuedAt,
-        processedAt: null,
-        durationMs: null,
-        payload: { orderId: e.orderId },
-        errorMessage: null,
-      })),
+      jobs: [],
     };
-  }
-
-  // -- private ---------------------------------------------------------------
-
-  private async writeSyncLog(
-    _storeId: string,
-    _scope: "FULL" | "INCREMENTAL" | "STOCK" | "STATUS",
-    _created: number,
-    _updated: number,
-    _error: string | null,
-  ) {
-    // NOTE: sync logs are written server-side (menuSyncWebhook) where the
-    // Admin SDK bypasses rules. Client writes here are denied by rules, so
-    // this is intentionally a no-op — it used to only produce denied-write
-    // noise in the customer bundle.
-    return;
   }
 }

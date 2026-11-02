@@ -1,27 +1,4 @@
 import type { Timestamp } from "firebase/firestore";
-import type { Order } from "@/features/orders/models";
-import type { PetpoojaSaveOrderPayload } from "./mapper";
-
-export interface GatewayStore {
-  id: string;
-  name: string;
-  address: string;
-  city: string;
-  area: string;
-  lat: number;
-  lng: number;
-  phone?: string;
-  imageUrl?: string | null;
-  hours?: { open: string; close: string };
-  isOpen?: boolean;
-  isBusy?: boolean;
-  isRecentlyOpened?: boolean;
-  supports?: { delivery: boolean; takeaway: boolean; dineIn: boolean };
-  etaMinutes?: number;
-  pickupEtaMinutes?: number;
-  deliveryFee?: number;
-  petpoojaRestId: string;
-}
 
 export interface StoreOperationalState {
   storeId: string;
@@ -35,22 +12,6 @@ export interface StoreOperationalState {
   apiCredentialsLinked: boolean;
   webhookSecretLinked: boolean;
   posTerminalOnline: boolean;
-}
-
-export interface SyncReport {
-  currentVersion: string;
-  lastSuccessfulVersion: string;
-  started: string;
-  finished: string;
-  duration: string;
-  created: number;
-  updated: number;
-  deleted: number;
-  categories: number;
-  modifiers: number;
-  errors: number;
-  warnings: number;
-  conflicts: number;
 }
 
 export interface SyncLogRecord {
@@ -170,24 +131,17 @@ export interface GatewayAlert {
   timestamp: string;
 }
 
-export interface PetpoojaMenuSyncResult {
-  itemsSynced: number;
-  syncedAt: string;
-  categoriesCount: number;
-  addonGroupsCount: number;
-}
-
-export interface PetpoojaOrderPushResult {
-  acknowledged: boolean;
-  kotNumber?: string;
-  payload: PetpoojaSaveOrderPayload;
-}
-
+/**
+ * Customer-facing gateway surface.
+ *
+ * There is deliberately no pushOrder / syncMenu / getStores here: those hit
+ * staff-only or non-existent server routes and returned 403/404 to every
+ * customer (api-contract-audit items 1-2). KOT pushing is server-side and the
+ * outlet directory is the Firestore `stores` collection.
+ */
 export interface PetpoojaGateway {
   readonly implementation: "live";
-  getStores(): Promise<GatewayStore[]>;
   getStoreStatus(storeId: string): Promise<StoreOperationalState>;
-  runSync(storeId: string, mode: "full" | "incremental" | "stock" | "status"): Promise<SyncReport>;
   getQueues(): Promise<QueueOverview>;
   getHealth(): Promise<GatewayHealth>;
   getSyncLogs(): Promise<SyncLogRecord[]>;
@@ -196,12 +150,9 @@ export interface PetpoojaGateway {
     onLogs: (logs: WebhookRecord[]) => void,
     onError?: (err: Error) => void,
   ): () => void;
-  replayWebhook(id: string): Promise<{ acknowledged: boolean }>;
   tripBreaker(storeId: string): Promise<void>;
   resetBreaker(storeId: string): Promise<void>;
   flushCache(): Promise<{ flushed: boolean; message: string }>;
   getMetrics(): Promise<GatewayMetrics>;
   getAlerts(): Promise<GatewayAlert[]>;
-  pushMenu(storeId: string): Promise<PetpoojaMenuSyncResult>;
-  pushOrder(orderId: string, customOrder?: Order): Promise<PetpoojaOrderPushResult>;
 }
