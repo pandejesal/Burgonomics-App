@@ -180,19 +180,59 @@ jobs:
       - name: 📦 Install Node Dependencies
         run: npm install --legacy-peer-deps
 
+      - name: 🔎 Preflight release configuration (skip cleanly when unconfigured)
+        id: preflight
+        # A review/simulator run has no production secrets, so
+        # prepare-native-config.mjs throws "Missing GitHub secret
+        # MOBILE_PRODUCTION_ENV" and marks the WHOLE run failed even though the
+        # simulator app built. Detect that case up front and skip the archive
+        # job with a notice instead.
+        #
+        # This is NOT a way to ship unsigned: on main/master or any v* release
+        # tag the job is a HARD FAILURE, so a real release can never go out
+        # unconfigured. Only non-release runs may skip.
+        env:
+          MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          is_release="false"
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            is_release="true"
+          fi
+          case "${{ github.ref }}" in
+            refs/tags/v*) is_release="true" ;;
+          esac
+          if [ "$is_release" = "true" ]; then
+            echo "release branch/tag — production secrets are REQUIRED (no skip allowed)"
+            node -e "process.exit(0)" # no-op: the real gate is the config step below
+          fi
+          missing=""
+          [ -n "${MOBILE_PRODUCTION_ENV:-}" ] || missing="MOBILE_PRODUCTION_ENV"
+          [ -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ] || missing="${missing:+$missing, }GOOGLE_SERVICE_INFO_PLIST_BASE64"
+          if [ -n "$missing" ] && [ "$is_release" = "false" ]; then
+            echo "::notice::Skipping iOS archive: production secrets absent on a non-release run ($missing). The simulator app built successfully; this job is a no-op until the release secrets are configured."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Prepare native production configuration
+        if: steps.preflight.outputs.skip != 'true'
         run: node scripts/prepare-native-config.mjs ios
         env:
           MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
           GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
 
       - name: ⚡ Build Web Bundle & Sync Capacitor iOS
+        if: steps.preflight.outputs.skip != 'true'
         run: |
           npm run build:mobile
           npx cap sync ios
           node scripts/configure-ios-firebase.mjs
 
       - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
+        if: steps.preflight.outputs.skip != 'true'
         # Was missing here while present in build-ios: without the patch this
         # job hands Xcode a Package.swift whose exact pins do not intersect
         # (8.5.2 vs 8.5.0) and archive fails at SPM resolution.
@@ -200,6 +240,7 @@ jobs:
 
       - name: 🏗️ Archive iOS App (unsigned)
         id: archive
+        if: steps.preflight.outputs.skip != 'true'
         run: python3 scripts/archive_ios.py
         env:
           ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
@@ -211,6 +252,7 @@ jobs:
           IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
 
       - name: 📤 Upload Unsigned iOS Archive
+        if: steps.preflight.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: core-unsigned-xcarchive
