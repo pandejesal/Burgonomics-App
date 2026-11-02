@@ -1,5 +1,4 @@
-import { delay, ok, type ApiResult } from "@/core/network/http";
-import { httpClient } from "@/core/network/httpClient";
+import { delay, fail, ok, type ApiResult } from "@/core/network/http";
 import { auth } from "@/core/config/firebase";
 import type { AppNotification } from "@/features/notifications/state/notificationsStore";
 import {
@@ -9,17 +8,6 @@ import {
 import { getPlatform } from "@/shared/platform/platform";
 import { getCachedDeviceToken } from "@/shared/platform/pushNotifications";
 import { logger } from "@/core/logging/logger";
-
-/** Best-effort Firebase ID token for authenticated notification calls. */
-async function authHeaders(): Promise<Record<string, string>> {
-  try {
-    const token = await auth.currentUser?.getIdToken();
-    if (token) return { Authorization: `Bearer ${token}` };
-  } catch {
-    // Offline / token fetch failed — server decides as unauthenticated.
-  }
-  return {};
-}
 
 async function getIdToken(): Promise<string | null> {
   try {
@@ -324,29 +312,19 @@ export const notificationsService = {
   /**
    * Badge-clear binding (MOP-S2, B5-S1 follow-up 4 core half).
    *
-   * Brief contract: badge clears via the markRead endpoint —
-   *   PATCH /v1/notifications/:id/read
-   * Landed contract in this tree: NO HTTP notifications route exists
-   * (Firebase Cloud Functions v2 serves payments/porter/petpooja/account;
-   * legacy Netlify functions were removed 2026-09-23);
-   * the in-app source of truth is Firestore `users/{uid}/notifications`
-   * (firestore.rules:90-93, writable by the owning uid).
+   * Landed contract in this tree: there is NO HTTP notifications route —
+   * the backend Cloud Functions v2 app mounts no /v1 prefix and no
+   * mark-read route (markReadSchema is unused on the server), so the old
+   * `PATCH /v1/notifications/:id/read` was a guaranteed 404 on every tap.
+   * The in-app source of truth is Firestore `users/{uid}/notifications`
+   * (firestore.rules allows the owner `update` with
+   * affectedKeys().hasOnly(['read','readAt','updatedAt'])).
    *
-   * Runtime guard: try the HTTP endpoint first; when the route is absent
-   * (404/NetworkError/OfflineError — or no base URL configured) degrade to
-   * a direct Firestore `read: true` write; when Firestore is also
-   * unavailable (signed out / offline) resolve ok anyway so the caller
-   * still clears the local badge (queued/degraded path). Never throws,
-   * never fabricates a server confirmation.
+   * A Firestore failure (signed out / offline) resolves ok anyway so the
+   * caller still clears the local badge (queued/degraded path). Never
+   * throws, never fabricates a server confirmation.
    */
   async markRead(id: string): Promise<ApiResult<{ id: string }>> {
-    const headers = await authHeaders();
-    try {
-      await httpClient.patch(`/v1/notifications/${encodeURIComponent(id)}/read`, {}, { headers });
-      return ok({ id });
-    } catch {
-      // HTTP route absent — fall through to the landed Firestore contract.
-    }
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return ok({ id });
@@ -363,13 +341,6 @@ export const notificationsService = {
   },
 
   async markAllRead(): Promise<ApiResult<null>> {
-    const headers = await authHeaders();
-    try {
-      await httpClient.patch("/v1/notifications/read-all", {}, { headers });
-      return ok(null);
-    } catch {
-      // HTTP route absent — fall through to the landed Firestore contract.
-    }
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return ok(null);
@@ -400,18 +371,29 @@ export const notificationsService = {
 
   /**
    * Registers a native device token via the server-owned
-   * POST /notifications/registerToken endpoint (requireAuth).
+   * POST /notifications/registerToken endpoint (requireAuth, 200
+   * `{success:true}` / 409 refuse / 400 / 500).
+   *
    * Direct client writes to `device_tokens/{token}` are denied by
    * firestore.rules (server-owned) — the old setDoc silently failed and
-   * push never registered. Failures stay warn-level: registration is
-   * retried on next launch via NotificationRepository.
+   * push never registered.
+   *
+   * A failure is REPORTED (`fail(...)`), never dressed up as success: the
+   * old `ok(null)` meant a broken registration looked healthy forever. It is
+   * still non-throwing and warn-level, and callers keep it off the critical
+   * path (login/checkout must never block on push): the token is re-registered
+   * on the next app start by pushNotifications' boot/setup paths.
    */
   async registerDeviceToken(token: string): Promise<ApiResult<null>> {
     try {
       const idToken = await getIdToken();
       if (!idToken) {
         logger.warn("notifications.registerDeviceTokenNoAuth");
-        return ok(null);
+        return fail(
+          "TOKEN_REGISTRATION_FAILED",
+          "Not signed in — the device token could not be registered yet.",
+          true,
+        );
       }
       const base = await resolveApiBase();
       const res = await fetch(`${base}/notifications/registerToken`, {
@@ -429,8 +411,15 @@ export const notificationsService = {
       logger.info("notifications.tokenRegistered", { tokenLength: token.length });
       return ok(null);
     } catch (err: any) {
-      logger.warn("notifications.registerDeviceTokenError", err);
-      return ok(null);
+      logger.warn("notifications.registerDeviceTokenError", {
+        tokenLength: typeof token === "string" ? token.length : 0,
+        message: err?.message || String(err),
+      });
+      return fail(
+        "TOKEN_REGISTRATION_FAILED",
+        "Push registration failed — it will be retried on the next app start.",
+        true,
+      );
     }
   },
 
