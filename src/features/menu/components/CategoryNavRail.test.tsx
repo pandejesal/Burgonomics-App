@@ -157,17 +157,16 @@ describe("category rail alignment", () => {
 });
 
 /**
- * The selected chip's underline marker is a 2px white bar. It used to sit at
- * `-bottom-px`, i.e. flush with the bottom of a `rounded-full` pill, so the
- * white bar replaced the pill's green curved base with a flat white strip that
- * read as the fill "not covering" the pill.
+ * The selected chip's underline was reported as a defect twice: first as the
+ * green "not covering" the pill, then, once it was moved inside, as "a white
+ * line". Selection never needed it. A solid dark fill among outlined chips, with
+ * heavier text, already reads without relying on hue (WCAG 1.4.1), and
+ * aria-current carries the state for assistive tech.
  *
- * These are the class-level pins; the real geometry (marker bottom >= 2 CSS px
- * inside the button) is asserted against Chromium in
- * tests/playwright/ui-category-pill-marker.spec.ts, because jsdom has no layout
- * and returns 0 for every rect.
+ * The one place those cues vanish is forced-colours mode, which discards
+ * background fills, so the marker survives there and nowhere else.
  */
-describe("selected chip marker geometry (classes)", () => {
+describe("selected chip marker", () => {
   async function mountRail(activeCategoryId: string, cats = categories) {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(360);
@@ -199,58 +198,53 @@ describe("selected chip marker geometry (classes)", () => {
     );
   }
 
-  it("pulls the marker inside the pill instead of hanging on its bottom edge", async () => {
+  function tokensOf(element: HTMLElement) {
+    return element.className.split(/\s+/);
+  }
+
+  it("paints no white line on the selected pill in normal display", async () => {
     const { container, root } = await mountRail("middle");
     const marker = container.querySelector<HTMLElement>(
       '[data-testid="category-rail-active-marker"]',
     )!;
-    expect(marker).not.toBeNull();
 
-    const tokens = marker.className.split(/\s+/);
-    // The pill's border-radius curves away under the last pixels of its box;
-    // a marker sitting at -1px paints a flat white strip across that curve.
-    expect(tokens).not.toContain("-bottom-px");
-    expect(tokens, "marker must sit inside the pill, not on its edge").toContain("bottom-1");
+    const tokens = tokensOf(marker);
+    expect(tokens, "the marker must not render outside forced-colours").toContain("hidden");
+    expect(tokens, "no white fill on the pill").not.toContain("bg-primary-foreground");
 
     await act(async () => root.unmount());
     delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollTo;
   });
 
-  it("clips the marker to the pill so it can never paint outside the fill", async () => {
+  it("keeps the marker for forced-colours mode, which discards fills", async () => {
     const { container, root } = await mountRail("middle");
-    for (const button of buttons(container)) {
-      // Every chip clips, selected or not: the marker is only rendered on the
-      // active one, but a mismatch would reintroduce the artefact on selection.
-      expect(
-        button.className.split(/\s+/),
-        `${button.dataset.categoryId} must clip to its rounded box`,
-      ).toContain("overflow-hidden");
-    }
-    await act(async () => root.unmount());
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollTo;
-  });
-
-  it("keeps the non-colour selection cue and aria-current after the geometry fix", async () => {
-    const { container, root } = await mountRail("middle");
-
-    const active = container.querySelector<HTMLButtonElement>('[data-category-id="middle"]')!;
-    const marker = active.querySelector<HTMLElement>(
+    const marker = container.querySelector<HTMLElement>(
       '[data-testid="category-rail-active-marker"]',
     )!;
 
-    // The marker survives: WCAG 1.4.1 — selection must not be colour-only.
-    expect(marker).not.toBeNull();
+    const tokens = tokensOf(marker);
+    expect(tokens).toContain("forced-colors:block");
+    // A system colour: a brand colour would be replaced in this mode.
+    expect(tokens).toContain("forced-colors:bg-[CanvasText]");
     expect(marker.getAttribute("aria-hidden")).toBe("true");
-    // Still a visible white rule inside the pill, not a zero-size element.
-    const markerTokens = marker.className.split(/\s+/);
-    expect(markerTokens).toContain("h-0.5");
-    expect(markerTokens).toContain("bg-primary-foreground");
-    expect(markerTokens).toContain("inset-x-3");
 
-    // aria-current still marks the chip for assistive tech.
+    await act(async () => root.unmount());
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollTo;
+  });
+
+  it("still shows selection without relying on hue", async () => {
+    const { container, root } = await mountRail("middle");
+
+    const active = container.querySelector<HTMLButtonElement>('[data-category-id="middle"]')!;
+    const other = container.querySelector<HTMLButtonElement>('[data-category-id="first"]')!;
+
+    // Solid fill and heavier text against an outlined sibling.
+    expect(tokensOf(active)).toEqual(expect.arrayContaining(["bg-primary", "font-extrabold"]));
+    expect(tokensOf(other)).toEqual(expect.arrayContaining(["bg-surface", "border-divider"]));
+    expect(tokensOf(other)).not.toContain("font-extrabold");
+
     expect(active.getAttribute("aria-current")).toBe("true");
     expect(active.getAttribute("aria-label")).toBe("Current category: Middle");
-    // And only the active chip carries the marker.
     for (const button of buttons(container)) {
       const has = button.querySelector('[data-testid="category-rail-active-marker"]') !== null;
       expect(has).toBe(button.dataset.categoryId === "middle");
