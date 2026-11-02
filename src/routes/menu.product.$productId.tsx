@@ -271,12 +271,7 @@ function ProductPage() {
       return;
     }
 
-    toast.success(`Added ${qty}x ${p.name} to cart!`, {
-      action: {
-        label: "View Cart",
-        onClick: () => void navigate({ to: "/cart" }),
-      },
-    });
+    // No success toast: /menu shows FloatingCartBar, which confirms the add.
     void navigate({ to: "/menu" });
   };
 

@@ -35,7 +35,19 @@ export function FloatingCartBar({
     return lines.reduce((sum, l) => sum + (l.unitPrice || 0) * (l.quantity || 1), 0);
   }, [lines]);
 
-  if (!hydrated || itemCount === 0) return null;
+  // The bar replaces the "added to cart" toast, so it also has to carry the
+  // spoken confirmation. The region stays mounted while empty because a live
+  // region inserted together with its text is not reliably announced.
+  const hasItems = hydrated && itemCount > 0;
+  const liveRegion = (
+    <span role="status" aria-live="polite" className="sr-only">
+      {hasItems
+        ? `Cart updated: ${itemCount} ${itemCount === 1 ? "item" : "items"}, total ${formatINR(subtotal)}`
+        : ""}
+    </span>
+  );
+
+  if (!hasItems) return liveRegion;
 
   const content = (
     <AnimatePresence>
@@ -62,11 +74,14 @@ export function FloatingCartBar({
             // tap target inside the shorter shell. `min-h-14` is only a floor:
             // the two non-wrapping lines below are what hold the height at
             // 360dp, where a wrapping text column grew this bar to 124px.
-            "pointer-events-auto flex min-h-14 w-full items-center justify-between gap-2 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-3 py-1.5 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer",
+            "pointer-events-auto flex min-h-14 w-full items-center justify-between gap-2 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-3 py-1 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer",
             compact && "min-h-14 py-1",
           )}
         >
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          {/* Never shrinks: with enlarged text a shrinking column let the
+              non-wrapping price slide under the opaque pill and lose digits.
+              The pill's label wraps to two lines instead. */}
+          <div className="flex shrink-0 items-center gap-2">
             <div
               className={cn(
                 "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary-foreground/15 text-primary-foreground",
@@ -79,7 +94,7 @@ export function FloatingCartBar({
               </span>
             </div>
 
-            <div className="min-w-0 flex-1">
+            <div>
               <span className="block whitespace-nowrap type-price text-base leading-tight text-primary-foreground">
                 {formatINR(subtotal)}
               </span>
@@ -89,17 +104,21 @@ export function FloatingCartBar({
             </div>
           </div>
 
-          <span className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-primary-foreground px-3 text-sm font-semibold text-primary shadow-sm transition-colors">
+          <span className="inline-flex min-h-[44px] min-w-11 items-center gap-1.5 rounded-full bg-primary-foreground px-3 text-center text-sm font-semibold leading-none text-primary shadow-sm transition-colors">
             <span>View Cart</span>
-            <ArrowRight className="h-4 w-4" aria-hidden />
+            <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
           </span>
         </Link>
       </motion.aside>
     </AnimatePresence>
   );
 
-  if (inline || typeof document === "undefined") return content;
-  return createPortal(content, document.body);
+  return (
+    <>
+      {liveRegion}
+      {inline || typeof document === "undefined" ? content : createPortal(content, document.body)}
+    </>
+  );
 }
 
 export default FloatingCartBar;

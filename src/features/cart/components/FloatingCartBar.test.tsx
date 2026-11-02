@@ -113,8 +113,29 @@ describe("FloatingCartBar compact shell", () => {
     const link = document.body.querySelector<HTMLAnchorElement>('a[href="/cart"]')!;
     expect(link.textContent).toContain("₹3,897.00"); // 1299 * 3
     expect(link.textContent).toContain("3 items");
-    // A money amount is never clipped.
-    expect(link.querySelector(".truncate")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("wraps the View Cart label before it ever covers the money", async () => {
+    // Enlarged text (130%) slid a non-wrapping price underneath the opaque pill,
+    // hiding its last digits. The money column may not shrink; the pill may.
+    const root = await mount();
+    const link = document.body.querySelector<HTMLAnchorElement>('a[href="/cart"]')!;
+    const price = Array.from(link.querySelectorAll("span")).find(
+      (node) => node.textContent?.trim() === "₹3,897.00",
+    )!;
+    expect(price.className.split(/\s+/)).not.toContain("truncate");
+    expect(price.closest(".shrink-0"), "the money column must not shrink").not.toBeNull();
+
+    const pill = Array.from(link.querySelectorAll("span")).find(
+      (node) => node.classList.contains("inline-flex") && node.textContent?.includes("View Cart"),
+    )!;
+    const tokens = pill.className.split(/\s+/);
+    expect(tokens, "the pill absorbs the shortage").not.toContain("shrink-0");
+    expect(tokens, "by wrapping its label, so nothing is clipped").not.toContain("whitespace-nowrap");
+    expect(tokens, "while staying a 44px target").toEqual(
+      expect.arrayContaining(["min-w-11", "min-h-[44px]"]),
+    );
     await act(async () => root.unmount());
   });
 
@@ -136,6 +157,46 @@ describe("FloatingCartBar compact shell", () => {
     expect(price!.className.split(/\s+/)).toContain("whitespace-nowrap");
     expect(count!.className.split(/\s+/)).toContain("whitespace-nowrap");
     await act(async () => root.unmount());
+  });
+
+  it("is held at 56px by its padding, not grown past it", async () => {
+    // 44px pill + 8px padding + 2px border = 54px, so the 56px floor sets the
+    // height. `py-1.5` measured 58px on the phone.
+    const root = await mount();
+    const tokens = document.body
+      .querySelector<HTMLAnchorElement>('a[href="/cart"]')!
+      .className.split(/\s+/);
+    expect(tokens).toContain("py-1");
+    expect(tokens).not.toContain("py-1.5");
+    await act(async () => root.unmount());
+  });
+
+  it("announces the cart politely, replacing the visible add toast", async () => {
+    const root = await mount();
+    const status = document.body.querySelector<HTMLElement>('[role="status"][aria-live="polite"]');
+    expect(status, "live region").not.toBeNull();
+    expect(status!.className.split(/\s+/)).toContain("sr-only");
+    expect(status!.textContent).toBe("Cart updated: 3 items, total ₹3,897.00");
+    await act(async () => root.unmount());
+  });
+
+  it("keeps the live region mounted while empty so the first add is announced", async () => {
+    const saved = { lines: cart.lines, count: cart.count };
+    cart.lines = [];
+    cart.count = 0;
+    try {
+      const root = await mount();
+      const status = document.body.querySelector<HTMLElement>(
+        '[role="status"][aria-live="polite"]',
+      );
+      expect(status, "a live region added with its text is not reliably read").not.toBeNull();
+      expect(status!.textContent).toBe("");
+      expect(document.body.querySelector('a[href="/cart"]')).toBeNull();
+      await act(async () => root.unmount());
+    } finally {
+      cart.lines = saved.lines;
+      cart.count = saved.count;
+    }
   });
 
   it("leaves the tax statement to the bill instead of a third line", async () => {

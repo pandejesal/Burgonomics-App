@@ -190,12 +190,14 @@ async function click(label: string) {
   await act(async () => button!.click());
 }
 
+// Pages that show FloatingCartBar confirm an add through it. Favourites has no
+// bar, so its toast stays the only confirmation.
 describe.each([
-  ["menu", MenuRoute, "Add"],
-  ["search", SearchRoute, "Add"],
-  ["product", ProductRoute, "Add To Cart"],
-  ["favorites", FavoritesRoute, "Add"],
-])("%s cart feedback", (_name, route, label) => {
+  ["menu", MenuRoute, "Add", false],
+  ["search", SearchRoute, "Add", false],
+  ["product", ProductRoute, "Add To Cart", false],
+  ["favorites", FavoritesRoute, "Add", true],
+])("%s cart feedback", (_name, route, label, confirmsWithToast) => {
   it.each([
     ["STORE_MISMATCH", "Clear your cart before adding items from a different store."],
     ["UNEXPECTED_INTERNAL_CODE", GENERIC_ERROR_MESSAGE],
@@ -212,12 +214,12 @@ describe.each([
     expect(fixture.navigate).not.toHaveBeenCalled();
   });
 
-  it("keeps success feedback on a successful add", async () => {
+  it("confirms a successful add through the bar or, without one, a toast", async () => {
     fixture.addItem.mockResolvedValue({ success: true, data: {} });
     await mount(route);
     await click(label);
     expect(fixture.addItem).toHaveBeenCalledOnce();
-    expect(toast.success).toHaveBeenCalledOnce();
+    expect(toast.success).toHaveBeenCalledTimes(confirmsWithToast ? 1 : 0);
     expect(toast.error).not.toHaveBeenCalled();
   });
 });

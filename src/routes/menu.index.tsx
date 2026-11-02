@@ -491,19 +491,11 @@ function MenuPage() {
         return;
       }
 
+      // No success toast: FloatingCartBar below confirms the add, and a toast
+      // would stack a second "View Cart" card directly on top of it.
       void HapticService.impact("medium");
-
-      toast.success(`✓ ${product.name} added`, {
-        action: {
-          label: "View Cart",
-          onClick: () => {
-            void navigate({ to: "/cart" });
-          },
-        },
-        duration: 3000,
-      });
     },
-    [store, navigate, openCustomizer],
+    [store, openCustomizer],
   );
 
   // UX-01: /menu is a deep-link target (App Links include /menu/*) and can be

@@ -241,8 +241,8 @@ function SearchPage() {
       });
       return;
     }
+    // No success toast: FloatingCartBar on this page confirms the add.
     void HapticService.impact("medium");
-    toast.success(`✓ ${p.name} added to cart`);
   };
 
   return (

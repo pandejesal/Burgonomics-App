@@ -151,12 +151,9 @@ describe("product purchase-path accent tokens", () => {
         unitPrice: 199,
       }),
     );
-    expect(toast.success).toHaveBeenCalledWith(
-      "Added 1x Test Burger to cart!",
-      expect.objectContaining({
-        action: expect.objectContaining({ label: "View Cart" }),
-      }),
-    );
+    // The floating cart bar on /menu confirms the add. A toast here stacked a
+    // second "View Cart" card directly on top of it.
+    expect(toast.success).not.toHaveBeenCalled();
     expect(fixture.navigate).toHaveBeenCalledWith({ to: "/menu" });
   });
 

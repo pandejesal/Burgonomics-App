@@ -219,8 +219,9 @@ export function ProductCustomizerModal({
         return;
       }
 
+      // No success toast: every host page shows FloatingCartBar, which confirms
+      // the add. Only /menu and /search open this modal.
       void HapticService.impact("medium");
-      toast.success(`Added ${qty}x ${product.name} to cart!`);
       onSuccess?.();
       onClose();
     } catch (error) {
