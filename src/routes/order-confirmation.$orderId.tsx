@@ -38,6 +38,14 @@ import {
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { ReviewItemsList } from "@/features/checkout";
+import { PushOptInCard } from "@/features/notifications/components/PushOptInCard";
+import {
+  readPushPromptDecision,
+  shouldOfferPushPrompt,
+  type PushPromptDecision,
+} from "@/features/notifications/pushPrompt";
+import { getPushStatusSnapshot, requestPushPermissionsWithListeners } from "@/shared/platform/pushNotifications";
+import { getPlatform } from "@/shared/platform/platform";
 import { db } from "@/core/config/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 
@@ -68,6 +76,9 @@ function OrderConfirmationPage() {
   const [whatsappOptIn, setWhatsappOptIn] = React.useState(cachedOrder?.whatsappOptIn === true);
   const [waBusy, setWaBusy] = React.useState(false);
   const [cancellingUnpaid, setCancellingUnpaid] = React.useState(false);
+  // One-time push opt-in. Decision is persisted device-locally (see
+  // features/notifications/pushPrompt.ts); this state only drives the render.
+  const [pushDecision, setPushDecision] = React.useState<PushPromptDecision | null>(null);
   const cancelUnpaid = async () => {
     if (!order) return;
     if (!window.confirm("Cancel this unpaid order?")) return;
@@ -178,6 +189,15 @@ function OrderConfirmationPage() {
     };
   }, [hydrated, orderId]);
 
+  // One-time push opt-in: read the recorded answer once hydrated. This effect
+  // NEVER prompts and never blocks the receipt — it only decides whether the
+  // card may render. Reading it after `hydrated` avoids a persisted-state
+  // hydration mismatch.
+  React.useEffect(() => {
+    if (!hydrated) return;
+    setPushDecision(readPushPromptDecision());
+  }, [hydrated]);
+
   if (!hydrated || loading) return <ConfirmationSkeleton />;
 
   if (!order) {
@@ -250,6 +270,15 @@ function OrderConfirmationPage() {
   const eta = order.estimatedAt
     ? Math.max(0, Math.round((+new Date(order.estimatedAt) - Date.now()) / 60_000))
     : undefined;
+
+  // Only beside a real, paid, confirmed order (the unpaid/confirming states
+  // returned above). Native + undecided OS state + no recorded answer only.
+  const showPushPrompt = shouldOfferPushPrompt({
+    platform: getPlatform(),
+    permission: getPushStatusSnapshot().permission,
+    decision: pushDecision,
+    hasConfirmedOrder: true,
+  });
 
   const fulfillmentLabel =
     order.fulfillment === "delivery"
@@ -424,6 +453,17 @@ function OrderConfirmationPage() {
           <h3 className="type-title-large text-text">Price breakdown</h3>
           <OrderPriceSummary totals={order.totals} promo={order.promo} />
         </section>
+
+        {/* 6b. One-time push opt-in — native only, once per install, only
+            while the OS has not decided. Turn on prompts then registers (the
+            token links to the signed-in user through the existing registration
+            listener); Not now is remembered and never nags again. */}
+        {showPushPrompt && (
+          <PushOptInCard
+            onRequestPermission={requestPushPermissionsWithListeners}
+            onAnswered={setPushDecision}
+          />
+        )}
 
         {/* 7. WhatsApp Updates Toggle */}
         <section className="flex items-center justify-between gap-4 rounded-2xl border border-divider bg-surface p-4 shadow-xs select-none">

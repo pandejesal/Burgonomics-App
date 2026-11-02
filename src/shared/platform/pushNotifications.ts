@@ -181,6 +181,14 @@ let webPushListenerAttached = false;
 
 type PushPermission = "granted" | "denied" | "default" | "unsupported";
 
+/**
+ * The OS/browser push-permission state as this module reports it. `default`
+ * means "not decided yet" — on native that is Android 13+'s `prompt` /
+ * `prompt-with-rationale`, which is exactly the state a fresh install is in
+ * until the app asks.
+ */
+export type { PushPermission };
+
 let nativePermission: PushPermission = "default";
 
 export interface PushStatusSnapshot {
@@ -428,9 +436,27 @@ export async function initWebPush(): Promise<string | null> {
 }
 
 /**
+ * Falls back to {@link initPushNotifications} when the permission is granted.
+ *
+ * `requestPushPermissions` registers, but the TOKEN only reaches the server
+ * through the `registration` listener, which `initPushNotifications` attaches.
+ * On native boot that listener is already installed (mobileBootstrap calls it),
+ * so this is a no-op in the normal flow — but if the OS prompt is answered
+ * before that async bootstrap finished, `register()` would emit to nobody and
+ * the signed-in customer would receive no order updates despite granting
+ * permission. Calling `initPushNotifications` first (it is idempotent, guarded
+ * by `initialized`) guarantees the listener exists before we prompt, so the
+ * token is linked to the signed-in user exactly as today.
+ */
+export async function requestPushPermissionsWithListeners(): Promise<boolean> {
+  await initPushNotifications();
+  return requestPushPermissions();
+}
+
+/**
  * Contextually requests push notification permissions and registers. This is
  * the ONLY path allowed to show a browser permission prompt, and it is called
- * only from an explicit settings toggle ON.
+ * only from an explicit toggle/card tap — never from boot.
  */
 export async function requestPushPermissions(): Promise<boolean> {
   if (!appConfig.push.enabled) return false;
