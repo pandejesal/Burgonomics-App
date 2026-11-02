@@ -21,7 +21,7 @@
     "cap:open:ios": "npx cap open ios",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run --exclude 'tests/rules/**'",
+    "test": "vitest run --exclude \"tests/rules/**\"",
     "test:rules": "node scripts/test-rules.mjs",
     "test:sticky": "playwright test -c tests/playwright/playwright.sticky-scroll.config.ts",
     "test:sticky:types": "tsc -p tests/playwright/tsconfig.browser-tests.json --noEmit"
