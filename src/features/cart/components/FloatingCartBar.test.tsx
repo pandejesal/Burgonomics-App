@@ -83,8 +83,8 @@ describe("FloatingCartBar compact shell", () => {
     const summary = document.body.querySelector<HTMLElement>(
       'aside[aria-label^="Floating cart summary"]',
     )!;
-    // The summary lives on the landmark so the count/total are announced even
-    // though the visible line is "₹1,299.00 (3 items)".
+    // The summary lives on the landmark so the count and total are announced as
+    // one sentence, not as two separate visible lines.
     expect(summary).not.toBeNull();
     expect(summary.getAttribute("aria-label")).toBe(
       "Floating cart summary, 3 items, total ₹3,897.00",
@@ -113,8 +113,38 @@ describe("FloatingCartBar compact shell", () => {
     const link = document.body.querySelector<HTMLAnchorElement>('a[href="/cart"]')!;
     expect(link.textContent).toContain("₹3,897.00"); // 1299 * 3
     expect(link.textContent).toContain("3 items");
-    // Price and count wrap instead of clipping when the total is long.
-    expect(link.querySelector(".flex-wrap")).not.toBeNull();
+    // A money amount is never clipped.
+    expect(link.querySelector(".truncate")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("stays on two fixed lines at 360dp instead of wrapping to five", async () => {
+    // Measured on a real SM-S921B (360 CSS px): with `flex-wrap` and a slogan
+    // line the 104px text column wrapped to five lines and the bar grew to
+    // 124px. `min-h-14` only sets a floor, so the height has to be held by the
+    // content: exactly two lines that cannot wrap.
+    const root = await mount();
+    const link = document.body.querySelector<HTMLAnchorElement>('a[href="/cart"]')!;
+    expect(link.querySelector(".flex-wrap")).toBeNull();
+
+    const nodeFor = (text: string) =>
+      Array.from(link.querySelectorAll("span")).find((node) => node.textContent?.trim() === text);
+    const price = nodeFor("₹3,897.00");
+    const count = nodeFor("3 items");
+    expect(price, "price line").toBeDefined();
+    expect(count, "count line").toBeDefined();
+    expect(price!.className.split(/\s+/)).toContain("whitespace-nowrap");
+    expect(count!.className.split(/\s+/)).toContain("whitespace-nowrap");
+    await act(async () => root.unmount());
+  });
+
+  it("leaves the tax statement to the bill instead of a third line", async () => {
+    // BillBreakdown states "Inclusive of all taxes (5% GST)" on cart and
+    // checkout, so GST stays visible wherever the customer commits to a total.
+    const root = await mount();
+    const link = document.body.querySelector<HTMLAnchorElement>('a[href="/cart"]')!;
+    expect(link.textContent).not.toContain("Taxes included");
+    expect(link.textContent).not.toContain("Pure Veg");
     await act(async () => root.unmount());
   });
 });

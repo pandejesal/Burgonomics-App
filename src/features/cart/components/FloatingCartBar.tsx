@@ -59,12 +59,14 @@ export function FloatingCartBar({
             // 56px, not 72px: the bar sits above the bottom tab bar, and a
             // 72px shell plus the 44px "View Cart" pill read as a second
             // navigation bar on a phone. The priced row keeps its full 44px
-            // tap target inside the shorter shell.
-            "pointer-events-auto flex min-h-14 w-full items-center justify-between gap-3 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-4 py-1.5 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer",
+            // tap target inside the shorter shell. `min-h-14` is only a floor:
+            // the two non-wrapping lines below are what hold the height at
+            // 360dp, where a wrapping text column grew this bar to 124px.
+            "pointer-events-auto flex min-h-14 w-full items-center justify-between gap-2 rounded-[var(--radius-large)] border border-primary-foreground/15 bg-primary px-3 py-1.5 text-primary-foreground shadow-2xl transition-colors duration-150 hover:border-primary-foreground/30 active:scale-[0.99] cursor-pointer",
             compact && "min-h-14 py-1",
           )}
         >
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <div
               className={cn(
                 "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-medium)] bg-primary-foreground/15 text-primary-foreground",
@@ -78,21 +80,16 @@ export function FloatingCartBar({
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="type-price text-base text-primary-foreground">
-                  {formatINR(subtotal)}
-                </span>
-                <span className="type-caption text-primary-foreground/85">
-                  ({itemCount} {itemCount === 1 ? "item" : "items"})
-                </span>
-              </div>
-              <p className={cn("type-caption text-primary-foreground/85", compact && "hidden")}>
-                100% Pure Veg • Taxes included
-              </p>
+              <span className="block whitespace-nowrap type-price text-base leading-tight text-primary-foreground">
+                {formatINR(subtotal)}
+              </span>
+              <span className="block whitespace-nowrap type-caption leading-tight text-primary-foreground/85">
+                {itemCount} {itemCount === 1 ? "item" : "items"}
+              </span>
             </div>
           </div>
 
-          <span className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-primary-foreground px-4 text-sm font-semibold text-primary shadow-sm transition-colors">
+          <span className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-primary-foreground px-3 text-sm font-semibold text-primary shadow-sm transition-colors">
             <span>View Cart</span>
             <ArrowRight className="h-4 w-4" aria-hidden />
           </span>
