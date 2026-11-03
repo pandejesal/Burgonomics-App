@@ -174,7 +174,18 @@ function TrackOrderPage() {
   // coordinates. Without them the map is replaced by an honest caption.
   const storeCoords = trackingState.storeLocation;
   const dropCoords = trackingState.dropLocation;
+  // A cancelled, refunded or delivered order has no route to show. Drawing a map
+  // with an "Assigning Courier…" card for a cancelled order implied delivery was
+  // still in progress, which is a trust bug, not a cosmetic one.
+  const isLiveForMap = !order.status.terminal &&
+    !["cancelled", "canceled", "delivered", "refunded", "completed"].includes(
+      (order.status.code ?? "").toLowerCase(),
+    ) &&
+    !["cancelled", "canceled", "delivered", "refunded"].includes(
+      (order.deliveryStatus ?? "").toLowerCase(),
+    );
   const hasRouteCoords =
+    isLiveForMap &&
     storeCoords != null &&
     Number.isFinite(storeCoords.lat) &&
     Number.isFinite(storeCoords.lng) &&
@@ -243,9 +254,10 @@ function TrackOrderPage() {
 
           <DeliveryCodeCard order={order} orderId={orderId} />
 
-          {/* 2. Live route map — real outlet + destination coordinates only.
-              Otherwise the stage diagram above stands alone with an honest caption. */}
-          {hasRouteCoords ? (
+          {/* 2. Live route map — real outlet + destination coordinates only, and
+              only while the order is still live. Otherwise the stage diagram
+              above stands alone with an honest caption. */}
+          {!isLiveForMap ? null : hasRouteCoords ? (
             <LiveOrderMap
               tracking={trackingState}
               storeName={order.store?.name || "Burgonomics Outlet"}
@@ -262,12 +274,16 @@ function TrackOrderPage() {
             </div>
           )}
 
-          {/* 3. Rider Contact Card & Support Escalation CTAs */}
-          <RiderContactCard
-            tracking={trackingState}
-            storePhone={storePhone}
-            onOpenSupport={() => void navigate({ to: "/support" })}
-          />
+          {/* 3. Rider Contact Card & Support Escalation CTAs. Hidden once the
+              order is over: offering a rider card and "assigning courier" for a
+              cancelled order implied a delivery still in progress. */}
+          {isLiveForMap && (
+            <RiderContactCard
+              tracking={trackingState}
+              storePhone={storePhone}
+              onOpenSupport={() => void navigate({ to: "/support" })}
+            />
+          )}
 
           {/* 3b. Payment truth outranks the staged kitchen timeline (CUS-16).
               An unpaid online order never reaches the kitchen, so the grace

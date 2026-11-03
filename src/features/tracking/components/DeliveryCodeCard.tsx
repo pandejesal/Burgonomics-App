@@ -23,6 +23,10 @@ export function DeliveryCodeCard({ order, orderId }: { order: Order; orderId: st
     !order.deliveryOtpConsumedAt && !order.refundActiveClaim && !order.refundClaimedAt &&
     !hasRefundSignal(order.refundStatus) && !hasRefundSignal(order.payment?.refundStatus) &&
     !order.reconciliation &&
+    // A code that was never minted in the versioned scheme can never be reopened.
+    // Rendering the card for it only ever produced "this older order can't be
+    // reopened", so gate on the server-written version instead of asking.
+    order.deliveryOtpVersion === 2 &&
     // Backend also refuses once the courier lifecycle says the delivery is
     // over, even if the coarse status code is still OUT_FOR_DELIVERY.
     !["delivered", "cancelled", "canceled", "cancelling", "refunded"].includes(

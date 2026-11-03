@@ -24,6 +24,8 @@ const order = (overrides: Partial<Order> = {}): Order => ({
   fulfillment: "delivery",
   status: { code: "PREPARING", label: "Preparing", kind: "in_progress", terminal: false },
   payment: { status: "paid", method: "online", label: "Paid" },
+  // Real v2 shape: a code is only reopenable when the server wrote the version.
+  deliveryOtpVersion: 2,
   ...overrides,
 } as Order);
 const success = (orderId = "order-a", deliveryOtp = "4826") => ({ success: true, data: { orderId, deliveryOtp, version: 2 } });
@@ -262,6 +264,23 @@ describe("delivery handover code in component memory only", () => {
     await expect(render(order({ payment: undefined }))).resolves.not.toThrow();
     expect(container.textContent).toBe("");
     expect(container.innerHTML).toBe("");
+    expect(container.querySelector("section")).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  // Found live: a historic CONFIRMED delivery order rendered the card, the server
+  // answered LEGACY_OTP_UNAVAILABLE, and the customer saw only "this older order
+  // can't be reopened". An order with no v2 version can never be reopened, so the
+  // card must not render at all - and must not fire a pointless request.
+  it("renders nothing for a legacy order that has no versioned code", async () => {
+    await render(order({ deliveryOtpVersion: undefined }));
+    expect(container.querySelector("section")).toBeNull();
+    expect(container.textContent).toBe("");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("renders nothing when the server wrote a non-v2 version", async () => {
+    await render(order({ deliveryOtpVersion: 1 }));
     expect(container.querySelector("section")).toBeNull();
     expect(request).not.toHaveBeenCalled();
   });

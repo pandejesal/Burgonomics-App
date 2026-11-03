@@ -159,6 +159,8 @@ export interface Order {
 
   /** Read-only server lifecycle signals. Handover plaintext never belongs in an Order. */
   deliveryOtpConsumedAt?: unknown;
+  /** Server-written code-scheme version; 2 means the code is reopenable. */
+  deliveryOtpVersion?: number;
   /** Courier-lifecycle stops the server also refuses a handover code on. */
   deliveryStatus?: string | null;
   deliveredAt?: unknown;
@@ -251,7 +253,7 @@ export interface OrderTrackingSnapshot {
   /** Ephemeral live eligibility projection, not a persisted order or code cache. */
   order?: Pick<Order,
     "id" | "fulfillment" | "payment" | "reconciliation" | "deliveryOtpConsumedAt" |
-    "refundStatus" | "refundActiveClaim" | "refundClaimedAt"
+    "deliveryOtpVersion" | "refundStatus" | "refundActiveClaim" | "refundClaimedAt"
   > & {
     /**
      * Courier-lifecycle signals the owner endpoint also refuses on. Declared

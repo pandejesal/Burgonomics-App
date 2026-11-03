@@ -1232,6 +1232,7 @@ export const ordersService = {
         },
         reconciliation: order.reconciliation,
         deliveryOtpConsumedAt: order.deliveryOtpConsumedAt,
+        deliveryOtpVersion: (order as any).deliveryOtpVersion ?? null,
         refundStatus: order.refundStatus,
         refundActiveClaim: order.refundActiveClaim,
         refundClaimedAt: order.refundClaimedAt,

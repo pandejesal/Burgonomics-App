@@ -1034,12 +1034,20 @@ export function CheckoutPage() {
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
           <div className="mx-auto flex max-w-[520px] flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-text-secondary">To Pay</p>
+              <p className="text-sm font-medium text-text-secondary">
+                {/* The sticky bar must never imply a final amount while the bill
+                    is still provisional: the two readings disagreed live
+                    ("To Pay ₹109" beside "Total so far … excludes packaging"). */}
+                {quoteView.packagingPending ? "Total so far" : "To Pay"}
+              </p>
               <p className="type-price whitespace-nowrap text-xl text-text-primary">
                 {totals && quoteView.showTotal
                   ? formatINR(acceptedServerTotal ?? finalPayable)
                   : "—"}
               </p>
+              {quoteView.packagingPending && (
+                <p className="type-caption text-text-secondary">Excludes packaging</p>
+              )}
             </div>
             <button
               type="button"
@@ -1474,6 +1482,10 @@ export function CheckoutPage() {
                   ) : (
                     formatINR(quoteView.packagingFee)
                   )
+                ) : quoteView.status === "unserviceable" || quoteView.status === "error" ? (
+                  // A terminal answer, never an eternal spinner: quoting failed,
+                  // so the customer is told so and offered a retry.
+                  <span className="text-warning-text">Unavailable</span>
                 ) : (
                   <span className="text-warning-text">Getting price…</span>
                 )}
