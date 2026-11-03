@@ -22,6 +22,7 @@ import { HapticService } from "@/core/services/haptics";
 import { formatINR } from "@/core/utils/format";
 import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 import { ordersService } from "@/features/orders/services/ordersService";
+import { useStorePhone } from "@/features/orders/hooks/useStorePhone";
 
 import {
   orderRepository,
@@ -64,6 +65,9 @@ function TrackOrderPage() {
 
   const trackingHook = useOrderTracking(hydrated ? orderId : null);
   const trackingState = usePorterLiveTracking(order);
+  // Loop: no fabricated fallback — a missing store phone must hide the call
+  // button, never dial a hardcoded number that isn't the restaurant.
+  const storePhone = useStorePhone(order);
 
   React.useEffect(() => {
     if (!hydrated) return;
@@ -161,9 +165,6 @@ function TrackOrderPage() {
     });
   };
 
-  // Loop: no fabricated fallback — a missing store phone must hide the call
-  // button, never dial a hardcoded number that isn't the restaurant.
-  const storePhone = order.store?.phone || undefined;
   const shortOrderNum = order.shortCode || order.id.slice(-6).toUpperCase();
   const addressText = order.address?.line1 || order.address?.label || "Delivery Destination";
 
@@ -468,6 +469,7 @@ interface CancellationGraceCardProps {
  * is contacting the store.
  */
 export function CancellationGraceCard({ order, onOrderCancelled }: CancellationGraceCardProps) {
+  const storePhone = useStorePhone(order);
   // Live countdown: re-render every second while the card is mounted.
   const [, setTick] = React.useState(0);
   React.useEffect(() => {
@@ -492,7 +494,6 @@ export function CancellationGraceCard({ order, onOrderCancelled }: CancellationG
   if (!inGrace && !showCallStore) return null;
 
   // Loop: staff-entered store phones must never become one-tap dial links.
-  const storePhone = order.store?.phone || undefined;
   const safeStorePhone = storePhone && isSafeTelNumber(storePhone) ? storePhone : undefined;
 
   // MT-08: dual support gateway. The WhatsApp click-to-chat link is prefilled

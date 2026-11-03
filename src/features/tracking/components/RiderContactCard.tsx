@@ -1,6 +1,7 @@
 import React from "react";
 import { Bike, Phone, MessageSquare, ShieldCheck, AlertCircle, ExternalLink } from "lucide-react";
 import type { PorterTrackingState } from "../hooks/usePorterLiveTracking";
+import { DEFAULT_COURIER_NAME } from "@/features/orders/utils/courierName";
 import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 
 interface RiderContactCardProps {
@@ -17,6 +18,7 @@ export function RiderContactCard({ tracking, storePhone, onOpenSupport }: RiderC
     partnerName,
     currentStage,
     isTakeawayOrDineIn,
+    isDelivered,
     trackingUrl,
   } = tracking;
 
@@ -81,7 +83,10 @@ export function RiderContactCard({ tracking, storePhone, onOpenSupport }: RiderC
             <Bike className="h-5 w-5" aria-hidden />
           </div>
           <div className="min-w-0">
-            <span className="block type-label-medium text-text-secondary">Delivery partner</span>
+            {/* The label only earns its line above a real courier name. */}
+            {partnerName !== DEFAULT_COURIER_NAME && (
+              <span className="block type-label-medium text-text-secondary">Delivery partner</span>
+            )}
             <span className="text-base font-semibold text-text">{partnerName}</span>
           </div>
         </div>
@@ -96,25 +101,30 @@ export function RiderContactCard({ tracking, storePhone, onOpenSupport }: RiderC
       {/* Rider Name & 1-Tap Calling CTA */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <span className="block text-sm text-text-secondary">Assigned rider</span>
+          <span className="block text-sm text-text-secondary">
+            {isDelivered ? "Delivered by" : "Assigned rider"}
+          </span>
           <span className="text-base font-semibold text-text">
-            {riderName || "Assigning Courier..."}
+            {riderName || (isDelivered ? partnerName : "Assigning Courier...")}
           </span>
         </div>
 
-        {safeRiderPhone ? (
-          <a
-            href={`tel:${safeRiderPhone}`}
-            className="flex min-h-11 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover active:scale-95 cursor-pointer"
-          >
-            <Phone className="h-3.5 w-3.5" aria-hidden />
-            <span>Call Rider</span>
-          </a>
-        ) : (
-          <span className="text-sm italic text-text-secondary">
-            Contact available upon dispatch
-          </span>
-        )}
+        {/* The rider's personal number is only needed while the food is on its
+            way. After delivery, Call Store below covers anything that went wrong. */}
+        {!isDelivered &&
+          (safeRiderPhone ? (
+            <a
+              href={`tel:${safeRiderPhone}`}
+              className="flex min-h-11 items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary-hover active:scale-95 cursor-pointer"
+            >
+              <Phone className="h-3.5 w-3.5" aria-hidden />
+              <span>Call Rider</span>
+            </a>
+          ) : (
+            <span className="text-sm italic text-text-secondary">
+              Contact available upon dispatch
+            </span>
+          ))}
       </div>
 
       {/* Escalation CTAs */}
