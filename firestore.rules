@@ -161,6 +161,7 @@ service cloud.firestore {
         'petpoojaAcceptedNoId', 'petpoojaAcceptedNoIdAt', 'petpoojaAcceptedNoIdAck',
         'petpoojaAcceptedNoIdSource', 'petpoojaAcceptedUnrecorded', 'petpoojaAcceptedAck',
         'petpoojaStatus', 'petpoojaSyncStatus', 'petpoojaRetryCount',
+        'petpoojaNextRetryAtMs',
         'petpoojaPushClaimedAt', 'petpoojaClaimedAt', 'petpoojaAmbiguousProcessing',
         'petpoojaCallbackAck', 'petpoojaCallbackOrderId', 'petpoojaCallbackClientRef',
         'petpoojaKitchenStatus', 'petpoojaWebhookEventId', 'petpoojaWebhookReceivedAtMs',
@@ -193,6 +194,7 @@ service cloud.firestore {
         'petpoojaAcceptedNoId', 'petpoojaAcceptedNoIdAt', 'petpoojaAcceptedNoIdAck',
         'petpoojaAcceptedNoIdSource', 'petpoojaAcceptedUnrecorded', 'petpoojaAcceptedAck',
         'petpoojaStatus', 'petpoojaSyncStatus', 'petpoojaRetryCount',
+        'petpoojaNextRetryAtMs',
         'petpoojaPushClaimedAt', 'petpoojaClaimedAt', 'petpoojaAmbiguousProcessing',
         'petpoojaCallbackAck', 'petpoojaCallbackOrderId', 'petpoojaCallbackClientRef',
         'petpoojaKitchenStatus', 'petpoojaWebhookEventId', 'petpoojaWebhookReceivedAtMs',
@@ -207,7 +209,13 @@ service cloud.firestore {
         // staff-editable basket would let the kitchen cook a different order
         // than the one charged.
         'items', 'orderType', 'fulfillment', 'deliveryStatus',
-        'refund', 'refunds'
+        'refund', 'refunds',
+        // Capture-fulfilment recovery state (payments). These decide whether an
+        // order may be confirmed, refunded, or escalated to a human, so a
+        // branch/brand owner must never be able to forge or wipe them:
+        // `captureStall` alone would let a stalled paid order be hidden, and
+        // `captureFulfillmentState` drives the recovery scan's lane membership.
+        'captureFulfillment', 'captureFulfillmentState', 'captureStall',
       ];
     }
 
@@ -523,7 +531,11 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'price', 'costPrice', 'compareAtPrice', 'discountPercentage', 'name', 'description',
           'categoryId', 'categoryName', 'branchId', 'restId', 'petpoojaItemId', 'id',
-          'customizations', 'packingCharge', 'priceAvailable'
+          'customizations', 'packingCharge', 'priceAvailable',
+          // POS delisting state is decided by the Petpooja sync, never by a
+          // client: without these a partner could clear the marker while the
+          // SKU is still absent from the POS.
+          'delistedFromPos', 'delistedAt'
         ])
       );
       allow delete: if isBrandOwner();
