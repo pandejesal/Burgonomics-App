@@ -64,6 +64,23 @@ describe("useStorePhone", () => {
     await act(async () => root.unmount());
   });
 
+  it("never shows the previous store's number while the next one loads", async () => {
+    byId.mockResolvedValueOnce({ success: true, data: { phone: "+919811111111" } });
+    const { host, root } = await render(snapshot(""));
+    expect(host.textContent).toBe("+919811111111");
+
+    let finish: (value: unknown) => void = () => {};
+    byId.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const next = { store: { id: "other", name: "Other", phone: "" } } as OrderLike;
+    await act(async () => root.render(<Probe order={next} />));
+    expect(byId).toHaveBeenLastCalledWith("other");
+    expect(host.textContent, "stale number while loading").toBe("none");
+
+    await act(async () => finish({ success: true, data: { phone: "+919822222222" } }));
+    expect(host.textContent).toBe("+919822222222");
+    await act(async () => root.unmount());
+  });
+
   it("does nothing while the order has not loaded", async () => {
     const { host, root } = await render(null);
     expect(byId).not.toHaveBeenCalled();

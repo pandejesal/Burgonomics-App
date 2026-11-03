@@ -16,6 +16,8 @@ export function useStorePhone(order: Pick<Order, "store"> | null | undefined): s
   const [directoryPhone, setDirectoryPhone] = React.useState<string | undefined>(undefined);
 
   React.useEffect(() => {
+    // A number from another store must never survive into this one's call button.
+    setDirectoryPhone(undefined);
     if (snapshotPhone || !storeId) return;
     let cancelled = false;
     storesService
