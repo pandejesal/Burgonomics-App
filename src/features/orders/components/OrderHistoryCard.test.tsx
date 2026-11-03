@@ -43,7 +43,8 @@ const makeOrder = (fulfillment: string, terminal = false): Order =>
 describe("O-09: courier tracking promise is delivery-only", () => {
   it("offers delivery tracking without inventing a courier or a live GPS feed", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("delivery")} />);
-    expect(html).toContain("Track delivery");
+    // Short label: "Track delivery" wrapped to two lines inside a 92px button.
+    expect(html).toContain("Track");
     expect(html).not.toContain("Porter");
     expect(html).not.toContain("GPS");
   });
@@ -52,13 +53,13 @@ describe("O-09: courier tracking promise is delivery-only", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("dinein")} />);
     expect(html).not.toContain("live tracking");
     // Honest replacement action instead of a dead courier promise.
-    expect(html).toContain("View Order Status");
+    expect(html).toContain("View status");
   });
 
   it("never promises courier GPS on an active takeaway order", () => {
     const html = renderToStaticMarkup(<OrderHistoryCard order={makeOrder("takeaway")} />);
     expect(html).not.toContain("live tracking");
-    expect(html).toContain("View Order Status");
+    expect(html).toContain("View status");
   });
 
   it("offers Reorder instead of tracking for a terminal order", () => {

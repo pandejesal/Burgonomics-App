@@ -350,12 +350,27 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
 
   it("17. [CHAT-PAIR-ALLOW] Branch Owner 1 and Brand Owner CAN message in their pair", async () => {
     const pairId = "branch_01_brand_owner_1";
-    const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
+    // The message body is now identity-pinned (audit F3): senderId must be the
+    // caller, readBy may only contain the caller, and the shape is key-masked to
+    // what chatService.sendMessage actually writes. This fixture therefore
+    // carries the real payload instead of a two-key minimal doc that no client
+    // ever produced — a two-key doc would let a message be written with no
+    // author identity at all.
+    const branch1Db = testEnv
+      .authenticatedContext("branch_owner_1", { role: "branch_owner" })
+      .firestore();
     await assertSucceeds(
       setDoc(doc(branch1Db, "chats", pairId, "messages", "msg_001"), {
+        chatId: pairId,
         senderId: "branch_owner_1",
+        senderName: "Branch Owner",
+        senderRole: "branch_owner",
         text: "Stock delivered for today",
-        createdAt: new Date().toISOString(),
+        imageUrl: null,
+        orderReference: null,
+        ticketReference: null,
+        createdAt: new Date(),
+        readBy: ["branch_owner_1"],
       }),
     );
 

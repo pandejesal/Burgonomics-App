@@ -314,6 +314,21 @@
     outline-offset: 0 !important;
   }
 
+  /**
+   * Live finding: `input[type=search]` renders the browser's own clear "X" on top
+   * of the app's clear button, so two X icons sat in one field and the app's was
+   * only 32x32. The app button owns clearing (it also resets the URL query), so
+   * the native affordance is suppressed rather than shown twice.
+   */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-results-button,
+  input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+  }
+
   button,
   a,
   [role="button"],

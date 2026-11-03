@@ -223,11 +223,16 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
             onClick={() => void navigate({ to: `/orders/${order.id}/track` as any })}
             className="flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 type-button-sm text-primary-foreground transition-colors hover:bg-primary-hover active:scale-[0.98]"
           >
-            <Navigation className="w-3.5 h-3.5" />
+            <Navigation className="w-3.5 h-3.5 shrink-0" />
             {/* A courier only exists for delivery orders — never promise GPS
                 on dine-in/takeaway (O-09). The track screen gates its rider
-                pin the same way, on real backend GPS. */}
-            <span>{order.fulfillment === "delivery" ? "Track delivery" : "View Order Status"}</span>
+                pin the same way, on real backend GPS.
+                "Track delivery" wrapped to two lines in a 92px button next to a
+                single-line invoice button, so the label is short and the button
+                refuses to break. */}
+            <span className="whitespace-nowrap">
+              {order.fulfillment === "delivery" ? "Track" : "View status"}
+            </span>
           </button>
         ) : (
           <button

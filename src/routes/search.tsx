@@ -278,7 +278,7 @@ function SearchPage() {
                     replace: true,
                   });
                 }}
-                className="grid h-8 w-8 place-items-center rounded-full text-text-secondary hover:bg-divider cursor-pointer"
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-text-secondary hover:bg-divider cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
