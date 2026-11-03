@@ -24,6 +24,10 @@ test('manual simulator lane launches app, captures rendering, and verifies liven
   assert.equal(smoke.needs, 'build-ios');
   const run = smoke.steps.map(s => s.run || '').join('\n');
   assert.match(run, /simctl install/);
+  // Without a simulated position the store picker waits on GPS forever.
+  assert.match(run, /simctl privacy "\$UDID" grant location com\.burgonomics/);
+  assert.match(run, /simctl location "\$UDID" set 23\.0225,72\.5714/);
+  assert.ok(run.indexOf('simctl location') < run.indexOf('simctl launch'), 'location must be set before launch');
   assert.match(run, /simctl launch.*com\.burgonomics/);
   assert.match(run, /after-45s\.png/);
   assert.match(run, /launchctl list/);
