@@ -18,6 +18,12 @@ interface NearestStoreSheetProps {
   userCoords?: { lat: number; lng: number } | null;
 }
 
+/** Store names already carry the brand ("Burgonomics DEMO"), so never prefix it twice. */
+export function nearestStoreTitle(storeName: string): string {
+  const name = storeName.trim();
+  return /^burgonomics\b/i.test(name) ? `You're near ${name}` : `You're near Burgonomics ${name}`;
+}
+
 export function NearestStoreSheet({
   open,
   onOpenChange,
@@ -37,7 +43,7 @@ export function NearestStoreSheet({
     <BottomSheet
       open={open}
       onOpenChange={onOpenChange}
-      title={store ? `You're near Burgonomics ${store.name}` : "Nearest store"}
+      title={store ? nearestStoreTitle(store.name) : "Nearest store"}
       description="We can prep everything from your closest kitchen. You can always switch later."
     >
       {store && (
