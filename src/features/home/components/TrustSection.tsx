@@ -35,7 +35,7 @@ export function TrustSection({ className }: TrustSectionProps) {
               <ShieldCheck className="h-4 w-4" />
             </span>
             <div>
-              <h3 className="font-sans text-xs font-bold uppercase tracking-wider text-text-primary">
+              <h3 className="font-display text-xs font-bold uppercase tracking-wider text-text-primary">
                 Burgonomics Pure Veg Promise
               </h3>
               <p className="text-[10px] text-text-secondary">
@@ -67,7 +67,7 @@ export function TrustSection({ className }: TrustSectionProps) {
                 <Icon className="h-4 w-4" />
               </div>
               <div>
-                <h4 className="font-sans text-xs font-bold text-text-primary">{title}</h4>
+                <h4 className="font-display text-xs font-bold text-text-primary">{title}</h4>
                 <p className="text-[11px] text-text-secondary leading-snug mt-0.5">{description}</p>
               </div>
             </div>

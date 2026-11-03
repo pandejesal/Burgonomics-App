@@ -22,7 +22,7 @@ export function SectionHeader({ id, title, subtitle, actionLabel, actionTo, clas
       <div className="min-w-0 flex-1 basis-40">
         <h2
           id={id}
-          className="type-brand-heading text-xl leading-snug text-text-primary break-words"
+          className="type-subheading text-xl leading-snug text-text-primary break-words"
         >
           {title}
         </h2>

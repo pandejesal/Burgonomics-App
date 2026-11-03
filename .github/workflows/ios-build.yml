@@ -28,6 +28,11 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      real_staging:
+        description: Use real staging Firebase/API configuration for the client demo (no live payments)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -70,9 +75,17 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Prepare simulator-only compile fixture
+        if: github.event_name != 'workflow_dispatch' || inputs.real_staging != true
         run: node scripts/prepare-simulator-config.mjs
         env:
           CI_SIMULATOR_ONLY: 'true'
+      - name: Prepare real staging simulator configuration
+        if: github.event_name == 'workflow_dispatch' && inputs.real_staging == true
+        run: node scripts/prepare-demo-simulator.mjs
+        env:
+          CI_SIMULATOR_ONLY: 'true'
+          MOBILE_STAGING_ENV: ${{ secrets.MOBILE_STAGING_ENV }}
+          STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
       - name: ⚡ Build Web Bundle & Sync Capacitor iOS
         run: |
           npm run build:mobile -- --mode staging
@@ -159,7 +172,7 @@ jobs:
 
   ios-archive:
     name: iOS Archive (signed when configured)
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.real_staging != true
     runs-on: macos-26
     steps:
       - name: 📥 Checkout Repository
@@ -268,9 +281,9 @@ jobs:
           if-no-files-found: error
 
   # A successful compile says nothing about whether the app starts. This boots a
-  # real simulator and fails if the app is not alive after 45 seconds. It uses the
-  # simulator-only Firebase fixture, so it proves launch and rendering, NOT real
-  # data, sign-in, payment or push.
+  # real simulator and fails if the app is not alive after 45 seconds. A manual
+  # real_staging run uses genuine staging config; the default fixture lane proves
+  # launch/rendering only. Neither lane proves payment, push or physical iPhone QA.
   ios-sim-smoke:
     name: iOS Simulator launch smoke
     needs: build-ios
@@ -314,11 +327,14 @@ jobs:
             echo "::error::The app is not running 45 seconds after launch"
             exit 1
           fi
+          printf 'real_staging=%s\npush=not-tested\nsigning=none\n' "$REAL_STAGING" > smoke/scope.txt
+        env:
+          REAL_STAGING: ${{ inputs.real_staging }}
 
       - name: Collect logs and any crash report
         if: always()
         run: |
-          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "App"' 2>/dev/null | tail -n 400 > smoke/app-log.txt || true
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "App"' 2>/dev/null | tail -n 400 | sed -E 's/A[A-Za-z0-9_-]{38}/[REDACTED_API_KEY]/g; s/rzp_(test|live)_[A-Za-z0-9_]+/[REDACTED_PAYMENT_KEY]/g' > smoke/app-log.txt || true
           find "$HOME/Library/Logs/DiagnosticReports" -type f -name 'App*' -mmin -10 -exec cp {} smoke/ \; 2>/dev/null || true
 
       - name: Upload launch evidence

@@ -341,7 +341,7 @@ export function BannerCarousel({ banners, className }: Props) {
               />
 
               <div className="relative z-10 w-full px-4 pb-3.5 pt-8">
-                <h2 className="type-brand-heading break-words text-lg leading-snug text-white sm:text-xl">
+                <h2 className="type-subheading break-words text-lg leading-snug text-white sm:text-xl">
                   {b.title}
                 </h2>
                 <p className="mt-0.5 break-words text-sm font-normal leading-snug text-white/90">

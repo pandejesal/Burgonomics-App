@@ -176,7 +176,7 @@ export function BestSellerCard({ product, className, onCardClick }: BestSellerCa
             }}
             className="block rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <h3 className="font-sans text-base font-semibold leading-snug text-text-primary break-words hover:text-primary-text">
+            <h3 className="font-display text-base font-semibold leading-snug text-text-primary break-words hover:text-primary-text">
               {product.name}
             </h3>
           </Link>

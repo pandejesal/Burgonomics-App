@@ -45,18 +45,23 @@ export function BrandHeader({ className }: BrandHeaderProps) {
 
   return (
     <header className={cn("w-full bg-background px-4 pt-3 pb-3 text-text-primary", className)}>
-      {/* Brand strip: mascot + company wordmark, notifications only */}
-      <div className="flex min-h-11 items-center justify-between gap-3">
+      {/* Brand strip: mascot + company wordmark, notifications only. Wraps so
+          the wordmark can take its own line rather than be clipped/shrunk. */}
+      <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <Link
           to="/home"
           aria-label="Burgonomics Home"
-          className="flex min-h-11 min-w-0 items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           onClick={() => void HapticService.selection()}
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface p-0.5">
             <img src="/burgonomics-logo.png" alt="" className="h-full w-full object-contain" />
           </div>
-          <span className="type-brand-heading min-w-0 break-words text-2xl text-primary-text">
+          {/* Wordmark: the only place .type-brand-heading (MonstroSolid) is used.
+              .brand-wordmark sets the real 32px size, capped by width so it
+              stays on one line at 320px or 200% text; text-2xl is only the
+              no-stylesheet fallback. */}
+          <span className="type-brand-heading brand-wordmark min-w-0 whitespace-nowrap text-2xl text-primary-text">
             BURGONOMICS
           </span>
         </Link>

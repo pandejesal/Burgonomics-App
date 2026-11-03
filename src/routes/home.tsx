@@ -174,7 +174,7 @@ function HomePage() {
                 <div className="flex items-center justify-between gap-3 px-4">
                   <h2
                     id="cats-heading"
-                    className="type-brand-heading min-w-0 break-words text-2xl leading-tight text-text-primary"
+                    className="type-display-medium min-w-0 break-words text-2xl leading-tight text-text-primary"
                   >
                     On the menu
                   </h2>

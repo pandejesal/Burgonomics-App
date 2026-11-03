@@ -87,14 +87,15 @@ describe("Prompt 09: Customer Home & Landing Experience Suite", () => {
       expect(css).toMatch(/--accent:\s*#c2410c/i);
     });
 
-    it("serves the owner's MonstroSolid / Montserrat roles without remote fonts", () => {
+    it("serves the owner's MonstroSolid wordmark and Montserrat / Inter roles", () => {
       expect(css).toContain('font-family: "Montserrat"');
       expect(css).toContain("MontserratVariable.woff2");
       expect(css).toContain("font-weight: 100 900");
       expect(css).toContain("font-display: swap");
-      expect(css).toContain('--font-sans: "Montserrat"');
-      expect(css).toContain('--font-display: "MonstroSolid"');
-      expect(css).toContain('--font-mono: "Montserrat"');
+      expect(css).toContain('--font-sans: "Inter"');
+      expect(css).toContain('--font-display: "Montserrat"');
+      expect(css).toContain('--font-brand: "MonstroSolid"');
+      expect(css).toMatch(/--font-mono:\s*ui-monospace/);
       expect(css).not.toContain("fonts.googleapis");
       // The display face never replaces body, price or control text.
       expect(css).toContain(".type-brand-heading");

@@ -5,9 +5,10 @@ import { UpcomingBranches } from "./UpcomingBranches";
  * Owner-approved announcements at the bottom of Home.
  *
  * Visual language comes from the Burgonomics franchise deck: a deep forest
- * "field" with warm ceremony photography, a thin gold rule and the MonstroSolid
- * display face for headings. Entries use bold Montserrat subheads and regular
- * Montserrat content, 16px titles and 14px metadata, no gold body copy.
+ * "field" with warm ceremony photography, a thin gold rule and bold Montserrat
+ * headings (MonstroSolid stays reserved for the BURGONOMICS wordmark). Entries
+ * use bold Montserrat subheads and regular Inter content, 16px titles and 14px
+ * metadata, no gold body copy.
  */
 export function HomeAnnouncements({
   content = approvedHomeContent,
@@ -28,10 +29,10 @@ export function HomeAnnouncements({
         >
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div className="min-w-0">
-              <p className="type-brand-heading text-sm text-primary-foreground/70">Burgonomics</p>
+              <p className="type-subheading text-sm text-primary-foreground/70">Burgonomics</p>
               <h2
                 id="home-awards-heading"
-                className="type-brand-heading mt-1 text-2xl leading-tight text-primary-foreground"
+                className="type-display-medium mt-1 text-2xl leading-tight text-primary-foreground"
               >
                 Awards &amp; Recognition
               </h2>

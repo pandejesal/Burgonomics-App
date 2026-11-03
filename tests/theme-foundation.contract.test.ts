@@ -79,10 +79,11 @@ describe("theme foundation contract", () => {
     expect(contrast(token(block, "primary"), token(block, "background"))).toBeGreaterThanOrEqual(3);
   });
 
-  it("uses MonstroSolid headings, bold Montserrat subheads and regular Montserrat content", () => {
-    expect(css).toContain('--font-sans: "Montserrat"');
-    expect(css).toContain('--font-display: "MonstroSolid"');
-    expect(css).toContain('--font-mono: "Montserrat"');
+  it("uses a MonstroSolid wordmark, Montserrat headings and regular Inter content", () => {
+    expect(css).toContain('--font-sans: "Inter"');
+    expect(css).toContain('--font-display: "Montserrat"');
+    expect(css).toContain('--font-brand: "MonstroSolid"');
+    expect(css).toMatch(/--font-mono:\s*ui-monospace/);
     expect(css).toContain('url("/fonts/MontserratVariable.woff2")');
     expect(css).toContain("font-weight: 100 900");
     expect(css).toContain("font-display: swap");
@@ -98,8 +99,15 @@ describe("theme foundation contract", () => {
     ]) {
       expect(css).toMatch(new RegExp(`\\.${role} \\{[\\s\\S]*?font-family: var\\(--font-sans\\)`));
     }
-    for (const role of ["type-title", "type-title-large", "type-title-medium", "type-subheading"]) {
-      expect(tokenBlock(`.${role}`)).toContain("font-family: var(--font-sans)");
+    for (const role of [
+      "type-title",
+      "type-title-large",
+      "type-title-medium",
+      "type-subheading",
+      "type-display",
+      "type-headline-large",
+    ]) {
+      expect(tokenBlock(`.${role}`)).toContain("font-family: var(--font-display)");
       expect(tokenBlock(`.${role}`)).toContain("font-weight: 700");
     }
     for (const role of ["type-body", "type-caption", "type-body-large", "type-body-medium"]) {

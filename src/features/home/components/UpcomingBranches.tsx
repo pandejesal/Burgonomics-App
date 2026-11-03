@@ -100,7 +100,7 @@ export function UpcomingBranches({ stores }: { stores: readonly ApprovedStoreAnn
       <div className="space-y-1">
         <h2
           id="home-upcoming-heading"
-          className="type-brand-heading text-[1.375rem] leading-tight text-text-primary"
+          className="type-subheading text-[1.375rem] leading-tight text-text-primary"
         >
           Upcoming Branches
         </h2>
