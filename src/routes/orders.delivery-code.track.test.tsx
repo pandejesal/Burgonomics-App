@@ -51,6 +51,8 @@ const makeOrder = (): Order => ({
   id: "order-a", shortCode: "BG-A", fulfillment: "delivery",
   status: { code: "OUT_FOR_DELIVERY", label: "On the way", terminal: false, kind: "in_progress" },
   payment: { status: "paid", method: "online", label: "Paid" },
+  // Real v2 shape: without the version the card must stay hidden (legacy order).
+  deliveryOtpVersion: 2,
   store: { id: "fixture-outlet", name: "Fixture outlet", address: "Fixture address", area: "Fixture area", city: "Fixture city", phone: "" },
   items: [],
   totals: {
