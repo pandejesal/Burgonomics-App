@@ -23,6 +23,7 @@ import { formatINR } from "@/core/utils/format";
 import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 import { ordersService } from "@/features/orders/services/ordersService";
 import { useStorePhone } from "@/features/orders/hooks/useStorePhone";
+import { DeliveryCodeCard } from "@/features/tracking/components/DeliveryCodeCard";
 
 import {
   orderRepository,
@@ -57,13 +58,21 @@ function TrackOrderPage() {
   const hydrated = useHydrated();
 
   const cachedOrder = useOrdersStore(selectOrderById(orderId));
-  const [order, setOrder] = React.useState<Order | null>(cachedOrder);
+  const [loadedOrder, setOrder] = React.useState<Order | null>(cachedOrder);
   const [loadingOrder, setLoadingOrder] = React.useState(!cachedOrder);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [reloadToken, setReloadToken] = React.useState(0);
   const [receiptOpen, setReceiptOpen] = React.useState(false);
 
   const trackingHook = useOrderTracking(hydrated ? orderId : null);
+  const snapshot = trackingHook.snapshot?.orderId === orderId ? trackingHook.snapshot : null;
+  // Derive during render, not a later effect: a live terminal/refund/consumed
+  // signal must hide a code in the same commit. No code is ever merged here.
+  const order: Order | null = loadedOrder && loadedOrder.id === orderId ? {
+    ...loadedOrder,
+    ...(snapshot && snapshot.order?.id === orderId ? snapshot.order : {}),
+    status: snapshot?.status ?? loadedOrder.status,
+  } : null;
   const trackingState = usePorterLiveTracking(order);
   // Loop: no fabricated fallback — a missing store phone must hide the call
   // button, never dial a hardcoded number that isn't the restaurant.
@@ -97,13 +106,6 @@ function TrackOrderPage() {
       cancelled = true;
     };
   }, [hydrated, orderId, reloadToken]);
-
-  React.useEffect(() => {
-    if (!order || !trackingHook.snapshot) return;
-    if (trackingHook.snapshot.status.code !== order.status.code) {
-      setOrder({ ...order, status: trackingHook.snapshot.status });
-    }
-  }, [order, trackingHook.snapshot]);
 
   if (!hydrated || loadingOrder) return <TrackSkeleton />;
 
@@ -238,6 +240,8 @@ function TrackOrderPage() {
             // write — DEV-only. Prod customers must never self-advance status.
             onAdvanceDevStatus={import.meta.env.DEV ? handleDevAdvanceStatus : undefined}
           />
+
+          <DeliveryCodeCard order={order} orderId={orderId} />
 
           {/* 2. Live route map — real outlet + destination coordinates only.
               Otherwise the stage diagram above stands alone with an honest caption. */}

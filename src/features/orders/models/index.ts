@@ -74,6 +74,8 @@ export interface OrderPaymentInfo {
   status: PaymentDisplayStatus;
   transactionId?: string;
   paidAt?: Iso8601;
+  /** Server-only refund progress; a refund in flight prevents code disclosure. */
+  refundStatus?: string;
 }
 
 /** Snapshot of the store at the moment the order was placed. */
@@ -155,6 +157,17 @@ export interface Order {
 
   payment: OrderPaymentInfo;
 
+  /** Read-only server lifecycle signals. Handover plaintext never belongs in an Order. */
+  deliveryOtpConsumedAt?: unknown;
+  /** Courier-lifecycle stops the server also refuses a handover code on. */
+  deliveryStatus?: string | null;
+  deliveredAt?: unknown;
+  cancelledAt?: unknown;
+  cancellationStatus?: string | null;
+  refundStatus?: string;
+  refundActiveClaim?: unknown;
+  refundClaimedAt?: unknown;
+
   /**
    * Server-written, customer-VISIBLE marker for money we could not apply to
    * this order (A08 B5). Read-only to the client: the server sets it when a
@@ -235,6 +248,21 @@ export function orderPayableAmount(
 export interface OrderTrackingSnapshot {
   orderId: Id;
   status: OrderStatusMeta;
+  /** Ephemeral live eligibility projection, not a persisted order or code cache. */
+  order?: Pick<Order,
+    "id" | "fulfillment" | "payment" | "reconciliation" | "deliveryOtpConsumedAt" |
+    "refundStatus" | "refundActiveClaim" | "refundClaimedAt"
+  > & {
+    /**
+     * Courier-lifecycle signals the owner endpoint also refuses on. Declared
+     * here because the shared `Order` model does not carry them; the projection
+     * reads them straight from the order document. Never a code or verifier.
+     */
+    deliveryStatus?: string | null;
+    deliveredAt?: unknown;
+    cancelledAt?: unknown;
+    cancellationStatus?: string | null;
+  };
   steps: OrderTimelineStep[];
   /** Minutes remaining until estimated ready/delivery time. */
   etaMinutes?: number;

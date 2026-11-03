@@ -1199,12 +1199,49 @@ export const ordersService = {
     const order = existing;
     const times = progression.get(id) ?? {};
     const steps = buildTimeline(order.fulfillment, order.status.code, times);
+    // Tracking already refreshes on the live subscription/poll. Publish only
+    // explicit eligibility fields so payment/refund/consumption changes reach
+    // the route even when the stage stays unchanged. Never spread the raw doc:
+    // historical docs can carry deliveryOtp plaintext/hash. This is DISPLAY
+    // normalization only; the owner endpoint independently proves capture.
+    const normalizePayment = (value: unknown): string => {
+      const status = typeof value === "string" ? value.toLowerCase() : "";
+      return status === "completed" || status === "captured" ? "paid" : status;
+    };
+    const nestedPayment = normalizePayment(order.payment?.status);
+    const topPayment = normalizePayment((order as Order & { paymentStatus?: unknown }).paymentStatus);
+    const displayPayment = [nestedPayment, topPayment].includes("refunded") ? "refunded"
+      : topPayment && topPayment !== nestedPayment ? "pending"
+      : nestedPayment === "paid" ? "paid" : order.payment?.status;
     const etaMinutes = order.estimatedAt
       ? Math.max(0, Math.round((+new Date(order.estimatedAt) - Date.now()) / 60_000))
       : undefined;
     return ok({
       orderId: id,
       status: order.status,
+      order: {
+        id,
+        fulfillment: order.fulfillment,
+        payment: {
+          method: order.payment?.method ?? "unknown",
+          label: order.payment?.label ?? "Payment",
+          status: displayPayment,
+          transactionId: order.payment?.transactionId,
+          paidAt: order.payment?.paidAt,
+          refundStatus: order.payment?.refundStatus,
+        },
+        reconciliation: order.reconciliation,
+        deliveryOtpConsumedAt: order.deliveryOtpConsumedAt,
+        refundStatus: order.refundStatus,
+        refundActiveClaim: order.refundActiveClaim,
+        refundClaimedAt: order.refundClaimedAt,
+        // Courier-lifecycle stops the owner endpoint also enforces. Projected so
+        // the card hides immediately on cancellation/delivery, not on next reload.
+        deliveryStatus: (order as any).deliveryStatus ?? null,
+        deliveredAt: (order as any).deliveredAt ?? null,
+        cancelledAt: (order as any).cancelledAt ?? null,
+        cancellationStatus: (order as any).cancellationStatus ?? null,
+      },
       steps,
       etaMinutes: order.status.terminal ? 0 : etaMinutes,
       deliveryPartner: order.deliveryPartner,
