@@ -266,3 +266,66 @@ jobs:
           name: app-store-ipa
           path: build/ipa/*.ipa
           if-no-files-found: error
+
+  # A successful compile says nothing about whether the app starts. This boots a
+  # real simulator and fails if the app is not alive after 45 seconds. It uses the
+  # simulator-only Firebase fixture, so it proves launch and rendering, NOT real
+  # data, sign-in, payment or push.
+  ios-sim-smoke:
+    name: iOS Simulator launch smoke
+    needs: build-ios
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    steps:
+      - name: Download simulator app
+        uses: actions/download-artifact@v4
+        with:
+          name: Burgonomics-iOS-Simulator-App
+          path: sim-app
+
+      - name: Boot a simulator and launch the app
+        run: |
+          set -euo pipefail
+          unzip -q sim-app/Burgonomics-iOS-Simulator-App.zip -d sim-app
+          mkdir -p smoke
+          UDID=$(python3 - <<'PY'
+          import json, subprocess
+          devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))["devices"]
+          for runtime in sorted(devices, reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for device in devices[runtime]:
+                  if "iPhone" in device["name"]:
+                      print(device["udid"])
+                      raise SystemExit(0)
+          raise SystemExit("no available iPhone simulator")
+          PY
+          )
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" sim-app/App.app
+          xcrun simctl launch "$UDID" com.burgonomics | tee smoke/launch.txt
+          sleep 30
+          xcrun simctl io "$UDID" screenshot smoke/after-30s.png
+          sleep 15
+          xcrun simctl io "$UDID" screenshot smoke/after-45s.png
+          if ! xcrun simctl spawn "$UDID" launchctl list | grep -i "com.burgonomics" > smoke/process.txt; then
+            echo "::error::The app is not running 45 seconds after launch"
+            exit 1
+          fi
+
+      - name: Collect logs and any crash report
+        if: always()
+        run: |
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "App"' 2>/dev/null | tail -n 400 > smoke/app-log.txt || true
+          find "$HOME/Library/Logs/DiagnosticReports" -type f -name 'App*' -mmin -10 -exec cp {} smoke/ \; 2>/dev/null || true
+
+      - name: Upload launch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sim-smoke
+          path: smoke
+          if-no-files-found: warn
+          retention-days: 14
