@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
+// Side-effect import: the route module is loaded at collection time, before any
+// test or hook timer starts. The vi.mock factories below are hoisted above this
+// import by Vitest, so the route still sees the mocked router, AppShell and
+// repository exactly as it did when the import lived inside the test body.
+import "./support";
 
 /**
  * The Help screen's feedback form must only claim success on a real 2xx.
@@ -14,7 +19,13 @@ import { act } from "react";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-const supportRoute = { options: {} as { component: React.ComponentType } };
+// Hoisted so the mock factories below can reference it while the route module
+// (imported statically above) is evaluated. A module-body `const` would be in
+// its temporal dead zone at that point.
+const { supportRoute, submitFeedback } = vi.hoisted(() => ({
+  supportRoute: { options: {} as { component: React.ComponentType } },
+  submitFeedback: vi.fn(),
+}));
 
 vi.mock("sonner", () => {
   const success = vi.fn();
@@ -62,7 +73,6 @@ vi.mock("@/shared/components/common/BottomSheet", () => ({
     open ? <div data-sheet>{children}</div> : null,
 }));
 
-const submitFeedback = vi.fn();
 vi.mock("@/features/support/repositories/SupportRepository", async () => {
   const { LOCAL_FAQS } = await import("@/features/support/data/faqs");
   const { LOCAL_CHANNELS } = await import("@/features/support/data/channels");
@@ -88,7 +98,6 @@ beforeEach(() => {
 });
 
 async function mountPage() {
-  await import("./support");
   const Page = supportRoute.options.component;
   await act(async () => root.render(<Page />));
 }

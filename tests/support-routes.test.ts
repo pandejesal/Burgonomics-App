@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { supportRepository } from "../src/features/support/repositories/SupportRepository";
+import { LOCAL_FAQS } from "../src/features/support/data/faqs";
+import { LOCAL_ISSUE_CATEGORIES } from "../src/features/support/data/issueCategories";
+import { LOCAL_CHANNELS } from "../src/features/support/data/channels";
+import { APP } from "../src/core/constants/app";
+import { supportService } from "../src/features/support/services/supportService";
 
 /**
  * Support route audit — the local content surfaces never touch the network, and
@@ -11,11 +17,25 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * and NO /v1/support/* route at all, and NO GET ticket list route.
  *
  * Mocks use the same relative specifiers the module under test imports.
+ *
+ * Module loading is collection-time setup, not behaviour. This file used to
+ * `await import(...)` inside every test body, so the whole subject module graph
+ * was charged to the 5000ms per-test budget (measured 7.7s wall under host CPU
+ * starvation). The mocks and the fetch stub are hoisted instead, so they are in
+ * place before the static subject imports evaluate - the original guarantee
+ * that fetch is stubbed before the subject module loads is preserved, and no
+ * module can reach the live network.
  */
 
-const httpGet = vi.fn();
-const httpPost = vi.fn();
-const fetchMock = vi.fn();
+const { httpGet, httpPost, fetchMock } = vi.hoisted(() => {
+  const httpGet = vi.fn();
+  const httpPost = vi.fn();
+  const fetchMock = vi.fn();
+  // Installed before any subject module evaluates, so a module that captured
+  // `fetch` at load time would still capture this stub, never the live one.
+  vi.stubGlobal("fetch", fetchMock);
+  return { httpGet, httpPost, fetchMock };
+});
 
 vi.mock("../src/core/network/httpClient", () => ({
   httpClient: {
@@ -30,8 +50,6 @@ vi.mock("../src/core/config/firebase", () => ({
   getAppCheckToken: async () => null,
 }));
 
-const MODULE = "../src/features/support/services/supportService";
-
 beforeEach(() => {
   httpGet.mockReset();
   httpPost.mockReset();
@@ -40,10 +58,7 @@ beforeEach(() => {
 });
 
 describe("local content never calls the network", () => {
-  it("repository serves FAQs, channels and categories locally", async () => {
-    const { supportRepository } =
-      await import("../src/features/support/repositories/SupportRepository");
-
+  it("repository serves FAQs, channels and categories locally", () => {
     const faqs = supportRepository.listFaqs();
     const channels = supportRepository.listChannels();
     const categories = supportRepository.listIssueCategories();
@@ -57,8 +72,7 @@ describe("local content never calls the network", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("serves a non-empty FAQ list and every item has question + answer", async () => {
-    const { LOCAL_FAQS } = await import("../src/features/support/data/faqs");
+  it("serves a non-empty FAQ list and every item has question + answer", () => {
     expect(LOCAL_FAQS.length).toBeGreaterThan(0);
     for (const f of LOCAL_FAQS) {
       expect(f.id, "every FAQ needs a stable id").toBeTruthy();
@@ -67,8 +81,7 @@ describe("local content never calls the network", () => {
     }
   });
 
-  it("serves categories from the app's own ticket vocabulary", async () => {
-    const { LOCAL_ISSUE_CATEGORIES } = await import("../src/features/support/data/issueCategories");
+  it("serves categories from the app's own ticket vocabulary", () => {
     expect(LOCAL_ISSUE_CATEGORIES.length).toBe(6);
     for (const c of LOCAL_ISSUE_CATEGORIES) {
       expect(c.id).toBeTruthy();
@@ -76,10 +89,7 @@ describe("local content never calls the network", () => {
     }
   });
 
-  it("channels contain only real APP values plus in-app ticketing", async () => {
-    const { LOCAL_CHANNELS } = await import("../src/features/support/data/channels");
-    const { APP } = await import("../src/core/constants/app");
-
+  it("channels contain only real APP values plus in-app ticketing", () => {
     const ids = LOCAL_CHANNELS.map((c) => c.id);
     // In-app ticketing is always present and always available — it really works.
     expect(ids).toContain("in-app-ticket");
@@ -105,7 +115,6 @@ describe("feedback posts to the real route", () => {
       json: async () => ({ id: "fb_123" }),
     });
 
-    const { supportService } = await import(MODULE);
     const res = await supportService.submitFeedback({ rating: 5, comment: "Great" });
 
     expect(res.success).toBe(true);
@@ -123,7 +132,6 @@ describe("feedback posts to the real route", () => {
 
   it("still carries the Authorization header", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => ({ id: "fb_1" }) });
-    const { supportService } = await import(MODULE);
     await supportService.submitFeedback({ rating: 4 });
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer test-token");
@@ -136,7 +144,6 @@ describe("feedback posts to the real route", () => {
       text: async () => "boom",
       json: async () => ({}),
     });
-    const { supportService } = await import(MODULE);
     const res = await supportService.submitFeedback({ rating: 4 });
     expect(res.success).toBe(false);
     if (!res.success) expect(res.error.code).toBe("FEEDBACK_SUBMIT_FAILED");
@@ -144,13 +151,11 @@ describe("feedback posts to the real route", () => {
 
   it("treats a 2xx without an id as a failure (no fabricated confirmation)", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => ({}) });
-    const { supportService } = await import(MODULE);
     const res = await supportService.submitFeedback({ rating: 4 });
     expect(res.success).toBe(false);
   });
 
   it("rejects an out-of-range rating before calling the network", async () => {
-    const { supportService } = await import(MODULE);
     expect((await supportService.submitFeedback({ rating: 0 })).success).toBe(false);
     expect((await supportService.submitFeedback({ rating: 6 })).success).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -158,7 +163,6 @@ describe("feedback posts to the real route", () => {
 
   it("rounds a fractional rating so the server's integer schema accepts it", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => ({ id: "fb_2" }) });
-    const { supportService } = await import(MODULE);
     await supportService.submitFeedback({ rating: 3.6 });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.rating).toBe(4);
@@ -167,8 +171,7 @@ describe("feedback posts to the real route", () => {
 });
 
 describe("dead /v1/support methods are gone", () => {
-  it("supportService exposes no submitTicket targeting /v1/support/tickets", async () => {
-    const { supportService } = await import(MODULE);
+  it("supportService exposes no submitTicket targeting /v1/support/tickets", () => {
     // Deleted rather than left as a trap: nothing called it.
     expect("submitTicket" in supportService).toBe(false);
   });
