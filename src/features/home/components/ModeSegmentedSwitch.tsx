@@ -53,7 +53,14 @@ export function ModeSegmentedSwitch({
           .querySelectorAll<HTMLButtonElement>('button[role="radio"]')
           [nextIndex]?.focus();
       }}
-      className={cn("flex w-full items-stretch gap-1 rounded-xl bg-bg-secondary p-1", className)}
+      className={cn(
+        // CLS/1.4.4 fix: three flex-1 columns plus break-words split "Delivery"
+        // into "Deliv/ery" once 200% text made the labels wider than a third of
+        // the row. The row now wraps its buttons onto extra lines instead, and
+        // each label is an unbreakable unit, so no word is ever cut mid-way.
+        "flex w-full flex-wrap items-stretch gap-1 rounded-xl bg-bg-secondary p-1",
+        className,
+      )}
     >
       {MODES.map(({ id, label }) => {
         const isSelected = current === id;
@@ -71,13 +78,16 @@ export function ModeSegmentedSwitch({
               }
             }}
             className={cn(
-              "flex min-h-12 min-w-0 flex-1 items-center justify-center rounded-[10px] px-2 py-2 text-center text-sm leading-snug focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:text-base",
+              // basis-0 keeps three equal columns at normal text; min-w-fit
+              // means a label wider than its share wraps the whole button to the
+              // next line instead of breaking the word.
+              "flex min-h-12 min-w-fit flex-1 basis-0 items-center justify-center rounded-[10px] px-2 py-2 text-center text-sm leading-snug focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:text-base",
               isSelected
                 ? "bg-primary font-semibold text-primary-foreground"
                 : "font-medium text-text-secondary hover:text-text-primary",
             )}
           >
-            <span className="max-w-full break-words">{label}</span>
+            <span className="max-w-full whitespace-nowrap">{label}</span>
           </button>
         );
       })}

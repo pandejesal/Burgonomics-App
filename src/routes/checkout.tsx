@@ -1274,12 +1274,20 @@ export function CheckoutPage() {
             {/* CUS-18: the read's own states. An in-flight or failed read is
                 never rendered as "no saved addresses". */}
             {addressLoadState === "loading" && addresses.length === 0 ? (
+              // CLS fix: the skeleton must occupy the same height the loaded
+              // list will, or resolving it pushes the whole page down. Measured
+              // live at 0.18 CLS. Two skeleton rows + the header matches the
+              // common two-address case; the container min-height covers a
+              // single-address account so neither direction shifts.
               <div role="status" aria-live="polite" className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h4 className="type-title-medium text-text-primary">Delivery Address</h4>
                   <span className="type-caption text-text-secondary">{ADDRESS_LOADING_COPY}</span>
                 </div>
-                <Skeleton className="h-20 w-full rounded-[var(--radius-large)]" />
+                <div className="min-h-[11.5rem] space-y-2.5">
+                  <Skeleton className="h-20 w-full rounded-[var(--radius-large)]" />
+                  <Skeleton className="h-20 w-full rounded-[var(--radius-large)]" />
+                </div>
               </div>
             ) : addressLoadState === "error" && addresses.length === 0 ? (
               <div
@@ -1469,7 +1477,7 @@ export function CheckoutPage() {
                 )}
               </span>
             </div>
-            <div className="flex items-start justify-between gap-3 text-text-secondary">
+            <div className="flex min-h-[1.75rem] items-start justify-between gap-3 text-text-secondary">
               <span>Restaurant Packaging</span>
               <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
                 {!isAuthenticated ? (
@@ -1493,7 +1501,7 @@ export function CheckoutPage() {
             </div>
             {/* Delivery Fee — server courier quote only (R8). No static fare. */}
             {isDelivery && (
-              <div className="flex items-start justify-between gap-3 text-text-secondary">
+              <div className="flex min-h-[1.75rem] items-start justify-between gap-3 text-text-secondary">
                 <span>Delivery Fee</span>
                 <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
                   {!isAuthenticated ? (
@@ -1540,11 +1548,18 @@ export function CheckoutPage() {
                 {totals && quoteView.showTotal ? formatINR(finalPayable) : "—"}
               </span>
             </div>
-            {quoteView.packagingPending && (
-              <p className="text-right type-caption text-text-secondary">
-                Excludes packaging, which this outlet prices at checkout.
-              </p>
-            )}
+            {/* CLS fix: the caveat used to be INSERTED when the quote resolved,
+                which pushed everything below it down. It now always occupies
+                one reserved line and simply renders empty when not needed, so
+                the block height is identical loading and loaded. */}
+            <p
+              aria-hidden={!quoteView.packagingPending}
+              className="min-h-[1.25rem] text-right type-caption text-text-secondary"
+            >
+              {quoteView.packagingPending
+                ? "Excludes packaging, which this outlet prices at checkout."
+                : "\u00A0"}
+            </p>
           </div>
         </section>
 
