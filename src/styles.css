@@ -344,6 +344,25 @@
        which was making the mobile app look enlarged. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+
+    /* WCAG 2.2 SC 2.4.11 (Focus Not Obscured, AA).
+
+       This computed to `auto`, so the browser scrolled a Tab-focused control
+       only as far as the document edge — and a control just above it ended up
+       behind the fixed bottom chrome. Measured at 390x844 with 200% text: the
+       cart summary is 323px tall and the nav offset 154px, i.e. 477px of an
+       844px viewport is covered, and "Increase quantity", the note textarea and
+       "Browse available offers" all hit-tested as fully hidden.
+
+       The cart publishes its real summary height as `--cart-summary-height`
+       while it is mounted; on every other route that property is absent and
+       the fallback of 0px leaves only the nav clearance, so no other route
+       reserves space it does not need. `html` is the document scroller here
+       (see the overflow note below), which is why this rule lives on `html`
+       rather than on `body` or `:root`-adjacent containers. */
+    scroll-padding-bottom: calc(
+      var(--bottom-nav-offset, 86px) + var(--cart-summary-height, 0px) + 8px
+    );
   }
 
   html,

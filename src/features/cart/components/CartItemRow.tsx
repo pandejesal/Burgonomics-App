@@ -132,11 +132,17 @@ export const CartItemRow = React.memo(function CartItemRow({
             </div>
           )}
 
+          {/* At 200% text the item image (5rem) plus the gap leaves the text
+              column ~118px while this group's three controls need ~240px. As
+              `shrink-0` it refused to give any width back and pushed "Increase
+              quantity" to x 385..473 on a 390px viewport (measured). Letting it
+              shrink and wrap its own controls drops the minimum to a single
+              88px control, which fits. */}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div
               role="group"
               aria-label={`Quantity for ${line.name}`}
-              className="inline-flex shrink-0 items-center rounded-lg border border-divider overflow-hidden"
+              className="inline-flex min-w-0 max-w-full flex-wrap items-center rounded-lg border border-divider overflow-hidden"
             >
               <button
                 type="button"

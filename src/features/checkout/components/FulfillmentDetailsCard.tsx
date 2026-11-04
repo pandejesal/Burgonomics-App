@@ -10,6 +10,16 @@ interface FulfillmentDetailsCardProps {
   fulfillment: Fulfillment;
   store: Store | null;
   selectedAddress: Address | null;
+  /**
+   * True while the saved-address read has not settled into an answer — still in
+   * flight, or failed. The delivery row must not claim "No delivery address
+   * selected" in either case: the customer may well have addresses, we just
+   * have not established that. Measured on the deployed bundle this false row
+   * painted at t~700 and unmounted at t~1113 (-41px, `prev 803h41 -> curr 0`)
+   * inside the 0.31-0.44 CLS window. The address block owns the loading and
+   * failure copy; this card only declines to guess.
+   */
+  addressPending?: boolean;
   tableNumber?: string;
   onTableNumberChange?: (table: string) => void;
   className?: string;
@@ -19,6 +29,7 @@ export function FulfillmentDetailsCard({
   fulfillment,
   store,
   selectedAddress,
+  addressPending = false,
   tableNumber = "",
   onTableNumberChange,
   className,
@@ -26,6 +37,9 @@ export function FulfillmentDetailsCard({
   const isDelivery = fulfillment === "delivery";
   const isTakeaway = fulfillment === "takeaway";
   const isDineIn = fulfillment === "dinein";
+  // A row we can already draw beats a stale pending flag: no flicker back to a
+  // placeholder for an address that has resolved.
+  const awaitingAddress = isDelivery && !selectedAddress && addressPending;
 
   return (
     <div
@@ -63,8 +77,22 @@ export function FulfillmentDetailsCard({
       </div>
 
       {isDelivery ? (
-        <div className="space-y-2">
-          {selectedAddress ? (
+        // One reserved slot for all three states. Resolving the read changes the
+        // contents, never the height: the customer row and the "+ Add Address"
+        // row are both 44px targets, so the floor covers either.
+        <div data-address-slot className="min-h-[3.25rem] space-y-2">
+          {awaitingAddress ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex min-h-[3.25rem] items-center gap-2 py-1"
+            >
+              <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-bg-secondary" aria-hidden />
+              <span className="type-body-medium text-text-secondary">
+                Delivery address not confirmed yet
+              </span>
+            </div>
+          ) : selectedAddress ? (
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">

@@ -86,6 +86,67 @@ function CartPage() {
     useCheckoutStore.getState().bindNotesScope(uid, activeStoreId);
   }, [uid, activeStoreId]);
 
+  // WCAG 2.2 SC 2.4.11 (Focus Not Obscured): the sticky summary is a fixed bar,
+  // so nothing else on the page can know how much of the viewport it eats. At
+  // 200% text it measured 323px while the content reserved a hard-coded 10rem,
+  // and `scrollPaddingBottom` computed to `auto` — every Tab target landed
+  // underneath it.
+  //
+  // This is a CALLBACK REF, not a mount-only effect, because the bar's presence
+  // is conditional: the first commit renders the hydration skeleton (and an
+  // empty or failed cart renders neither), so a `useEffect(..., [])` would run
+  // once against a null ref and could never recover — nothing measured, no
+  // observer attached, and the height of a removed bar left behind for the next
+  // route to reserve. A ref callback fires exactly when this node mounts and
+  // again with `null` when it goes away, so attach and cleanup cannot drift
+  // from the bar's real lifecycle.
+  const summaryCleanup = React.useRef<(() => void) | null>(null);
+  const attachSummary = React.useCallback((node: HTMLDivElement | null) => {
+    // Detach whatever the previous node owned before deciding about this one.
+    summaryCleanup.current?.();
+    summaryCleanup.current = null;
+
+    if (!node || typeof document === "undefined") return;
+    const root = document.documentElement;
+    const apply = () => {
+      const height = Math.ceil(node.getBoundingClientRect().height);
+      // 0 means "not laid out yet"; leave the fallback in place rather than
+      // publishing a height that would collapse the reserved space.
+      if (height <= 0) return;
+      root.style.setProperty("--cart-summary-height", `${height}px`);
+    };
+    // Remove ONLY the property this component owns. The nav bar's offset and
+    // any other root-level style belong to their own owners and must survive a
+    // cart unmount, so nothing here rewrites the style attribute wholesale.
+    const release = () => {
+      root.style.removeProperty("--cart-summary-height");
+    };
+
+    apply();
+
+    // Register the cleanup BEFORE the observer branch: without a
+    // ResizeObserver this must still release the property it just wrote,
+    // otherwise an older engine leaks the height for the life of the document.
+    summaryCleanup.current = release;
+
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(apply);
+    observer.observe(node);
+    summaryCleanup.current = () => {
+      observer.disconnect();
+      release();
+    };
+  }, []);
+
+  // Defensive, not load-bearing. React DOES call a ref callback with `null`
+  // when the node unmounts (including whole-route teardown), so the detach above
+  // already releases the property on navigation. This unmount effect is kept
+  // only as belt-and-braces for the case where the callback never runs - an
+  // end-of-life render where React skips ref detach. It is idempotent: releasing
+  // a property that is already gone is a no-op, and it never touches any root
+  // style this component does not own.
+  React.useEffect(() => () => summaryCleanup.current?.(), []);
+
   const recompute = React.useCallback(async () => {
     setComputing(true);
     const res = await cartRepository.calculateTotals();
@@ -229,7 +290,7 @@ function CartPage() {
       backTo="/menu"
       showTabs
       showTopBar
-      contentClassName="pb-[calc(10rem+var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))]"
+      contentClassName="pb-[calc(var(--cart-summary-height,0px)+var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px)+1rem)]"
       rightSlot={
         <button
           type="button"
@@ -241,7 +302,10 @@ function CartPage() {
         </button>
       }
       bottomSlot={
-        <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))] z-30 border-t border-divider bg-surface p-4">
+        <div
+          ref={attachSummary}
+          className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))] z-30 border-t border-divider bg-surface p-4"
+        >
           <div className="mx-auto flex max-w-[520px] flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-text-secondary">Estimated Total</p>

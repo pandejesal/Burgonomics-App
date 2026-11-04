@@ -217,6 +217,15 @@ export function CheckoutPage() {
     error: addressLoad.error,
     count: addresses.length,
   });
+  // The saved-address read has settled into a real answer (an address exists, or
+  // the account genuinely has none). Until it has, the card below must not claim
+  // "No delivery address selected" — a read in flight or a failed read is not an
+  // empty list (CUS-18), and painting that row then removing it was the -41px
+  // shift inside the 0.31-0.44 CLS window.
+  //
+  // Stated as "settled" rather than by listing the unsettled states, so the
+  // pending flag cannot drift from `classifyAddressLoad`'s own contract.
+  const addressSettled = addressLoadState === "ready" || addressLoadState === "empty";
 
   // R8: live server quote for delivery + packaging. Quotes on entry and on any
   // change of address/store/fulfillment; stale answers are dropped in the store.
@@ -1213,34 +1222,54 @@ export function CheckoutPage() {
 
         {/* R8: delivery/order price state. PAY is disabled while the server is
             still quoting, when the address is unserviceable, or on an outage —
-            with an honest retry and, for delivery, takeaway as the escape. */}
-        {quoteView.message && !quoteView.payEnabled && (
+            with an honest retry and, for delivery, takeaway as the escape.
+
+            CLS: this banner used to MOUNT when a quote was pending and UNMOUNT
+            when it became ready. Measured on the deployed bundle it mounted at
+            +141px (t~700) and unmounted at -141px (t~1956), the largest single
+            contributor to a 0.309/0.439/0.439 session-window CLS. The slot is
+            therefore always present (for delivery) and only its CONTENTS swap;
+            `min-h` reserves one message line plus the action row so none of the
+            four states can change the page height. */}
+        {(isDelivery || (quoteView.message && !quoteView.payEnabled)) && (
           <div
+            data-quote-status-slot
             role="status"
             aria-live="polite"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-large)] border border-warning/30 bg-warning/10 p-4 type-body-medium text-warning-text"
+            className={cn(
+              // 8.75rem ≈ the measured 141px: one wrapped message line plus the
+              // action row (p-4 + body line + 44px control + gap). Anything
+              // smaller would still let the ready state collapse the space the
+              // loading state needed.
+              "min-h-[8.75rem] rounded-[var(--radius-large)]",
+              quoteView.message && !quoteView.payEnabled && "border border-warning/30 bg-warning/10",
+            )}
           >
-            <span>{quoteView.message}</span>
-            <span className="flex items-center gap-2">
-              {quoteView.canRetry && (
-                <button
-                  type="button"
-                  onClick={() => void refreshQuote()}
-                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-full bg-warning/20 px-4 type-button-sm transition-colors hover:bg-warning/30"
-                >
-                  Retry
-                </button>
-              )}
-              {isDelivery && quoteView.takeawaySelectable && (
-                <button
-                  type="button"
-                  onClick={() => setFulfillment("takeaway")}
-                  className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-full bg-warning/20 px-4 type-button-sm transition-colors hover:bg-warning/30"
-                >
-                  Switch to Takeaway
-                </button>
-              )}
-            </span>
+            {quoteView.message && !quoteView.payEnabled && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 type-body-medium text-warning-text">
+                <span>{quoteView.message}</span>
+                <span className="flex items-center gap-2">
+                  {quoteView.canRetry && (
+                    <button
+                      type="button"
+                      onClick={() => void refreshQuote()}
+                      className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-full bg-warning/20 px-4 type-button-sm transition-colors hover:bg-warning/30"
+                    >
+                      Retry
+                    </button>
+                  )}
+                  {quoteView.takeawaySelectable && (
+                    <button
+                      type="button"
+                      onClick={() => setFulfillment("takeaway")}
+                      className="inline-flex min-h-11 shrink-0 cursor-pointer items-center rounded-full bg-warning/20 px-4 type-button-sm transition-colors hover:bg-warning/30"
+                    >
+                      Switch to Takeaway
+                    </button>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -1263,6 +1292,12 @@ export function CheckoutPage() {
             fulfillment={fulfillment}
             store={activeStore}
             selectedAddress={selectedAddress}
+            // CLS: the card must not paint "No delivery address selected"
+            // before the read has answered. It was rendering that row at t~700
+            // and removing it at t~1113 (-41px) inside the poor-CLS window. A
+            // failed read is not an empty list either (CUS-18) — the address
+            // block below owns that error copy and its retry.
+            addressPending={isDelivery && !addressSettled}
             tableNumber={tableNumber}
             onTableNumberChange={(t) => setTableNumber(t)}
           />
