@@ -461,6 +461,46 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
   );
 
   // -------------------------------------------------------------------------
+  // 2b. CANCEL-ARM KEY MASK (proven silent gap, 4 Nov 2026)
+  //
+  // The customer cancel arm names only status/completedAt/updatedAt, but no
+  // test wrote the CANCELLED shape PLUS a protected field, so widening the
+  // mask (e.g. adding 'totals') survived the suite untouched. These two are
+  // paired: the DENY is the mutant-biting assertion, the ALLOW is the genuine
+  // CANCELLED-only control that must keep passing so the arm is not simply
+  // broken closed.
+  // -------------------------------------------------------------------------
+
+  it(
+    "dec01-cancel-deny: customer CANCELLED patch cannot smuggle a server-owned field",
+    { timeout: 120000 },
+    async () => {
+      const custDb = databaseFor({ label: "customer(order owner)", uid: CUSTOMER_UID });
+      await assertFails(
+        updateDoc(doc(custDb, "orders", OWN_ORDER), {
+          status: { code: "CANCELLED", kind: "cancelled", label: "Cancelled", terminal: true },
+          completedAt: new Date().toISOString(),
+          totals: { subtotal: 1, grandTotal: 1 },
+        }),
+      );
+    },
+  );
+
+  it(
+    "dec01-cancel-allow: customer CANCELLED-only patch still succeeds",
+    { timeout: 120000 },
+    async () => {
+      const custDb = databaseFor({ label: "customer(order owner)", uid: CUSTOMER_UID });
+      await assertSucceeds(
+        updateDoc(doc(custDb, "orders", OWN_ORDER), {
+          status: { code: "CANCELLED", kind: "cancelled", label: "Cancelled", terminal: true },
+          completedAt: new Date().toISOString(),
+        }),
+      );
+    },
+  );
+
+  // -------------------------------------------------------------------------
   // 3. CREATE-WITH-ITEMS CONTRACT (not blanket-denied)
   // -------------------------------------------------------------------------
 

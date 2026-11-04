@@ -218,6 +218,20 @@ describe("F3 a chat message cannot forge its sender identity", () => {
     );
   });
 
+  it("DENIES a foreign senderId while every other field stays the customer's own", async () => {
+    // The case above changes senderId AND senderRole, so the role guard alone
+    // denies it. Here only senderId is foreign: senderRole "customer" matches
+    // the caller's token, readBy/chatId/keys are unchanged, and the caller is a
+    // thread participant. That leaves the senderId == auth.uid pin as the sole
+    // reason for denial, so removing it (and nothing else) must flip this test.
+    await assertFails(
+      addDoc(
+        collection(customerDb(), "chats", "chat_pair_01", "messages"),
+        legit({ senderId: FOREIGN_UID }),
+      ),
+    );
+  });
+
   it("DENIES a message that impersonates support with its own uid but a staff role", async () => {
     await assertFails(
       addDoc(
