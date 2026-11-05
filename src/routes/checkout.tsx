@@ -151,6 +151,7 @@ export function CheckoutPage() {
   const setFulfillment = useStoreSelection((s) => s.setFulfillment);
 
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
+  const isBootstrapped = useAuthStore((s) => s.isBootstrapped);
   const user = useAuthStore((s) => s.user);
 
   const orderNotes = useCheckoutStore((s) => s.orderNotes);
@@ -173,7 +174,7 @@ export function CheckoutPage() {
   }>({ loading: true, error: null });
   const [addressReload, setAddressReload] = React.useState(0);
   React.useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !isBootstrapped) return;
     // Signed-out visitors have no server collection; the local (guest) list is
     // all there is and it needs no read.
     if (!isAuthenticated) {
@@ -211,7 +212,7 @@ export function CheckoutPage() {
     return () => {
       active = false;
     };
-  }, [hydrated, isAuthenticated, user?.id, addressReload]);
+  }, [hydrated, isBootstrapped, isAuthenticated, user?.id, addressReload]);
   const addressLoadState = classifyAddressLoad({
     loading: addressLoad.loading,
     error: addressLoad.error,

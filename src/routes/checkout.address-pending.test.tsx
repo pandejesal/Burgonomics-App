@@ -110,17 +110,32 @@ vi.mock("@/features/checkout", async () => {
   };
 });
 vi.mock("@/features/checkout/components/QuickAuthSheet", () => ({ QuickAuthSheet: () => null }));
-vi.mock("@/features/auth/state/authStore", () => {
-  const authState = {
+vi.mock("@/features/auth/state/authStore", async () => {
+  const { create } = await import("zustand");
+  const useAuthStore = create<{
+    status: "idle" | "guest" | "authenticated" | "unauthenticated" | "error";
+    user: { id: string; name?: string; phone: string } | null;
+    accessToken: string | null;
+    refreshToken: string | null;
+    isBootstrapped: boolean;
+    error: string | null;
+  }>()(() => ({
+    status: "authenticated",
     user: { id: "cust_pending", name: "Test Customer", phone: "+910000000000" },
+    accessToken: "tok_test",
+    refreshToken: "ref_test",
     isBootstrapped: true,
-  };
+    error: null,
+  }));
   return {
-    useAuthStore: Object.assign((select: (s: typeof authState) => unknown) => select(authState), {
-      getState: () => authState,
-      subscribe: () => () => {},
-    }),
-    selectIsAuthenticated: (s: { user: unknown }) => !!s.user,
+    useAuthStore,
+    selectIsAuthenticated: (s: {
+      status: string;
+      accessToken: string | null;
+      user: { id?: string; phone?: string } | null;
+    }) =>
+      s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone,
+    selectIsGuest: (s: { status: string }) => s.status !== "authenticated",
   };
 });
 // The REAL address store, so a resolution actually re-renders the page; only
@@ -199,6 +214,7 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useCheckoutStore } from "@/features/checkout";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { useAddressStore } from "@/features/addresses";
+import { useAuthStore } from "@/features/auth/state/authStore";
 import type { Store } from "@/features/stores/models/Store";
 import { Route as CheckoutRoute } from "./checkout";
 
@@ -266,6 +282,14 @@ beforeEach(() => {
     fulfillment: "delivery",
     fulfillmentStatus: "selected",
     isHydrated: true,
+  });
+  useAuthStore.setState({
+    status: "authenticated",
+    user: { id: "cust_pending", name: "Test Customer", phone: "+910000000000" },
+    accessToken: "tok_test",
+    refreshToken: "ref_test",
+    isBootstrapped: true,
+    error: null,
   });
   container = document.createElement("div");
   document.body.append(container);
@@ -364,5 +388,145 @@ describe("checkout feeds the address read's state into the delivery card", () =>
     });
     await flush();
     expect(text()).toContain("12 Late Street");
+  });
+
+  it("holds address pending during auth pre-bootstrap and transitions to authenticated read without false empty", async () => {
+    useAuthStore.setState({
+      status: "idle",
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      isBootstrapped: false,
+      error: null,
+    });
+
+    let settleHydrate: (value: unknown) => void = () => {};
+    fixture.hydrate.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settleHydrate = resolve;
+        }),
+    );
+
+    await act(async () => root.render(<CheckoutPage />));
+    await flush();
+
+    expect(text()).toContain("1. Delivery Details");
+    expect(text()).not.toContain("No delivery address selected");
+    expect(text()).not.toContain("+ Add Address");
+    expect(fixture.hydrate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      useAuthStore.setState({
+        status: "authenticated",
+        user: { id: "cust_pending", name: "Test Customer", phone: "+910000000000" },
+        accessToken: "tok_test",
+        refreshToken: "ref_test",
+        isBootstrapped: true,
+        error: null,
+      });
+    });
+    await flush();
+
+    expect(fixture.hydrate).toHaveBeenCalledTimes(1);
+    expect(text()).not.toContain("No delivery address selected");
+
+    await act(async () => {
+      settleHydrate({ success: true, data: [ADDRESS_ROW] });
+    });
+    await flush();
+
+    expect(text()).toContain("12 Late Street");
+    expect(text()).not.toContain("No delivery address selected");
+  });
+
+  it("settles to honest empty selection for a bootstrapped guest with no addresses", async () => {
+    useAuthStore.setState({
+      status: "guest",
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      isBootstrapped: true,
+      error: null,
+    });
+
+    await act(async () => root.render(<CheckoutPage />));
+    await flush();
+
+    expect(fixture.hydrate).not.toHaveBeenCalled();
+    expect(text()).toContain("1. Delivery Details");
+    expect(text()).toContain("No delivery address selected");
+  });
+
+  it("ignores stale in-flight address failure from previous user scope when auth user changes", async () => {
+    let settleHydrateA: (value: unknown) => void = () => {};
+    let settleHydrateB: (value: unknown) => void = () => {};
+    let callCount = 0;
+
+    fixture.hydrate.mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Promise((resolve) => {
+          settleHydrateA = resolve;
+        });
+      }
+      return new Promise((resolve) => {
+        settleHydrateB = resolve;
+      });
+    });
+
+    // Mount under User A
+    useAuthStore.setState({
+      status: "authenticated",
+      user: { id: "cust_a", name: "User A", phone: "+911111111111" },
+      accessToken: "tok_a",
+      refreshToken: "ref_a",
+      isBootstrapped: true,
+      error: null,
+    });
+
+    await act(async () => root.render(<CheckoutPage />));
+    await flush();
+
+    expect(fixture.hydrate).toHaveBeenCalledTimes(1);
+
+    // Same mounted page switches to User B (triggers 2nd deferred read)
+    await act(async () => {
+      useAuthStore.setState({
+        status: "authenticated",
+        user: { id: "cust_b", name: "User B", phone: "+912222222222" },
+        accessToken: "tok_b",
+        refreshToken: "ref_b",
+        isBootstrapped: true,
+        error: null,
+      });
+    });
+    await flush();
+
+    expect(fixture.hydrate).toHaveBeenCalledTimes(2);
+
+    // Settle OLD A with failure while B's read is still pending
+    await act(async () => {
+      settleHydrateA({
+        success: false,
+        error: { code: "READ_FAILED", message: "old scope address failed" },
+      });
+    });
+    await flush();
+
+    // Stale error must be ignored by active=false flag; B remains pending
+    expect(text()).not.toContain("old scope address failed");
+    expect(text()).not.toContain("No delivery address selected");
+
+    // Settle B with success
+    await act(async () => {
+      settleHydrateB({ success: true, data: [ADDRESS_ROW] });
+    });
+    await flush();
+
+    // User B row painted, no stale error
+    expect(text()).toContain("12 Late Street");
+    expect(text()).not.toContain("old scope address failed");
+    expect(text()).not.toContain("No delivery address selected");
   });
 });
