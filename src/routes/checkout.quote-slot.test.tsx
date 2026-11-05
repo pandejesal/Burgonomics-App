@@ -357,4 +357,28 @@ describe("quote status reserves its footprint across the whole session", () => {
     // "still getting your order price" banner must survive unchanged.
     expect(text()).toContain("Getting your order price");
   });
+
+  it("keeps message and actions in a stable vertical column across quote states", async () => {
+    for (const state of [LOADING, UNSERVICEABLE, FAILED]) {
+      await act(async () => root.unmount());
+      container.remove();
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
+      await mountWithQuote(state);
+      const inner = quoteSlot()?.firstElementChild as HTMLElement | null;
+      expect(inner).not.toBeNull();
+      expect(inner?.className).toContain("flex-col");
+      expect(inner?.className).toContain("items-start");
+      expect(inner?.className).not.toContain("flex-wrap");
+      expect(inner?.className).not.toContain("justify-between");
+    }
+    await act(async () => root.unmount());
+    container.remove();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await mountWithQuote(READY);
+    expect(quoteSlot()?.firstElementChild).toBeNull();
+  });
 });

@@ -1247,7 +1247,7 @@ export function CheckoutPage() {
             )}
           >
             {quoteView.message && !quoteView.payEnabled && (
-              <div className="flex flex-wrap items-center justify-between gap-3 p-4 type-body-medium text-warning-text">
+              <div className="flex flex-col items-start gap-3 p-4 type-body-medium text-warning-text">
                 <span>{quoteView.message}</span>
                 <span className="flex items-center gap-2">
                   {quoteView.canRetry && (
