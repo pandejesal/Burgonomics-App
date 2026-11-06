@@ -124,26 +124,28 @@ export function PromoInput({ applied, onChanged, showBrowseLink = true }: Props)
   return (
     <div className="space-y-2">
       <form onSubmit={apply} className="space-y-1">
-        <label className="flex items-center gap-2 rounded-[var(--radius-medium)] border border-text-secondary/60 bg-surface px-3">
-          <Tag className="h-4 w-4 text-text-secondary" aria-hidden />
-          <input
-            type="text"
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value.toUpperCase());
-              if (error) setError(null);
-            }}
-            placeholder="Enter coupon code"
-            aria-label="Coupon code"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            className="min-h-[44px] min-w-0 flex-1 bg-transparent outline-none type-body-large placeholder:text-text-placeholder"
-          />
+        <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-medium)] border border-text-secondary/60 bg-surface px-3">
+          <label className="flex min-w-0 flex-[1_1_8rem] items-center gap-2">
+            <Tag className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value.toUpperCase());
+                if (error) setError(null);
+              }}
+              placeholder="Enter coupon code"
+              aria-label="Coupon code"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="min-h-[44px] min-w-0 flex-1 bg-transparent outline-none type-body-large placeholder:text-text-placeholder"
+            />
+          </label>
           <AppButton type="submit" variant="ghost" size="sm" disabled={!code.trim()} loading={busy}>
             Apply
           </AppButton>
-        </label>
+        </div>
         {error && (
           <Text variant="caption" tone="error" role="alert">
             {error}

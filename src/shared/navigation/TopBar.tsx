@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ArrowLeft } from "lucide-react";
 import { isIOS } from "@/shared/platform/platform";
 import { HapticService } from "@/core/services/haptics";
+import { useRootHeightVar } from "@/shared/hooks/useRootHeightVar";
 import { cn } from "@/lib/utils";
 
 interface TopBarProps {
@@ -16,6 +17,9 @@ interface TopBarProps {
 export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarProps) {
   const ios = isIOS();
   const BackIcon = ios ? ChevronLeft : ArrowLeft;
+  // This bar is `sticky top-0`; publish its real height so the document
+  // scroller can keep a Tab-focused control from landing underneath it.
+  const chromeRef = useRootHeightVar("--top-chrome-height");
 
   const handleBack = () => {
     void HapticService.impact("light");
@@ -24,6 +28,7 @@ export function TopBar({ title, backTo, onBack, rightSlot, className }: TopBarPr
 
   return (
     <header
+      ref={chromeRef}
       className={cn(
         "sticky top-0 z-30 flex min-h-[calc(3.5rem_+_env(safe-area-inset-top,0px))] items-center gap-2 border-b border-divider bg-surface/95 px-2 pt-[env(safe-area-inset-top,0px)] text-text-primary backdrop-blur-md",
         ios && "justify-between",

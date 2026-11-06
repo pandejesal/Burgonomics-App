@@ -8,6 +8,7 @@ import { formatINR } from "@/core/utils/format";
 import { HapticService } from "@/core/services/haptics";
 import { useCartStore, selectItemCount } from "@/features/cart/state/cartStore";
 import { useHydrated } from "@/shared/hooks/useHydrated";
+import { useRootHeightVar } from "@/shared/hooks/useRootHeightVar";
 
 interface FloatingCartBarProps {
   className?: string;
@@ -30,6 +31,10 @@ export function FloatingCartBar({
   const hydrated = useHydrated();
   const lines = useCartStore((s) => s.lines);
   const itemCount = useCartStore(selectItemCount);
+  // The fixed (non-inline) bar sits above the page, so the document scroller
+  // has to reserve its measured height for keyboard focus. An inline bar is in
+  // the flow already and must not claim viewport space.
+  const barRef = useRootHeightVar("--floating-cart-height", !inline);
 
   const subtotal = React.useMemo(() => {
     return lines.reduce((sum, l) => sum + (l.unitPrice || 0) * (l.quantity || 1), 0);
@@ -52,6 +57,7 @@ export function FloatingCartBar({
   const content = (
     <AnimatePresence>
       <motion.aside
+        ref={barRef}
         aria-label={`Floating cart summary, ${itemCount} items, total ${formatINR(subtotal)}`}
         initial={{ y: 80, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}

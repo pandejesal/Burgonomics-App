@@ -100,6 +100,7 @@ function CartPage() {
   // route to reserve. A ref callback fires exactly when this node mounts and
   // again with `null` when it goes away, so attach and cleanup cannot drift
   // from the bar's real lifecycle.
+  const [summaryPinned, setSummaryPinned] = React.useState(true);
   const summaryCleanup = React.useRef<(() => void) | null>(null);
   const attachSummary = React.useCallback((node: HTMLDivElement | null) => {
     // Detach whatever the previous node owned before deciding about this one.
@@ -108,12 +109,25 @@ function CartPage() {
 
     if (!node || typeof document === "undefined") return;
     const root = document.documentElement;
+    let attached = true;
     const apply = () => {
+      if (!attached) return;
       const height = Math.ceil(node.getBoundingClientRect().height);
-      // 0 means "not laid out yet"; leave the fallback in place rather than
-      // publishing a height that would collapse the reserved space.
-      if (height <= 0) return;
-      root.style.setProperty("--cart-summary-height", `${height}px`);
+      if (!Number.isFinite(height) || height <= 0) {
+        root.style.removeProperty("--cart-summary-height");
+        return;
+      }
+      const css = getComputedStyle(root);
+      const top = parseFloat(css.getPropertyValue("--top-chrome-height")) || 56;
+      const bottom = parseFloat(css.getPropertyValue("--bottom-nav-offset")) || 86;
+      const viewport = window.visualViewport?.height ?? window.innerHeight;
+      // A241px summary +86px nav +56px header left NO usable band at390px
+      // height (360/200% native zoom). Padding cannot fix an empty scrollport.
+      // Keep at least half the viewport and a44px control + two8px gaps free;
+      // otherwise the same summary stays reachable in normal document flow.
+      const pinned = height < viewport / 2 && viewport - top - bottom - height >= 60;
+      setSummaryPinned(pinned);
+      root.style.setProperty("--cart-summary-height", pinned ? `${height}px` : "0px");
     };
     // Remove ONLY the property this component owns. The nav bar's offset and
     // any other root-level style belong to their own owners and must survive a
@@ -122,20 +136,18 @@ function CartPage() {
       root.style.removeProperty("--cart-summary-height");
     };
 
-    apply();
-
-    // Register the cleanup BEFORE the observer branch: without a
-    // ResizeObserver this must still release the property it just wrote,
-    // otherwise an older engine leaks the height for the life of the document.
-    summaryCleanup.current = release;
-
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(apply);
-    observer.observe(node);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    observer?.observe(node);
+    window.addEventListener("resize", apply);
+    window.visualViewport?.addEventListener("resize", apply);
     summaryCleanup.current = () => {
-      observer.disconnect();
+      attached = false;
+      observer?.disconnect();
+      window.removeEventListener("resize", apply);
+      window.visualViewport?.removeEventListener("resize", apply);
       release();
     };
+    apply();
   }, []);
 
   // Defensive, not load-bearing. React DOES call a ref callback with `null`
@@ -304,7 +316,10 @@ function CartPage() {
       bottomSlot={
         <div
           ref={attachSummary}
-          className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))] z-30 border-t border-divider bg-surface p-4"
+          data-testid="cart-summary"
+          className={`border-t border-divider bg-surface p-4 ${summaryPinned
+            ? "fixed inset-x-0 bottom-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))] z-30"
+            : "relative mb-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))]"}`}
         >
           <div className="mx-auto flex max-w-[520px] flex-wrap items-center justify-between gap-3">
             <div>

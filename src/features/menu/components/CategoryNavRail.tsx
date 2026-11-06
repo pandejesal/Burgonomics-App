@@ -37,6 +37,20 @@ interface AlignedGeometry {
   scrollWidth: number;
 }
 
+function revealFocusedChip(event: React.FocusEvent<HTMLElement>) {
+  const rail = event.currentTarget, chip = event.target;
+  if (!(chip instanceof HTMLElement) || chip === rail || rail.clientWidth <= 8) return;
+  const bounds = rail.getBoundingClientRect(), target = chip.getBoundingClientRect();
+  const left = bounds.left + rail.clientLeft + 4;
+  const right = bounds.left + rail.clientLeft + rail.clientWidth - 4;
+  // The view-toggle group sits next to this local scrollport. Native focus
+  // can leave a chip behind that sibling; reveal it without selecting/jumping.
+  const delta = target.width > right - left || target.left < left
+    ? target.left - left
+    : Math.max(0, target.right - right);
+  if (delta) rail.scrollLeft += delta;
+}
+
 /**
  * CategoryNavRail — sticky horizontal category navigation.
  *
@@ -161,6 +175,7 @@ export function CategoryNavRail({
       <nav
         ref={scrollRef}
         aria-label="Menu categories"
+        onFocusCapture={revealFocusedChip}
         className="relative flex items-center gap-2 overflow-x-auto no-scrollbar select-none py-1 overscroll-x-contain"
         style={{
           WebkitOverflowScrolling: "touch",

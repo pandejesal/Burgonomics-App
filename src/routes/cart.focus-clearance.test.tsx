@@ -475,6 +475,54 @@ describe("cart publishes the measured summary height", () => {
   });
 });
 
+describe("cart summary leaves usable space in short zoomed viewports", () => {
+  it("moves an over-tall summary into flow rather than covering the entire focus band", async () => {
+    vi.stubGlobal("innerHeight", 390);
+    await mountCart(); stubSummaryHeights(241);
+    await act(async () => allObservers().forEach(observer => observer.trigger()));
+    const summary = document.querySelector<HTMLElement>('[data-testid="cart-summary"]');
+    expect(summary).not.toBeNull();
+    expect(summary!.className.split(/\s+/)).not.toContain("fixed");
+    expect(summary!.className).toContain("--bottom-nav-offset");
+    expect(rootHeightVar()).toBe("0px");
+  });
+  it("returns to a pinned summary when only the viewport height grows", async () => {
+    vi.stubGlobal("innerHeight", 390);
+    await mountCart(); stubSummaryHeights(241);
+    await act(async () => allObservers().forEach(observer => observer.trigger()));
+    expect(rootHeightVar()).toBe("0px");
+    vi.stubGlobal("innerHeight", 844);
+    await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(document.querySelector('[data-testid="cart-summary"]')!.className.split(/\s+/)).toContain("fixed");
+    expect(rootHeightVar()).toBe("241px");
+  });
+  it("also recomputes viewport fit without ResizeObserver", async () => {
+    vi.stubGlobal("ResizeObserver", undefined); vi.stubGlobal("innerHeight", 390);
+    await mountCart(); stubSummaryHeights(241);
+    await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(document.querySelector('[data-testid="cart-summary"]')).not.toBeNull();
+    expect(rootHeightVar()).toBe("0px");
+  });
+  it("ignores a queued observer after the summary unmounts", async () => {
+    await mountCart(); stubSummaryHeights(162);
+    const observers = allObservers();
+    await act(async () => observers.forEach(observer => observer.trigger()));
+    expect(rootHeightVar()).toBe("162px");
+    await act(async () => root!.unmount()); root = null;
+    await act(async () => observers.forEach(observer => observer.trigger()));
+    expect(rootHeightVar()).toBe("");
+  });
+  it("does not retain or publish a zero or non-finite measured clearance", async () => {
+    await mountCart(); stubSummaryHeights(162);
+    await act(async () => allObservers().forEach(observer => observer.trigger()));
+    for (const height of [0, Number.NaN]) {
+      stubSummaryHeights(height);
+      await act(async () => allObservers().forEach(observer => observer.trigger()));
+      expect(rootHeightVar()).toBe("");
+    }
+  });
+});
+
 describe("cart content padding clears the fixed chrome", () => {
   it("derives the content padding from the measured summary, not a fixed 10rem", async () => {
     await mountCart();

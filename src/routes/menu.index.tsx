@@ -28,6 +28,7 @@ import type { MenuCategoryModel, Product, ProductDetails } from "@/features/menu
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
 import { ProductCustomizerModal } from "@/features/menu/components/ProductCustomizerModal";
 import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
+import { useRootHeightVar } from "@/shared/hooks/useRootHeightVar";
 import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { cn } from "@/lib/utils";
@@ -105,6 +106,17 @@ function MenuPage() {
   const [deepLinkNotice, setDeepLinkNotice] = React.useState<string | null>(null);
 
   const stickyRef = React.useRef<HTMLDivElement | null>(null);
+  // The rail is a second sticky band under the TopBar; publish its measured
+  // height so `scroll-padding-top` covers app bar + rail together. Section
+  // jumps keep their own measured `scrollMarginTop` contract below.
+  const railHeightRef = useRootHeightVar("--menu-rail-height");
+  const attachStickyChrome = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      stickyRef.current = node;
+      railHeightRef(node);
+    },
+    [railHeightRef],
+  );
   // 195 = 56px app bar + ~131px sticky rail + 8px gap, the launch chrome on a
   // phone. The rail re-measures itself on mount/resize; starting here means a
   // cold deep link cannot scroll a heading under chrome that has not been
@@ -636,9 +648,9 @@ function MenuPage() {
             {/* Sticky chrome: category rail + view toggle. Its measured height
                 is the scroll margin for every section jump. */}
             <div
-              ref={stickyRef}
+              ref={attachStickyChrome}
               className={cn(
-                "sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 backdrop-blur-md shadow-sm border-b border-divider",
+                "sticky top-[var(--top-chrome-height,calc(3.5rem+env(safe-area-inset-top,0px)))] z-20 bg-surface/95 backdrop-blur-md shadow-sm border-b border-divider",
                 viewMode === "grid" && "flex items-center",
               )}
             >

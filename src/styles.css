@@ -360,8 +360,22 @@
        reserves space it does not need. `html` is the document scroller here
        (see the overflow note below), which is why this rule lives on `html`
        rather than on `body` or `:root`-adjacent containers. */
+    /* Top chrome: the sticky TopBar publishes `--top-chrome-height`, and the
+       /menu category rail publishes `--menu-rail-height` while it is mounted.
+       Without this the browser scrolled a Tab-focused control only as far as
+       the viewport edge, which put it directly underneath the sticky bar (the
+       dominant failure in the hosted 56-row matrix). Both values are measured
+       at runtime, because the bar's height is not a constant: the partner
+       header wraps at 200% text and this rail changes with the view toggle. */
+    scroll-padding-top: calc(
+      var(--top-chrome-height, 0px) + var(--menu-rail-height, 0px) + 8px
+    );
+    /* Bottom chrome: nav + the cart page's measured summary + the menu's fixed
+       floating cart bar. Only one of the last two exists per route, so the
+       missing one contributes its 0px fallback. */
     scroll-padding-bottom: calc(
-      var(--bottom-nav-offset, 86px) + var(--cart-summary-height, 0px) + 8px
+      var(--bottom-nav-offset, 86px) + var(--cart-summary-height, 0px) +
+        var(--floating-cart-height, 0px) + 8px
     );
   }
 
