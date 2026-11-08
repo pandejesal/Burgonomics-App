@@ -184,6 +184,7 @@ vi.mock("@/features/payments/components/PaymentRecoveryPanel", () => ({
 
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
+import type { CheckoutFeesState } from "@/features/checkout/state/checkoutFeesTypes";
 vi.mock("@/features/checkout/services/checkoutQuote", () => ({
   quoteCheckoutFees: vi.fn(async () => ({ status: "ready" })),
 }));
@@ -230,6 +231,26 @@ const totals = (subtotal: number, grandTotal: number) => ({
 let container: HTMLDivElement;
 let root: Root;
 
+/**
+ * R8/D3: PAY is gated on a quote for the SELECTED fulfillment. The old fixture
+ * seeded one ready DELIVERY quote for every case (and the checkoutQuote mock
+ * never replaces it), so a takeaway case was "ready" on a courier fare the
+ * server never quoted — the exact defect D3 fixes. Build the fixture per mode;
+ * the mismatch-negative case below seeds the wrong mode explicitly.
+ */
+function readyQuoteFor(fulfillment: Fulfillment): CheckoutFeesState {
+  const base = {
+    status: "ready" as const,
+    packagingFee: 0,
+    deliveryFee: 0,
+    provider: fulfillment === "delivery" ? "test" : null,
+    expiresAt: fulfillment === "delivery" ? Date.now() + 3_600_000 : null,
+  };
+  return fulfillment === "delivery"
+    ? { ...base, orderType: "delivery", deliveryQuoteId: "q_test" }
+    : { ...base, orderType: fulfillment, deliveryQuoteId: null };
+}
+
 function seedSelection(fulfillment: Fulfillment | null, activeStore: Store | null) {
   useStoreSelection.setState({
     activeStore,
@@ -237,6 +258,8 @@ function seedSelection(fulfillment: Fulfillment | null, activeStore: Store | nul
     fulfillmentStatus: fulfillment ? "selected" : "none",
     isHydrated: true,
   });
+  // Keep the seeded quote in step with the mode under test.
+  if (fulfillment) useCheckoutStore.setState({ checkoutFees: readyQuoteFor(fulfillment) });
 }
 
 beforeEach(() => {
@@ -256,18 +279,10 @@ beforeEach(() => {
   usePaymentStore.getState().reset();
   useCheckoutStore.getState().reset();
   // R8: these cases test order/cleanup behaviour, not the quote state machine;
-  // seed a live ready quote so PAY is gated on the flow under test.
-  useCheckoutStore.setState({
-    checkoutFees: {
-      status: "ready",
-      orderType: "delivery",
-      packagingFee: 0,
-      deliveryFee: 0,
-      deliveryQuoteId: "q_test",
-      provider: "test",
-      expiresAt: Date.now() + 3_600_000,
-    },
-  });
+  // seed a live ready quote so PAY is gated on the flow under test. No mode is
+  // selected yet, so the delivery quote below is replaced as soon as a case
+  // picks a mode (see seedSelection).
+  useCheckoutStore.setState({ checkoutFees: readyQuoteFor("delivery") });
   seedSelection(null, store);
   container = document.createElement("div");
   document.body.append(container);
@@ -389,12 +404,31 @@ describe("checkout — null fulfillment is an honest, blocking state", () => {
     expect(payButton().disabled).toBe(true);
 
     await act(async () => useStoreSelection.getState().setFulfillment("takeaway"));
+    // Fixture only: the quote must belong to the mode just selected (D3). The
+    // real hook re-quotes on the mode change; this suite mocks it out.
+    await act(async () => useCheckoutStore.setState({ checkoutFees: readyQuoteFor("takeaway") }));
     await act(async () => {});
 
     // Real store selection now holds the explicit choice; no default was guessed.
     expect(useStoreSelection.getState().fulfillment).toBe("takeaway");
     expect(container.textContent).toContain("1. Pickup Location");
     expect(payButton().disabled).toBe(false);
+  });
+
+  it("keeps PAY blocked while the ready quote belongs to another mode", async () => {
+    // The mismatch-negative the old fixture hid: a delivery quote is still in
+    // the store while takeaway is selected, and it must NOT unlock payment.
+    seedSelection("takeaway", store);
+    useCheckoutStore.setState({ checkoutFees: readyQuoteFor("delivery") });
+    await mount();
+
+    expect(payButton().disabled).toBe(true);
+    await act(async () => payButton().click());
+    await act(async () => {});
+
+    expect(fixture.createOrder).not.toHaveBeenCalled();
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.cart.validateCart).not.toHaveBeenCalled();
   });
 });
 

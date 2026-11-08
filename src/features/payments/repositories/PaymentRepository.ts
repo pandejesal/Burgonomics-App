@@ -72,6 +72,14 @@ export class PaymentRepository {
    */
   private createdCheckout: {
     fingerprint: string;
+    /**
+     * D1: the delivery quote this gateway order was minted against. A re-quote
+     * (409 DELIVERY_QUOTE_EXPIRED, or an expiry refresh) changes the payable
+     * amount, and the server answers a known idempotency key BEFORE it validates
+     * the quote — so the cached gateway order may never be handed back for a
+     * different quote. It then needs a new attempt on a new document.
+     */
+    deliveryQuoteId: string | null;
     internalOrderId: string;
     gatewayOrder: PaymentOrder | null;
   } | null = null;
@@ -252,6 +260,17 @@ export class PaymentRepository {
     const auth = useAuthStore.getState();
     const address = resume ? resume.address : selectSelectedAddress(useAddressStore.getState());
     const checkout = useCheckoutStore.getState();
+    // R8/D1: the delivery fee is server-quoted and the payment create binds to
+    // that exact quote. Resolved ONCE here — before any reuse decision — so the
+    // cached gateway order and the create call can never disagree about which
+    // quote they belong to. Off-delivery there is no quote id at all.
+    const deliveryQuoteId =
+      sel.fulfillment === "delivery"
+        ? (opts?.deliveryQuoteId ??
+          (checkout.checkoutFees.status === "ready"
+            ? (checkout.checkoutFees.deliveryQuoteId ?? undefined)
+            : undefined))
+        : undefined;
     // D31–D33: loyalty redemption is not offered to customers any more. The
     // transport pins 0 unconditionally — an explicit caller argument, a legacy
     // persisted value, or a deep link without the cart cannot redeem points.
@@ -297,18 +316,47 @@ export class PaymentRepository {
       loyaltyPointsToRedeem,
     };
 
-    // Checkout fingerprint: identifies "this attempt" — same store, same cart
-    // lines/prices, same promo/loyalty/tip. Computed BEFORE anything is created
-    // so a re-entry can recognise the checkout it already persisted (CUS-09).
+    // Checkout fingerprint: identifies "this attempt" — same store, same
+    // fulfillment (mode), same drop pin/address, same cart lines/prices, same
+    // promo/loyalty/tip. Computed BEFORE anything is created so a re-entry can
+    // recognise the checkout it already persisted (CUS-09).
     // Server reprices authoritatively from items + store pricing; the client
     // amount below is display-only.
     // CUS-16: a resumed attempt is identified by the ORDER id too. Two
     // different unpaid orders can carry the same basket, and the server binds
     // an idempotency key to one order (a live intent for another is refused);
     // the key must therefore never be shared across orders.
+    //
+    // D1: the mode and the delivery DROP ADDRESS are part of the identity. A
+    // takeaway order must never reuse the pending delivery document (which
+    // carries the old mode + address), and a changed address is a different
+    // delivery even when the map pin is identical (a moved flat/floor or a new
+    // contact at the same building). The identity therefore binds the ACTUAL
+    // address snapshot the order is created from — every field the document
+    // carries — plus the coordinates, which the snapshot omits. Off-delivery
+    // there is no address context: an unused selected address must not
+    // invalidate a takeaway checkout.
+    const snapshotAddress = checkoutSnapshot.address;
+    const contextAddressKey =
+      sel.fulfillment === "delivery" && snapshotAddress
+        ? [
+            snapshotAddress.label,
+            snapshotAddress.contactName,
+            snapshotAddress.contactPhone,
+            snapshotAddress.line1,
+            snapshotAddress.line2 ?? null,
+            snapshotAddress.city,
+            snapshotAddress.state,
+            snapshotAddress.pincode,
+            address?.lat ?? null,
+            address?.lng ?? null,
+          ]
+        : null;
     const fingerprint = JSON.stringify([
       opts?.resumeOrderId?.trim() || null,
       sel.activeStore.id,
+      sel.fulfillment,
+      contextAddressKey,
       cart.lines.map((l) => [l.productId, l.quantity, l.unitPrice]),
       cart.promo?.code || null,
       loyaltyPointsToRedeem || 0,
@@ -324,10 +372,47 @@ export class PaymentRepository {
         ? this.createdCheckout
         : null;
 
+    // D1: a gateway order already minted for this checkout may only be reused
+    // while it is still bound to the SAME delivery quote. The server's
+    // idempotency map answers BEFORE it validates the quote
+    // (`razorpay.service.ts`: reuse intent → verify order/cart/availability →
+    // *then* quote), so re-sending the old key after a re-quote would hand back
+    // the OLD gateway order and amount — that is, relabel a stale payable order
+    // as the new fare. Never that.
+    const quoteChangedAfterGateway =
+      !!recorded?.gatewayOrder && recorded.deliveryQuoteId !== (deliveryQuoteId ?? null);
+    // A re-quote AFTER a live gateway order therefore needs a NEW idempotent
+    // attempt: a fresh key (the old key still resolves to the old intent) bound
+    // to a fresh pending document (the old one describes the previous fare and
+    // cannot be rewritten — firestore.rules allow create only). The previous
+    // document and gateway order are left untouched for the server to expire.
+    // A 409 BEFORE any gateway attempt is unaffected: `recorded.gatewayOrder`
+    // is null there, so the same document AND key are retried idempotently.
+    const requiresFreshAttempt = !opts?.resumeOrderId && quoteChangedAfterGateway;
+
+    // D1: the requested id may belong to the document of a DIFFERENT checkout
+    // (mode switched delivery→takeaway, the drop pin moved, the basket
+    // changed) or to the previous fare after a re-quote. Adopting it would bind
+    // the new order to a document that still describes the old one — and
+    // `firestore.rules` refuse to rewrite it. Such an id is not reusable: a
+    // fresh pending document is created and the old one is left untouched for
+    // the server to expire.
+    const requestedIdBelongsToOtherCheckout =
+      requestedInternalId !== null &&
+      this.createdCheckout !== null &&
+      this.createdCheckout.fingerprint !== fingerprint &&
+      requestedInternalId === this.createdCheckout.internalOrderId;
+    const adoptableInternalId =
+      requiresFreshAttempt || requestedIdBelongsToOtherCheckout ? null : requestedInternalId;
+
     // A gateway order already minted for this exact checkout is reused as-is:
     // exactly ONE Razorpay order per attempt, on the server's own amount, and
     // no second order write or network round-trip.
-    if (!opts?.resumeOrderId && recorded?.gatewayOrder) {
+    if (
+      !opts?.resumeOrderId &&
+      recorded?.gatewayOrder &&
+      !quoteChangedAfterGateway
+    ) {
       usePaymentStore.getState().setInternalOrderId(recorded.internalOrderId);
       usePaymentStore
         .getState()
@@ -361,29 +446,27 @@ export class PaymentRepository {
       // history. Bind the gateway order to the existing id.
       internalOrderId = resumeOrderId;
       usePaymentStore.getState().setInternalOrderId(resumeOrderId);
-    } else if (recorded) {
+    } else if (recorded && !requiresFreshAttempt) {
       internalOrderId = recorded.internalOrderId;
     } else {
       const pending = await orderRepository.createFromCurrentContext({
-        confirmedOrderId: requestedInternalId ?? undefined,
+        // D1: a requested id that belongs to another checkout's document is
+        // never adopted — that doc still describes the old mode/address.
+        confirmedOrderId: adoptableInternalId ?? undefined,
         paymentMethod: "online",
         paymentStatus: "pending",
         paymentLabel: "Pay Online",
       });
       if (!pending.success) return pending;
       internalOrderId = pending.data.id;
-      this.createdCheckout = { fingerprint, internalOrderId, gatewayOrder: null };
+      this.createdCheckout = {
+        fingerprint,
+        deliveryQuoteId: deliveryQuoteId ?? null,
+        internalOrderId,
+        gatewayOrder: null,
+      };
     }
     usePaymentStore.getState().setInternalOrderId(internalOrderId);
-
-    // R8: the delivery fee is server-quoted; the payment create binds to that
-    // exact quote. Off-delivery there is no quote id at all.
-    const fees = useCheckoutStore.getState().checkoutFees;
-    const deliveryQuoteId =
-      sel.fulfillment === "delivery"
-        ? (opts?.deliveryQuoteId ??
-          (fees.status === "ready" ? (fees.deliveryQuoteId ?? undefined) : undefined))
-        : undefined;
 
     const orderRes = await this.service.createOrder({
       amount: totalsRes.data.grandTotal,
@@ -413,7 +496,18 @@ export class PaymentRepository {
       loyaltyPointsToRedeem,
       tipAmount,
       deliveryQuoteId,
-      idempotencyKey: this.idempotencyKeyFor(fingerprint),
+      // D1: the idempotency key is derived from the checkout identity PLUS the
+      // document this attempt is bound to, resolved AFTER the document exists.
+      //   - a re-quote after a live gateway order mints a NEW document, so the
+      //     key changes and the server cannot answer from the old intent
+      //     (it resolves a known key BEFORE it validates the quote);
+      //   - a 409 reprice on the SAME document, and any unchanged retry of a
+      //     failed/ambiguous gateway call, keep the SAME key — including when
+      //     the retry now sees `gatewayOrder: null` and no longer looks like a
+      //     "fresh attempt".
+      idempotencyKey: this.idempotencyKeyFor(
+        JSON.stringify([fingerprint, internalOrderId]),
+      ),
       checkoutToken,
       checkoutSnapshot,
     });
@@ -424,8 +518,14 @@ export class PaymentRepository {
         .getState()
         .setGatewayOrderId(orderRes.data.razorpayOrderId ?? orderRes.data.orderId ?? null);
       // Record the gateway order against the checkout that already owns the
-      // internal document, so a retry reuses this SAME payable order (CUS-09).
-      this.createdCheckout = { fingerprint, internalOrderId, gatewayOrder: orderRes.data };
+      // internal document, so a retry reuses this SAME payable order (CUS-09)
+      // — but only while it is still bound to the same delivery quote (D1).
+      this.createdCheckout = {
+        fingerprint,
+        deliveryQuoteId: deliveryQuoteId ?? null,
+        internalOrderId,
+        gatewayOrder: orderRes.data,
+      };
     } else {
       // Flip the pending internal order to failed ONLY when the failure is
       // provably pre-gateway: `INVALID_AMOUNT` is refused by the transport

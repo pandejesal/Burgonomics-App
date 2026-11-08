@@ -47,6 +47,7 @@ vi.mock("../src/features/checkout/state/checkoutStore", () => ({
       deliveryInstructions: "",
       pickupInstructions: "",
       diningNotes: "",
+      checkoutFees: { status: "idle" as const },
     }),
   },
 }));

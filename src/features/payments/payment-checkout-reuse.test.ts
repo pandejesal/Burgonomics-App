@@ -47,6 +47,7 @@ import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
+import { useAddressStore, type Address } from "@/features/addresses";
 
 const STORE = {
   id: "demo",
@@ -186,5 +187,211 @@ describe("CUS-09 — one orders/{id} and one Razorpay order per checkout", () =>
     expect(retry.success).toBe(true);
     expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
     expect(mocks.createOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("D1 — changed mode/drop pin never reuses the previous checkout", () => {
+  const takeawayGateway = {
+    orderId: "order_rzp_takeaway",
+    razorpayOrderId: "order_rzp_takeaway",
+    amount: 30,
+    currency: "INR" as const,
+    receipt: "rcpt_takeaway",
+    keyId: "rzp_test_cus09",
+  };
+  const movedPinGateway = {
+    orderId: "order_rzp_moved",
+    razorpayOrderId: "order_rzp_moved",
+    amount: 30,
+    currency: "INR" as const,
+    receipt: "rcpt_moved",
+    keyId: "rzp_test_cus09",
+  };
+
+  const deliveryAddress = (overrides: Partial<Address> = {}): Address => ({
+    id: "addr_cus09",
+    label: "home",
+    line1: "1 Test Street",
+    city: "Surat",
+    pincode: "395007",
+    lat: 21.15,
+    lng: 72.77,
+    isDefault: true,
+    ...overrides,
+  });
+
+  function seedDeliveryAddress(address: Address) {
+    useAddressStore.setState({ addresses: [address], selectedId: address.id });
+    useCheckoutStore.setState({
+      checkoutFees: {
+        status: "ready",
+        orderType: "delivery",
+        packagingFee: 20,
+        deliveryFee: 0,
+        deliveryQuoteId: "q_del_ctx",
+        provider: "test",
+        expiresAt: Date.now() + 60_000,
+      },
+    });
+  }
+
+  // Distinct returned document + gateway ids make a reuse detectable: the
+  // defect this covers adopted `ord_created_1`/`order_rzp_1` for a checkout the
+  // customer had already changed. The outer `vi.clearAllMocks()` clears call
+  // history only, so an unconsumed `...Once` from a PREVIOUS case would leak
+  // into the next one; reset the two mocks to their defaults here.
+  beforeEach(() => {
+    mocks.createFromCurrentContext.mockReset();
+    mocks.createOrder.mockReset();
+    mocks.createFromCurrentContext.mockResolvedValue({
+      success: true,
+      data: { id: "ord_created_1" },
+    });
+    mocks.createOrder.mockResolvedValue({ success: true, data: gatewayOrder });
+    useAddressStore.setState({ addresses: [], selectedId: null });
+  });
+
+  it("delivery → takeaway mints a fresh pending document and gateway order", async () => {
+    seedDeliveryAddress(deliveryAddress());
+    useStoreSelection.setState({ activeStore: STORE, fulfillment: "delivery" });
+    const repo = new PaymentRepository();
+
+    const delivery = await repo.createPaymentOrder();
+    expect(delivery.success).toBe(true);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOrder.mock.calls[0][0]).toMatchObject({ orderId: "ord_created_1" });
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
+    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_1");
+
+    // The customer switches to takeaway on the same basket.
+    mocks.createFromCurrentContext.mockResolvedValueOnce({
+      success: true,
+      data: { id: "ord_created_2" },
+    });
+    mocks.createOrder.mockResolvedValueOnce({ success: true, data: takeawayGateway });
+    useStoreSelection.setState({ activeStore: STORE, fulfillment: "takeaway" });
+
+    const takeaway = await repo.createPaymentOrder();
+
+    expect(takeaway.success).toBe(true);
+    // A new document is written — the delivery doc still carries the old mode.
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    // ...and the stale id is NOT adopted as its confirmed order.
+    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
+      confirmedOrderId: undefined,
+    });
+    expect(mocks.createOrder).toHaveBeenCalledTimes(2);
+    expect(mocks.createOrder.mock.calls[1][0]).toMatchObject({
+      orderId: "ord_created_2",
+      orderType: "takeaway",
+    });
+    // The old gateway order is never handed back for the new checkout.
+    expect(mocks.createOrder.mock.calls[1][0].orderId).not.toBe("ord_created_1");
+    if (takeaway.success) {
+      expect(takeaway.data.orderId).toBe("order_rzp_takeaway");
+    }
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_2");
+    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_takeaway");
+  });
+
+  it("a moved delivery drop pin is a new checkout, not a reuse", async () => {
+    seedDeliveryAddress(deliveryAddress());
+    useStoreSelection.setState({ activeStore: STORE, fulfillment: "delivery" });
+    const repo = new PaymentRepository();
+
+    const first = await repo.createPaymentOrder();
+    expect(first.success).toBe(true);
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
+
+    mocks.createFromCurrentContext.mockResolvedValueOnce({
+      success: true,
+      data: { id: "ord_created_3" },
+    });
+    mocks.createOrder.mockResolvedValueOnce({ success: true, data: movedPinGateway });
+    // Same mode, same basket — only the drop pin moved.
+    seedDeliveryAddress(deliveryAddress({ id: "addr_cus09_moved", lat: 21.19, lng: 72.79 }));
+
+    const moved = await repo.createPaymentOrder();
+
+    expect(moved.success).toBe(true);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
+      confirmedOrderId: undefined,
+    });
+    expect(mocks.createOrder).toHaveBeenCalledTimes(2);
+    expect(mocks.createOrder.mock.calls[1][0]).toMatchObject({ orderId: "ord_created_3" });
+    if (moved.success) expect(moved.data.orderId).toBe("order_rzp_moved");
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_3");
+    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_moved");
+  });
+
+  it("a changed address detail at the SAME pin is a new checkout, not a reuse", async () => {
+    seedDeliveryAddress(deliveryAddress({ line2: "Flat 2A", contactName: "Asha" }));
+    useStoreSelection.setState({ activeStore: STORE, fulfillment: "delivery" });
+    const repo = new PaymentRepository();
+
+    const first = await repo.createPaymentOrder();
+    expect(first.success).toBe(true);
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
+
+    mocks.createFromCurrentContext.mockResolvedValueOnce({
+      success: true,
+      data: { id: "ord_created_4" },
+    });
+    mocks.createOrder.mockResolvedValueOnce({ success: true, data: movedPinGateway });
+    // Same id, same line1, same coordinates — only the flat/contact changed, so
+    // a pin-only recipe would have adopted the old pending document.
+    seedDeliveryAddress(
+      deliveryAddress({ line2: "Flat 9B", contactName: "Ravi", contactPhone: "+919000000009" }),
+    );
+
+    const changed = await repo.createPaymentOrder();
+
+    expect(changed.success).toBe(true);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
+      confirmedOrderId: undefined,
+    });
+    expect(mocks.createOrder).toHaveBeenCalledTimes(2);
+    expect(mocks.createOrder.mock.calls[1][0]).toMatchObject({ orderId: "ord_created_4" });
+    if (changed.success) expect(changed.data.orderId).toBe("order_rzp_moved");
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_4");
+    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_moved");
+  });
+
+  it("takeaway is unaffected by a changed, unused selected address", async () => {
+    // Off-delivery the address is not part of the order, so editing it must not
+    // invalidate the pending takeaway document (no duplicate order).
+    seedDeliveryAddress(deliveryAddress());
+    useStoreSelection.setState({ activeStore: STORE, fulfillment: "takeaway" });
+    const repo = new PaymentRepository();
+
+    const first = await repo.createPaymentOrder();
+    expect(first.success).toBe(true);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+
+    seedDeliveryAddress(deliveryAddress({ id: "addr_other", line1: "2 Other Road", lat: 21.2 }));
+    const again = await repo.createPaymentOrder();
+
+    expect(again.success).toBe(true);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOrder).toHaveBeenCalledTimes(1);
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
+    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_1");
+  });
+
+  it("the same context still reuses its own document and gateway order", async () => {
+    seedDeliveryAddress(deliveryAddress());
+    useStoreSelection.setState({ activeStore: STORE, fulfillment: "delivery" });
+    const repo = new PaymentRepository();
+
+    await repo.createPaymentOrder();
+    const again = await repo.createPaymentOrder();
+
+    expect(again.success).toBe(true);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOrder).toHaveBeenCalledTimes(1);
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
+    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_1");
   });
 });

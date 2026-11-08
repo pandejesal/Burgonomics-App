@@ -88,6 +88,11 @@ function loadYaml(file) {
   return yaml.load(fs.readFileSync(file, 'utf8'));
 }
 
+function parseYamlText(text) {
+  assert.ok(yaml, 'js-yaml not resolvable — cannot parse workflows statically');
+  return yaml.load(text);
+}
+
 function jobSteps(doc, jobName) {
   const job = doc.jobs && doc.jobs[jobName];
   assert.ok(job, `job ${jobName} missing`);
@@ -491,4 +496,754 @@ test('secret-scope: FAILS when a secret is used to build an artifact name', () =
   const leaks = findSecretLeaks(doc.jobs.j, 'fixture');
   assert.strictEqual(leaks.length, 1);
   assert.match(leaks[0], /artifact name/);
+});
+
+// ---------------------------------------------------------------------------
+// DETERMINISTIC NODE INSTALL (A07 continuation, 2026-11-08)
+//
+// `npm ci` installs package-lock.json as written and fails when it disagrees
+// with package.json; it never updates the lock. `npm install` may reconcile and
+// rewrite the lock, so the same commit can resolve to a different tree on a
+// different day. Both iOS jobs therefore use `npm ci --legacy-peer-deps`.
+//
+// `--legacy-peer-deps` stays: npm 10 (bundled with the pinned Node patch) needs
+// it to shape this repo's peer graph, and .npmrc sets the same key — dropping
+// the explicit flag would change tree shaping on any runner that ignores .npmrc.
+//
+// The install step is judged as a WHOLE executable block, exactly equal to the
+// required command. Checking line-by-line is not enough: `if false; then … fi`
+// or `set +e … exit 0` contains the right line yet never installs, or erases
+// the failure. YAML comments are not part of the parsed workflow at all.
+// ---------------------------------------------------------------------------
+
+const REQUIRED_IOS_JOBS = ['build-ios', 'ios-archive'];
+// Verified against https://nodejs.org/dist/index.json (security release
+// 2026-10-20, bundled npm 10.9.9). Local verification runs Node 24.18.0, so
+// this pin is a source-level decision, not a locally executed CI runtime.
+const PINNED_NODE_VERSION = '22.23.4';
+const REQUIRED_INSTALL_COMMAND = 'npm ci --legacy-peer-deps';
+const NODE_VERSION_LINE_RE = /^node-version:\s*(.*)$/;
+// Any npm install-family command, including one chained or piped behind another
+// command, so `cd . && npm ci ...` cannot slip past detection.
+const NPM_COMMAND_LINE_RE =
+  /(?:^|[\s;&|(])(npm\s+(?:ci|clean-install|i|install-test|install-ci-test|install|add)\b)/;
+// Anything that consumes the installed tree. The install must precede all of it.
+const BUILD_SIGNAL_RE =
+  /(npm\s+run\s+build:mobile|cap\s+sync|patch-ios-spm\.js|xcodebuild|archive_ios\.py|prepare-native-config\.mjs)/;
+
+/** Non-empty shell lines of a run block, with shell comment lines removed. */
+function executableShellLines(run) {
+  return String(run)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+}
+
+/**
+ * `continue-on-error` is only safe when absent or the literal boolean false.
+ * A string, number, null or expression is not something this guard can verify,
+ * so it is rejected rather than assumed harmless.
+ */
+function unsafeContinueOnError(value) {
+  return value !== undefined && value !== false;
+}
+
+/**
+ * Determinism problems for one job. Empty array means clean.
+ * @param {string} jobName
+ * @param {object} job parsed job object
+ * @returns {string[]}
+ */
+function inspectJobInstall(jobName, job) {
+  const problems = [];
+  const steps = job && Array.isArray(job.steps) ? job.steps : [];
+  if (steps.length === 0) {
+    return [`${jobName}: job has no steps (Node setup and install are missing)`];
+  }
+  if (unsafeContinueOnError(job['continue-on-error'])) {
+    problems.push(`${jobName}: job-level continue-on-error would let a failed install or build pass the job`);
+  }
+  // build-ios must always run; ios-archive keeps its sanctioned release gate.
+  if (jobName === 'build-ios' && job.if !== undefined) {
+    problems.push(`${jobName}: job must not be conditional (if: ${JSON.stringify(job.if)}) — the simulator build must always run`);
+  }
+
+  const setupIndexes = [];
+  steps.forEach((step, index) => {
+    if (String((step && step.uses) || '').startsWith('actions/setup-node@')) setupIndexes.push(index);
+  });
+  if (setupIndexes.length === 0) {
+    problems.push(`${jobName}: actions/setup-node step missing`);
+  } else if (setupIndexes.length > 1) {
+    problems.push(`${jobName}: ${setupIndexes.length} actions/setup-node steps — exactly one pinned toolchain is allowed`);
+  }
+  if (setupIndexes.length >= 1) {
+    const setup = steps[setupIndexes[0]] || {};
+    const withBlock = setup.with && typeof setup.with === 'object' ? setup.with : {};
+    const version = withBlock['node-version'];
+    if (typeof version !== 'string') {
+      problems.push(
+        `${jobName}: node-version must be the quoted exact pin "${PINNED_NODE_VERSION}", got ${JSON.stringify(version)} (${typeof version}) — a numeric or floating value re-resolves on every run`
+      );
+    } else if (version !== PINNED_NODE_VERSION) {
+      problems.push(
+        `${jobName}: node-version "${version}" is not the exact verified patch "${PINNED_NODE_VERSION}"`
+      );
+    }
+    if (withBlock.cache !== 'npm') {
+      problems.push(`${jobName}: setup-node must keep cache: "npm"`);
+    }
+    if (setup.if !== undefined) {
+      problems.push(`${jobName}: setup-node must not be conditional (if: ${JSON.stringify(setup.if)})`);
+    }
+    if (unsafeContinueOnError(setup['continue-on-error'])) {
+      problems.push(`${jobName}: setup-node must not set continue-on-error`);
+    }
+  }
+
+  // A step "is" an install only if some executable line invokes npm; its whole
+  // block, however, must then be exactly the accepted command.
+  const installIndexes = [];
+  steps.forEach((step, index) => {
+    if (executableShellLines(stepRun(step)).some((line) => NPM_COMMAND_LINE_RE.test(line))) {
+      installIndexes.push(index);
+    }
+  });
+  if (installIndexes.length === 0) {
+    problems.push(
+      `${jobName}: no executable "${REQUIRED_INSTALL_COMMAND}" (a YAML comment or an unrelated command does not count)`
+    );
+  } else if (installIndexes.length > 1) {
+    problems.push(`${jobName}: ${installIndexes.length} npm install steps — exactly one frozen install is allowed`);
+  }
+
+  for (const index of installIndexes) {
+    const step = steps[index] || {};
+    const wholeBlock = executableShellLines(stepRun(step)).join('\n');
+    if (wholeBlock !== REQUIRED_INSTALL_COMMAND) {
+      problems.push(
+        `${jobName}: npm install step ${index} must be exactly "${REQUIRED_INSTALL_COMMAND}" as its whole run block, got: ${JSON.stringify(wholeBlock)}`
+      );
+    }
+    if (step.if !== undefined) {
+      problems.push(`${jobName}: npm install step ${index} is conditional (if: ${JSON.stringify(step.if)}) — the frozen install must always run`);
+    }
+    if (unsafeContinueOnError(step['continue-on-error'])) {
+      problems.push(`${jobName}: npm install step ${index} must not set continue-on-error`);
+    }
+  }
+
+  if (installIndexes.length >= 1) {
+    const installIndex = installIndexes[0];
+    if (setupIndexes.length >= 1 && installIndex < setupIndexes[0]) {
+      problems.push(`${jobName}: dependency install runs before the pinned Node setup`);
+    }
+    const firstBuildIndex = steps.findIndex(
+      (step, index) =>
+        index !== installIndex &&
+        executableShellLines(stepRun(step)).some((line) => BUILD_SIGNAL_RE.test(line))
+    );
+    if (firstBuildIndex !== -1 && installIndex > firstBuildIndex) {
+      problems.push(
+        `${jobName}: dependency install must run before the first build/sync step (step ${firstBuildIndex})`
+      );
+    }
+  }
+  return problems;
+}
+
+/**
+ * Determinism problems across both owned iOS jobs. Empty array means clean.
+ * @param {object} doc parsed workflow document
+ * @returns {string[]}
+ */
+function auditInstallDeterminism(doc) {
+  const problems = [];
+  for (const name of REQUIRED_IOS_JOBS) {
+    const job = doc && doc.jobs ? doc.jobs[name] : undefined;
+    if (!job) {
+      problems.push(`${name}: job missing from the workflow`);
+      continue;
+    }
+    problems.push(...inspectJobInstall(name, job));
+  }
+  return problems;
+}
+
+/** Raw `node-version:` declaration values (quotes preserved), comments stripped. */
+function nodeVersionDeclarations(workflowText) {
+  return stripYamlComments(workflowText)
+    .split('\n')
+    .map((line) => line.trim())
+    .map((line) => NODE_VERSION_LINE_RE.exec(line))
+    .filter((match) => match !== null)
+    .map((match) => match[1]);
+}
+
+test('customer: both iOS jobs pin the quoted exact Node patch and keep the npm cache', () => {
+  const workflowText = fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8');
+  assert.deepStrictEqual(
+    nodeVersionDeclarations(workflowText),
+    [`'${PINNED_NODE_VERSION}'`, `'${PINNED_NODE_VERSION}'`],
+    'each setup-node step must declare the quoted exact patch; `22`, 22.23 or a range re-resolves the toolchain and is not reproducible'
+  );
+
+  const doc = loadYaml(CUSTOMER_WORKFLOW);
+  for (const name of REQUIRED_IOS_JOBS) {
+    const setup = jobSteps(doc, name).find((step) =>
+      String((step && step.uses) || '').startsWith('actions/setup-node@')
+    );
+    assert.ok(setup, `${name}: actions/setup-node step missing`);
+    const withBlock = setup.with || {};
+    assert.strictEqual(withBlock['node-version'], PINNED_NODE_VERSION, `${name}: node-version pin`);
+    assert.strictEqual(withBlock.cache, 'npm', `${name}: npm cache must be retained`);
+  }
+});
+
+test('customer: both iOS jobs install exactly with "npm ci --legacy-peer-deps" before any build step', () => {
+  const doc = loadYaml(CUSTOMER_WORKFLOW);
+  const problems = auditInstallDeterminism(doc);
+  assert.deepStrictEqual(
+    problems,
+    [],
+    `install determinism problems:\n  ${problems.join('\n  ')}`
+  );
+});
+
+test('customer: real-staging fixture lane stays separate from the archive lane', () => {
+  const doc = loadYaml(CUSTOMER_WORKFLOW);
+  const steps = jobSteps(doc, 'build-ios');
+  const fixture = steps.find((step) => stepRun(step).includes('prepare-simulator-config.mjs'));
+  const realStaging = steps.find((step) => stepRun(step).includes('prepare-demo-simulator.mjs'));
+  assert.ok(fixture, 'build-ios: credential-free fixture preparation must remain');
+  assert.ok(realStaging, 'build-ios: real-staging preparation must remain');
+  assert.match(String(fixture.if || ''), /real_staging != true/, 'fixture lane must exclude real_staging runs');
+  assert.match(String(realStaging.if || ''), /real_staging == true/, 'real-staging lane must be opt-in');
+  assert.match(
+    String(doc.jobs['ios-archive'].if || ''),
+    /real_staging != true/,
+    'archive lane must stay separate from real-staging runs'
+  );
+});
+
+test('customer: .npmrc keeps legacy-peer-deps so the explicit flag matches local installs', () => {
+  const npmrc = fs.readFileSync(path.join(CUSTOMER_ROOT, '.npmrc'), 'utf8');
+  assert.match(npmrc, /^\s*legacy-peer-deps\s*=\s*true\s*$/m, '.npmrc must keep legacy-peer-deps=true');
+  const workflowText = stripYamlComments(fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8'));
+  assert.ok(
+    !/npm install\b/.test(workflowText),
+    'the workflow must not fall back to `npm install` (npm install may update the lockfile instead of validating it)'
+  );
+});
+
+test('install guard: applies to ios-archive as well as build-ios', () => {
+  const goodJob = () => installJob();
+  const regressedArchive = () =>
+    installJob({ steps: [{ name: 'Install', run: 'npm install --legacy-peer-deps' }] });
+  const problems = auditInstallDeterminism({
+    jobs: { 'build-ios': goodJob(), 'ios-archive': regressedArchive() },
+  }).join('\n');
+  assert.match(
+    problems,
+    /ios-archive: npm install step \d+ must be exactly "npm ci --legacy-peer-deps"/,
+    'ios-archive regression must be reported'
+  );
+  assert.doesNotMatch(problems, /build-ios:/, 'a clean build-ios job must not be reported');
+});
+
+// --- negative fixtures: the install guard must not rot into "permits all" ---
+
+function nodeSetupStep(nodeVersion, cache) {
+  const withBlock = { 'node-version': nodeVersion };
+  if (cache !== undefined) withBlock.cache = cache;
+  return { uses: 'actions/setup-node@v4', with: withBlock };
+}
+
+function installJob({ nodeVersion = PINNED_NODE_VERSION, cache = 'npm', steps } = {}) {
+  return { steps: [nodeSetupStep(nodeVersion, cache)].concat(steps || [{ name: 'Install', run: REQUIRED_INSTALL_COMMAND }]) };
+}
+
+function fixtureProblems(job) {
+  return inspectJobInstall('build-ios', job).join('\n');
+}
+
+test('install guard: rejects the pre-existing "npm install --legacy-peer-deps" + numeric Node 22 workflow', () => {
+  const job = {
+    steps: [
+      nodeSetupStep(22, 'npm'),
+      { name: 'Install', run: 'npm install --legacy-peer-deps' },
+    ],
+  };
+  const problems = fixtureProblems(job);
+  assert.match(problems, /node-version must be the quoted exact pin/, 'numeric 22 must be rejected');
+  assert.match(
+    problems,
+    /npm install step \d+ must be exactly "npm ci --legacy-peer-deps"/,
+    '"npm install" must be rejected'
+  );
+});
+
+test('install guard: rejects a missing job, a missing Node step and a missing install', () => {
+  assert.match(
+    auditInstallDeterminism({ jobs: { 'build-ios': installJob() } }).join('\n'),
+    /ios-archive: job missing from the workflow/,
+    'a missing job must be reported, not skipped'
+  );
+  assert.match(
+    fixtureProblems({ steps: [{ name: 'Install', run: REQUIRED_INSTALL_COMMAND }] }),
+    /actions\/setup-node step missing/
+  );
+  assert.match(
+    fixtureProblems({ steps: [nodeSetupStep(PINNED_NODE_VERSION, 'npm'), { name: 'Build', run: 'npm run build:mobile' }] }),
+    /no executable "npm ci --legacy-peer-deps"/
+  );
+  assert.match(
+    fixtureProblems({ steps: [] }),
+    /job has no steps/
+  );
+});
+
+test('install guard: rejects floating, wrong and unquoted-numeric Node versions', () => {
+  for (const [label, version] of [
+    ['bare major number', 22],
+    ['floating minor number', 22.23],
+    ['floating major string', '22'],
+    ['floating x-range', '22.x'],
+    ['floating caret range', '^22.23.4'],
+    ['older patch', '22.22.2'],
+    ['newer major', '24.18.0'],
+    ['null', null],
+  ]) {
+    const problems = fixtureProblems(installJob({ nodeVersion: version }));
+    assert.match(problems, /node-version/, `${label} (${JSON.stringify(version)}) must be rejected`);
+  }
+  assert.strictEqual(fixtureProblems(installJob()), '', 'the pinned fixture itself must pass');
+});
+
+test('install guard: rejects a dropped npm cache', () => {
+  assert.match(fixtureProblems(installJob({ cache: '' })), /must keep cache: "npm"/);
+});
+
+test('install guard: rejects "npm ci" without the legacy-peer-deps flag and duplicate installs', () => {
+  assert.match(
+    fixtureProblems(installJob({ steps: [{ name: 'Install', run: 'npm ci' }] })),
+    /must be exactly "npm ci --legacy-peer-deps" as its whole run block/
+  );
+  assert.match(
+    fixtureProblems(
+      installJob({ steps: [{ name: 'Install', run: `${REQUIRED_INSTALL_COMMAND}\nnpm install --legacy-peer-deps` }] })
+    ),
+    /must be exactly "npm ci --legacy-peer-deps" as its whole run block/
+  );
+  assert.match(
+    fixtureProblems(
+      installJob({
+        steps: [
+          { name: 'Install', run: REQUIRED_INSTALL_COMMAND },
+          { name: 'Install again', run: REQUIRED_INSTALL_COMMAND },
+        ],
+      })
+    ),
+    /2 npm install steps/
+  );
+});
+
+test('install guard: rejects an install that runs after the build', () => {
+  const problems = fixtureProblems(
+    installJob({
+      steps: [
+        { name: 'Build', run: 'npm run build:mobile' },
+        { name: 'Install', run: REQUIRED_INSTALL_COMMAND },
+      ],
+    })
+  );
+  assert.match(problems, /must run before the first build\/sync step/);
+});
+
+test('install guard: rejects an install that runs before the pinned Node setup', () => {
+  const problems = fixtureProblems({
+    steps: [
+      { name: 'Install', run: REQUIRED_INSTALL_COMMAND },
+      nodeSetupStep(PINNED_NODE_VERSION, 'npm'),
+      { name: 'Build', run: 'npm run build:mobile' },
+    ],
+  });
+  assert.match(problems, /install runs before the pinned Node setup/);
+});
+
+test('install guard: rejects a conditional install and extra arguments', () => {
+  assert.match(
+    fixtureProblems(
+      installJob({
+        steps: [{ name: 'Install', if: "github.event_name == 'push'", run: REQUIRED_INSTALL_COMMAND }],
+      })
+    ),
+    /is conditional/
+  );
+  assert.match(
+    fixtureProblems(installJob({ steps: [{ name: 'Install', run: `${REQUIRED_INSTALL_COMMAND} --omit=dev` }] })),
+    /must be exactly "npm ci --legacy-peer-deps" as its whole run block/
+  );
+});
+
+test('install guard: judges the WHOLE install run block, not a line inside a wrapper', () => {
+  // Each of these contains the exact command on its own line, so a line-by-line
+  // scan accepts it. The block as a whole is what runs, and it is not the frozen
+  // install: `if false` skips it, `set +e … exit 0` erases its failure.
+  const wrappers = [
+    `if false; then\n${REQUIRED_INSTALL_COMMAND}\nfi`,
+    `set +e\n${REQUIRED_INSTALL_COMMAND}\nexit 0`,
+    `set -e\n${REQUIRED_INSTALL_COMMAND}`,
+    `${REQUIRED_INSTALL_COMMAND}\nnpm install --legacy-peer-deps`,
+  ];
+  for (const run of wrappers) {
+    assert.match(
+      fixtureProblems(installJob({ steps: [{ name: 'Install', run }] })),
+      /must be exactly "npm ci --legacy-peer-deps" as its whole run block/,
+      run
+    );
+  }
+});
+
+test('install guard: rejects continue-on-error on the install step, the setup step and the job', () => {
+  assert.match(
+    fixtureProblems(
+      installJob({ steps: [{ name: 'Install', run: REQUIRED_INSTALL_COMMAND, 'continue-on-error': true }] })
+    ),
+    /install step 1 must not set continue-on-error/
+  );
+  assert.match(
+    fixtureProblems({
+      steps: [{ ...nodeSetupStep(PINNED_NODE_VERSION, 'npm'), 'continue-on-error': true },
+        { name: 'Install', run: REQUIRED_INSTALL_COMMAND }],
+    }),
+    /setup-node must not set continue-on-error/
+  );
+  assert.match(
+    fixtureProblems({ ...installJob(), 'continue-on-error': true }),
+    /job-level continue-on-error/
+  );
+  // Only the literal boolean false is verifiable; strings and expressions are not.
+  for (const value of ['true', '${{ always() }}', 1, null]) {
+    assert.match(
+      fixtureProblems(installJob({ steps: [{ name: 'Install', run: REQUIRED_INSTALL_COMMAND, 'continue-on-error': value }] })),
+      /install step 1 must not set continue-on-error/,
+      JSON.stringify(value)
+    );
+    assert.match(
+      fixtureProblems({ ...installJob(), 'continue-on-error': value }),
+      /job-level continue-on-error/,
+      JSON.stringify(value)
+    );
+  }
+  assert.strictEqual(fixtureProblems({ ...installJob(), 'continue-on-error': false }), '');
+});
+
+test('install guard: rejects a conditional setup-node step', () => {
+  const problems = fixtureProblems({
+    steps: [
+      { ...nodeSetupStep(PINNED_NODE_VERSION, 'npm'), if: "github.event_name == 'push'" },
+      { name: 'Install', run: REQUIRED_INSTALL_COMMAND },
+    ],
+  });
+  assert.match(problems, /setup-node must not be conditional/);
+});
+
+test('install guard: rejects any job-level if on build-ios but keeps the ios-archive gate', () => {
+  // A skipped job installs nothing: `if: false`, `if: 'false'` and an expression
+  // all leave build-ios unrunnable, so every form is rejected, not just truthy YAML.
+  for (const value of [false, 'false', "${{ github.event_name == 'workflow_dispatch' }}"]) {
+    assert.match(
+      inspectJobInstall('build-ios', { ...installJob(), if: value }).join('\n'),
+      /build-ios: job must not be conditional/,
+      JSON.stringify(value)
+    );
+  }
+  // Positive control: no if on build-ios is clean, and ios-archive's sanctioned
+  // release gate (`real_staging != true`) is never reported.
+  assert.deepStrictEqual(inspectJobInstall('build-ios', installJob()), []);
+  assert.deepStrictEqual(
+    inspectJobInstall('ios-archive', {
+      ...installJob(),
+      if: "github.event_name == 'workflow_dispatch' && inputs.real_staging != true",
+    }),
+    []
+  );
+});
+
+test('install guard: rejects any appended command, fallback, pipe or chain', () => {
+  const variants = [
+    `${REQUIRED_INSTALL_COMMAND} || true`,
+    `${REQUIRED_INSTALL_COMMAND} || exit 0`,
+    `${REQUIRED_INSTALL_COMMAND} | tee install.log`,
+    `cd . && ${REQUIRED_INSTALL_COMMAND}`,
+    `${REQUIRED_INSTALL_COMMAND}; echo done`,
+  ];
+  for (const run of variants) {
+    assert.match(
+      fixtureProblems(installJob({ steps: [{ name: 'Install', run }] })),
+      /must be exactly "npm ci --legacy-peer-deps" as its whole run block/,
+      run
+    );
+  }
+});
+
+test('install guard: a command that only appears in a comment is not an install', () => {
+  // YAML comment above a run block that does not install anything.
+  const yamlText = [
+    'jobs:',
+    '  build-ios:',
+    '    steps:',
+    '      - uses: actions/setup-node@v4',
+    '        with:',
+    `          node-version: '${PINNED_NODE_VERSION}'`,
+    '          cache: "npm"',
+    '      - name: Install',
+    '        # npm ci --legacy-peer-deps',
+    '        run: echo "pretending to install"',
+  ].join('\n');
+  const doc = parseYamlText(yamlText);
+  assert.match(
+    inspectJobInstall('build-ios', doc.jobs['build-ios']).join('\n'),
+    /no executable "npm ci --legacy-peer-deps"/
+  );
+
+  // Shell comment inside the run block, next to a real (but wrong) install.
+  const mixed = fixtureProblems(
+    installJob({ steps: [{ name: 'Install', run: `# ${REQUIRED_INSTALL_COMMAND}\nnpm install --legacy-peer-deps` }] })
+  );
+  assert.match(mixed, /must be exactly "npm ci --legacy-peer-deps" as its whole run block/);
+  assert.doesNotMatch(mixed, /2 npm install steps/, 'the commented line must not count as a second install');
+});
+
+// ---------------------------------------------------------------------------
+// OFFLINE MANIFEST ↔ LOCK AGREEMENT
+//
+// `npm ci` refuses to run when package.json and package-lock.json disagree on
+// the root dependency declarations. That failure is the point: it is far
+// cheaper than a runner silently installing a different tree. This check reads
+// both files only — no install, no registry, no lockfile rewrite — and compares
+// each dependency group separately so a package moved from `devDependencies`
+// into `dependencies` is drift, not a match.
+// ---------------------------------------------------------------------------
+
+const DEPENDENCY_GROUPS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+
+/**
+ * Root-declaration problems between package.json and package-lock.json.
+ * Empty array means the pair is consistent for `npm ci`.
+ * @param {object} manifest parsed package.json
+ * @param {object} lock parsed package-lock.json
+ * @returns {string[]}
+ */
+function inspectManifestLockAgreement(manifest, lock) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return ['manifest: not a JSON object'];
+  }
+  if (!lock || typeof lock !== 'object' || Array.isArray(lock)) {
+    return ['lockfile: not a JSON object'];
+  }
+  const problems = [];
+
+  if (lock.lockfileVersion !== 3) {
+    problems.push(
+      `lockfile: lockfileVersion must be 3 (npm >= 7 root layout), got ${JSON.stringify(lock.lockfileVersion)}`
+    );
+  }
+  if (typeof manifest.name !== 'string' || manifest.name.length === 0) {
+    problems.push('manifest: name missing');
+  }
+  if (typeof manifest.version !== 'string' || manifest.version.length === 0) {
+    problems.push('manifest: version missing');
+  }
+  if (lock.name !== manifest.name) {
+    problems.push(
+      `lockfile: outer name ${JSON.stringify(lock.name)} != manifest name ${JSON.stringify(manifest.name)}`
+    );
+  }
+  if (lock.version !== manifest.version) {
+    problems.push(
+      `lockfile: outer version ${JSON.stringify(lock.version)} != manifest version ${JSON.stringify(manifest.version)}`
+    );
+  }
+
+  const packages = lock.packages;
+  if (!packages || typeof packages !== 'object') {
+    problems.push('lockfile: packages map missing (lockfileVersion 3 requires it)');
+    return problems;
+  }
+  const root = packages[''];
+  if (!root || typeof root !== 'object') {
+    problems.push('lockfile: packages[""] root entry missing');
+    return problems;
+  }
+  if (root.name !== manifest.name) {
+    problems.push(
+      `lockfile: root name ${JSON.stringify(root.name)} != manifest name ${JSON.stringify(manifest.name)}`
+    );
+  }
+  if (root.version !== manifest.version) {
+    problems.push(
+      `lockfile: root version ${JSON.stringify(root.version)} != manifest version ${JSON.stringify(manifest.version)}`
+    );
+  }
+
+  for (const group of DEPENDENCY_GROUPS) {
+    const manifestGroup = manifest[group];
+    const lockGroup = root[group];
+    const manifestHas = Boolean(manifestGroup) && typeof manifestGroup === 'object';
+    const lockHas = Boolean(lockGroup) && typeof lockGroup === 'object';
+    if (!manifestHas && !lockHas) continue;
+    if (!manifestHas) {
+      problems.push(`lockfile: root declares ${group} that package.json does not`);
+      continue;
+    }
+    if (!lockHas) {
+      problems.push(`manifest: ${group} missing from lockfile root`);
+      continue;
+    }
+    for (const [dependency, declaredRange] of Object.entries(manifestGroup)) {
+      if (!Object.prototype.hasOwnProperty.call(lockGroup, dependency)) {
+        problems.push(`${group}: ${dependency} missing from lockfile root`);
+      } else if (lockGroup[dependency] !== declaredRange) {
+        problems.push(
+          `${group}: ${dependency} lockfile range ${JSON.stringify(lockGroup[dependency])} != manifest ${JSON.stringify(declaredRange)}`
+        );
+      }
+    }
+    for (const dependency of Object.keys(lockGroup)) {
+      if (!Object.prototype.hasOwnProperty.call(manifestGroup, dependency)) {
+        problems.push(`${group}: ${dependency} present in lockfile root but absent from package.json ${group}`);
+      }
+    }
+  }
+  return problems;
+}
+
+test('customer: package.json and package-lock.json root declarations agree offline', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(CUSTOMER_ROOT, 'package.json'), 'utf8'));
+  const lock = JSON.parse(fs.readFileSync(path.join(CUSTOMER_ROOT, 'package-lock.json'), 'utf8'));
+  assert.strictEqual(lock.lockfileVersion, 3, 'lockfileVersion must be 3');
+  assert.strictEqual(lock.packages[''].name, manifest.name);
+  assert.strictEqual(lock.packages[''].version, manifest.version);
+  // Guard against a vacuous pass: both groups are populated and compared.
+  assert.ok(Object.keys(manifest.dependencies || {}).length > 0, 'manifest dependencies must be non-empty');
+  assert.ok(Object.keys(manifest.devDependencies || {}).length > 0, 'manifest devDependencies must be non-empty');
+  const problems = inspectManifestLockAgreement(manifest, lock);
+  assert.deepStrictEqual(problems, [], `manifest/lock problems:\n  ${problems.join('\n  ')}`);
+});
+
+// --- negative fixtures: synthetic objects only, no file is touched ---
+
+function manifestLockFixture() {
+  return {
+    manifest: {
+      name: 'fixture-app',
+      version: '1.0.0',
+      dependencies: { alpha: '^1.0.0' },
+      devDependencies: { beta: '~2.0.0' },
+    },
+    lock: {
+      name: 'fixture-app',
+      version: '1.0.0',
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        '': {
+          name: 'fixture-app',
+          version: '1.0.0',
+          dependencies: { alpha: '^1.0.0' },
+          devDependencies: { beta: '~2.0.0' },
+        },
+      },
+    },
+  };
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+test('manifest/lock guard: a consistent synthetic pair passes', () => {
+  const { manifest, lock } = manifestLockFixture();
+  assert.deepStrictEqual(inspectManifestLockAgreement(manifest, lock), []);
+});
+
+test('manifest/lock guard: rejects version drift between manifest and lock root', () => {
+  const { manifest, lock } = manifestLockFixture();
+  lock.packages[''].dependencies.alpha = '^1.1.0';
+  assert.match(
+    inspectManifestLockAgreement(manifest, lock).join('\n'),
+    /dependencies: alpha lockfile range "\^1\.1\.0" != manifest "\^1\.0\.0"/
+  );
+});
+
+test('manifest/lock guard: rejects a dependency missing from either side', () => {
+  const missingInLock = manifestLockFixture();
+  delete missingInLock.lock.packages[''].dependencies.alpha;
+  assert.match(
+    inspectManifestLockAgreement(missingInLock.manifest, missingInLock.lock).join('\n'),
+    /dependencies: alpha missing from lockfile root/
+  );
+
+  const extraInLock = manifestLockFixture();
+  extraInLock.lock.packages[''].devDependencies.gamma = '^3.0.0';
+  assert.match(
+    inspectManifestLockAgreement(extraInLock.manifest, extraInLock.lock).join('\n'),
+    /devDependencies: gamma present in lockfile root but absent from package.json devDependencies/
+  );
+
+  const extraGroup = manifestLockFixture();
+  extraGroup.lock.packages[''].peerDependencies = { delta: '^4.0.0' };
+  assert.match(
+    inspectManifestLockAgreement(extraGroup.manifest, extraGroup.lock).join('\n'),
+    /lockfile: root declares peerDependencies that package.json does not/
+  );
+});
+
+test('manifest/lock guard: rejects a dependency moved between groups (no merging of distinctions)', () => {
+  const { manifest, lock } = manifestLockFixture();
+  // `alpha` is a runtime dependency in package.json; the lock claims it is dev.
+  delete lock.packages[''].dependencies.alpha;
+  lock.packages[''].devDependencies.alpha = '^1.0.0';
+  const problems = inspectManifestLockAgreement(manifest, lock).join('\n');
+  assert.match(problems, /dependencies: alpha missing from lockfile root/);
+  assert.match(problems, /devDependencies: alpha present in lockfile root but absent from package.json devDependencies/);
+});
+
+test('manifest/lock guard: rejects a wrong lockfileVersion and missing root metadata', () => {
+  const wrongVersion = manifestLockFixture();
+  wrongVersion.lock.lockfileVersion = 2;
+  assert.match(
+    inspectManifestLockAgreement(wrongVersion.manifest, wrongVersion.lock).join('\n'),
+    /lockfileVersion must be 3/
+  );
+
+  const missingRoot = manifestLockFixture();
+  delete missingRoot.lock.packages[''];
+  assert.match(
+    inspectManifestLockAgreement(missingRoot.manifest, missingRoot.lock).join('\n'),
+    /packages\[""\] root entry missing/
+  );
+
+  const wrongOuterName = manifestLockFixture();
+  wrongOuterName.lock.name = 'other-app';
+  assert.match(
+    inspectManifestLockAgreement(wrongOuterName.manifest, wrongOuterName.lock).join('\n'),
+    /outer name "other-app" != manifest name "fixture-app"/
+  );
+
+  const wrongRootVersion = manifestLockFixture();
+  wrongRootVersion.lock.packages[''].version = '1.0.1';
+  const problems = inspectManifestLockAgreement(wrongRootVersion.manifest, wrongRootVersion.lock).join('\n');
+  assert.match(problems, /outer version "1\.0\.0" != manifest version "1\.0\.1"|root version "1\.0\.1" != manifest version "1\.0\.0"/);
+});
+
+test('manifest/lock guard: rejects a missing dependency group declaration', () => {
+  const missingGroup = cloneJson(manifestLockFixture());
+  delete missingGroup.lock.packages[''].devDependencies;
+  assert.match(
+    inspectManifestLockAgreement(missingGroup.manifest, missingGroup.lock).join('\n'),
+    /manifest: devDependencies missing from lockfile root/
+  );
 });

@@ -14,7 +14,10 @@ export function prepareConfig(env, platform) {
     if (!/^VITE_[A-Z0-9_]+$/.test(key) || typeof value !== 'string' || /[\r\n$]/.test(value)) throw new Error('MOBILE_PRODUCTION_ENV contains unsupported key/value syntax');
   }
   const api = new URL(values.VITE_API_BASE_URL);
-  if (api.protocol !== 'https:' || /(^|\.)(example|localhost)$/.test(api.hostname)) throw new Error('Production API must use a real HTTPS host');
+  const host = api.hostname.replace(/\.+$/, '');
+  const localOrPlaceholder = /(^|\.)(localhost|example(?:\.(?:com|org|net))?)$/.test(host)
+    || /^127\./.test(host) || ['0.0.0.0', '[::]', '[::1]'].includes(host);
+  if (api.protocol !== 'https:' || api.username || api.password || localOrPlaceholder) throw new Error('Production API must use a real HTTPS host without URL credentials');
   const secret = platform === 'android' ? 'GOOGLE_SERVICES_JSON_BASE64' : 'GOOGLE_SERVICE_INFO_PLIST_BASE64';
   if (!env[secret]) throw new Error(`Missing GitHub secret ${secret}`);
   const native = Buffer.from(env[secret], 'base64').toString('utf8');

@@ -75,16 +75,22 @@ export function deliveryQuoteView(input: {
     // still unpriced, and Pay stays disabled until the server prices it. The
     // screen labels that pending packaging so the figure is never read as the
     // final amount.
-    const packagingPending = state.status !== "ready";
+    //
+    // D3: a `ready` quote counts only for the mode it was quoted for. A DELIVERY
+    // quote still in the store after the customer switched to takeaway/dine-in
+    // is not this order's price — its courier fare and packaging belong to a
+    // different order type, so it must not unlock PAY nor be displayed.
+    const quoteIsForThisMode = state.status === "ready" && state.orderType === input.fulfillment;
+    const packagingPending = !quoteIsForThisMode;
     const quoteFailed = state.status === "error";
     return {
-      status: state.status,
-      payEnabled: state.status === "ready",
+      status: quoteIsForThisMode ? "ready" : state.status === "ready" ? "loading" : state.status,
+      payEnabled: quoteIsForThisMode,
       showDeliveryFee: false,
       showTotal: true,
       packagingPending,
       deliveryFee: 0,
-      packagingFee: state.status === "ready" ? state.packagingFee : null,
+      packagingFee: quoteIsForThisMode ? state.packagingFee : null,
       deliveryQuoteId: null,
       expiresAt: null,
       message: !quoteFailed
@@ -170,7 +176,12 @@ export function deliveryQuoteView(input: {
   }
 
   // ready
-  if (!isCheckoutFeesUsable(state, now)) {
+  // D3: a quote quoted for ANOTHER mode is not a delivery quote. Enabling PAY
+  // off the back of a takeaway/dine-in `ready` state would charge a courier
+  // fare the server never quoted for this drop, so an off-mode quote is treated
+  // exactly like "not priced yet" — loading, non-payable, takeaway reachable.
+  const quoteIsForDelivery = state.status === "ready" && state.orderType === "delivery";
+  if (!quoteIsForDelivery || !isCheckoutFeesUsable(state, now)) {
     return {
       status: "loading",
       payEnabled: false,

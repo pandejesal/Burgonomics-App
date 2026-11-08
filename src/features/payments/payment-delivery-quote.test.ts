@@ -180,4 +180,147 @@ describe("R8 payment create is bound to the live delivery quote", () => {
     expect(mocks.createOrder.mock.calls[1][0].deliveryQuoteId).toBe("q_new");
     expect(mocks.createOrder.mock.calls[1][0].orderId).toBe("ord_quote_1");
   });
+
+  it("binds a re-quoted fare to a NEW attempt: fresh key, fresh document, new gateway order", async () => {
+    // D1 × server contract: `razorpay.service.ts` answers a KNOWN idempotency
+    // key from its stored intent BEFORE it validates the new delivery quote, so
+    // re-sending the old key after a re-quote returns the OLD gateway order and
+    // OLD amount. A changed quote therefore needs a genuinely new attempt — a
+    // new key and a new pending document (the previous doc still describes the
+    // previous fare and `firestore.rules` allow create only). The old document
+    // and gateway order are left untouched for the server to expire.
+    const repo = new PaymentRepository();
+    const first = await repo.createPaymentOrder();
+    expect(first.success).toBe(true);
+    expect(mocks.createOrder.mock.calls[0][0]).toMatchObject({
+      orderId: "ord_quote_1",
+      deliveryQuoteId: "q_del_1",
+    });
+    const firstKey = (mocks.createOrder.mock.calls[0][0] as { idempotencyKey: string })
+      .idempotencyKey;
+
+    useCheckoutStore.setState({
+      checkoutFees: {
+        status: "ready",
+        orderType: "delivery",
+        packagingFee: 15,
+        deliveryFee: 63,
+        deliveryQuoteId: "q_del_2",
+        provider: "borzo",
+        expiresAt: Date.now() + 60_000,
+      },
+    });
+    mocks.createFromCurrentContext.mockResolvedValueOnce({
+      success: true,
+      data: { id: "ord_quote_2" },
+    });
+    mocks.createOrder.mockResolvedValueOnce({
+      success: true,
+      data: {
+        orderId: "order_rzp_quote_2",
+        razorpayOrderId: "order_rzp_quote_2",
+        amount: 378,
+        currency: "INR" as const,
+        receipt: "rcpt_quote_2",
+        keyId: "rzp_test_quote",
+      },
+    });
+
+    const second = await repo.createPaymentOrder();
+
+    expect(second.success).toBe(true);
+    // A second pending document, and the stale id is NOT adopted.
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
+      confirmedOrderId: undefined,
+    });
+    // The create carries the NEW quote, the NEW document and a NEW key — the
+    // old key would resolve to the old intent server-side.
+    const sent = mocks.createOrder.mock.calls[1][0] as {
+      orderId: string;
+      deliveryQuoteId?: string;
+      idempotencyKey: string;
+    };
+    expect(sent.orderId).toBe("ord_quote_2");
+    expect(sent.deliveryQuoteId).toBe("q_del_2");
+    expect(sent.idempotencyKey).not.toBe(firstKey);
+    expect(mocks.createOrder).toHaveBeenCalledTimes(2);
+    if (second.success) expect(second.data.orderId).toBe("order_rzp_quote_2");
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_quote_2");
+    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_quote_2");
+  });
+
+  it("keeps the SAME key and document when the re-quoted attempt then fails and is retried unchanged", async () => {
+    // The retry bug this pins: the "fresh attempt" signal is transient. Once the
+    // new-quote call FAILS nothing is recorded for it (`createdCheckout` keeps
+    // gatewayOrder: null), so an unchanged retry no longer looks like a fresh
+    // attempt. A key derived from that transient flag would roll back to the
+    // FIRST attempt's key and re-mint a gateway order for the new document —
+    // a duplicate payable order. The key must be derived from the identity the
+    // attempt is actually bound to (checkout identity + document id), which is
+    // stable across the failure.
+    const repo = new PaymentRepository();
+    const first = await repo.createPaymentOrder();
+    expect(first.success).toBe(true);
+    const firstKey = (mocks.createOrder.mock.calls[0][0] as { idempotencyKey: string })
+      .idempotencyKey;
+
+    useCheckoutStore.setState({
+      checkoutFees: {
+        status: "ready",
+        orderType: "delivery",
+        packagingFee: 15,
+        deliveryFee: 63,
+        deliveryQuoteId: "q_del_2",
+        provider: "borzo",
+        expiresAt: Date.now() + 60_000,
+      },
+    });
+    mocks.createFromCurrentContext.mockResolvedValueOnce({
+      success: true,
+      data: { id: "ord_quote_2" },
+    });
+    // Ambiguous transport failure: the gateway may or may not have minted.
+    mocks.createOrder.mockResolvedValueOnce({
+      success: false,
+      error: { code: "GATEWAY_ERROR", message: "upstream 5xx", retryable: true },
+    });
+
+    const second = await repo.createPaymentOrder();
+    expect(second.success).toBe(false);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    const failedKey = (mocks.createOrder.mock.calls[1][0] as { idempotencyKey: string })
+      .idempotencyKey;
+    expect(failedKey).not.toBe(firstKey);
+
+    // Unchanged retry: same quote, same context. No new document, and the key
+    // must be exactly the one the failed call used so the server can resolve it.
+    mocks.createOrder.mockResolvedValueOnce({
+      success: true,
+      data: {
+        orderId: "order_rzp_quote_2",
+        razorpayOrderId: "order_rzp_quote_2",
+        amount: 378,
+        currency: "INR" as const,
+        receipt: "rcpt_quote_2",
+        keyId: "rzp_test_quote",
+      },
+    });
+
+    const retry = await repo.createPaymentOrder();
+
+    expect(retry.success).toBe(true);
+    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2); // same doc
+    expect(mocks.createOrder).toHaveBeenCalledTimes(3);
+    const retrySent = mocks.createOrder.mock.calls[2][0] as {
+      orderId: string;
+      deliveryQuoteId?: string;
+      idempotencyKey: string;
+    };
+    expect(retrySent.orderId).toBe("ord_quote_2");
+    expect(retrySent.deliveryQuoteId).toBe("q_del_2");
+    expect(retrySent.idempotencyKey).toBe(failedKey);
+    expect(retrySent.idempotencyKey).not.toBe(firstKey);
+    expect(usePaymentStore.getState().internalOrderId).toBe("ord_quote_2");
+  });
 });
