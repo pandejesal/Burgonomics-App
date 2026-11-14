@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Pins bootstrap()'s security invariant against the REAL authStore: stored
 // tokens restore a session ONLY with a live Firebase session for the same
@@ -9,9 +9,38 @@ import { describe, it, expect, beforeEach } from "vitest";
 // @/core/config/firebase proved importer-dependent in this repo (the test
 // file saw the mock while src/ saw the real module), so injection — not
 // mocking — is the load-bearing seam.
+//
+// Ancillary background I/O is intercepted at its PUBLIC singleton boundaries
+// (profile refresh, loyalty refresh, device-token link). The real store, the
+// real trust gate and every ownership assertion stay in force; this is NOT a
+// statement of real Firestore/auth acceptance.
 
 import { useAuthStore } from "../src/features/auth/state/authStore";
 import { secureStorage, SECURE_KEYS } from "../src/core/storage/secureStorage";
+import { profileRepository } from "../src/features/profile/repositories/ProfileRepository";
+import { useLoyaltyStore } from "../src/features/loyalty/state/loyaltyStore";
+import { notificationsService } from "../src/features/notifications/services/notificationsService";
+import { ok } from "../src/core/network/http";
+
+/**
+ * The ORIGINAL loyalty `refreshFromServer`, captured at module scope BEFORE any
+ * spy exists. A zustand `setState` builds a NEW state object and copies the
+ * current function into it, so `vi.restoreAllMocks()` restores only the OLD,
+ * discarded object. This reference is what the cleanup guard compares against.
+ */
+const canonicalRefreshFromServer = useLoyaltyStore.getState().refreshFromServer;
+
+/**
+ * Restore the REAL loyalty refresh onto the CURRENT immutable state object.
+ *
+ * `vi.restoreAllMocks()` only fixes the old, discarded object a zustand
+ * `setState` replaced; the live state still carries the copied spy. Writing the
+ * canonical function through the public `setState` is what repairs the copy.
+ */
+function restoreLoyaltyRefresh() {
+  vi.restoreAllMocks();
+  useLoyaltyStore.setState({ refreshFromServer: canonicalRefreshFromServer });
+}
 
 const USER = { id: "uid_aaa", phone: "+919825012345", name: "Aarav" };
 
@@ -58,11 +87,34 @@ function resetStore() {
 }
 
 describe("authStore.bootstrap Firebase trust gate (real store)", () => {
+  let profileRefresh: ReturnType<typeof vi.spyOn>;
+  let loyaltyRefresh: ReturnType<typeof vi.spyOn>;
+  let deviceLink: ReturnType<typeof vi.spyOn>;
+
   beforeEach(async () => {
     resetStore();
+    // Intercept ancillary I/O at the public singleton boundaries so no
+    // background Firestore read or HTTPS call is attempted. Spies are
+    // installed BEFORE any auth action and restored after every case.
+    profileRefresh = vi
+      .spyOn(profileRepository, "refresh")
+      .mockResolvedValue(ok(null));
+    loyaltyRefresh = vi
+      .spyOn(useLoyaltyStore.getState(), "refreshFromServer")
+      .mockResolvedValue(undefined);
+    deviceLink = vi
+      .spyOn(notificationsService, "linkUserToDeviceToken")
+      .mockResolvedValue(ok(null));
     await secureStorage.remove(SECURE_KEYS.ACCESS_TOKEN);
     await secureStorage.remove(SECURE_KEYS.REFRESH_TOKEN);
     await secureStorage.remove(SECURE_KEYS.USER);
+  });
+
+  afterEach(() => {
+    // Restores plain-object spies, then repairs any COPY on the live zustand
+    // state before the guard asserts the real function is installed.
+    restoreLoyaltyRefresh();
+    expect(useLoyaltyStore.getState().refreshFromServer).toBe(canonicalRefreshFromServer);
   });
 
   it("boots to guest when nothing is stored", async () => {
@@ -109,5 +161,10 @@ describe("authStore.bootstrap Firebase trust gate (real store)", () => {
     const s = useAuthStore.getState();
     expect(s.status).toBe("authenticated");
     expect(s.user?.id).toBe(USER.id);
+    // The background seams really fire for THIS identity — the interception is
+    // not vacuous, and none of them is treated as an acceptance signal.
+    expect(profileRefresh).toHaveBeenCalled();
+    expect(loyaltyRefresh).toHaveBeenCalledWith(USER.id);
+    expect(deviceLink).toHaveBeenCalledWith(USER.id);
   });
 });

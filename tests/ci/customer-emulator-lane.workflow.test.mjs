@@ -118,19 +118,55 @@ test("all third-party actions use verified commit SHAs, never moving tags", () =
 test("toolchain: Node 22, JDK21 temurin, exact pinned firebase-tools/@playwright/test", () => {
   assert.match(CODE, /node-version: "22"/);
   assert.match(CODE, /distribution: temurin\n          java-version: "21"/);
-  assert.match(CODE, /firebase-tools@15\.32\.1/);
+  assert.match(CODE, /firebase-tools@15\.35\.0/);
   assert.match(CODE, /@playwright\/test@1\.63\.0/);
   assert.doesNotMatch(CODE, /--legacy-peer-deps/);
   assert.doesNotMatch(CODE, /firebase-tools@\^[0-9]+/, "pin must be exact, not a caret range");
   assert.doesNotMatch(CODE, /firebase-tools@~[0-9]+/, "pin must be exact, not a tilde range");
+  // The ephemeral workspace install must not execute package lifecycle scripts.
+  assert.match(CODE, /npm install --prefix[^\n]*--ignore-scripts/);
+  // No stale pin may survive in the header, the install line, the node -e
+  // assertion or the success log.
+  assert.doesNotMatch(CODE, /15\.32\.1/, "no 15.32.1 reference may remain");
+});
+
+test("both install paths in the lane disable package lifecycle scripts", () => {
+  // The lane has TWO installs: the workspace `npm ci` (line ~80) and the
+  // ephemeral `npm install --prefix` toolchain. Both must block hooks, or a
+  // compromised/compromised-by-transitive package runs install scripts inside
+  // CI where repository tokens and the emulator live.
+  const workspaceInstall = CODE.match(/run:\s*npm ci[^\n]*/g) ?? [];
+  assert.equal(workspaceInstall.length, 1, "exactly one workspace npm ci must exist");
+  assert.match(
+    workspaceInstall[0],
+    /--ignore-scripts/,
+    "the workspace npm ci must pass --ignore-scripts",
+  );
+
+  const ephemeralInstall = CODE.match(/npm install --prefix[^\n]*/g) ?? [];
+  assert.equal(ephemeralInstall.length, 1, "exactly one ephemeral prefix install must exist");
+  assert.match(
+    ephemeralInstall[0],
+    /--ignore-scripts/,
+    "the ephemeral toolchain install must pass --ignore-scripts",
+  );
+
+  // No other npm install/ci invocation may exist that skips the flag.
+  const allInstalls = [
+    ...CODE.matchAll(/npm (?:ci|install)(?![^\n]*--ignore-scripts)[^\n]*/g),
+  ].map((m) => m[0]);
+  assert.deepEqual(
+    allInstalls,
+    [],
+    `every npm install/ci in the lane must disable lifecycle scripts; offenders: ${JSON.stringify(allInstalls)}`,
+  );
 });
 
 test("lane invocation: real harness entrypoint, never --skip-negative, never a global CLI", () => {
   assert.match(CODE, /node tests\/emulator\/run-lane\.mjs/);
   assert.doesNotMatch(CODE, /--skip-negative/);
   assert.doesNotMatch(CODE, /npx firebase/, "npx firebase may pull an untagged CLI at runtime");
-  assert.match(CODE, /EMULATOR_ALLOW_DOWNLOAD=1/, "emulator JAR bootstrap is allowed on hosted CI");
-  assert.match(CODE, /EMULATOR_CANONICAL_RULES=\$GITHUB_WORKSPACE\/firestore\.rules/, "parity gate reads the actual checkout rules path");
+  assert.match(CODE, /EMULATOR_ALLOW_DOWNLOAD=1/, "emulator JAR bootstrap is allowed on hosted CI");  assert.match(CODE, /EMULATOR_CANONICAL_RULES=\$GITHUB_WORKSPACE\/firestore\.rules/, "parity gate reads the actual checkout rules path");
   assert.match(CODE, /EMULATOR_LANE_ARTIFACTS=\$RUNNER_TEMP\//, "artifacts live under RUNNER_TEMP");
   assert.match(CODE, /EMULATOR_JAVA_HOME=\$\{JAVA_HOME\}/, "explicit JDK21 for the emulator");
 });

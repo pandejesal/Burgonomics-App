@@ -23,7 +23,6 @@ import { HomeSkeleton } from "@/features/home/components/HomeSkeleton";
 import { HomeAnnouncements } from "@/features/home/components/HomeAnnouncements";
 import { FavoritesRail } from "@/features/home/components/FavoritesRail";
 import { FloatingCartBar } from "@/features/cart/components/FloatingCartBar";
-import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import type { Product } from "@/features/menu/models";
 
@@ -43,7 +42,6 @@ export const Route = createFileRoute("/home")({
 
 function HomePage() {
   const navigate = useNavigate();
-  useOnlineStatus();
   const online = useAppConfig((s) => s.isOnline);
   const store = useStoreSelection((s) => s.activeStore);
   const isHydrated = useStoreSelection((s) => s.isHydrated);

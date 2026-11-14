@@ -20,10 +20,17 @@
  * This test uses no mock and no emulator: it builds real Firestore instances
  * from a dummy project config. Data validation happens before network I/O, so
  * the "accepted" assertion only needs to observe that `setDoc` does not throw
- * synchronously; the pending write is swallowed and the instance terminated.
+ * synchronously.
+ *
+ * It is explicitly an OFFLINE, local-validation test — NOT a wire-persistence
+ * acceptance. An accepted `setDoc` still queues an SDK write, which the real
+ * client may try to deliver; `disableNetwork` is awaited first so the client is
+ * offline before the write is issued, and the outer hermetic guard stays fully
+ * in force. The queued write is never awaited (an offline write would hang),
+ * and the instance is terminated afterwards.
  */
 import { deleteApp, initializeApp } from "firebase/app";
-import { doc, getFirestore, setDoc, terminate } from "firebase/firestore";
+import { disableNetwork, doc, getFirestore, setDoc, terminate } from "firebase/firestore";
 import { describe, expect, it } from "vitest";
 import { db as appDb } from "@/core/config/firebase";
 import type { Order } from "@/features/orders/models";
@@ -105,13 +112,17 @@ function persistedOrderPayload(): Record<string, unknown> {
 
 describe("CUS-06 — the app's Firestore instance accepts the real order payload", () => {
   it("setDoc validates an order carrying undefined leaves without throwing", async () => {
+    // Offline FIRST: the client must not attempt delivery of the queued write.
+    await disableNetwork(appDb);
+
     let write: Promise<void> | undefined;
     // Passing validation is the whole assertion: a plain getFirestore()
     // instance throws `invalid-argument` here before touching the network.
     expect(() => {
       write = setDoc(doc(appDb, "orders", "ord_1761800000000_ABCDEF"), persistedOrderPayload());
     }).not.toThrow();
-    // No emulator/network here: cancel the queued write and stop the client.
+    // Attach the handler BEFORE terminate so a later rejection cannot surface as
+    // an unhandled rejection, but never await it: an offline write would hang.
     write?.catch(() => undefined);
     await terminate(appDb);
   });
@@ -119,6 +130,8 @@ describe("CUS-06 — the app's Firestore instance accepts the real order payload
   it("control: the same payload on a plain getFirestore() instance is rejected", async () => {
     const controlApp = initializeApp(DUMMY_CONFIG, `cus06-control-${Date.now()}`);
     const plainDb = getFirestore(controlApp);
+    // Offline too: this case asserts a LOCAL rejection, never a delivery attempt.
+    await disableNetwork(plainDb);
     expect(() =>
       setDoc(doc(plainDb, "orders", "ord_control"), persistedOrderPayload()),
     ).toThrowError(/Unsupported field value: undefined/);

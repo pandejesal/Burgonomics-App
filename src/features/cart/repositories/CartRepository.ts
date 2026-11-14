@@ -27,7 +27,7 @@ import type {
 } from "@/features/cart/models";
 import { calculateTotals } from "@/features/cart/services/cartService";
 import { offerRepository } from "@/features/offers/repositories/OfferRepository";
-import { useAppConfig } from "@/core/state/appConfigStore";
+import { selectObservedOffline, useAppConfig } from "@/core/state/appConfigStore";
 import { asPricingFulfillment, resolvePricingConfig } from "@/shared/pricing/pricingEngine";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 
@@ -71,10 +71,15 @@ export class CartRepository {
    * Marks the cart pending-sync when a mutation lands offline, so the UI can
    * say "will sync when back online" instead of silently looking synced.
    * Cleared on the next successful validate/prepare after reconnect.
+   *
+   * Keyed on OBSERVED offline, not the raw flag: a native cold start boots
+   * `isOnline: false` while connectivity is merely unconfirmed, and claiming
+   * "pending sync" then would be a false statement about the connection.
    */
   private markSyncState() {
     try {
-      useCartStore.getState().setSyncPending(!useAppConfig.getState().isOnline);
+      const state = useAppConfig.getState();
+      useCartStore.getState().setSyncPending(selectObservedOffline(state));
     } catch {
       // Store unavailable (tests) — local mutation still applies.
     }

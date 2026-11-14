@@ -19,6 +19,27 @@ const sdk = vi.hoisted(() => ({
 }));
 
 vi.mock("@/core/config/firebase", () => ({ auth: sdk.auth, db: {}, app: {} }));
+/**
+ * The ONLY Firestore boundary: `firebase/firestore` is otherwise UNMOCKED here,
+ * so a real `getDoc`/`setDoc` in `authService.verifyOtp` would attempt a wire
+ * read. This partial mock keeps the real `firebase/auth` boundary and the real
+ * `authService` generation/session logic, and answers with a well-formed
+ * observable snapshot so the profile-sync branch is exercised offline.
+ */
+const profileDoc = vi.hoisted(() => ({
+  getDoc: vi.fn(),
+  setDoc: vi.fn(),
+  doc: vi.fn((_db: unknown, _collection: string, id: string) => ({ id })),
+}));
+vi.mock("firebase/firestore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("firebase/firestore")>();
+  return {
+    ...actual,
+    doc: profileDoc.doc,
+    getDoc: profileDoc.getDoc,
+    setDoc: profileDoc.setDoc,
+  };
+});
 vi.mock("firebase/auth", () => ({
   // The real config module may still run depending on importer resolution, so
   // the boundary mock answers getAuth with the same stub instance.
@@ -61,6 +82,16 @@ beforeEach(() => {
   sdk.auth.currentUser = null;
   sdk.auth.signOut.mockClear();
   sdk.signInWithPhoneNumber.mockReset();
+  // Well-formed "existing profile" snapshot: the profile-sync branch reads
+  // data() and may call setDoc only when the doc is absent.
+  profileDoc.getDoc.mockReset();
+  profileDoc.setDoc.mockReset();
+  profileDoc.doc.mockClear();
+  profileDoc.getDoc.mockResolvedValue({
+    exists: () => true,
+    data: () => ({ fullName: "Synthetic A", email: null }),
+  });
+  profileDoc.setDoc.mockResolvedValue(undefined);
   authService.cancelChallenge();
   authService.clearRecaptcha();
   document.body.innerHTML = '<div id="recaptcha-container"></div>';
@@ -170,6 +201,18 @@ describe("authService challenge generation", () => {
     expect(!second.success && second.error.code).toBe("VERIFY_IN_PROGRESS");
 
     confirmGate.resolve({ user: sdkUser("refresh_a") });
-    await first;
+    // Await the winner and assert its SUCCESSFUL shape: a thrown invalid db
+    // call would otherwise leave this green vacuously.
+    const firstResult = await first;
+    expect(firstResult.success).toBe(true);
+    // The profile-sync boundary really ran for THIS uid.
+    expect(profileDoc.doc).toHaveBeenCalledWith(
+      expect.anything(),
+      "users",
+      REF.uid,
+    );
+    expect(profileDoc.getDoc).toHaveBeenCalledTimes(1);
+    // An existing profile is not re-written.
+    expect(profileDoc.setDoc).not.toHaveBeenCalled();
   });
 });

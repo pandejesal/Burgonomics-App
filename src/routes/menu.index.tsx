@@ -27,7 +27,6 @@ import {
 import type { MenuCategoryModel, Product, ProductDetails } from "@/features/menu/models";
 import { MenuSkeleton } from "@/features/menu/components/MenuSkeleton";
 import { ProductCustomizerModal } from "@/features/menu/components/ProductCustomizerModal";
-import { useOnlineStatus } from "@/shared/hooks/useOnlineStatus";
 import { useRootHeightVar } from "@/shared/hooks/useRootHeightVar";
 import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
 import { useAppConfig } from "@/core/state/appConfigStore";
@@ -79,7 +78,6 @@ export const Route = createFileRoute("/menu/")({
 function MenuPage() {
   const navigate = useNavigate();
   const searchParams = Route.useSearch();
-  useOnlineStatus();
   const online = useAppConfig((s) => s.isOnline);
   const store = useStoreSelection((s) => s.activeStore);
   const isHydrated = useStoreSelection((s) => s.isHydrated);

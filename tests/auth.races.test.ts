@@ -16,8 +16,50 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { useAuthStore, __setAuthRepositoryForTests } from "../src/features/auth/state/authStore";
 import { AuthRepository } from "../src/features/auth/repositories/AuthRepository";
+import type { AuthSessionRef } from "../src/features/auth/services/authService";
 import { secureStorage, SECURE_KEYS } from "../src/core/storage/secureStorage";
 import { ok, fail } from "../src/core/network/http";
+import { profileRepository } from "../src/features/profile/repositories/ProfileRepository";
+import { useLoyaltyStore } from "../src/features/loyalty/state/loyaltyStore";
+import { notificationsService } from "../src/features/notifications/services/notificationsService";
+
+/**
+ * The ORIGINAL loyalty `refreshFromServer`, captured at module scope BEFORE any
+ * spy exists. A zustand `setState` builds a NEW state object and copies the
+ * current function into it, so `vi.restoreAllMocks()` restores only the OLD,
+ * discarded object. Every describe's cleanup guard compares against this.
+ */
+const canonicalRefreshFromServer = useLoyaltyStore.getState().refreshFromServer;
+
+/**
+ * Ancillary I/O stubs for EVERY describe: profile refresh, loyalty refresh and
+ * device-token link. Returns the spies so a case can assert wiring.
+ *
+ * These are controlled test boundaries only — they are NOT evidence of real
+ * Firestore/HTTPS acceptance.
+ */
+function stubAncillaryIo() {
+  const profileRefresh = vi.spyOn(profileRepository, "refresh").mockResolvedValue(ok(null));
+  const loyaltyRefresh = vi
+    .spyOn(useLoyaltyStore.getState(), "refreshFromServer")
+    .mockResolvedValue(undefined);
+  const deviceLink = vi
+    .spyOn(notificationsService, "linkUserToDeviceToken")
+    .mockResolvedValue(ok(null));
+  return { profileRefresh, loyaltyRefresh, deviceLink };
+}
+
+/**
+ * Restore the REAL loyalty refresh onto the CURRENT immutable state object.
+ *
+ * `vi.restoreAllMocks()` only fixes the old, discarded object a zustand
+ * `setState` replaced; the live state still carries the copied spy. Writing the
+ * canonical function through the public `setState` is what repairs the copy.
+ */
+function restoreLoyaltyRefresh() {
+  vi.restoreAllMocks();
+  useLoyaltyStore.setState({ refreshFromServer: canonicalRefreshFromServer });
+}
 
 const PHONE_A = "9825012345";
 const PHONE_B = "9876500001";
@@ -41,7 +83,7 @@ function makeService() {
     refresh: vi.fn(),
     logout: vi.fn(),
     cancelChallenge: vi.fn(),
-    discardConfirmedSession: vi.fn(async () => undefined),
+    discardConfirmedSession: vi.fn(async (_ref: AuthSessionRef) => undefined),
   };
 }
 
@@ -78,10 +120,16 @@ async function storageIsEmpty() {
 }
 
 describe("auth races: in-flight ownership and epoch fencing", () => {
+  let profileRefresh: ReturnType<typeof vi.spyOn>;
+  let loyaltyRefresh: ReturnType<typeof vi.spyOn>;
+  let deviceLink: ReturnType<typeof vi.spyOn>;
+
   beforeEach(async () => {
     resetStore();
     service = makeService();
     __setAuthRepositoryForTests(new AuthRepository(service as never));
+    // Ancillary background I/O is intercepted for EVERY case in this describe.
+    ({ profileRefresh, loyaltyRefresh, deviceLink } = stubAncillaryIo());
     await Promise.all([
       secureStorage.remove(SECURE_KEYS.ACCESS_TOKEN),
       secureStorage.remove(SECURE_KEYS.REFRESH_TOKEN),
@@ -91,7 +139,12 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
 
   afterEach(() => {
     __setAuthRepositoryForTests(null);
-    vi.restoreAllMocks();
+    // Repairs plain-object spies AND the copied loyalty method on the live
+    // state, so nothing leaks into another case or describe block.
+    restoreLoyaltyRefresh();
+    // CLEANUP GUARD: a copied spy that escaped the old state object would still
+    // be installed on the CURRENT store state. This asserts the real function.
+    expect(useLoyaltyStore.getState().refreshFromServer).toBe(canonicalRefreshFromServer);
   });
 
   it("coalesces a duplicate verify into a single service call", async () => {
@@ -275,6 +328,13 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
     await Promise.all([first, second]);
     expect(probe).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState().status).toBe("authenticated");
+    // The background seams fired for the restored identity exactly once across
+    // the two coalesced boots — the comment claims "one", so assert it.
+    expect(profileRefresh).toHaveBeenCalledTimes(1);
+    expect(loyaltyRefresh).toHaveBeenCalledTimes(1);
+    expect(loyaltyRefresh).toHaveBeenCalledWith(USER_A.id);
+    expect(deviceLink).toHaveBeenCalledTimes(1);
+    expect(deviceLink).toHaveBeenCalledWith(USER_A.id);
   });
 
   it("reports a persistence failure instead of half-authenticating or throwing", async () => {
@@ -312,6 +372,9 @@ describe("auth races: cancelled confirm cannot leave an adoptable session", () =
     resetStore();
     service = makeService();
     __setAuthRepositoryForTests(new AuthRepository(service as never));
+    // This describe reaches verifyOtp, which refreshes loyalty/profile/link, so
+    // it installs its OWN stubs instead of inheriting another describe's.
+    stubAncillaryIo();
     await Promise.all([
       secureStorage.remove(SECURE_KEYS.ACCESS_TOKEN),
       secureStorage.remove(SECURE_KEYS.REFRESH_TOKEN),
@@ -321,7 +384,9 @@ describe("auth races: cancelled confirm cannot leave an adoptable session", () =
 
   afterEach(() => {
     __setAuthRepositoryForTests(null);
-    vi.restoreAllMocks();
+    // Repairs this describe's own stubs, including the copied loyalty method.
+    restoreLoyaltyRefresh();
+    expect(useLoyaltyStore.getState().refreshFromServer).toBe(canonicalRefreshFromServer);
   });
 
   const verifyPayload = (user: typeof USER_A, tag: string) =>
@@ -486,7 +551,7 @@ describe("auth races: cancelled confirm cannot leave an adoptable session", () =
     await pending;
 
     expect(service.discardConfirmedSession).toHaveBeenCalledTimes(1);
-    const [ref] = service.discardConfirmedSession.mock.calls[0] as [{ uid: string }];
+    const [ref] = service.discardConfirmedSession.mock.calls[0];
     expect(ref.uid).toBe(USER_A.id);
     expect(ref.uid).not.toBe(USER_B.id);
     // No logout of the unrelated identity was attempted.
@@ -498,6 +563,8 @@ describe("auth races: abandoned work must not block or delete another session", 
     resetStore();
     service = makeService();
     __setAuthRepositoryForTests(new AuthRepository(service as never));
+    // verifyOtp here also refreshes loyalty/profile/link: own stubs, no inherit.
+    stubAncillaryIo();
     await Promise.all([
       secureStorage.remove(SECURE_KEYS.ACCESS_TOKEN),
       secureStorage.remove(SECURE_KEYS.REFRESH_TOKEN),
@@ -507,7 +574,9 @@ describe("auth races: abandoned work must not block or delete another session", 
 
   afterEach(() => {
     __setAuthRepositoryForTests(null);
-    vi.restoreAllMocks();
+    // Repairs this describe's own stubs, including the copied loyalty method.
+    restoreLoyaltyRefresh();
+    expect(useLoyaltyStore.getState().refreshFromServer).toBe(canonicalRefreshFromServer);
   });
 
   it("lets a new code verify while an abandoned verify is still hung", async () => {

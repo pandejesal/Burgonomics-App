@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Text } from "@/shared/components/common/Text";
 import type { PaymentMethod } from "@/features/payments/models";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
-import { useAppConfig } from "@/core/state/appConfigStore";
+import { selectObservedOffline, useAppConfig } from "@/core/state/appConfigStore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -16,7 +16,12 @@ interface Props {
 
 export function PaymentMethodList({ value, onChange, disabled }: Props) {
   const fulfillment = useStoreSelection((s) => s.fulfillment);
-  const isOnline = useAppConfig((s) => s.isOnline);
+  // Observed offline — never the raw `isOnline` flag, which is also false
+  // during a native cold start before the plugin has answered anything.
+  const observedOffline = useAppConfig(selectObservedOffline);
+  // Still unconfirmed: the plugin has not answered. PAY stays fail-closed, but
+  // the copy must not claim the customer is offline.
+  const onlineUnknown = useAppConfig((s) => !s.connectionStatusKnown);
 
   const isDelivery = fulfillment === "delivery";
   const cashTitle = isDelivery ? "Cash on Delivery" : "Pay at Store / Counter";
@@ -24,23 +29,27 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
     ? "Pay with cash at your doorstep when food is delivered"
     : "Pay with cash, card, or UPI at the counter when you collect";
 
-  // Force cash if offline
+  // Force cash only once offline is OBSERVED. While connectivity is merely
+  // unconfirmed the customer's own choice is left alone: switching it on every
+  // native launch would silently override a deliberate selection.
   React.useEffect(() => {
-    if (!isOnline && value === "online") {
+    if (observedOffline && value === "online") {
       onChange("cash");
       toast.warning("Offline Mode Active", {
         description: "Payment switched to Cash on Delivery / Counter payment.",
       });
     }
-  }, [isOnline, value, onChange]);
+  }, [observedOffline, value, onChange]);
 
   const options = [
     {
       id: "online" as const,
       title: "Pay Online",
-      description: isOnline
-        ? "Fast & secure payment via UPI, Cards, NetBanking or Wallets"
-        : "Requires internet connection. Please select Pay on Delivery / Counter.",
+      description: observedOffline
+        ? "Requires internet connection. Please select Pay on Delivery / Counter."
+        : onlineUnknown
+          ? "Checking connection…"
+          : "Fast & secure payment via UPI, Cards, NetBanking or Wallets",
       Icon: CreditCard,
       accentClass: "bg-accent/10 text-accent border-accent/20",
     },
@@ -57,7 +66,9 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
     <div role="radiogroup" aria-label="How would you like to pay?" className="flex flex-col gap-3">
       {options.map(({ id, title, description, Icon, accentClass }) => {
         const selected = value === id;
-        const isDisabledOption = id === "online" && !isOnline;
+        // While unconfirmed the online option stays disabled (fail closed) but
+        // the copy must not claim the customer is offline.
+        const isDisabledOption = id === "online" && (observedOffline || onlineUnknown);
 
         return (
           <motion.button
@@ -94,7 +105,7 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
                   : cn("bg-muted text-text-secondary", accentClass),
               )}
             >
-              {id === "online" && !isOnline ? (
+              {id === "online" && observedOffline ? (
                 <WifiOff className="h-6 w-6 text-warning" aria-hidden />
               ) : (
                 <Icon className="h-6 w-6" aria-hidden />
@@ -112,7 +123,7 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
                 >
                   {title}
                 </Text>
-                {id === "online" && !isOnline && (
+                {id === "online" && observedOffline && (
                   <span className="inline-flex items-center gap-1 rounded bg-warning/10 px-2 py-0.5 text-sm font-semibold text-warning">
                     Offline
                   </span>
