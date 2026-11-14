@@ -55,9 +55,24 @@ export async function bootstrapNativePlatform(): Promise<void> {
       import("@capacitor/app"),
     ]);
 
-    // Status bar — brand green, light content style (matches capacitor.config.ts StatusBar plugin).
+    // System bars — core `SystemBars` (bundled with @capacitor/core) owns the
+    // bar on modern Android, where the legacy StatusBar config alone can be
+    // overridden by the unconfigured plugin default. `SystemBarsStyle.Dark`
+    // means LIGHT content on a dark background, i.e. exactly what the
+    // deep-green (#0E4825) header needs; `Light` asked for dark icons.
+    // Imported and applied in its own guard so that a shell without the
+    // plugin cannot stop the splash release, keyboard or deep-link wiring.
     try {
-      await StatusBar.setStyle({ style: Style.Light });
+      const { SystemBars, SystemBarsStyle } = await import("@capacitor/core");
+      await SystemBars.setStyle({ style: SystemBarsStyle.Dark });
+    } catch {
+      /* SystemBars not registered on this shell */
+    }
+
+    // Legacy StatusBar — same visual meaning in its own enum (`Style.Dark` is
+    // "light text for dark backgrounds"), kept for older shells and iOS.
+    try {
+      await StatusBar.setStyle({ style: Style.Dark });
       if (getPlatform() === "android") {
         await StatusBar.setBackgroundColor({ color: "#0E4825" });
       }

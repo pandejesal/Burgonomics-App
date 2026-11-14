@@ -2,112 +2,286 @@ import fs from "fs";
 import path from "path";
 
 /*
- * WHY THE 8.5.0 REWRITE BELOW IS STILL HERE (R18 investigated; NOT removed)
+ * capacitor-swift-pm pinning (repair; supersedes the old 8.5.0 rewrite)
  * ---------------------------------------------------------------------
- * It looks like an unjustified downgrade and it is, but deleting it does not
- * produce a resolvable SPM graph with the plugin versions installed today.
+ * The previous version of this script rewrote the CLI-generated app
+ * aggregator and EVERY plugin manifest to `exact: "8.5.0"`, justified by the
+ * claim that @capacitor/push-notifications 8.1.2 ships an exact 8.5.0 pin.
+ * That claim is false. Byte-identical Package.swift
+ * (sha256 098e90d1...) measured from this install, the partner install and the
+ * public 8.1.2 tarball all declare:
  *
- * Measured from the installed tree:
- *   @capacitor/ios, @capacitor/core, @capacitor/cli   8.5.2
- *   @capacitor-firebase/app-check                     8.5.2
- *   ios/App/CapApp-SPM/Package.swift (CLI-generated)  exact: "8.5.2"
- *   @capacitor/app 8.1.1 / geolocation 8.2.2 / haptics 8.0.2 / keyboard 8.0.5 /
- *   network 8.0.1 / preferences 8.0.1 / splash-screen 8.0.2 / status-bar 8.0.3
- *     -> .package(url: capacitor-swift-pm, from: "8.0.0")
- *   @capacitor/push-notifications 8.1.2
- *     -> .package(url: capacitor-swift-pm, EXACT: "8.5.0")   <-- hard pin, upstream
- *   @aparajita/capacitor-secure-storage 8.x
- *     -> capacitor-swift-pm from: "8.0.0" + keychain-swift from: "21.0.0"
+ *     .package(url: ".../capacitor-swift-pm.git", from: "8.0.0")
  *
- * `cap sync ios` regenerates CapApp-SPM/Package.swift with exact: "8.5.2".
- * SwiftPM intersects every constraint on a package identity, and
- * `exact 8.5.2` AND `exact 8.5.0` is an empty set — so with the CLI output
- * alone the graph cannot resolve. The rewrite is what makes it resolve.
+ * Every plugin constraint is `from: "8.0.0"` — a range that already admits the
+ * installed 8.6.0 runtime. So the blanket rewrite was not only unnecessary, it
+ * DOWNGRADED the native runtime to 8.5.0 while @capacitor/ios and the CLI were
+ * newer, and it mutated node_modules in a way no lockfile records.
  *
- * Removing it safely needs one of:
- *   a) a @capacitor/push-notifications release whose Package.swift does not
- *      hard-pin 8.5.0 (needs a package install — out of R18 scope), or
- *   b) hand-editing the CLI-generated CapApp-SPM/Package.swift, which the next
- *      `npx cap sync ios` silently reverts.
- * Neither is available here, so R18 records this as BLOCKED rather than
- * deleting the step. Known residual risk: with this pin the native Capacitor
- * runtime is 8.5.0 while @capacitor/ios + the CLI are 8.5.2. Revisit when
- * push-notifications is upgraded; do not "tidy" it without re-running the
- * SPM resolution on a Mac.
+ * This script therefore never rewrites a plugin manifest. It requires a
+ * matched core/cli/ios graph and validates, read-only, that the app pin and
+ * every plugin constraint admit the installed @capacitor/ios — failing closed
+ * BEFORE any write on a conflicting exact pin or a from:/different major.
+ *
+ * `npx cap sync ios` regenerates the app aggregator pin, so a stale pin means
+ * "sync first", never "hand-edit". Cross-range forcing is out of scope.
  */
 
-// 1. Patch CapApp-SPM Package.swift
-const spmFile = path.resolve("ios/App/CapApp-SPM/Package.swift");
+// 1. Validate the app SPM aggregator against the installed native graph.
+//
+// This step is read-only for capacitor-swift-pm. The only edit it still makes
+// is the deployment-target normalisation that other reviewed tooling expects.
+const SPM_RELATIVE = "ios/App/CapApp-SPM/Package.swift";
+const spmFile = path.resolve(SPM_RELATIVE);
 
-if (fs.existsSync(spmFile)) {
-  let content = fs.readFileSync(spmFile, "utf8");
+/**
+ * Read an installed package version, or null when the package is absent.
+ * A missing package is a hard error for the callers below: silently skipping
+ * would let the script "pass" on an uninstalled or misconfigured tree.
+ */
+function installedVersion(name) {
+  const manifest = path.resolve("node_modules", name, "package.json");
+  if (!fs.existsSync(manifest)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(manifest, "utf8")).version ?? null;
+  } catch {
+    return null;
+  }
+}
 
-  // Convert Windows backslashes to POSIX forward slashes
-  content = content.replace(/\\/g, "/");
+/** Parse `major.minor.patch` and keep the prerelease flag. */
+function parseVersion(value) {
+  if (typeof value !== "string") return null;
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value.trim());
+  if (!m) return null;
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: Number(m[3]),
+    prerelease: m[4] ?? null,
+    raw: value.trim(),
+  };
+}
 
-  // Set deployment target to iOS 16.0
-  content = content.replace(/\.iOS\(\.v15\)/g, ".iOS(.v16)");
-
-  // Normalise every capacitor-swift-pm requirement onto the one version the
-  // installed plugin set can actually resolve (see the block comment above).
-  content = content.replace(/exact:\s*"8\.[0-9]+\.[0-9]+"/g, 'exact: "8.5.0"');
-  content = content.replace(/from:\s*"8\.[0-9]+\.[0-9]+"/g, 'exact: "8.5.0"');
-
-  // @aparajita/capacitor-secure-storage already declares keychain-swift itself
-  // (from: "21.0.0" in its own Package.swift), so this only fills in the
-  // top-level product reference when the CLI left it out.
-  if (!content.includes("keychain-swift")) {
-    content = content.replace(
-      /(\.package\(url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*exact:\s*"8\.5\.0"\),)/,
-      '$1\n        .package(url: "https://github.com/evgenyneu/keychain-swift.git", exact: "21.0.0"),',
+/**
+ * The installed native graph must be internally consistent before any pin is
+ * compared: core, cli and ios must agree, and ios must be a stable triple.
+ * Returns the parsed ios version used as the SPM target.
+ */
+function requireMatchedNativeGraph() {
+  const core = installedVersion("@capacitor/core");
+  const cli = installedVersion("@capacitor/cli");
+  const ios = installedVersion("@capacitor/ios");
+  const missing = Object.entries({ "@capacitor/core": core, "@capacitor/cli": cli, "@capacitor/ios": ios })
+    .filter(([, version]) => !version)
+    .map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(
+      `cannot pin capacitor-swift-pm: ${missing.join(", ")} not installed. ` +
+        `Install the native graph before running this script.`,
     );
-    if (!content.includes("KeychainSwift")) {
-      content = content.replace(
-        '.product(name: "Capacitor", package: "capacitor-swift-pm"),',
-        '.product(name: "Capacitor", package: "capacitor-swift-pm"),\n                .product(name: "KeychainSwift", package: "keychain-swift"),',
-      );
-    }
+  }
+  if (core !== ios || cli !== ios) {
+    throw new Error(
+      `mismatched native graph: @capacitor/core ${core}, @capacitor/cli ${cli}, ` +
+        `@capacitor/ios ${ios}. Align them (same version) before pinning SPM.`,
+    );
+  }
+  const parsed = parseVersion(ios);
+  if (!parsed) throw new Error(`@capacitor/ios ${ios} is not a stable version`);
+  if (parsed.prerelease) {
+    throw new Error(`@capacitor/ios ${ios} is a prerelease; refusing to pin SPM to it`);
+  }
+  return parsed;
+}
+
+/** `A.B.C` textual comparison used only for `from:` lower bounds. */
+function compareTriples(a, b) {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
+}
+
+/**
+ * Validate one `capacitor-swift-pm` requirement against the target version.
+ * `from: X` admits anything >= X in the same major, so it passes when the
+ * target is >= X and shares the major. `exact: X` must equal the target.
+ * Anything else fails closed.
+ */
+function validateRequirement(kind, version, target, origin) {
+  const parsed = parseVersion(version);
+  if (!parsed) throw new Error(`${origin}: unparseable capacitor-swift-pm version "${version}"`);
+  if (parsed.prerelease) {
+    throw new Error(`${origin}: prerelease capacitor-swift-pm pin "${version}" is not supported`);
   }
 
-  fs.writeFileSync(spmFile, content, "utf8");
-  console.log("✅ Successfully patched ios/App/CapApp-SPM/Package.swift");
-} else {
+  if (kind === "exact") {
+    if (compareTriples(parsed, target) !== 0) {
+      throw new Error(
+        `${origin}: exact capacitor-swift-pm pin "${version}" conflicts with the installed ` +
+          `@capacitor/ios ${target.raw}. Run "npx cap sync ios" to regenerate, or align the plugin.`,
+      );
+    }
+    return;
+  }
+
+  if (kind === "from") {
+    if (parsed.major !== target.major) {
+      throw new Error(
+        `${origin}: capacitor-swift-pm from: "${version}" is a different major than the ` +
+          `installed @capacitor/ios ${target.raw}. This script will not force a cross-range upgrade.`,
+      );
+    }
+    if (compareTriples(parsed, target) > 0) {
+      throw new Error(
+        `${origin}: capacitor-swift-pm from: "${version}" requires a version above the ` +
+          `installed @capacitor/ios ${target.raw}. Upgrade the native graph instead of forcing a pin.`,
+      );
+    }
+    return;
+  }
+
+  throw new Error(`${origin}: unrecognised capacitor-swift-pm requirement (${kind})`);
+}
+
+/** The only URL this script treats as the official Capacitor SPM package. */
+const OFFICIAL_SWIFT_PM_URL = "https://github.com/ionic-team/capacitor-swift-pm.git";
+
+/**
+ * Match a requirement on exactly the official Capacitor SPM URL.
+ *
+ * A basename match is not enough: a URL like
+ * `https://example.invalid/attacker/capacitor-swift-pm.git` ends the same way
+ * and must not be mistaken for the real pin. The supported forms are the
+ * literal ones Capacitor and its plugins emit:
+ *
+ *   .package(url: "<official>", exact: "8.6.0")
+ *   .package(url: "<official>", from: "8.0.0")
+ *
+ * Any other requirement syntax for that URL fails closed rather than being
+ * guessed at. No Swift parser is involved — only these literal shapes.
+ */
+function findOfficialRequirements(text, origin) {
+  // Any mention of the official URL, with whatever follows it.
+  const mentions = [
+    ...text.matchAll(/\.package\(\s*url:\s*"([^"]+)"\s*,\s*([^)]*)\)/g),
+  ].filter((match) => match[1] === OFFICIAL_SWIFT_PM_URL);
+
+  if (mentions.length === 0) {
+    // Distinguish "wrong URL that merely looks like ours" from "absent".
+    if (/capacitor-swift-pm\.git/.test(text)) {
+      throw new Error(
+        `${origin}: only "${OFFICIAL_SWIFT_PM_URL}" counts as the Capacitor SPM pin; ` +
+          `a different URL ending in capacitor-swift-pm.git is not official.`,
+      );
+    }
+    throw new Error(`${origin}: no capacitor-swift-pm requirement found`);
+  }
+
+  if (mentions.length > 1) {
+    throw new Error(
+      `${origin}: ${mentions.length} capacitor-swift-pm requirements found; exactly one is ` +
+        `supported (ambiguous pin).`,
+    );
+  }
+
+  const [, , requirement] = mentions[0];
+  const parsed = /^\s*(exact|from)\s*:\s*"([^"]+)"\s*$/.exec(requirement);
+  if (!parsed) {
+    throw new Error(
+      `${origin}: unsupported capacitor-swift-pm requirement syntax "${requirement.trim()}". ` +
+        `Only exact: "X.Y.Z" and from: "X.Y.Z" are supported.`,
+    );
+  }
+  return { kind: parsed[1], version: parsed[2] };
+}
+
+const target = requireMatchedNativeGraph();
+
+if (!fs.existsSync(spmFile)) {
   console.error(`❌ SPM file not found at ${spmFile}`);
   process.exit(1);
 }
 
-// 2. Patch all capacitor plugins in node_modules to pin capacitor-swift-pm to 8.5.0
-// Belt-and-braces: step 1 already pins the aggregator, so a plugin's own
-// `from: "8.0.0"` resolves to 8.5.0 regardless. Left in place so a plugin
-// re-added by `npm ci` cannot widen the range.
-// @capacitor-firebase/* is intentionally not walked: it declares
-// `from: "8.0.0"`, which the step-1 pin already satisfies, and rewriting it
-// would be an edit outside this script's demonstrated scope.
-const nodeModulesDirs = [
+const aggregatorText = fs.readFileSync(spmFile, "utf8");
+// The aggregator is CLI-generated and pins `exact:` to the installed platform.
+// A mismatch means the tree is stale — never hand-edit it here: `npx cap sync
+// ios` regenerates it. Validating before any write keeps a stale tree intact.
+// `findOfficialRequirements` also covers "dependency went missing", a look-alike
+// URL and an ambiguous duplicate.
+const aggregatorRequirement = findOfficialRequirements(aggregatorText, SPM_RELATIVE);
+// A `from:` here would let the native SDK float past the tested 8.6.0, so the
+// app aggregator must pin exactly. Only plugins legitimately declare ranges.
+if (aggregatorRequirement.kind !== "exact") {
+  throw new Error(
+    `${SPM_RELATIVE}: aggregator must pin exact: "${target.raw}" (capacitor-swift-pm), ` +
+      `found ${aggregatorRequirement.kind}: "${aggregatorRequirement.version}". ` +
+      `Run "npx cap sync ios" — the CLI writes an exact pin.`,
+  );
+}
+validateRequirement(
+  aggregatorRequirement.kind,
+  aggregatorRequirement.version,
+  target,
+  SPM_RELATIVE,
+);
+
+// Deployment target normalisation is deferred until every constraint has been
+// validated, so a conflicting pin cannot leave a half-written tree behind.
+const normalisedAggregator = aggregatorText.replace(/\.iOS\(\.v15\)/g, ".iOS(.v16)");
+
+// 2. Validate every installed plugin manifest read-only.
+//
+// The old blanket rewrite is gone. Ordinary `from: "8.0.0"` already admits the
+// installed runtime, and rewriting it to a fixed `exact:` was a downgrade.
+// Nothing in node_modules is written; a conflicting constraint fails closed
+// before any vendor file could be touched.
+const pluginRoots = [
   path.resolve("node_modules/@capacitor"),
   path.resolve("node_modules/@aparajita"),
+  path.resolve("node_modules/@capacitor-firebase"),
 ];
 
-for (const baseDir of nodeModulesDirs) {
+// The app may also vendor app-check at a fixed local alias path. It is a real
+// graph member when present, so it is validated like any other manifest; when
+// absent it is simply not configured yet and is not an error. The path is a
+// fixed known project location, never derived from untrusted input.
+const LOCAL_ALIAS_MANIFEST = path.resolve(
+  "ios/App/LocalPackages/capacitor-firebase-app-check/Package.swift",
+);
+
+let validatedManifests = 0;
+for (const baseDir of pluginRoots) {
   if (!fs.existsSync(baseDir)) continue;
-  const packages = fs.readdirSync(baseDir);
-  for (const pkg of packages) {
+  for (const pkg of fs.readdirSync(baseDir)) {
     const pkgSwift = path.join(baseDir, pkg, "Package.swift");
-    if (fs.existsSync(pkgSwift)) {
-      let c = fs.readFileSync(pkgSwift, "utf8");
-      c = c.replace(
-        /url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*from:\s*"[^"]+"/g,
-        'url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0"',
-      );
-      c = c.replace(
-        /url:\s*"https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git",\s*exact:\s*"8\.[0-9]+\.[0-9]+"/g,
-        'url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0"',
-      );
-      fs.writeFileSync(pkgSwift, c, "utf8");
-      console.log(`✅ Pinned capacitor-swift-pm 8.5.0 in ${pkgSwift}`);
-    }
+    if (!fs.existsSync(pkgSwift)) continue;
+    const origin = path.relative(process.cwd(), pkgSwift).replace(/\\/g, "/");
+    const requirement = findOfficialRequirements(fs.readFileSync(pkgSwift, "utf8"), origin);
+    validateRequirement(requirement.kind, requirement.version, target, origin);
+    validatedManifests += 1;
   }
 }
+
+if (fs.existsSync(LOCAL_ALIAS_MANIFEST)) {
+  const origin = path.relative(process.cwd(), LOCAL_ALIAS_MANIFEST).replace(/\\/g, "/");
+  const requirement = findOfficialRequirements(fs.readFileSync(LOCAL_ALIAS_MANIFEST, "utf8"), origin);
+  validateRequirement(requirement.kind, requirement.version, target, origin);
+  validatedManifests += 1;
+}
+
+// 3. Every constraint is compatible — only now may anything be written.
+if (normalisedAggregator !== aggregatorText) {
+  fs.writeFileSync(spmFile, normalisedAggregator, "utf8");
+  console.log("✅ Set CapApp-SPM deployment target to iOS 16.0");
+} else {
+  console.log("✅ CapApp-SPM deployment target already iOS 16.0");
+}
+
+console.log(
+  `✅ Validated ${validatedManifests} plugin manifest(s) against @capacitor/ios ${target.raw} ` +
+    `(capacitor-swift-pm; no vendor files modified)`,
+);
 
 // 3. Patch @capacitor/status-bar
 const statusBarColorSwift = path.resolve(

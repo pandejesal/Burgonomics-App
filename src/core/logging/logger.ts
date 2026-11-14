@@ -2,14 +2,38 @@
  * Centralised structured logger.
  *
  * Feature and infrastructure code MUST use this instead of `console.*`
- * directly. The default sink writes to the browser console in
- * development and no-ops in production; production logging sinks
- * (Sentry, Crashlytics, backend log ingest) register via
- * `logger.addSink(...)` without any changes to call sites.
+ * directly. Every emitted record is built by `safeLog.ts`, so a log call
+ * produces exactly ONE bounded JSON string — never a raw Error, context
+ * object, provider payload or free-text message. That matters because the
+ * default sink writes to a console that native text capture and any future
+ * remote sink both read.
+ *
+ * What is guaranteed:
+ * - `warn`, `error` and `critical` always emit, in production too. Before this
+ *   module had a production sink the whole severity class was silently lost in
+ *   shipped builds.
+ * - `debug` and `info` stay development-only unless a caller lowers
+ *   `setMinLevel`, preserving the existing severity policy.
+ * - Identity comes from the source-owned event IDs allowlisted in `safeLog.ts`;
+ *   an unknown or dynamically built message reports as `app.log`.
+ * - Custom sinks receive the same sanitised event, so registering a sink cannot
+ *   reintroduce raw payloads. Sink failures are isolated per sink.
+ *
+ * Coverage limit: only code that calls this logger is shaped this way. Direct
+ * `console.*` call sites elsewhere in the app are not covered by this module.
  */
 import { appConfig, isDev } from "@/core/config";
+import {
+  appIdentity,
+  cloneEvent,
+  sanitizeEvent,
+  toDiagnosticLine,
+  type AppIdentity,
+  type LogLevel,
+  type SanitizedEvent,
+} from "./safeLog";
 
-export type LogLevel = "debug" | "info" | "warn" | "error" | "critical";
+export type { LogLevel };
 
 const LEVEL_ORDER: Record<LogLevel, number> = {
   debug: 10,
@@ -19,13 +43,20 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
   critical: 50,
 };
 
-export interface LogEvent {
-  level: LogLevel;
+/**
+ * The sanitised record handed to every sink.
+ *
+ * Payload-schema change, stated precisely: `LogEvent` no longer carries the
+ * caller's raw `context`/`error`. What it carries is the validated identity in
+ * `event`/`message` plus allowlisted top-level scalars (`code`, `type`,
+ * `status`, `attempt`, `retryable`) and the validated `app`. A sink that used
+ * to read `context`/`error` would find nothing — that is the point, and it is
+ * why no raw payload can leave through a sink. Each delivery is a defensive
+ * copy, so a sink cannot rewrite what later sinks or later events see.
+ */
+export interface LogEvent extends SanitizedEvent {
+  /** Sanitised identity: the allowlisted event ID or `app.log`. */
   message: string;
-  context?: Record<string, unknown>;
-  error?: unknown;
-  timestamp: string;
-  app: { name: string; version: string; env: string };
 }
 
 export interface LogSink {
@@ -33,37 +64,36 @@ export interface LogSink {
   write(event: LogEvent): void;
 }
 
+type ConsoleMethod = "debug" | "info" | "warn" | "error";
+
+const CONSOLE_METHOD: Record<LogLevel, ConsoleMethod> = {
+  debug: "debug",
+  info: "info",
+  warn: "warn",
+  error: "error",
+  critical: "error",
+};
+
+/** Fixed, validated build identity. Never a raw configuration string. */
+const IDENTITY: AppIdentity = appIdentity(appConfig.env, appConfig.appVersion);
+
+/** The sink that makes production diagnostics visible at all. */
 const consoleSink: LogSink = {
   name: "console",
   write(event) {
-    if (typeof console === "undefined") return;
-    const payload = event.context ? [event.message, event.context] : [event.message];
-    switch (event.level) {
-      case "debug":
-        console.debug(...payload);
-        break;
-      case "info":
-        console.info(...payload);
-        break;
-      case "warn":
-        console.warn(...payload);
-        break;
-      case "error":
-      case "critical":
-        if (event.error) console.error(...payload, event.error);
-        else console.error(...payload);
-        break;
+    try {
+      if (typeof console === "undefined") return;
+      const method = console[CONSOLE_METHOD[event.level]];
+      if (typeof method === "function") method.call(console, toDiagnosticLine(event));
+    } catch {
+      // An instrumented/throwing console must never break the caller.
     }
   },
 };
 
 class Logger {
-  private sinks: LogSink[] = [];
+  private sinks: LogSink[] = [consoleSink];
   private minLevel: LogLevel = isDev() ? "debug" : "warn";
-
-  constructor() {
-    if (isDev()) this.sinks.push(consoleSink);
-  }
 
   addSink(sink: LogSink) {
     this.sinks.push(sink);
@@ -76,44 +106,44 @@ class Logger {
     this.minLevel = level;
   }
 
-  private emit(
-    level: LogLevel,
-    message: string,
-    context?: Record<string, unknown>,
-    error?: unknown,
-  ) {
+  private emit(level: LogLevel, message: string, error?: unknown, context?: unknown) {
     if (LEVEL_ORDER[level] < LEVEL_ORDER[this.minLevel]) return;
-    const event: LogEvent = {
-      level,
-      message,
-      context,
-      error,
-      timestamp: new Date().toISOString(),
-      app: { name: appConfig.appName, version: appConfig.appVersion, env: appConfig.env },
-    };
+
+    let event: LogEvent;
+    try {
+      const sanitized = sanitizeEvent(level, message, IDENTITY, error, context);
+      // `message` mirrors the resolved identity, never the caller's raw text.
+      event = { ...sanitized, message: sanitized.event };
+    } catch {
+      // Diagnostics must never become an application failure.
+      return;
+    }
+
     for (const sink of this.sinks) {
       try {
-        sink.write(event);
+        // Each sink receives its own defensive copy: a mutating sink cannot
+        // rewrite the record a later sink gets, nor the shared identity.
+        sink.write(cloneEvent(event));
       } catch {
-        /* sinks must never break the app */
+        /* one sink must never stop the others or the caller */
       }
     }
   }
 
-  debug(msg: string, ctx?: Record<string, unknown>) {
-    this.emit("debug", msg, ctx);
+  debug(msg: string, ctx?: unknown) {
+    this.emit("debug", msg, undefined, ctx);
   }
-  info(msg: string, ctx?: Record<string, unknown>) {
-    this.emit("info", msg, ctx);
+  info(msg: string, ctx?: unknown) {
+    this.emit("info", msg, undefined, ctx);
   }
-  warn(msg: string, ctx?: Record<string, unknown>) {
-    this.emit("warn", msg, ctx);
+  warn(msg: string, ctx?: unknown) {
+    this.emit("warn", msg, undefined, ctx);
   }
-  error(msg: string, error?: unknown, ctx?: Record<string, unknown>) {
-    this.emit("error", msg, ctx, error);
+  error(msg: string, error?: unknown, ctx?: unknown) {
+    this.emit("error", msg, error, ctx);
   }
-  critical(msg: string, error?: unknown, ctx?: Record<string, unknown>) {
-    this.emit("critical", msg, ctx, error);
+  critical(msg: string, error?: unknown, ctx?: unknown) {
+    this.emit("critical", msg, error, ctx);
   }
 }
 

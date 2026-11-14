@@ -35,6 +35,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CUSTOMER_ROOT = path.resolve(HERE, '..');
 const PATCH_SCRIPT = path.join(HERE, 'patch-ios-spm.js');
 
+/** The only URL this script treats as the official Capacitor SPM package. */
+const OFFICIAL_SWIFT_PM_URL = 'https://github.com/ionic-team/capacitor-swift-pm.git';
+
+/** Fixed project path for the locally-vendored app-check alias. */
+const APP_CHECK_ALIAS = 'ios/App/LocalPackages/capacitor-firebase-app-check/Package.swift';
+
 // Keys each patched plugin must read through a typed PluginConfig getter.
 const SPLASH_SOURCE = 'node_modules/@capacitor/splash-screen/ios/Sources/SplashScreenPlugin/SplashScreenPlugin.swift';
 const STATUS_SOURCE = 'node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBarPlugin.swift';
@@ -68,7 +74,13 @@ function seedFixture() {
     fs.writeFileSync(file, content, 'utf8');
   };
 
-  // Step 1 target: needs .iOS(.v15) and an exact capacitor-swift-pm pin.
+  // The script derives its SPM target from the INSTALLED native graph and
+  // refuses to run on a mismatched or missing one, so the fixture must carry
+  // real package.json metadata for core / cli / ios.
+  writeNativeGraph(root, write, { core: '8.6.0', cli: '8.6.0', ios: '8.6.0' });
+
+  // Step 1 target: needs .iOS(.v15) and the CLI-generated exact pin, which the
+  // CLI writes to match the installed @capacitor/ios.
   write(
     'ios/App/CapApp-SPM/Package.swift',
     `// swift-tools-version: 5.9
@@ -78,7 +90,8 @@ let package = Package(
     name: "CapApp-SPM",
     platforms: [.iOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.2"),
+        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", .upToNextMajor(from: "12.7.0")),
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.6.0"),
         .package(name: "CapacitorSplashScreen", path: "../../../node_modules/@capacitor/splash-screen"),
         .package(name: "CapacitorStatusBar", path: "../../../node_modules/@capacitor/status-bar"),
         .package(name: "CapacitorPushNotifications", path: "../../../node_modules/@capacitor/push-notifications")
@@ -92,7 +105,9 @@ let package = Package(
 `,
   );
 
-  // Step 2 targets: a plugin-declared lower bound the script must normalise.
+  // Step 2 targets: the real upstream shape is `from: "8.0.0"` (verified from
+  // the public 8.1.2 tarball), which already admits 8.6.0. These must survive
+  // the run byte-identical — the script validates them, never rewrites them.
   for (const pkg of ['splash-screen', 'status-bar', 'push-notifications']) {
     write(
       `node_modules/@capacitor/${pkg}/Package.swift`,
@@ -112,8 +127,7 @@ let package = Package(
 
   // Vulnerable pre-patch sources. The stub marker proves the script rewrote
   // the file rather than the fixture already being clean.
-  write(SPLASH_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);
-  write(STATUS_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);
+  write(SPLASH_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);  write(STATUS_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);
   write(
     PUSH_SOURCE,
     `import Capacitor\n\n${VULNERABLE_STUB.replace(
@@ -136,7 +150,37 @@ let package = Package(
     '// FIXTURE_STUB_MARKER\n',
   );
 
+  // @capacitor-firebase/app-check is a real graph member in its own namespace.
+  write(
+    'node_modules/@capacitor-firebase/app-check/Package.swift',
+    `// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "CapacitorFirebaseAppCheck",
+    platforms: [.iOS(.v15)],
+    dependencies: [
+        .package(url: "${OFFICIAL_SWIFT_PM_URL}", from: "8.0.0")
+    ]
+)
+`,
+  );
+
   return root;
+}
+
+/**
+ * Seeds installed-graph metadata (`package.json` only, never the real tree).
+ * The script reads these to derive the SPM target and to enforce a matched
+ * core/cli/ios graph.
+ */
+function writeNativeGraph(_root, write, versions) {
+  for (const [name, version] of Object.entries(versions)) {
+    write(`node_modules/@capacitor/${name}/package.json`, JSON.stringify({
+      name: `@capacitor/${name}`,
+      version,
+    }));
+  }
 }
 
 /** Runs the real patch script with the fixture as its working directory. */
@@ -151,6 +195,19 @@ function runPatch(root) {
     0,
     `patch-ios-spm.js exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
+  return result;
+}
+
+/** Runs the patch script expecting a specific non-zero failure. */
+function runPatchExpectFailure(root, reasonPattern) {
+  const result = spawnSync(process.execPath, [PATCH_SCRIPT], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 180000,
+  });
+  assert.notEqual(result.status, 0, 'expected the patch script to fail closed');
+  const output = `${result.stdout}\n${result.stderr}`;
+  assert.match(output, reasonPattern, `failure message did not explain the refusal:\n${output}`);
   return result;
 }
 
@@ -326,17 +383,370 @@ test('re-running the patch produces byte-identical output (idempotent)', () => {
   }
 });
 
-test('capacitor-swift-pm stays pinned to 8.5.0 (dependency decision untouched)', () => {
+test('app aggregator keeps the CLI-generated pin matching the installed @capacitor/ios', () => {
   const root = patchedFixture();
   const spm = readGenerated(root, 'ios/App/CapApp-SPM/Package.swift');
-  assert.match(spm, /capacitor-swift-pm\.git", exact: "8\.5\.0"/);
-  assert.doesNotMatch(spm, /exact: "8\.5\.2"/, 'CLI pin must be normalised to 8.5.0');
-  assert.match(spm, /\.iOS\(\.v16\)/);
+  assert.match(
+    spm,
+    /capacitor-swift-pm\.git", exact: "8\.6\.0"/,
+    'app pin must stay at the installed @capacitor/ios version (CLI regenerates it)',
+  );
+  assert.doesNotMatch(spm, /exact: "8\.5\.[0-9]+"/, 'the old 8.5.x downgrade must not return');
+  assert.match(spm, /\.iOS\(\.v16\)/, 'deployment target still normalised');
+  assert.doesNotMatch(spm, /keychain-swift/, 'keychain is declared by secure-storage, not injected here');
+});
 
+test('plugin manifests are validated read-only and survive byte-identical', () => {
+  const root = patchedFixture();
   for (const pkg of ['splash-screen', 'status-bar', 'push-notifications']) {
     const manifest = readGenerated(root, `node_modules/@capacitor/${pkg}/Package.swift`);
-    assert.match(manifest, /capacitor-swift-pm\.git", exact: "8\.5\.0"/);
-    assert.doesNotMatch(manifest, /from: "8\.0\.0"/);
+    // Upstream declares a range that already admits 8.6.0. Rewriting it was a
+    // downgrade; the repair must leave it exactly as published.
+    assert.match(manifest, /capacitor-swift-pm\.git", from: "8\.0\.0"/);
+    assert.doesNotMatch(manifest, /exact:/, `${pkg} must not be re-pinned`);
+    assert.ok(
+      manifest.includes('.iOS(.v15)'),
+      `${pkg} deployment target must not be rewritten by this script`,
+    );
+  }
+});
+
+test('an unrelated Swift package in the app aggregator is untouched', () => {
+  const root = patchedFixture();
+  const spm = readGenerated(root, 'ios/App/CapApp-SPM/Package.swift');
+  // firebase-ios-sdk is a different package identity with its own pin. The
+  // repair must not touch any requirement that is not capacitor-swift-pm.
+  assert.match(
+    spm,
+    /firebase-ios-sdk\.git", \.upToNextMajor\(from: "12\.7\.0"\)/,
+    'firebase-ios-sdk requirement must be preserved verbatim',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Fail-closed contract: a conflicting pin or mismatched graph must abort
+// BEFORE any file is written.
+// ---------------------------------------------------------------------------
+
+/** Seeds a fixture with one overridden plugin constraint. */
+function seedWithPluginPin(pkg, kind, version) {
+  const root = seedFixture();
+  const manifest = path.join(root, 'node_modules/@capacitor', pkg, 'Package.swift');
+  fs.writeFileSync(
+    manifest,
+    fs.readFileSync(manifest, 'utf8').replace(
+      /capacitor-swift-pm\.git", from: "[^"]+"/,
+      `capacitor-swift-pm.git", ${kind}: "${version}"`,
+    ),
+    'utf8',
+  );
+  return root;
+}
+
+/** Seeds a fixture with one overridden aggregator constraint. */
+function seedWithAggregatorPin(kind, version, url = OFFICIAL_SWIFT_PM_URL) {
+  const root = seedFixture();
+  const manifest = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+  fs.writeFileSync(
+    manifest,
+    fs.readFileSync(manifest, 'utf8').replace(
+      /\.package\(url: "[^"]+", (?:from|exact): "[^"]+"\)/,
+      `.package(url: "${url}", ${kind}: "${version}")`,
+    ),
+    'utf8',
+  );
+  return root;
+}
+
+/** Snapshot of every file the script could write, for before/after equality. */
+function snapshotTree(root) {
+  const watched = [
+    'ios/App/CapApp-SPM/Package.swift',
+    ...AFFECTED_SOURCES,
+    'node_modules/@capacitor/splash-screen/Package.swift',
+    'node_modules/@capacitor/status-bar/Package.swift',
+    'node_modules/@capacitor/push-notifications/Package.swift',
+  ];
+  return new Map(watched.map((rel) => [rel, fs.readFileSync(path.join(root, rel), 'utf8')]));
+}
+
+function assertTreeUnchanged(root, before) {
+  for (const [rel, content] of before) {
+    assert.equal(
+      fs.readFileSync(path.join(root, rel), 'utf8'),
+      content,
+      `${rel} was modified even though the run should have failed closed`,
+    );
+  }
+}
+
+test('a conflicting exact plugin pin is refused before any file is written', () => {
+  const root = seedWithPluginPin('push-notifications', 'exact', '8.5.0');
+  try {
+    // The aggregator still needs its deployment-target normalisation, which is
+    // exactly the write that must NOT happen when validation fails.
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /exact capacitor-swift-pm pin "8\.5\.0" conflicts/);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a from: range requiring a newer runtime is refused, not force-upgraded', () => {
+  const root = seedWithPluginPin('status-bar', 'from', '8.7.0');
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /requires a version above the installed/);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a different-major plugin range is refused instead of cross-range forced', () => {
+  const root = seedWithPluginPin('splash-screen', 'from', '9.0.0');
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /different major/);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a mismatched installed core/platform graph is rejected up front', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patch-ios-spm-mismatch-'));
+  try {
+    const write = (relative, content) => {
+      const file = path.join(root, relative);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, content, 'utf8');
+    };
+    // core/cli at 8.6.0 but ios lagging at 8.5.2.
+    writeNativeGraph(root, write, { core: '8.6.0', cli: '8.6.0', ios: '8.5.2' });
+    write('ios/App/CapApp-SPM/Package.swift', `// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "CapApp-SPM",
+    platforms: [.iOS(.v15)],
+    dependencies: [
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.6.0")
+    ],
+    targets: []
+)
+`);
+    runPatchExpectFailure(root, /mismatched native graph/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a missing installed native graph is rejected, never silently skipped', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patch-ios-spm-missing-'));
+  try {
+    const file = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "CapApp-SPM",
+    platforms: [.iOS(.v15)],
+    dependencies: [
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.6.0")
+    ],
+    targets: []
+)
+`);
+    runPatchExpectFailure(root, /not installed/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Gap 1: the app aggregator is CLI-generated and must pin `exact:` to the
+// installed platform. A `from:` here would let the native SDK float.
+// ---------------------------------------------------------------------------
+
+test('a from: aggregator pin is refused: the CLI writes exact, never a range', () => {
+  const root = seedWithAggregatorPin('from', '8.0.0');
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /aggregator must pin exact/i);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an aggregator pinning a different exact version is refused', () => {
+  const root = seedWithAggregatorPin('exact', '8.5.2');
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /exact capacitor-swift-pm pin "8\.5\.2" conflicts/);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Gap 2: @capacitor-firebase/app-check is a real graph member and may appear
+// at its fixed vendored alias path. Both forms must be validated.
+// ---------------------------------------------------------------------------
+
+test('a conflicting exact pin in @capacitor-firebase/app-check is refused', () => {
+  const root = seedFixture();
+  const manifest = path.join(root, 'node_modules/@capacitor-firebase/app-check/Package.swift');
+  fs.mkdirSync(path.dirname(manifest), { recursive: true });
+  fs.writeFileSync(
+    manifest,
+    `// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "CapacitorFirebaseAppCheck",
+    dependencies: [
+        .package(url: "${OFFICIAL_SWIFT_PM_URL}", exact: "8.5.0")
+    ]
+)
+`,
+    'utf8',
+  );
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /app-check.*exact capacitor-swift-pm pin "8\.5\.0" conflicts/);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a conflicting exact pin at the vendored app-check alias is refused', () => {
+  const root = seedFixture();
+  const alias = path.join(root, APP_CHECK_ALIAS);
+  fs.mkdirSync(path.dirname(alias), { recursive: true });
+  fs.writeFileSync(
+    alias,
+    `// swift-tools-version: 5.9
+import PackageDescription
+let package = Package(
+    name: "capacitor-firebase-app-check",
+    dependencies: [
+        .package(url: "${OFFICIAL_SWIFT_PM_URL}", exact: "8.5.0")
+    ]
+)
+`,
+    'utf8',
+  );
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /capacitor-firebase-app-check.*conflicts/);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an absent vendored alias is not an error (it is optional)', () => {
+  // The default fixture seeds no LocalPackages directory; a successful run
+  // proves absence is tolerated rather than treated as a missing requirement.
+  const root = seedFixture();
+  try {
+    assert.equal(fs.existsSync(path.join(root, APP_CHECK_ALIAS)), false);
+    runPatch(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Gap 3: only the FULL official URL counts as the Capacitor pin, and exactly
+// one current requirement must exist.
+// ---------------------------------------------------------------------------
+
+test('an unrelated URL ending in capacitor-swift-pm.git is not treated as official', () => {
+  const root = seedWithAggregatorPin(
+    'exact',
+    '8.0.0',
+    'https://example.invalid/attacker/capacitor-swift-pm.git',
+  );
+  try {
+    const before = snapshotTree(root);
+    // The look-alike URL must be rejected *as unofficial*, not silently accepted
+    // as the Capacitor pin and not silently ignored as if none existed.
+    runPatchExpectFailure(root, /different URL ending in capacitor-swift-pm\.git is not official/);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('two competing capacitor-swift-pm requirements are refused as ambiguous', () => {
+  const root = seedFixture();
+  const manifest = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+  fs.writeFileSync(
+    manifest,
+    fs
+      .readFileSync(manifest, 'utf8')
+      .replace(
+        /(\.package\(url: "[^"]+", exact: "8\.6\.0"\),)/,
+        `$1\n        .package(url: "${OFFICIAL_SWIFT_PM_URL}", from: "8.0.0"),`,
+      ),
+    'utf8',
+  );
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /ambiguous|more than one/i);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an unsupported requirement syntax fails closed instead of being guessed', () => {
+  const root = seedWithAggregatorPin('branch', 'main');
+  try {
+    const before = snapshotTree(root);
+    runPatchExpectFailure(root, /unsupported|unrecognised/i);
+    assertTreeUnchanged(root, before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// An unrelated SDK (e.g. Firebase) must survive untouched even when it uses a
+// from: range that a former broad 8.x rewrite would have clobbered.
+// ---------------------------------------------------------------------------
+
+test('an unrelated SDK with a from: 8.1.2 range is left unchanged', () => {
+  const root = seedFixture();
+  const manifest = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+  fs.writeFileSync(
+    manifest,
+    fs
+      .readFileSync(manifest, 'utf8')
+      .replace(
+        /(\.package\(url: "[^"]+", exact: "8\.6\.0"\),)/,
+        `$1\n        .package(url: "https://github.com/example/unrelated-sdk.git", from: "8.1.2"),`,
+      ),
+    'utf8',
+  );
+  try {
+    const patched = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+    const original = fs.readFileSync(patched, 'utf8');
+    runPatch(root);
+    const after = fs.readFileSync(patched, 'utf8');
+    assert.match(
+      after,
+      /unrelated-sdk\.git", from: "8\.1\.2"/,
+      'a broad 8.x rewrite must not touch an unrelated SDK range',
+    );
+    // Only the deployment target differs from the input.
+    assert.equal(after, original.replace(/\.iOS\(\.v15\)/g, '.iOS(.v16)'));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 

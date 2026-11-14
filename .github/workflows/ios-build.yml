@@ -1,9 +1,9 @@
-# iOS Build (Capacitor) — credential-free simulator CI + unsigned archive scaffold.
+﻿# iOS Build (Capacitor) - simulator-only CI.
 #
 # A07 readiness upgrade (2026-10-14), Xcode 26 / iOS SDK 26 policy:
-#   - Runners: macOS 14 images are deprecated (removal 2026-11-02), so both jobs
-#     now use macos-26 (GA since 2026-02-26; default Xcode 26.x with iOS 26 SDKs
-#     per actions/runner-images). macos-15 also carries Xcode 26.0.1–26.3 and
+#   - Runners: macOS 14 images are deprecated (removal 2026-11-02), so this job
+#     uses macos-26 (GA since 2026-02-26; default Xcode 26.x with iOS 26 SDKs
+#     per actions/runner-images). macos-15 also carries Xcode 26.0.1-26.3 and
 #     remains a valid label; the script discovers whichever toolchain qualifies.
 #   - No Xcode hardpin: the previous `/Applications/Xcode_15.4.app` selection is
 #     REMOVED. scripts/select-xcode-toolchain.sh enumerates every installed
@@ -11,26 +11,32 @@
 #     major >= 26 AND iOS SDK major >= 26 (Apple requires both versions), then
 #     picks the best compatible pair. Exact installed versions are discovered
 #     at run time, never guessed or pinned here.
-#   - Safety posture unchanged: no Apple signing, no store upload, no secrets.
-#     All xcodebuild invocations keep CODE_SIGNING_ALLOWED=NO; artifacts are
-#     unsigned simulator .app / .xcarchive only.
-#   - scripts/patch-ios-spm.js still runs after `cap sync ios` in every job that
-#     syncs iOS: the SPM graph (capacitor-swift-pm exact 8.5.2 vs
-#     @capacitor/push-notifications exact 8.5.0) does not resolve without it.
-#     The pin is retained pending a dependency decision — do not delete it.
+#   - SIMULATOR-ONLY. This file has no archive job, no signing secrets and no
+#     key-bearing global env. Signed IPA creation lives in the separately gated
+#     ios-distribution.yml. All xcodebuild invocations keep
+#     CODE_SIGNING_ALLOWED=NO; artifacts are unsigned simulator app bundles.
+#   - scripts/patch-ios-spm.js still runs after `cap sync ios`, but it no longer
+#     re-pins anything: `cap sync` generates the app aggregator pin as an exact
+#     match for the installed @capacitor/ios, and the patch validates the app and
+#     plugin constraints against that version, failing closed on a conflict. The
+#     historical Swift compatibility patch bodies (KVC/typed-getter fixes) remain
+#     in place and their native compile/runtime behaviour is still unverified.
+#     NOTE: this is a source-level expectation. SPM resolution is NOT verified on
+#     this Windows host; that remains unproven until a macOS runner executes it.
 #   - Static guard (no build/network/CI needed):
 #       node --test scripts/validate-ios-workflow.test.cjs
-#   - Deterministic install policy (2026-11-08): both jobs pin the exact Node
-#     patch '22.23.4' (verified security release, bundled npm 10.9.9) and install
-#     with `npm ci --legacy-peer-deps`. npm ci installs package-lock.json as
-#     written and fails when it disagrees with package.json; it never edits the
-#     lock. npm install may reconcile and rewrite the lock, so one commit can
-#     produce different trees on different days.
+#   - Deterministic install policy (2026-11-08): the exact Node patch '22.23.4'
+#     (verified security release, bundled npm 10.9.9) is pinned, and installs use
+#     `npm ci --ignore-scripts --legacy-peer-deps`. npm ci installs
+#     package-lock.json as written and fails when it disagrees with package.json;
+#     it never edits the lock. npm install may reconcile and rewrite the lock, so
+#     one commit can produce different trees on different days.
 #     --legacy-peer-deps stays because npm 10 still needs it to shape this repo's
 #     peer graph; .npmrc sets the same key, so the explicit flag keeps runners
-#     that ignore .npmrc on the identical tree. Each install step's whole run
-#     block must be that one command: a wrapper that skips or masks it is not a
-#     frozen install. Bump the pin and this guard together.
+#     that ignore .npmrc on the identical tree. --ignore-scripts blocks every
+#     package lifecycle hook in CI. Each install step's whole run block must be
+#     that one command: a wrapper that skips or masks it is not a frozen install.
+#     Bump the pin and this guard together.
 name: iOS Build (Capacitor)
 
 on:
@@ -48,21 +54,21 @@ on:
 permissions:
   contents: read
 
-env:
-  TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
 jobs:
   build-ios:
-    name: Build & Export iOS Simulator App
+    name: iOS Simulator build (simulator-only)
     runs-on: macos-26
+    timeout-minutes: 45
     env:
-      GIT_CONFIG_PARAMETERS: "'safe.directory=*'"
+      CI_SIMULATOR_ONLY: 'true'
 
     steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
-      - name: 🛠️ Discover Xcode toolchain (require iOS SDK >= 26)
+      - name: Discover Xcode toolchain (require iOS SDK >= 26)
         # Fail fast, before the expensive npm/build steps, when the runner has
         # no qualifying toolchain. Discovers the best installed Xcode; never
         # hardpins an exact version.
@@ -71,25 +77,21 @@ jobs:
           MIN_XCODE_MAJOR: "26"
           MIN_IOS_SDK_MAJOR: "26"
 
-      - name: 🛠️ Configure Git Safe Directories
-        run: |
-          sudo git config --system --add safe.directory "*"
-          git config --global --add safe.directory "*"
-
-      - name: 🟢 Setup Node.js (v22.23.4)
-        uses: actions/setup-node@v4
+      - name: Setup Node.js (v22.23.4)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22.23.4'
           cache: "npm"
 
-      - name: 📦 Install Node Dependencies (frozen lockfile)
-        run: npm ci --legacy-peer-deps
+      - name: Install Node Dependencies (frozen lockfile)
+        run: npm ci --ignore-scripts --legacy-peer-deps
 
       - name: Prepare simulator-only compile fixture
         if: github.event_name != 'workflow_dispatch' || inputs.real_staging != true
         run: node scripts/prepare-simulator-config.mjs
         env:
           CI_SIMULATOR_ONLY: 'true'
+
       - name: Prepare real staging simulator configuration
         if: github.event_name == 'workflow_dispatch' && inputs.real_staging == true
         run: node scripts/prepare-demo-simulator.mjs
@@ -97,18 +99,19 @@ jobs:
           CI_SIMULATOR_ONLY: 'true'
           MOBILE_STAGING_ENV: ${{ secrets.MOBILE_STAGING_ENV }}
           STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-      - name: ⚡ Build Web Bundle & Sync Capacitor iOS
+
+      - name: Build Web Bundle and Sync Capacitor iOS
         run: |
           npm run build:mobile -- --mode staging
           npx cap sync ios
           node scripts/configure-ios-firebase.mjs
 
-      - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
+      - name: Patch Swift Packages (scripts/patch-ios-spm.js)
         # Order is load-bearing: cap sync regenerates CapApp-SPM/Package.swift
-        # with exact 8.5.2; the patch reconciles it with the plugin pins.
+        # and the patch reconciles it with the plugin pins.
         run: node scripts/patch-ios-spm.js
 
-      - name: 🏗️ Build iOS Simulator App
+      - name: Build iOS Simulator App
         run: |
           cd ios/App
 
@@ -149,7 +152,7 @@ jobs:
             exit $XCODE_STATUS
           fi
 
-          echo "✅ Simulator build succeeded"
+          echo "Simulator build succeeded"
 
           APP_PATH=$(find ../../build/DerivedData -name "App.app" -type d 2>/dev/null | head -n 1)
           if [ -z "$APP_PATH" ]; then
@@ -158,138 +161,28 @@ jobs:
 
           if [ -n "$APP_PATH" ]; then
             (cd "$(dirname "$APP_PATH")" && zip -r -y "$GITHUB_WORKSPACE/Burgonomics-iOS-Simulator-App.zip" App.app)
-            echo "✅ Simulator app archived at Burgonomics-iOS-Simulator-App.zip"
+            echo "Simulator app archived at Burgonomics-iOS-Simulator-App.zip"
           else
             echo "::error::App.app bundle not found after compilation"
             exit 1
           fi
 
-      - name: 📤 Upload Build Log on Failure
-        uses: actions/upload-artifact@v4
+      - name: Upload Build Log on Failure
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: failure()
         with:
           name: xcodebuild-log
           path: ios/App/xcodebuild.log
           retention-days: 7
 
-      - name: 📤 Upload iOS Simulator App
-        uses: actions/upload-artifact@v4
+      - name: Upload iOS Simulator App
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: success()
         with:
           name: Burgonomics-iOS-Simulator-App
           path: Burgonomics-iOS-Simulator-App.zip
           if-no-files-found: error
           retention-days: 14
-
-  ios-archive:
-    name: iOS Archive (signed when configured)
-    if: github.event_name == 'workflow_dispatch' && inputs.real_staging != true
-    runs-on: macos-26
-    steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: 🛠️ Discover Xcode toolchain (require iOS SDK >= 26)
-        run: bash scripts/select-xcode-toolchain.sh
-        env:
-          MIN_XCODE_MAJOR: "26"
-          MIN_IOS_SDK_MAJOR: "26"
-
-      - name: 🟢 Setup Node.js (v22.23.4)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.23.4'
-          cache: "npm"
-
-      - name: 📦 Install Node Dependencies (frozen lockfile)
-        run: npm ci --legacy-peer-deps
-
-      - name: 🔎 Preflight release configuration (skip cleanly when unconfigured)
-        id: preflight
-        # A review/simulator run has no production secrets, so
-        # prepare-native-config.mjs throws "Missing GitHub secret
-        # MOBILE_PRODUCTION_ENV" and marks the WHOLE run failed even though the
-        # simulator app built. Detect that case up front and skip the archive
-        # job with a notice instead.
-        #
-        # This is NOT a way to ship unsigned: on main/master or any v* release
-        # tag the job is a HARD FAILURE, so a real release can never go out
-        # unconfigured. Only non-release runs may skip.
-        env:
-          MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
-          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-        run: |
-          set -euo pipefail
-          is_release="false"
-          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            is_release="true"
-          fi
-          case "${{ github.ref }}" in
-            refs/tags/v*) is_release="true" ;;
-          esac
-          if [ "$is_release" = "true" ]; then
-            echo "release branch/tag — production secrets are REQUIRED (no skip allowed)"
-            node -e "process.exit(0)" # no-op: the real gate is the config step below
-          fi
-          missing=""
-          [ -n "${MOBILE_PRODUCTION_ENV:-}" ] || missing="MOBILE_PRODUCTION_ENV"
-          [ -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ] || missing="${missing:+$missing, }GOOGLE_SERVICE_INFO_PLIST_BASE64"
-          if [ -n "$missing" ] && [ "$is_release" = "false" ]; then
-            echo "::notice::Skipping iOS archive: production secrets absent on a non-release run ($missing). The simulator app built successfully; this job is a no-op until the release secrets are configured."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Prepare native production configuration
-        if: steps.preflight.outputs.skip != 'true'
-        run: node scripts/prepare-native-config.mjs ios
-        env:
-          MOBILE_PRODUCTION_ENV: ${{ secrets.MOBILE_PRODUCTION_ENV }}
-          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
-
-      - name: ⚡ Build Web Bundle & Sync Capacitor iOS
-        if: steps.preflight.outputs.skip != 'true'
-        run: |
-          npm run build:mobile
-          npx cap sync ios
-          node scripts/configure-ios-firebase.mjs
-
-      - name: 🔧 Patch Swift Packages (scripts/patch-ios-spm.js)
-        if: steps.preflight.outputs.skip != 'true'
-        # Was missing here while present in build-ios: without the patch this
-        # job hands Xcode a Package.swift whose exact pins do not intersect
-        # (8.5.2 vs 8.5.0) and archive fails at SPM resolution.
-        run: node scripts/patch-ios-spm.js
-
-      - name: 🏗️ Archive iOS App (unsigned)
-        id: archive
-        if: steps.preflight.outputs.skip != 'true'
-        run: python3 scripts/archive_ios.py
-        env:
-          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
-          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
-
-      - name: 📤 Upload Unsigned iOS Archive
-        if: steps.preflight.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-unsigned-xcarchive
-          path: build/App.xcarchive
-          if-no-files-found: error
-
-      - name: Upload signed IPA (never submit automatically)
-        if: steps.archive.outputs.signed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-store-ipa
-          path: build/ipa/*.ipa
-          if-no-files-found: error
 
   # A successful compile says nothing about whether the app starts. This boots a
   # real simulator and fails if the app is not alive after 45 seconds. A manual
@@ -300,9 +193,12 @@ jobs:
     needs: build-ios
     if: github.event_name == 'workflow_dispatch'
     runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      CI_SIMULATOR_ONLY: 'true'
     steps:
       - name: Download simulator app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: Burgonomics-iOS-Simulator-App
           path: sim-app
@@ -354,7 +250,7 @@ jobs:
 
       - name: Upload launch evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ios-sim-smoke
           path: smoke

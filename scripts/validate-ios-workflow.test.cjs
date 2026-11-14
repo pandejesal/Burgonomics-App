@@ -1,9 +1,9 @@
-// validate-ios-workflow.test.cjs — local static guard for the iOS CI workflows.
+﻿// validate-ios-workflow.test.cjs â€” local static guard for the iOS CI workflows.
 //
 // A07 (2026-10-14). Charter: no full build, no network, no CI trigger, no
 // native project edit. This test only READS workflow YAML and the toolchain
 // discovery script, using js-yaml (already present in node_modules as a
-// transitive dependency — no package.json change).
+// transitive dependency â€” no package.json change).
 //
 // What it pins down:
 //   CUSTOMER (.github/workflows/ios-build.yml, owned by this lane):
@@ -18,9 +18,9 @@
 //     - every build/archive xcodebuild invocation keeps CODE_SIGNING_ALLOWED=NO
 //     - zero `secrets.` references, zero store-upload/signing tooling
 //       (altool / notarytool / fastlane / exportArchive / DEVELOPMENT_TEAM /
-//       provisioning / p12) — this lane ships no upload or signing path
+//       provisioning / p12) â€” this lane ships no upload or signing path
 //     - `cap sync ios` is always followed by scripts/patch-ios-spm.js
-//       (the 8.5.2 exact vs 8.5.0 exact SPM conflict is NOT fixed — deleting
+//       (the 8.5.2 exact vs 8.5.0 exact SPM conflict is NOT fixed â€” deleting
 //       the patch without a dependency decision would break resolution)
 //     - artifact uploads reference only .zip / .xcarchive / .log
 //   PARTNER (burgonomics-partner/.github/workflows/ci.yml):
@@ -47,7 +47,7 @@ const CUSTOMER_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(CUSTOMER_ROOT, '..');
 const CUSTOMER_WORKFLOW = path.join(CUSTOMER_ROOT, '.github', 'workflows', 'ios-build.yml');
 // The app normally sits beside `burgonomics-partner/` in the monorepo. A review
-// worktree may instead expose the sibling as `partner/`, so resolve either — a
+// worktree may instead expose the sibling as `partner/`, so resolve either â€” a
 // skipped cross-check is worth nothing.
 const PARTNER_WORKFLOW_CANDIDATES = [
   path.join(REPO_ROOT, 'burgonomics-partner', '.github', 'workflows', 'ci.yml'),
@@ -84,12 +84,12 @@ const FORBIDDEN_SIGNING_TOKENS = [
 const XCODE_HARDPIN_RE = /Xcode_\d+(?:\.\d+)*(?:\.app|\.beta)/;
 
 function loadYaml(file) {
-  assert.ok(yaml, 'js-yaml not resolvable — cannot parse workflows statically');
+  assert.ok(yaml, 'js-yaml not resolvable â€” cannot parse workflows statically');
   return yaml.load(fs.readFileSync(file, 'utf8'));
 }
 
 function parseYamlText(text) {
-  assert.ok(yaml, 'js-yaml not resolvable — cannot parse workflows statically');
+  assert.ok(yaml, 'js-yaml not resolvable â€” cannot parse workflows statically');
   return yaml.load(text);
 }
 
@@ -104,18 +104,18 @@ function stepRun(step) {
 }
 
 // ---------------------------------------------------------------------------
-// CUSTOMER — owned file, strict assertions
+// CUSTOMER â€” owned file, strict assertions
 // ---------------------------------------------------------------------------
 
 test('customer ios-build.yml parses as YAML', () => {
   const doc = loadYaml(CUSTOMER_WORKFLOW);
   assert.ok(doc.jobs['build-ios'], 'build-ios job missing');
-  assert.ok(doc.jobs['ios-archive'], 'ios-archive job missing');
+  assert.strictEqual(doc.jobs['ios-archive'], undefined, 'ios-build.yml must be simulator-only');
 });
 
 test('customer: both jobs use a supported macOS runner, none deprecated', () => {
   const doc = loadYaml(CUSTOMER_WORKFLOW);
-  for (const name of ['build-ios', 'ios-archive']) {
+  for (const name of REQUIRED_IOS_JOBS) {
     const runner = doc.jobs[name]['runs-on'];
     assert.ok(
       SUPPORTED_MACOS_RUNNERS.has(runner),
@@ -232,13 +232,13 @@ test('customer: no hardcoded Xcode app path anywhere in the workflow', () => {
   const text = stripYamlComments(fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8'));
   assert.ok(
     !XCODE_HARDPIN_RE.test(text),
-    'workflow contains a versioned Xcode app path — toolchain must be discovered by scripts/select-xcode-toolchain.sh, not pinned'
+    'workflow contains a versioned Xcode app path â€” toolchain must be discovered by scripts/select-xcode-toolchain.sh, not pinned'
   );
 });
 
 test('customer: every job with xcodebuild validates the toolchain first (Xcode & SDK major >= 26, fail below)', () => {
   const doc = loadYaml(CUSTOMER_WORKFLOW);
-  for (const name of ['build-ios', 'ios-archive']) {
+  for (const name of REQUIRED_IOS_JOBS) {
     const steps = jobSteps(doc, name);
     const toolIdx = steps.findIndex((s) => stepRun(s).includes('select-xcode-toolchain.sh'));
     assert.ok(toolIdx !== -1, `${name}: select-xcode-toolchain.sh step missing`);
@@ -265,7 +265,7 @@ test('customer: every job with xcodebuild validates the toolchain first (Xcode &
 
 test('customer: build/archive xcodebuild invocations keep CODE_SIGNING_ALLOWED=NO', () => {
   const doc = loadYaml(CUSTOMER_WORKFLOW);
-  for (const name of ['build-ios', 'ios-archive']) {
+  for (const name of REQUIRED_IOS_JOBS) {
     for (const step of jobSteps(doc, name)) {
       const run = stepRun(step);
       if (!run.includes('xcodebuild')) continue;
@@ -285,14 +285,16 @@ test('distribution signing is manual, complete-secret gated and export-only', ()
   assert.ok(source.includes('CODE_SIGNING_ALLOWED=NO'));
   assert.ok(source.includes('-exportArchive'));
   assert.ok(source.includes("'destination': 'export'"));
-  const workflow = fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8');
-  assert.ok(workflow.includes("steps.archive.outputs.signed == 'true'"));
-  assert.ok(workflow.includes('ASC_API_KEY_BASE64'));
+  // The signed path now lives in the dedicated distribution workflow.
+  const workflow = fs.readFileSync(DISTRIBUTION_WORKFLOW, 'utf8');
+  assert.ok(workflow.includes('ASC_API_KEY_BASE64'), 'distribution must wire signing material');
+  assert.ok(workflow.includes("IOS_DISTRIBUTION_OPT_IN: 'true'"), 'distribution must pass the exact opt-in');
+  assert.ok(workflow.includes('archive_ios.py'), 'distribution must invoke the archive script');
 });
 
 test('customer: "cap sync ios" is always followed by scripts/patch-ios-spm.js', () => {
   const doc = loadYaml(CUSTOMER_WORKFLOW);
-  for (const name of ['build-ios', 'ios-archive']) {
+  for (const name of REQUIRED_IOS_JOBS) {
     const runs = jobSteps(doc, name).map(stepRun);
     const syncIdx = runs.findIndex((r) => r.includes('cap sync ios'));
     if (syncIdx === -1) continue;
@@ -304,7 +306,7 @@ test('customer: "cap sync ios" is always followed by scripts/patch-ios-spm.js', 
 
 test('customer: artifact uploads reference only build outputs (.zip/.xcarchive/.log)', () => {
   const doc = loadYaml(CUSTOMER_WORKFLOW);
-  for (const name of ['build-ios', 'ios-archive']) {
+  for (const name of REQUIRED_IOS_JOBS) {
     for (const step of jobSteps(doc, name)) {
       if (!String(step.uses || '').startsWith('actions/upload-artifact')) continue;
       const p = String((step.with || {}).path || '');
@@ -317,7 +319,7 @@ test('customer: artifact uploads reference only build outputs (.zip/.xcarchive/.
 });
 
 // ---------------------------------------------------------------------------
-// TOOLCHAIN SCRIPT — static contract
+// TOOLCHAIN SCRIPT â€” static contract
 // ---------------------------------------------------------------------------
 
 test('select-xcode-toolchain.sh enforces BOTH floors (Xcode & iOS SDK major >= 26) without hardpins', () => {
@@ -326,7 +328,7 @@ test('select-xcode-toolchain.sh enforces BOTH floors (Xcode & iOS SDK major >= 2
   assert.ok(src.includes('MIN_IOS_SDK_MAJOR:-26'), 'iOS SDK floor default must be 26');
   assert.ok(src.includes('-lt "$MIN_XCODE_MAJOR"'), 'must reject a candidate whose Xcode major is below the floor');
   assert.ok(src.includes('-lt "$MIN_IOS_SDK_MAJOR"'), 'must reject a candidate whose SDK major is below the floor');
-  assert.ok(!XCODE_HARDPIN_RE.test(src), 'script must not hardcode a versioned Xcode app path — it discovers candidates');
+  assert.ok(!XCODE_HARDPIN_RE.test(src), 'script must not hardcode a versioned Xcode app path â€” it discovers candidates');
   assert.ok(src.includes('Xcode*.app'), 'script must enumerate installed Xcodes');
   assert.ok(src.includes('XCODE_SEARCH_ROOT'), 'documented test-only search-root override (default /Applications)');
 });
@@ -336,7 +338,7 @@ test('select-xcode-toolchain.sh passes bash -n syntax check (skipped if bash una
     t.skip('Windows PowerShell host: bash syntax and real Xcode execution not verified; run on macOS');
     return;
   }
-  // Generous timeout: this Windows host's bash startup swings 4s–>60s.
+  // Generous timeout: this Windows host's bash startup swings 4sâ€“>60s.
   const probe = spawnSync('bash', ['--version'], { encoding: 'utf8', timeout: 180000 });
   if (probe.error || probe.status !== 0) {
     t.skip('bash not available on this host');
@@ -354,59 +356,60 @@ test('select-xcode-toolchain.sh passes bash -n syntax check (skipped if bash una
 });
 
 // ---------------------------------------------------------------------------
-// PARTNER — cross-check (strict since A07 continuation: this lane now owns
+// PARTNER â€” cross-check (strict since A07 continuation: this lane now owns
 // the partner iOS jobs). The partner repo's own test file holds the full
 // suite; this is a second, independent tripwire.
 // ---------------------------------------------------------------------------
 
-test('partner ci.yml: ios jobs on supported runners with the discovery gate (strict)', (t) => {
+test('partner: simulator surfaces gated; archive checks follow the distribution file', (t) => {
   if (!fs.existsSync(PARTNER_WORKFLOW)) {
     t.skip('partner repo not present beside this checkout');
     return;
   }
   const doc = loadYaml(PARTNER_WORKFLOW);
   const text = fs.readFileSync(PARTNER_WORKFLOW, 'utf8');
-  for (const name of ['ios', 'ios-archive']) {
-    assert.ok(doc.jobs[name], `partner job ${name} missing`);
-    const runner = doc.jobs[name]['runs-on'];
-    assert.ok(
-      SUPPORTED_MACOS_RUNNERS.has(runner),
-      `partner ${name}: runs-on "${runner}" not in {${[...SUPPORTED_MACOS_RUNNERS].join(', ')}} — ` +
-        'macos-14 is deprecated (removal 2026-11-02); the A07 continuation fixed this, do not regress'
-    );
-    const steps = jobSteps(doc, name);
-    const toolIdx = steps.findIndex((s) => stepRun(s).includes('select-xcode-toolchain.sh'));
-    assert.ok(toolIdx !== -1, `partner ${name}: select-xcode-toolchain.sh gate step missing (was the known gap, now owned+fixed)`);
-    const env = steps[toolIdx].env || {};
-    assert.strictEqual(String(env.MIN_XCODE_MAJOR), '26', `partner ${name}: MIN_XCODE_MAJOR must be "26"`);
-    assert.strictEqual(String(env.MIN_IOS_SDK_MAJOR), '26', `partner ${name}: MIN_IOS_SDK_MAJOR must be "26"`);
-    const firstXcodebuild = steps.findIndex((s) => stepRun(s).includes('xcodebuild'));
-    if (firstXcodebuild !== -1) {
-      assert.ok(toolIdx < firstXcodebuild, `partner ${name}: gate must run before the first xcodebuild step`);
-    }
-    const jobText = JSON.stringify(doc.jobs[name]);
-    // Secret-SCOPED check: wiring a secret into a step's `env:` is legitimate
-    // (partner ios-archive passes signing material to scripts/archive_ios.py).
-    // Echoing it, interpolating it into a shell script, or handing it to a
-    // third-party action is not — findSecretLeaks enforces exactly that.
-    assertNoSecretLeaks(doc, [name], 'partner ');
-    for (const token of FORBIDDEN_SIGNING_TOKENS) {
-      assert.ok(!jobText.includes(token), `partner ${name}: forbidden signing/store token: ${token}`);
-    }
+
+  // ci.yml keeps only the simulator job; archive/signing moved out entirely.
+  assert.strictEqual(doc.jobs['ios-archive'], undefined, 'partner ci.yml must not run iOS archive');
+  assert.ok(doc.jobs['ios'], 'partner ios simulator job missing');
+  const iosSteps = jobSteps(doc, 'ios');
+  const toolIdx = iosSteps.findIndex((s) => stepRun(s).includes('select-xcode-toolchain.sh'));
+  assert.ok(toolIdx !== -1, 'partner ios: select-xcode-toolchain.sh gate step missing');
+  const gateEnv = iosSteps[toolIdx].env || {};
+  assert.strictEqual(String(gateEnv.MIN_XCODE_MAJOR), '26', 'partner ios: MIN_XCODE_MAJOR must be "26"');
+  assert.strictEqual(String(gateEnv.MIN_IOS_SDK_MAJOR), '26', 'partner ios: MIN_IOS_SDK_MAJOR must be "26"');
+  const firstXcodebuild = iosSteps.findIndex((s) => stepRun(s).includes('xcodebuild'));
+  assert.ok(firstXcodebuild === -1 || toolIdx < firstXcodebuild, 'partner ios: gate before first xcodebuild');
+  assertNoSecretLeaks(doc, ['ios'], 'partner ');
+
+  // The partner's dedicated simulator workflow must also be signing-free.
+  const partnerIosBuild = path.join(path.dirname(PARTNER_WORKFLOW), 'ios-build.yml');
+  if (fs.existsSync(partnerIosBuild)) {
+    const buildText = fs.readFileSync(partnerIosBuild, 'utf8');
+    assert.strictEqual(loadYaml(partnerIosBuild).jobs['ios-archive'], undefined,
+      'partner ios-build.yml must be simulator-only');
+    assert.ok(!buildText.includes('archive_ios.py'), 'partner ios-build.yml must not archive');
   }
-  const archiveRuns = jobSteps(doc, 'ios-archive').map(stepRun).join('\n');
-  // The partner keeps unsigned-archive enforcement in scripts/archive_ios.py
-  // (`run(*archive, 'CODE_SIGNING_ALLOWED=NO', ...)`, proven by the
-  // archive-signing test above), not as a literal in the workflow text. Accept
-  // either location rather than asserting a string the partner never had.
-  const partnerArchivePy = path.join(path.dirname(PARTNER_WORKFLOW), '..', '..', 'scripts', 'archive_ios.py');
-  const archivePyText = fs.existsSync(partnerArchivePy)
-    ? fs.readFileSync(partnerArchivePy, 'utf8')
-    : '';
-  assert.ok(
-    archiveRuns.includes('CODE_SIGNING_ALLOWED=NO') || archivePyText.includes('CODE_SIGNING_ALLOWED=NO'),
-    'partner ios-archive must keep an unsigned (CODE_SIGNING_ALLOWED=NO) archive path'
-  );
+
+  // Archive assertions are RELOCATED here, not removed: the separate gated
+  // distribution file must be the only home for signing.
+  const partnerDistribution = path.join(path.dirname(PARTNER_WORKFLOW), 'ios-distribution.yml');
+  assert.ok(fs.existsSync(partnerDistribution),
+    'partner ios-distribution.yml missing â€” archive must live in a separate gated workflow');
+  const distDoc = loadYaml(partnerDistribution);
+  const distText = fs.readFileSync(partnerDistribution, 'utf8');
+  const distOn = onBlock(distDoc);
+  assert.strictEqual(distOn.push, undefined, 'partner distribution must not run on push');
+  assert.strictEqual(distOn.pull_request, undefined, 'partner distribution must not run on PRs');
+  assert.ok(distOn.workflow_dispatch, 'partner distribution must be manual');
+  assert.match(distText, /approve_distribution/, 'partner distribution needs the boolean approval input');
+  assert.match(distText, /vars\.IOS_DISTRIBUTION_ENABLED/, 'partner distribution needs the default-off variable');
+  assert.match(distText, /github\.event\.repository\.default_branch/, 'partner distribution must require the default branch');
+  assert.match(distText, /IOS_DISTRIBUTION_OPT_IN: 'true'/, 'partner distribution must pass the exact opt-in');
+  assert.match(distText, /archive_ios\.py/, 'partner distribution must invoke the archive script');
+  for (const secret of SIGNING_SECRET_NAMES) {
+    assert.ok(!text.includes(secret), `partner ci.yml must not reference signing secret ${secret}`);
+  }
   assert.ok(!text.includes('Xcode_15'), 'partner: stale Xcode 15 reference');
 });
 
@@ -504,24 +507,29 @@ test('secret-scope: FAILS when a secret is used to build an artifact name', () =
 // `npm ci` installs package-lock.json as written and fails when it disagrees
 // with package.json; it never updates the lock. `npm install` may reconcile and
 // rewrite the lock, so the same commit can resolve to a different tree on a
-// different day. Both iOS jobs therefore use `npm ci --legacy-peer-deps`.
+// different day. iOS jobs therefore use `npm ci --ignore-scripts --legacy-peer-deps`.
 //
 // `--legacy-peer-deps` stays: npm 10 (bundled with the pinned Node patch) needs
-// it to shape this repo's peer graph, and .npmrc sets the same key — dropping
+// it to shape this repo's peer graph, and .npmrc sets the same key â€” dropping
 // the explicit flag would change tree shaping on any runner that ignores .npmrc.
 //
 // The install step is judged as a WHOLE executable block, exactly equal to the
-// required command. Checking line-by-line is not enough: `if false; then … fi`
-// or `set +e … exit 0` contains the right line yet never installs, or erases
+// required command. Checking line-by-line is not enough: `if false; then â€¦ fi`
+// or `set +e â€¦ exit 0` contains the right line yet never installs, or erases
 // the failure. YAML comments are not part of the parsed workflow at all.
 // ---------------------------------------------------------------------------
 
-const REQUIRED_IOS_JOBS = ['build-ios', 'ios-archive'];
+// The archive job moved to ios-distribution.yml; the simulator file now owns
+// only build-ios (+ the manual launch-smoke job, which runs no Node install).
+const REQUIRED_IOS_JOBS = ['build-ios'];
 // Verified against https://nodejs.org/dist/index.json (security release
 // 2026-10-20, bundled npm 10.9.9). Local verification runs Node 24.18.0, so
 // this pin is a source-level decision, not a locally executed CI runtime.
 const PINNED_NODE_VERSION = '22.23.4';
-const REQUIRED_INSTALL_COMMAND = 'npm ci --legacy-peer-deps';
+// The reviewed policy is now `npm ci --ignore-scripts --legacy-peer-deps`:
+// --ignore-scripts blocks every package lifecycle hook in CI, --legacy-peer-deps
+// keeps npm 10's tree shaping identical to .npmrc (customer-only flag).
+const REQUIRED_INSTALL_COMMAND = 'npm ci --ignore-scripts --legacy-peer-deps';
 const NODE_VERSION_LINE_RE = /^node-version:\s*(.*)$/;
 // Any npm install-family command, including one chained or piped behind another
 // command, so `cd . && npm ci ...` cannot slip past detection.
@@ -565,7 +573,7 @@ function inspectJobInstall(jobName, job) {
   }
   // build-ios must always run; ios-archive keeps its sanctioned release gate.
   if (jobName === 'build-ios' && job.if !== undefined) {
-    problems.push(`${jobName}: job must not be conditional (if: ${JSON.stringify(job.if)}) — the simulator build must always run`);
+    problems.push(`${jobName}: job must not be conditional (if: ${JSON.stringify(job.if)}) â€” the simulator build must always run`);
   }
 
   const setupIndexes = [];
@@ -575,7 +583,7 @@ function inspectJobInstall(jobName, job) {
   if (setupIndexes.length === 0) {
     problems.push(`${jobName}: actions/setup-node step missing`);
   } else if (setupIndexes.length > 1) {
-    problems.push(`${jobName}: ${setupIndexes.length} actions/setup-node steps — exactly one pinned toolchain is allowed`);
+    problems.push(`${jobName}: ${setupIndexes.length} actions/setup-node steps â€” exactly one pinned toolchain is allowed`);
   }
   if (setupIndexes.length >= 1) {
     const setup = steps[setupIndexes[0]] || {};
@@ -583,7 +591,7 @@ function inspectJobInstall(jobName, job) {
     const version = withBlock['node-version'];
     if (typeof version !== 'string') {
       problems.push(
-        `${jobName}: node-version must be the quoted exact pin "${PINNED_NODE_VERSION}", got ${JSON.stringify(version)} (${typeof version}) — a numeric or floating value re-resolves on every run`
+        `${jobName}: node-version must be the quoted exact pin "${PINNED_NODE_VERSION}", got ${JSON.stringify(version)} (${typeof version}) â€” a numeric or floating value re-resolves on every run`
       );
     } else if (version !== PINNED_NODE_VERSION) {
       problems.push(
@@ -614,7 +622,7 @@ function inspectJobInstall(jobName, job) {
       `${jobName}: no executable "${REQUIRED_INSTALL_COMMAND}" (a YAML comment or an unrelated command does not count)`
     );
   } else if (installIndexes.length > 1) {
-    problems.push(`${jobName}: ${installIndexes.length} npm install steps — exactly one frozen install is allowed`);
+    problems.push(`${jobName}: ${installIndexes.length} npm install steps â€” exactly one frozen install is allowed`);
   }
 
   for (const index of installIndexes) {
@@ -626,7 +634,7 @@ function inspectJobInstall(jobName, job) {
       );
     }
     if (step.if !== undefined) {
-      problems.push(`${jobName}: npm install step ${index} is conditional (if: ${JSON.stringify(step.if)}) — the frozen install must always run`);
+      problems.push(`${jobName}: npm install step ${index} is conditional (if: ${JSON.stringify(step.if)}) â€” the frozen install must always run`);
     }
     if (unsafeContinueOnError(step['continue-on-error'])) {
       problems.push(`${jobName}: npm install step ${index} must not set continue-on-error`);
@@ -657,14 +665,27 @@ function inspectJobInstall(jobName, job) {
  * @param {object} doc parsed workflow document
  * @returns {string[]}
  */
+/** Does this job build anything that needs the frozen install? */
+function jobBuilds(job) {
+  const steps = job && Array.isArray(job.steps) ? job.steps : [];
+  return steps.some((step) =>
+    executableShellLines(stepRun(step)).some((line) => BUILD_SIGNAL_RE.test(line)),
+  );
+}
+
 function auditInstallDeterminism(doc) {
   const problems = [];
-  for (const name of REQUIRED_IOS_JOBS) {
-    const job = doc && doc.jobs ? doc.jobs[name] : undefined;
+  const jobs = (doc && doc.jobs) || {};
+  // Required jobs must exist and build. Every other job is audited only when it
+  // actually builds, so a pure artifact-download/launch job (no npm) is not
+  // forced to grow a setup-node step it does not need.
+  for (const name of new Set([...REQUIRED_IOS_JOBS, ...Object.keys(jobs)])) {
+    const job = jobs[name];
     if (!job) {
       problems.push(`${name}: job missing from the workflow`);
       continue;
     }
+    if (!REQUIRED_IOS_JOBS.includes(name) && !jobBuilds(job)) continue;
     problems.push(...inspectJobInstall(name, job));
   }
   return problems;
@@ -680,13 +701,17 @@ function nodeVersionDeclarations(workflowText) {
     .map((match) => match[1]);
 }
 
-test('customer: both iOS jobs pin the quoted exact Node patch and keep the npm cache', () => {
+test('customer: iOS jobs pin the quoted exact Node patch and keep the npm cache', () => {
   const workflowText = fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8');
-  assert.deepStrictEqual(
-    nodeVersionDeclarations(workflowText),
-    [`'${PINNED_NODE_VERSION}'`, `'${PINNED_NODE_VERSION}'`],
-    'each setup-node step must declare the quoted exact patch; `22`, 22.23 or a range re-resolves the toolchain and is not reproducible'
-  );
+  const declarations = nodeVersionDeclarations(workflowText);
+  assert.ok(declarations.length >= 1, 'the building job needs a setup-node step');
+  for (const declared of declarations) {
+    assert.strictEqual(
+      declared,
+      `'${PINNED_NODE_VERSION}'`,
+      'each setup-node step must declare the quoted exact patch; `22`, 22.23 or a range re-resolves the toolchain and is not reproducible'
+    );
+  }
 
   const doc = loadYaml(CUSTOMER_WORKFLOW);
   for (const name of REQUIRED_IOS_JOBS) {
@@ -700,7 +725,7 @@ test('customer: both iOS jobs pin the quoted exact Node patch and keep the npm c
   }
 });
 
-test('customer: both iOS jobs install exactly with "npm ci --legacy-peer-deps" before any build step', () => {
+test('customer: iOS jobs install exactly with the reviewed frozen command before any build step', () => {
   const doc = loadYaml(CUSTOMER_WORKFLOW);
   const problems = auditInstallDeterminism(doc);
   assert.deepStrictEqual(
@@ -719,11 +744,14 @@ test('customer: real-staging fixture lane stays separate from the archive lane',
   assert.ok(realStaging, 'build-ios: real-staging preparation must remain');
   assert.match(String(fixture.if || ''), /real_staging != true/, 'fixture lane must exclude real_staging runs');
   assert.match(String(realStaging.if || ''), /real_staging == true/, 'real-staging lane must be opt-in');
-  assert.match(
-    String(doc.jobs['ios-archive'].if || ''),
-    /real_staging != true/,
-    'archive lane must stay separate from real-staging runs'
-  );
+  // The archive lane moved out of this file entirely: distribution is a separate
+  // manually gated workflow and must never inherit the real_staging simulator lane.
+  assert.strictEqual(doc.jobs['ios-archive'], undefined, 'archive lane must not live in ios-build.yml');
+  const distribution = loadYaml(DISTRIBUTION_WORKFLOW);
+  const distText = fs.readFileSync(DISTRIBUTION_WORKFLOW, 'utf8');
+  assert.ok(!distText.includes('real_staging'), 'distribution must not trigger from real_staging');
+  assert.ok(!distText.includes('prepare-demo-simulator.mjs'), 'distribution must not use the demo lane');
+  assert.ok(distribution.jobs, 'distribution must declare jobs');
 });
 
 test('customer: .npmrc keeps legacy-peer-deps so the explicit flag matches local installs', () => {
@@ -736,17 +764,22 @@ test('customer: .npmrc keeps legacy-peer-deps so the explicit flag matches local
   );
 });
 
-test('install guard: applies to ios-archive as well as build-ios', () => {
+test('install guard: applies to every building iOS job', () => {
   const goodJob = () => installJob();
-  const regressedArchive = () =>
-    installJob({ steps: [{ name: 'Install', run: 'npm install --legacy-peer-deps' }] });
+  const regressed = () =>
+    installJob({
+      steps: [
+        { name: 'Build', run: 'npm run build:mobile' },
+        { name: 'Install', run: 'npm install --legacy-peer-deps' },
+      ],
+    });
   const problems = auditInstallDeterminism({
-    jobs: { 'build-ios': goodJob(), 'ios-archive': regressedArchive() },
+    jobs: { 'build-ios': goodJob(), 'ios-build-extra': regressed() },
   }).join('\n');
   assert.match(
     problems,
-    /ios-archive: npm install step \d+ must be exactly "npm ci --legacy-peer-deps"/,
-    'ios-archive regression must be reported'
+    /ios-build-extra: npm install step \d+ must be exactly "npm ci --ignore-scripts --legacy-peer-deps"/,
+    'a regressed building iOS job must be reported'
   );
   assert.doesNotMatch(problems, /build-ios:/, 'a clean build-ios job must not be reported');
 });
@@ -778,15 +811,15 @@ test('install guard: rejects the pre-existing "npm install --legacy-peer-deps" +
   assert.match(problems, /node-version must be the quoted exact pin/, 'numeric 22 must be rejected');
   assert.match(
     problems,
-    /npm install step \d+ must be exactly "npm ci --legacy-peer-deps"/,
+    /npm install step \d+ must be exactly "npm ci --ignore-scripts --legacy-peer-deps"/,
     '"npm install" must be rejected'
   );
 });
 
 test('install guard: rejects a missing job, a missing Node step and a missing install', () => {
   assert.match(
-    auditInstallDeterminism({ jobs: { 'build-ios': installJob() } }).join('\n'),
-    /ios-archive: job missing from the workflow/,
+    auditInstallDeterminism({ jobs: {} }).join('\n'),
+    /build-ios: job missing from the workflow/,
     'a missing job must be reported, not skipped'
   );
   assert.match(
@@ -795,7 +828,7 @@ test('install guard: rejects a missing job, a missing Node step and a missing in
   );
   assert.match(
     fixtureProblems({ steps: [nodeSetupStep(PINNED_NODE_VERSION, 'npm'), { name: 'Build', run: 'npm run build:mobile' }] }),
-    /no executable "npm ci --legacy-peer-deps"/
+    /no executable "npm ci --ignore-scripts --legacy-peer-deps"/
   );
   assert.match(
     fixtureProblems({ steps: [] }),
@@ -827,13 +860,13 @@ test('install guard: rejects a dropped npm cache', () => {
 test('install guard: rejects "npm ci" without the legacy-peer-deps flag and duplicate installs', () => {
   assert.match(
     fixtureProblems(installJob({ steps: [{ name: 'Install', run: 'npm ci' }] })),
-    /must be exactly "npm ci --legacy-peer-deps" as its whole run block/
+    /must be exactly "npm ci --ignore-scripts --legacy-peer-deps" as its whole run block/
   );
   assert.match(
     fixtureProblems(
       installJob({ steps: [{ name: 'Install', run: `${REQUIRED_INSTALL_COMMAND}\nnpm install --legacy-peer-deps` }] })
     ),
-    /must be exactly "npm ci --legacy-peer-deps" as its whole run block/
+    /must be exactly "npm ci --ignore-scripts --legacy-peer-deps" as its whole run block/
   );
   assert.match(
     fixtureProblems(
@@ -882,14 +915,14 @@ test('install guard: rejects a conditional install and extra arguments', () => {
   );
   assert.match(
     fixtureProblems(installJob({ steps: [{ name: 'Install', run: `${REQUIRED_INSTALL_COMMAND} --omit=dev` }] })),
-    /must be exactly "npm ci --legacy-peer-deps" as its whole run block/
+    /must be exactly "npm ci --ignore-scripts --legacy-peer-deps" as its whole run block/
   );
 });
 
 test('install guard: judges the WHOLE install run block, not a line inside a wrapper', () => {
   // Each of these contains the exact command on its own line, so a line-by-line
   // scan accepts it. The block as a whole is what runs, and it is not the frozen
-  // install: `if false` skips it, `set +e … exit 0` erases its failure.
+  // install: `if false` skips it, `set +e â€¦ exit 0` erases its failure.
   const wrappers = [
     `if false; then\n${REQUIRED_INSTALL_COMMAND}\nfi`,
     `set +e\n${REQUIRED_INSTALL_COMMAND}\nexit 0`,
@@ -899,7 +932,7 @@ test('install guard: judges the WHOLE install run block, not a line inside a wra
   for (const run of wrappers) {
     assert.match(
       fixtureProblems(installJob({ steps: [{ name: 'Install', run }] })),
-      /must be exactly "npm ci --legacy-peer-deps" as its whole run block/,
+      /must be exactly "npm ci --ignore-scripts --legacy-peer-deps" as its whole run block/,
       run
     );
   }
@@ -949,7 +982,7 @@ test('install guard: rejects a conditional setup-node step', () => {
   assert.match(problems, /setup-node must not be conditional/);
 });
 
-test('install guard: rejects any job-level if on build-ios but keeps the ios-archive gate', () => {
+test('install guard: rejects any job-level if on build-ios but keeps the smoke gate', () => {
   // A skipped job installs nothing: `if: false`, `if: 'false'` and an expression
   // all leave build-ios unrunnable, so every form is rejected, not just truthy YAML.
   for (const value of [false, 'false', "${{ github.event_name == 'workflow_dispatch' }}"]) {
@@ -959,11 +992,11 @@ test('install guard: rejects any job-level if on build-ios but keeps the ios-arc
       JSON.stringify(value)
     );
   }
-  // Positive control: no if on build-ios is clean, and ios-archive's sanctioned
-  // release gate (`real_staging != true`) is never reported.
+  // Positive control: no if on build-ios is clean, and a sanctioned manual-only
+  // job gate (e.g. the launch smoke) is never reported.
   assert.deepStrictEqual(inspectJobInstall('build-ios', installJob()), []);
   assert.deepStrictEqual(
-    inspectJobInstall('ios-archive', {
+    inspectJobInstall('smoke', {
       ...installJob(),
       if: "github.event_name == 'workflow_dispatch' && inputs.real_staging != true",
     }),
@@ -982,7 +1015,7 @@ test('install guard: rejects any appended command, fallback, pipe or chain', () 
   for (const run of variants) {
     assert.match(
       fixtureProblems(installJob({ steps: [{ name: 'Install', run }] })),
-      /must be exactly "npm ci --legacy-peer-deps" as its whole run block/,
+      /must be exactly "npm ci --ignore-scripts --legacy-peer-deps" as its whole run block/,
       run
     );
   }
@@ -1005,24 +1038,24 @@ test('install guard: a command that only appears in a comment is not an install'
   const doc = parseYamlText(yamlText);
   assert.match(
     inspectJobInstall('build-ios', doc.jobs['build-ios']).join('\n'),
-    /no executable "npm ci --legacy-peer-deps"/
+    /no executable "npm ci --ignore-scripts --legacy-peer-deps"/
   );
 
   // Shell comment inside the run block, next to a real (but wrong) install.
   const mixed = fixtureProblems(
     installJob({ steps: [{ name: 'Install', run: `# ${REQUIRED_INSTALL_COMMAND}\nnpm install --legacy-peer-deps` }] })
   );
-  assert.match(mixed, /must be exactly "npm ci --legacy-peer-deps" as its whole run block/);
+  assert.match(mixed, /must be exactly "npm ci --ignore-scripts --legacy-peer-deps" as its whole run block/);
   assert.doesNotMatch(mixed, /2 npm install steps/, 'the commented line must not count as a second install');
 });
 
 // ---------------------------------------------------------------------------
-// OFFLINE MANIFEST ↔ LOCK AGREEMENT
+// OFFLINE MANIFEST â†” LOCK AGREEMENT
 //
 // `npm ci` refuses to run when package.json and package-lock.json disagree on
 // the root dependency declarations. That failure is the point: it is far
 // cheaper than a runner silently installing a different tree. This check reads
-// both files only — no install, no registry, no lockfile rewrite — and compares
+// both files only â€” no install, no registry, no lockfile rewrite â€” and compares
 // each dependency group separately so a package moved from `devDependencies`
 // into `dependencies` is drift, not a match.
 // ---------------------------------------------------------------------------
@@ -1246,4 +1279,282 @@ test('manifest/lock guard: rejects a missing dependency group declaration', () =
     inspectManifestLockAgreement(missingGroup.manifest, missingGroup.lock).join('\n'),
     /manifest: devDependencies missing from lockfile root/
   );
+});
+
+// ---------------------------------------------------------------------------
+// DISTRIBUTION SEPARATION (dependency-ios-hardening slice)
+//
+// Archive/signing may exist ONLY in a separate, manually gated
+// ios-distribution.yml. The dedicated ios-build.yml must be structurally
+// simulator-only: no archive job, no signing secrets, no key-bearing global env.
+// ---------------------------------------------------------------------------
+
+const DISTRIBUTION_WORKFLOW = path.join(CUSTOMER_ROOT, '.github', 'workflows', 'ios-distribution.yml');
+
+// Pins published in folder39 IOS-CI-SECURITY-METADATA.json (node24, verified).
+const APPROVED_ACTION_PINS = {
+  'actions/checkout': '3d3c42e5aac5ba805825da76410c181273ba90b1',
+  'actions/setup-node': '949feb2413d6458794dcd2491c4babbbce0c15c1',
+  'actions/upload-artifact': 'cf430e030ddbb5b0abf93d22962f4752f3646cd9',
+  'actions/download-artifact': '9000827ccba6bdab643e8b6fd33ac0654aef8333',
+};
+
+// Key material alone; these are what can enable signing.
+const SIGNING_SECRET_NAMES = [
+  'ASC_API_KEY_BASE64', 'ASC_KEY_ID', 'ASC_ISSUER_ID', 'APPLE_TEAM_ID',
+  'IOS_CERTIFICATE_BASE64', 'IOS_CERTIFICATE_PASSWORD', 'IOS_PROFILE_BASE64',
+];
+// Public production client config: not key material, used by prepare steps.
+const PRODUCTION_CONFIG_SECRET_NAMES = [
+  'MOBILE_PRODUCTION_ENV', 'GOOGLE_SERVICE_INFO_PLIST_BASE64',
+];
+
+function stepsOf(doc, name) {
+  const job = doc.jobs && doc.jobs[name];
+  assert.ok(job, `job ${name} missing`);
+  return Array.isArray(job.steps) ? job.steps : [];
+}
+
+test('customer ios-build.yml has no archive job or signing secrets', () => {
+  const doc = loadYaml(CUSTOMER_WORKFLOW);
+  const text = fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8');
+  assert.strictEqual(doc.jobs['ios-archive'], undefined, 'ios-build.yml must be simulator-only');
+  for (const secret of SIGNING_SECRET_NAMES) {
+    assert.ok(!text.includes(secret), `ios-build.yml must not reference signing secret ${secret}`);
+  }
+  assert.ok(!text.includes('archive_ios.py'), 'ios-build.yml must not invoke the archive script');
+  assert.ok(!/-exportArchive/.test(text), 'ios-build.yml must not export an archive');
+  // Global env can no longer carry key material.
+  const rootEnv = doc.env || {};
+  assert.strictEqual(rootEnv.TEAM_ID, undefined, 'global TEAM_ID must be removed');
+  for (const step of stepsOf(doc, 'build-ios')) {
+    const env = step.env || {};
+    assert.strictEqual(env.IOS_DISTRIBUTION_OPT_IN, undefined, 'simulator job must never opt into distribution');
+  }
+});
+
+test('customer ios-build.yml is bounded, least privilege and credential-free', () => {
+  const doc = loadYaml(CUSTOMER_WORKFLOW);
+  const job = doc.jobs['build-ios'];
+  assert.strictEqual((doc.permissions || {}).contents, 'read', 'root permissions must be contents: read');
+  assert.ok(job['timeout-minutes'], 'build job must bound its runtime');
+  assert.strictEqual(String((job.env || {}).CI_SIMULATOR_ONLY), 'true', 'must declare CI_SIMULATOR_ONLY');
+  const text = stripYamlComments(fs.readFileSync(CUSTOMER_WORKFLOW, 'utf8'));
+  assert.ok(!/safe\.directory=\*/.test(text), 'no wildcard safe.directory');
+  const checkout = stepsOf(doc, 'build-ios').find((s) => String(s.uses || '').startsWith('actions/checkout@'));
+  assert.ok(checkout, 'checkout step missing');
+  assert.strictEqual((checkout.with || {})['persist-credentials'], false, 'checkout must not persist credentials');
+  for (const uses of stepsOf(doc, 'build-ios').map((s) => String(s.uses || '')).filter(Boolean)) {
+    const [name, ref] = uses.split('@');
+    const pinned = APPROVED_ACTION_PINS[name];
+    if (pinned) assert.strictEqual(ref, pinned, `${name} must use the reviewed full SHA`);
+  }
+});
+
+test('customer distribution gate truth table (pure)', () => {
+  const gate = (o) => {
+    const g = {
+      event: 'workflow_dispatch', inputApprove: true, inputRaw: 'true',
+      variableEnabled: 'true', ref: 'refs/heads/main', defaultBranch: 'main',
+      environment: 'ios-distribution', ...o,
+    };
+    return (
+      g.event === 'workflow_dispatch' &&
+      g.ref === 'refs/heads/' + g.defaultBranch &&
+      g.variableEnabled === 'true' &&
+      g.inputApprove === true &&
+      g.inputRaw === 'true' &&
+      g.environment === 'ios-distribution'
+    );
+  };
+  assert.strictEqual(gate({}), true, 'all conjuncts true must open');
+  const closers = {
+    'push event': { event: 'push' },
+    'pr event': { event: 'pull_request' },
+    'input false': { inputApprove: false },
+    'input string false': { inputApprove: 'false', inputRaw: 'false' },
+    'input absent': { inputApprove: undefined, inputRaw: undefined },
+    'variable absent': { variableEnabled: undefined },
+    'variable false': { variableEnabled: 'false' },
+    'variable TRUE': { variableEnabled: 'TRUE' },
+    'tag ref': { ref: 'refs/tags/v1' },
+    'other branch': { ref: 'refs/heads/feature/x' },
+    'environment missing': { environment: undefined },
+    'environment wrong': { environment: 'production' },
+  };
+  for (const [label, overrides] of Object.entries(closers)) {
+    assert.strictEqual(gate(overrides), false, `gate must close for ${label}`);
+  }
+});
+
+test('customer ios-distribution.yml encodes the full gate', () => {
+  assert.ok(fs.existsSync(DISTRIBUTION_WORKFLOW), 'ios-distribution.yml missing');
+  const doc = loadYaml(DISTRIBUTION_WORKFLOW);
+  const text = fs.readFileSync(DISTRIBUTION_WORKFLOW, 'utf8');
+  const on = onBlock(doc);
+  assert.ok(on && on.workflow_dispatch, 'must be workflow_dispatch only');
+  assert.strictEqual(on.push, undefined, 'must not run on push');
+  assert.strictEqual(on.pull_request, undefined, 'must not run on pull_request');
+  const input = on.workflow_dispatch.inputs && on.workflow_dispatch.inputs.approve_distribution;
+  assert.ok(input, 'approve_distribution input missing');
+  assert.strictEqual(input.type, 'boolean');
+  assert.strictEqual(input.default, false);
+  assert.match(text, /vars\.IOS_DISTRIBUTION_ENABLED/, 'default-off repository variable gate missing');
+  assert.match(text, /github\.event\.repository\.default_branch/, 'must compare against the default branch');
+  assert.match(text, /refs\/heads\//, 'must match a branch ref, not a tag');
+  const job = Object.values(doc.jobs || {})[0];
+  assert.strictEqual(Object.keys(doc.jobs).length, 1, 'single guarded job expected');
+  assert.ok(String(job.if || '').includes('approve_distribution'), 'job must gate on the boolean input');
+  assert.strictEqual(job.environment, 'ios-distribution');
+  assert.strictEqual((doc.permissions || {}).contents, 'read');
+});
+
+test('customer distribution: key material only on archive step, hard fail, bounded artifact', () => {
+  const doc = loadYaml(DISTRIBUTION_WORKFLOW);
+  const text = fs.readFileSync(DISTRIBUTION_WORKFLOW, 'utf8');
+  const job = Object.values(doc.jobs || {})[0];
+  const archiveSteps = [];
+  for (const step of job.steps || []) {
+    const env = step.env || {};
+    if (Object.keys(env).some((key) => SIGNING_SECRET_NAMES.includes(key))) archiveSteps.push(step);
+  }
+  // Key material may appear on the completeness preflight AND the archive step,
+  // both step-scoped. It must never reach the approval preflight or job scope.
+  assert.ok(archiveSteps.length >= 1 && archiveSteps.length <= 2,
+    `expected 1-2 step-scoped signing locations, found ${archiveSteps.length}`);
+  const archive = archiveSteps.find((s) => /archive_ios\.py/.test(stepRun(s)));
+  assert.ok(archive, 'the archive step must carry the signing keys');
+  assert.strictEqual((archive.env || {}).IOS_DISTRIBUTION_OPT_IN, 'true');
+  for (const step of archiveSteps) {
+    assert.match(String(step.name || ''), /Require signing material|Archive and export signed IPA/,
+      `signing keys must not be on an unexpected step: ${step.name}`);
+  }
+  assert.strictEqual((job.env || {}).ASC_KEY_ID, undefined, 'no job-scoped signing keys');
+
+  assert.ok(!/skipping iOS archive/i.test(text), 'no skip-cleanly path allowed');
+  assert.ok(!/skip=true/.test(text), 'no skip output allowed');
+  assert.ok(!/if:\s*steps\.preflight\.outputs\.skip/.test(text), 'no conditional skip gating');
+  assert.match(text, /exit 1/, 'missing configuration must hard fail');
+
+  const uploads = (job.steps || []).filter((s) => String(s.uses || '').includes('upload-artifact'));
+  assert.ok(uploads.length >= 1, 'artifact upload expected');
+  for (const upload of uploads) {
+    const withBlock = upload.with || {};
+    assert.ok(withBlock['retention-days'], 'bounded retention required');
+    assert.match(String(withBlock.path || ''), /ipa/, 'only the IPA may be uploaded');
+    assert.ok(!/store|publish|submit/i.test(String(withBlock.name || '')), 'artifact name must not imply store submission');
+  }
+  for (const forbidden of ['altool', 'notarytool', 'fastlane', 'app-store-connect']) {
+    assert.ok(!text.includes(forbidden), `no store upload path allowed: ${forbidden}`);
+  }
+});
+
+// js-yaml may parse the `on:` key as boolean true (YAML 1.1 bool list).
+function onBlock(doc) {
+  return doc.on !== undefined ? doc.on : doc[true];
+}
+
+// ---------------------------------------------------------------------------
+// DISTRIBUTION PREFLIGHT â€” executes the REAL workflow blocks with synthetic
+// contexts. GitHub `==` is loose and case-insensitive, so the YAML `if:` alone
+// cannot express these guards; the inline Python blocks are what actually decide.
+// No native tooling, no CI, no signing material.
+// ---------------------------------------------------------------------------
+
+/** Pull a named step's Python heredoc body and its env key list. */
+function extractStepPython(file, stepName) {
+  const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  const marker = `      - name: ${stepName}\n`;
+  const at = text.indexOf(marker);
+  assert.notStrictEqual(at, -1, `${path.basename(file)}: step "${stepName}" missing`);
+  const rest = text.slice(at + marker.length);
+  const nextStep = rest.indexOf('\n      - ');
+  const block = nextStep === -1 ? rest : rest.slice(0, nextStep);
+
+  const runMatch = block.match(/^        run: \|\n([\s\S]*?)(?=^        env:)/m);
+  assert.ok(runMatch, `${stepName}: run block missing`);
+  // The heredoc terminator may be indented differently from the body.
+  const bodyMatch = runMatch[1].match(/<<'PY'\n([\s\S]*?)\n\s*PY\b/);
+  assert.ok(bodyMatch, `${stepName}: Python heredoc missing`);
+
+  const envMatch = block.match(/^        env:\n([\s\S]*)$/m);
+  const envKeys = envMatch
+    ? envMatch[1].split('\n').filter((l) => l.trim()).map((l) => l.trim().split(':')[0])
+    : [];
+  // The heredoc body is indented with the YAML block; dedent it so Python sees
+  // a valid program (the `python3 - <<'PY'` form tolerates leading spaces, but
+  // `python -` does not).
+  const body = bodyMatch[1]
+    .split('\n')
+    .map((line) => line.replace(/^ {10}/, ''))
+    .join('\n');
+  return { body, envKeys, block };
+}
+
+function runPython(body, env) {
+  const result = spawnSync('python', ['-'], {
+    input: body,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT, ...env },
+  });
+  return { status: result.status, out: `${result.stdout || ''}${result.stderr || ''}` };
+}
+
+test('approval preflight: exact semantics, no signing keys, valid context passes', () => {
+  const { body, envKeys } = extractStepPython(DISTRIBUTION_WORKFLOW, 'Verify approval, ref and enablement');
+
+  for (const forbidden of SIGNING_SECRET_NAMES) {
+    assert.ok(!envKeys.includes(forbidden), `approval step must not receive ${forbidden}`);
+  }
+  assert.ok(envKeys.includes('APPROVE_INPUT_JSON'), 'boolean input must arrive via toJSON');
+  assert.ok(!/\$\{\{/.test(body), 'run body must not interpolate ${{ }} directly');
+
+  const REF = 'refs/heads/main';
+  const valid = {
+    APPROVE_INPUT_JSON: 'true', ENABLED_VAR: 'true',
+    ACTUAL_REF: REF, EXPECTED_REF: REF,
+  };
+  assert.strictEqual(runPython(body, valid).status, 0, 'a valid context must pass');
+
+  const refusals = {
+    'input false': { APPROVE_INPUT_JSON: 'false' },
+    'input quoted "true"': { APPROVE_INPUT_JSON: '"true"' },
+    'input null': { APPROVE_INPUT_JSON: 'null' },
+    'input number 1': { APPROVE_INPUT_JSON: '1' },
+    'vars TRUE': { ENABLED_VAR: 'TRUE' },
+    'vars True': { ENABLED_VAR: 'True' },
+    'vars false': { ENABLED_VAR: 'false' },
+    'vars empty': { ENABLED_VAR: '' },
+    'branch case variant': { ACTUAL_REF: 'refs/heads/Main' },
+    'branch other': { ACTUAL_REF: 'refs/heads/feature/x' },
+    'tag ref': { ACTUAL_REF: 'refs/tags/v1.0.0' },
+    'ref missing': { ACTUAL_REF: '' },
+  };
+  for (const [label, override] of Object.entries(refusals)) {
+    assert.notStrictEqual(
+      runPython(body, { ...valid, ...override }).status, 0,
+      `must refuse: ${label}`
+    );
+  }
+});
+
+test('signing completeness preflight: complete passes, each missing key fails by name', () => {
+  const { body, envKeys } = extractStepPython(DISTRIBUTION_WORKFLOW, 'Require signing material');
+  // The blocking bug: the step read keys with no env mapping at all.
+  for (const key of SIGNING_SECRET_NAMES) {
+    assert.ok(envKeys.includes(key), `preflight env mapping missing ${key}`);
+  }
+  assert.ok(!/\beval\b/.test(body), 'no eval allowed');
+
+  const complete = Object.fromEntries(SIGNING_SECRET_NAMES.map((k) => [k, 'synthetic-value']));
+  assert.strictEqual(runPython(body, complete).status, 0, 'complete config must pass');
+
+  for (const missing of SIGNING_SECRET_NAMES) {
+    const partial = { ...complete };
+    delete partial[missing];
+    const result = runPython(body, partial);
+    assert.notStrictEqual(result.status, 0, `missing ${missing} must fail closed`);
+    assert.ok(result.out.includes(missing), `failure must name ${missing}`);
+    assert.ok(!result.out.includes('synthetic-value'), 'must never print values');
+  }
 });

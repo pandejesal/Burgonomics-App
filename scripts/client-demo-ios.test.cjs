@@ -17,7 +17,11 @@ test('staging and nonfunctional fixture are mutually exclusive, explicit lanes',
   assert.equal(staging.env.CI_SIMULATOR_ONLY, 'true');
   assert.doesNotMatch(staging.run, /secrets\.|echo|printenv/);
   assert.ok(steps.indexOf(staging) < steps.findIndex(s => s.run?.includes('build:mobile')));
-  assert.match(doc.jobs['ios-archive'].if, /inputs.real_staging != true/);
+  // The archive lane moved to ios-distribution.yml. The real-staging lane must
+  // remain simulator-only and must not reach the distribution workflow.
+  const distribution = fs.readFileSync(path.join(__dirname, '../.github/workflows/ios-distribution.yml'), 'utf8');
+  assert.doesNotMatch(distribution, /real_staging/, 'distribution must not be triggered by the real_staging lane');
+  assert.doesNotMatch(distribution, /prepare-demo-simulator\.mjs/, 'distribution must not run the demo prepare step');
 });
 test('manual simulator lane launches app, captures rendering, and verifies liveness', () => {
   const smoke = doc.jobs['ios-sim-smoke'];

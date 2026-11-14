@@ -13,7 +13,7 @@
 # evidence only — an "all-skipped" run can never satisfy this gate.
 # Tooling discipline (this workflow, no package/lock edits):
 #   - Node 22 (release production target), JDK 21 (emulator requirement).
-#   - Pinned `firebase-tools@15.32.1` + `@playwright/test@1.63.0` are installed
+#   - Pinned `firebase-tools@15.35.0` + `@playwright/test@1.63.0` are installed
 #     into an EPHEMERAL tool prefix under $RUNNER_TEMP and resolved via NODE_PATH
 #     so the harness PARENT (require.resolve) finds the absolute paths, while the
 #     harness child env stays the secret-stripping allowlist (untouched).
@@ -77,15 +77,15 @@ jobs:
           java-version: "21"
 
       - name: Install workspace dependencies (clean, lockfile-pinned)
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install exact pinned lane tooling into an ephemeral prefix
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ci-tool"
           printf '%s\n' '{"name":"burgonomics-ci-lane-tool","private":true,"version":"0.0.0"}' > "$RUNNER_TEMP/ci-tool/package.json"
-          npm install --prefix "$RUNNER_TEMP/ci-tool" --no-fund --no-audit \
-            firebase-tools@15.32.1 @playwright/test@1.63.0
+          npm install --prefix "$RUNNER_TEMP/ci-tool" --no-fund --no-audit --ignore-scripts \
+            firebase-tools@15.35.0 @playwright/test@1.63.0
           "$RUNNER_TEMP/ci-tool/node_modules/.bin/playwright" install --with-deps chromium
 
       - name: Route lane resolution through the pinned ephemeral toolchain
@@ -105,7 +105,7 @@ jobs:
 
       - name: Assert exact pinned tool versions (fail closed on drift)
         run: |
-          node -e "const pathOf=(m)=>require.resolve(m+'/package.json');const versionOf=(m)=>require(pathOf(m)).version;const bad=[];if(versionOf('firebase-tools')!=='15.32.1')bad.push('firebase-tools '+versionOf('firebase-tools'));if(versionOf('@playwright/test')!=='1.63.0')bad.push('@playwright/test '+versionOf('@playwright/test'));require.resolve('firebase-tools/lib/bin/firebase.js');require.resolve('firebase-tools/lib/emulator/downloadableEmulatorInfo.json');require.resolve('@playwright/test/cli');if(bad.length){console.error('UNPINNED TOOLCHAIN (CI forbids drifting lane tools): '+bad.join('; '));process.exit(1)}console.log('toolchain pinned: firebase-tools@15.32.1 @ '+pathOf('firebase-tools')+', @playwright/test@1.63.0 @ '+pathOf('@playwright/test'))"
+          node -e "const pathOf=(m)=>require.resolve(m+'/package.json');const versionOf=(m)=>require(pathOf(m)).version;const bad=[];if(versionOf('firebase-tools')!=='15.35.0')bad.push('firebase-tools '+versionOf('firebase-tools'));if(versionOf('@playwright/test')!=='1.63.0')bad.push('@playwright/test '+versionOf('@playwright/test'));require.resolve('firebase-tools/lib/bin/firebase.js');require.resolve('firebase-tools/lib/emulator/downloadableEmulatorInfo.json');require.resolve('@playwright/test/cli');if(bad.length){console.error('UNPINNED TOOLCHAIN (CI forbids drifting lane tools): '+bad.join('; '));process.exit(1)}console.log('toolchain pinned: firebase-tools@15.35.0 @ '+pathOf('firebase-tools')+', @playwright/test@1.63.0 @ '+pathOf('@playwright/test'))"
 
       # Runs AFTER npm ci so the deep YAML syntax check inside the static test
       # resolves the existing lockfile's `yaml` parser — it can never silently

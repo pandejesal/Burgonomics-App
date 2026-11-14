@@ -22,14 +22,22 @@
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<!--
-		  UserDefaults (NSUserDefaults)
-		  Reason: CA92.1 — read/write info only accessible to apps in the same
-		  App Group. Apple: "access user defaults to read and write information
+		  UserDefaults (NSUserDefaults) — the ONLY required-reason API this app
+		  uses.
+		  Reason: CA92.1 — read/write information only accessible to the app
+		  itself. Apple: "access user defaults to read and write information
 		  that is only accessible to the apps, app extensions, and App Clips
 		  that are members of the same App Group as the app itself."
-		  Used by: @capacitor/preferences (linked in
-		  ios/App/CapApp-SPM/Package.swift, used by
-		  src/shared/utils/secureStorage.ts) and Ionic secure storage.
+		  Used by: @capacitor/preferences via UserDefaults.standard
+		  (Preferences.swift:18-19 and the migration path in
+		  PreferencesPlugin.swift:89-114). The app declares no App Group
+		  entitlement, so 1C8F.1 (shared App Group defaults) is NOT claimed.
+
+		  No FileTimestamp, DiskSpace or SystemBootTime category is declared:
+		  the bounded 148-file app/plugin source scan found zero call sites for
+		  them. Their previous boilerplate reasons (C617.1 / 85F4.1 / 35F9.1)
+		  were removed rather than re-reasoned, and E174.1 was never applicable
+		  (no user-visible disk-space feature exists).
 		-->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
@@ -37,67 +45,6 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
-			</array>
-		</dict>
-
-		<!--
-		  File timestamp APIs (stat/fstat, NSFileCreationDate,
-		  NSFileModificationDate, contentModificationDate)
-		  Reason: C617.1 — access timestamps/size/metadata of files the user
-		  granted access to. Apple: "access the timestamps, size, or other
-		  metadata of files or directories that the user specifically granted
-		  access to, such as using a document picker view controller."
-		  Used by: support-ticket photo attach (document/photo picker puts a
-		  file in the app container) and the app's offline cache reads.
-		-->
-		<dict>
-			<key>NSPrivacyAccessedAPIType</key>
-			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
-			<key>NSPrivacyAccessedAPITypeReasons</key>
-			<array>
-				<string>C617.1</string>
-			</array>
-		</dict>
-
-		<!--
-		  Disk space APIs (NSFileSystemFreeSize, volumeAvailableCapacity...)
-		  Reason: 85F4.1 — check there is enough space to write files / delete
-		  files when space is low, in a way observable to the user. Apple:
-		  "check whether there is sufficient disk space to write files, or to
-		  check whether the disk space is low so that the app can delete files
-		  when the disk space is low. The app must behave differently based on
-		  disk space in a way that is observable to users."
-		  Used by: Capacitor/preferences and WebKit cache writes when the app
-		  container fills.
-		  (NOT E174.1 — that reason is for showing disk space in an optional bug
-		  report the user submits, which this app does not do.)
-		-->
-		<dict>
-			<key>NSPrivacyAccessedAPIType</key>
-			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
-			<key>NSPrivacyAccessedAPITypeReasons</key>
-			<array>
-				<string>85F4.1</string>
-			</array>
-		</dict>
-
-		<!--
-		  System boot time APIs (systemUptime, mach_absolute_time)
-		  Reason: 35F9.1 — calculate absolute timestamps for events that
-		  occurred within this app. Apple: "access the system boot time to
-		  calculate absolute timestamps for events that occurred within your
-		  app [...] System boot time accessed for this reason, or any other
-		  information derived from system boot time, may not be sent
-		  off-device."
-		  Used by: WebKit/JS engine and Firebase Performance-style timing
-		  inside the app container; no boot time is sent off-device.
-		-->
-		<dict>
-			<key>NSPrivacyAccessedAPIType</key>
-			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
-			<key>NSPrivacyAccessedAPITypeReasons</key>
-			<array>
-				<string>35F9.1</string>
 			</array>
 		</dict>
 	</array>
