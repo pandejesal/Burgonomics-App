@@ -1008,11 +1008,56 @@ function PaymentPage() {
     await startPayment();
   };
 
+  /**
+   * F1: "Cancel order" on the failure panel. The backend has NO cancellation
+   * route, so a gateway order can never actually be cancelled from the app.
+   *
+   * - Nothing bound at the gateway (a preflight/refusal failure): today's
+   *   local exit is honest — nothing was opened, so leaving for checkout
+   *   abandons nothing.
+   * - A gateway order IS bound: ask first and act on the answer. Only a
+   *   success may reset the attempt and leave. A refusal or a thrown transport
+   *   error keeps every reference the customer and support need (gateway
+   *   order, internal `orders/{id}`, failure) and says plainly that the order
+   *   cannot be cancelled here — the order expires on its own. Tapping
+   *   "Cancel order" is never treated as a completed cancellation, the status
+   *   is never flipped to "cancelled" from here, and nothing may escape as an
+   *   unhandled rejection.
+   */
   const cancelAttempt = async () => {
-    if (order) await paymentRepository.cancelPayment(order.orderId);
-    resetPayment();
-    // A resumed order belongs to history, not to a cart this screen never read.
-    void navigate({ to: resumeOrderId ? "/orders" : "/checkout" });
+    const boundOrder = order;
+    if (!boundOrder) {
+      resetPayment();
+      void navigate({ to: resumeOrderId ? "/orders" : "/checkout" });
+      return;
+    }
+
+    try {
+      const cancellation = await paymentRepository.cancelPayment(boundOrder.orderId);
+      if (!cancellation.success) {
+        logger.warn("payment.cancel_refused", { code: cancellation.error.code });
+        toast.info("This order can't be cancelled in the app", {
+          description:
+            "Unpaid orders expire automatically. If you were charged, check My Orders or contact support.",
+        });
+        return;
+      }
+      resetPayment();
+      void navigate({ to: resumeOrderId ? "/orders" : "/checkout" });
+    } catch (err) {
+      // Code only: an exception message is provider/transport text, never
+      // customer copy and never a log field that could carry a reference.
+      const code =
+        typeof (err as { code?: unknown })?.code === "string" &&
+        (err as { code: string }).code.trim()
+          ? (err as { code: string }).code
+          : "CANCEL_REQUEST_FAILED";
+      logger.warn("payment.cancel_failed", { code });
+      toast.info("This order can't be cancelled in the app", {
+        description:
+          "Unpaid orders expire automatically. If you were charged, check My Orders or contact support.",
+      });
+    }
   };
 
   const busy = status === "preparing" || status === "waiting" || status === "retrying";

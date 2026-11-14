@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { paymentsService } from "./paymentsService";
+import type { ApiResult } from "@/core/network/http";
+import type { PaymentStatus } from "@/features/payments/models";
+import { usePaymentStore } from "@/features/payments/state/paymentStore";
 
 // A08 A2 / P1-14 regression: the create-order transport used to collapse every
 // failure into the LOCAL `GATEWAY_ERROR` code, so the server's structured
@@ -139,6 +142,99 @@ describe("paymentsService.createOrder - structured server refusals survive trans
       expect(res.data.razorpayOrderId).toBe("order_rzp_ok");
       expect(res.data.amountPaise).toBe(19900);
       expect(res.data.amount).toBe(199);
+    }
+  });
+});
+
+/**
+ * F1 (payment honesty): the payments API exposes ONLY
+ * /createPaymentOrder, /verifyPayment, /refund and /webhook. There is no
+ * cancellation route and no status read. The transport used to answer these
+ * two calls with a fabricated success after a bare `delay()` — `cancel` said
+ * "cancelled" and `getStatus` said "waiting" without a single request, so the
+ * screen could report a gateway cancellation the backend never performed.
+ *
+ * An unsupported operation must fail closed and say so, with no invented
+ * endpoint, no placeholder success and no busy-wait pretending work happened.
+ */
+describe("paymentsService.cancel / getStatus — no server contract, no fake success", () => {
+  const syntheticGatewayOrderId = "order_synth_cancel_1";
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    usePaymentStore.getState().reset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    usePaymentStore.getState().reset();
+  });
+
+  it("cancel reports PAYMENT_CANCEL_UNSUPPORTED and never claims the gateway cancelled", async () => {
+    // Fake timers keep "no fabricated wait" deterministic without leaving a
+    // dangling promise: any placeholder delay is flushed below, so the promise
+    // always settles and the assertion reports the honest result.
+    vi.useFakeTimers();
+    try {
+      const before = usePaymentStore.getState();
+      const timersBefore = vi.getTimerCount();
+      const request = paymentsService.cancel(syntheticGatewayOrderId);
+      // Never leave a rejection unobserved if an assertion below throws first.
+      void request.catch(() => undefined);
+      const scheduledWhilePending = vi.getTimerCount() - timersBefore;
+
+      await vi.advanceTimersByTimeAsync(150);
+      const res: ApiResult<null> = await request;
+
+      // No pretend success: the backend has no cancellation contract.
+      expect(res.success).toBe(false);
+      if (!res.success) {
+        expect(res.error.code).toBe("PAYMENT_CANCEL_UNSUPPORTED");
+        expect(res.error.retryable).toBe(false);
+        // Bounded, customer-safe copy — never a fabricated "cancelled" claim.
+        expect(res.error.message.length).toBeGreaterThan(0);
+      }
+
+      // Nothing was sent: no guessed endpoint, no placeholder transport call.
+      expect(fetchMock).not.toHaveBeenCalled();
+      // No busy-wait pretending work is happening (pre-fix: delay(100)).
+      expect(scheduledWhilePending).toBe(0);
+      // No payment/order state was mutated by a "cancellation".
+      const after = usePaymentStore.getState();
+      expect(after.status).toBe(before.status);
+      expect(after.order).toBe(before.order);
+      expect(after.internalOrderId).toBe(before.internalOrderId);
+      expect(after.gatewayOrderId).toBe(before.gatewayOrderId);
+      expect(after.failure).toBe(before.failure);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("getStatus reports PAYMENT_STATUS_UNAVAILABLE instead of a fabricated waiting/success", async () => {
+    vi.useFakeTimers();
+    try {
+      const timersBefore = vi.getTimerCount();
+      const request = paymentsService.getStatus(syntheticGatewayOrderId);
+      void request.catch(() => undefined);
+      const scheduledWhilePending = vi.getTimerCount() - timersBefore;
+
+      await vi.advanceTimersByTimeAsync(150);
+      const res: ApiResult<PaymentStatus> = await request;
+
+      expect(res.success).toBe(false);
+      if (!res.success) {
+        expect(res.error.code).toBe("PAYMENT_STATUS_UNAVAILABLE");
+        expect(res.error.retryable).toBe(false);
+        expect(res.error.message.length).toBeGreaterThan(0);
+      }
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      // Pre-fix: `getStatus()` awaited delay(100) and answered "waiting".
+      expect(scheduledWhilePending).toBe(0);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

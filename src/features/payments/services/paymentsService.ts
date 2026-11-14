@@ -384,16 +384,36 @@ export const paymentsService = {
     }
   },
 
+  /**
+   * F1: the payments API exposes ONLY /createPaymentOrder, /verifyPayment,
+   * /refund and /webhook. There is no cancellation route, so there is nothing
+   * to wait for and nothing to report as "cancelled": any success this method
+   * returned was fabricated locally after a bare `delay()`, which let the
+   * screen claim a gateway cancellation the backend never performed. Fail
+   * closed and say so — no placeholder delay, no guessed endpoint, no I/O.
+   */
   async cancel(orderId: string): Promise<ApiResult<null>> {
-    await delay(100);
-    if (!orderId) return fail("MISSING_ORDER", "No active payment to cancel.");
-    return ok(null);
+    void orderId;
+    return fail(
+      "PAYMENT_CANCEL_UNSUPPORTED",
+      "Order cancellation isn't available in the app yet.",
+      false,
+    );
   },
 
+  /**
+   * F1: likewise there is no status read. The previous `ok("waiting")` after a
+   * `delay()` was a fabricated live status — it looked like a server answer and
+   * could keep a customer "waiting" on a payment whose state nobody had asked
+   * about.
+   */
   async getStatus(orderId: string): Promise<ApiResult<PaymentStatus>> {
-    await delay(100);
-    if (!orderId) return fail("MISSING_ORDER", "Unknown order.");
-    return ok("waiting");
+    void orderId;
+    return fail(
+      "PAYMENT_STATUS_UNAVAILABLE",
+      "Live payment status isn't available in the app yet.",
+      false,
+    );
   },
 };
 
