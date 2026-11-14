@@ -21,6 +21,15 @@
 //      executable body is exactly `npm ci --legacy-peer-deps`, after setup-node
 //      and before the web build. A command that merely appears on one line of a
 //      longer, conditional or continue-on-error step is not a determined tree.
+//   C. MANUAL ONLY FOR THE SIGNED ARTIFACT
+//      A production signing key exists for exactly one purpose: an explicit
+//      release. `android-build.yml` therefore responds to `workflow_dispatch`
+//      and nothing else — no push, no pull_request — because every extra trigger
+//      spends the release keystore on an ordinary commit. That must not cost the
+//      repository its native compile coverage: `.github/workflows/ci.yml` must
+//      keep an unconditional Android job that builds the bundle in staging mode,
+//      syncs Capacitor and assembles debug. The two gates are separate on
+//      purpose; this file asserts both sides so neither can be traded away.
 //
 // Run:  node --test scripts/validate-android-workflow.test.cjs
 'use strict';
@@ -32,7 +41,9 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const WORKFLOW = path.join(ROOT, '.github', 'workflows', 'android-build.yml');
+const COMPILE_WORKFLOW = path.join(ROOT, '.github', 'workflows', 'ci.yml');
 const JOB = 'build-android';
+const COMPILE_JOB = 'android';
 
 let yaml;
 try {
@@ -246,7 +257,7 @@ const preflightProblems = (options) => inspectSecretPreflight(preflightJob(optio
 
 // --- assertions against the real workflow ---
 
-test('android-build.yml parses and keeps triggers, runner, Java/Gradle and artifact steps', () => {
+test('android-build.yml parses and keeps runner, Java/Gradle and artifact steps', () => {
   const doc = loadYaml(WORKFLOW);
   const job = doc.jobs[JOB];
   assert.ok(job, `${JOB} job missing`);
@@ -255,7 +266,6 @@ test('android-build.yml parses and keeps triggers, runner, Java/Gradle and artif
 
   const raw = fs.readFileSync(WORKFLOW, 'utf8');
   assert.ok(raw.includes('workflow_dispatch:'), 'workflow_dispatch trigger removed');
-  assert.ok(/branches:\s*\[?main, master\]?/.test(raw), 'push/pull_request branch filters removed');
 
   const steps = jobSteps(doc, JOB);
   const serialized = JSON.stringify(steps);
@@ -616,4 +626,242 @@ test('install guard: rejects a bare setup-node version declaration outside setup
   // so a comment cannot vouch for a pin the runner never sees.
   assert.deepStrictEqual(nodeVersionDeclarations("          node-version: '22.23.4'"), ["'22.23.4'"]);
   assert.deepStrictEqual(nodeVersionDeclarations('          # node-version: \'22.23.4\''), []);
+});
+
+// ---------------------------------------------------------------------------
+// C. Manual-only signed release, with compile coverage kept elsewhere
+//
+// Signing a production APK/AAB consumes the release keystore and produces an
+// artifact someone could ship. That is a release decision a human makes, so the
+// workflow answers only to `workflow_dispatch`. The obvious side effect of
+// narrowing it is the loss of Android compile coverage on every PR — so the
+// second half of this section pins that coverage in ci.yml, where it belongs.
+// ---------------------------------------------------------------------------
+
+const MANUAL_EVENT = 'workflow_dispatch';
+const AUTOMATIC_EVENTS = ['push', 'pull_request', 'pull_request_target', 'schedule', 'release', 'merge_group'];
+
+/**
+ * Automatic event declarations found by raw text scan of the top-level `on:`
+ * block, comments excluded. The parse above proves intent; this proves the file
+ * a runner reads says the same thing even if indentation or anchors confuse it.
+ * @param {string} text workflow source
+ * @returns {string[]} offending lines
+ */
+function rawTriggerLines(text) {
+  const lines = String(text)
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*#/.test(line));
+  const start = lines.findIndex((line) => /^on\s*:/.test(line));
+  if (start === -1) return ['on: block missing'];
+  const pattern = new RegExp(`^(?:\\s*-\\s*|\\s+)(${AUTOMATIC_EVENTS.join('|')})\\b`);
+  // Flow-style `on: [push, workflow_dispatch]` declares its events on the key
+  // line itself, so that line is scanned before the indented block.
+  const inline = (lines[start].replace(/^on\s*:/, '').match(/[A-Za-z_]+/g) || []).filter((name) =>
+    AUTOMATIC_EVENTS.includes(name)
+  );
+  const block = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^[A-Za-z"]/.test(lines[index])) break; // next top-level key
+    block.push(lines[index]);
+  }
+  const found = block.filter((line) => pattern.test(line));
+  const names = found.map((line) => line.trim().replace(/^-\s*/, '').replace(/:.*$/, ''));
+  return [...new Set([...inline, ...names])];
+}
+
+/** Event names declared by an `on:` string, list or mapping. */
+function declaredEvents(document) {
+  const on = document ? document.on : undefined;
+  if (typeof on === 'string') return [on];
+  if (Array.isArray(on)) return on.map(String);
+  if (on && typeof on === 'object') return Object.keys(on);
+  return [];
+}
+
+/**
+ * Problems with the release workflow's trigger set. Empty means manual only.
+ * @param {object} document parsed workflow
+ * @returns {string[]}
+ */
+function inspectManualReleaseTriggers(document) {
+  const events = declaredEvents(document);
+  if (events.length === 0) return ['workflow declares no trigger at all'];
+  const problems = [];
+  if (!events.includes(MANUAL_EVENT)) {
+    problems.push(`signed release workflow must keep the ${MANUAL_EVENT} trigger`);
+  }
+  for (const event of events) {
+    if (event === MANUAL_EVENT) continue;
+    problems.push(
+      `signed release workflow runs on "${event}" — production signing must be an explicit manual release, not an automatic side effect`
+    );
+  }
+  return problems;
+}
+
+/**
+ * Problems with the independent Android compile job in ci.yml. Empty means the
+ * PR-time native compile coverage is intact and needs no production input.
+ * @param {object} document parsed workflow
+ * @returns {string[]}
+ */
+function inspectCompileCoverage(document) {
+  const job = document && document.jobs ? document.jobs[COMPILE_JOB] : undefined;
+  if (!job) return [`Android compile job "${COMPILE_JOB}" missing from ci.yml — native coverage would silently disappear`];
+
+  const problems = [];
+  if (job.if !== undefined) problems.push('Android compile job must not be conditional — a skipped job compiles nothing');
+  if (unsafeFlag(job['continue-on-error'])) problems.push('Android compile job must not set continue-on-error');
+
+  const runBlocks = (Array.isArray(job.steps) ? job.steps : []).map(stepRun);
+  const requirements = [
+    [/npm\s+run\s+build:mobile\b/, /--mode\s+staging/, 'staging mobile bundle build'],
+    [/\bcap\s+sync\s+android\b/, null, 'Capacitor Android sync'],
+    [/\bgradlew\s+assembleDebug\b/, null, 'Gradle assembleDebug'],
+  ];
+  for (const [pattern, extra, label] of requirements) {
+    const found = runBlocks.some(
+      (run) => pattern.test(run) && (extra === null || extra.test(run))
+    );
+    if (!found) problems.push(`Android compile job no longer performs the ${label}`);
+  }
+
+  // A compile check must not need a production secret or the production
+  // configuration helper; that is precisely what made it unrunnable.
+  const serialized = JSON.stringify(job);
+  for (const forbidden of ['MOBILE_PRODUCTION_ENV', 'prepare-native-config']) {
+    if (serialized.includes(forbidden)) {
+      problems.push(`Android compile job references ${forbidden} — the ordinary compile check must not require production input`);
+    }
+  }
+  return problems;
+}
+
+/** Problems with the signed job's production input path. Empty means intact. */
+function inspectProductionInput(document) {
+  const job = document && document.jobs ? document.jobs[JOB] : undefined;
+  if (!job) return [`job ${JOB} missing`];
+  const problems = [];
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const prepare = steps.find((step) => stepRun(step).includes('prepare-native-config.mjs'));
+  if (!prepare) {
+    return ['production configuration step (prepare-native-config.mjs) removed from the signed job'];
+  }
+  const env = prepare.env && typeof prepare.env === 'object' ? prepare.env : {};
+  if (env.MOBILE_PRODUCTION_ENV !== secretExpression('MOBILE_PRODUCTION_ENV')) {
+    problems.push('the production configuration step must still receive MOBILE_PRODUCTION_ENV through env:');
+  }
+  return problems;
+}
+
+test('android-build.yml is manual-only: no push, no pull_request, nothing but workflow_dispatch', () => {
+  const doc = loadYaml(WORKFLOW);
+  assert.deepStrictEqual(declaredEvents(doc), [MANUAL_EVENT], 'the signed release workflow must declare exactly one trigger');
+  const problems = inspectManualReleaseTriggers(doc);
+  assert.deepStrictEqual(problems, [], `trigger problems:\n  ${problems.join('\n  ')}`);
+
+  // Raw text too: a commented-out `push:` block must not read as a trigger, and
+  // a live one must not survive behind a YAML construct the parse flattens.
+  const automatic = rawTriggerLines(fs.readFileSync(WORKFLOW, 'utf8'));
+  assert.deepStrictEqual(automatic, [], `automatic trigger still declared in the on: block: ${automatic.join(', ')}`);
+});
+
+test('android: the signed job keeps its production configuration input', () => {
+  const problems = inspectProductionInput(loadYaml(WORKFLOW));
+  assert.deepStrictEqual(problems, [], `production input problems:\n  ${problems.join('\n  ')}`);
+});
+
+test('ci.yml keeps an unconditional Android compile job that needs no production input', () => {
+  const problems = inspectCompileCoverage(loadYaml(COMPILE_WORKFLOW));
+  assert.deepStrictEqual(problems, [], `compile coverage problems:\n  ${problems.join('\n  ')}`);
+});
+
+// --- negative fixtures: the C guards must reject real regressions too ---
+
+test('trigger guard: permits manual-only and rejects every automatic trigger', () => {
+  assert.deepStrictEqual(inspectManualReleaseTriggers({ on: { [MANUAL_EVENT]: null } }), []);
+  assert.deepStrictEqual(inspectManualReleaseTriggers({ on: MANUAL_EVENT }), []);
+  assert.deepStrictEqual(inspectManualReleaseTriggers({ on: [MANUAL_EVENT] }), []);
+
+  for (const event of ['push', 'pull_request', 'pull_request_target', 'schedule', 'release']) {
+    const problems = inspectManualReleaseTriggers({ on: { [MANUAL_EVENT]: null, [event]: null } }).join('\n');
+    assert.match(problems, new RegExp(`runs on "${event}"`), event);
+  }
+  assert.match(inspectManualReleaseTriggers({}).join('\n'), /no trigger/);
+  assert.match(inspectManualReleaseTriggers({ on: { push: null } }).join('\n'), /keep the workflow_dispatch trigger/);
+});
+
+test('trigger guard: the raw scan sees a live automatic trigger and ignores commented ones', () => {
+  assert.deepStrictEqual(
+    rawTriggerLines('on:\n  workflow_dispatch:\nenv:\n  TEAM_ID: x\njobs:\n  a:\n'),
+    [],
+    'the real manual-only shape must scan clean'
+  );
+  assert.deepStrictEqual(rawTriggerLines('on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n'), ['push']);
+  assert.deepStrictEqual(rawTriggerLines('on: [push, workflow_dispatch]'), ['push']);
+  assert.deepStrictEqual(
+    rawTriggerLines('on:\n  # push:\n  workflow_dispatch:\n'),
+    [],
+    'a commented trigger is not a trigger'
+  );
+  assert.deepStrictEqual(rawTriggerLines('on:\n  pull_request:\n  schedule:\n'), ['pull_request', 'schedule']);
+});
+
+test('compile guard: rejects a missing, gated or production-dependent Android job', () => {
+  const healthy = () => ({
+    jobs: {
+      [COMPILE_JOB]: {
+        steps: [{ run: 'npm run build:mobile -- --mode staging' }, { run: 'npx cap sync android' }, { run: './gradlew assembleDebug' }],
+      },
+    },
+  });
+  assert.deepStrictEqual(inspectCompileCoverage(healthy()), [], 'positive control');
+
+  assert.match(inspectCompileCoverage({ jobs: {} }).join('\n'), /native coverage would silently disappear/);
+
+  const conditional = healthy();
+  conditional.jobs[COMPILE_JOB].if = 'false';
+  assert.match(inspectCompileCoverage(conditional).join('\n'), /must not be conditional/);
+
+  const skipped = healthy();
+  skipped.jobs[COMPILE_JOB]['continue-on-error'] = 'true';
+  assert.match(inspectCompileCoverage(skipped).join('\n'), /must not set continue-on-error/);
+
+  const prodSecret = healthy();
+  prodSecret.jobs[COMPILE_JOB].steps[0].env = { MOBILE_PRODUCTION_ENV: '${{ secrets.MOBILE_PRODUCTION_ENV }}' };
+  assert.match(inspectCompileCoverage(prodSecret).join('\n'), /references MOBILE_PRODUCTION_ENV/);
+
+  const prodHelper = healthy();
+  prodHelper.jobs[COMPILE_JOB].steps.unshift({ run: 'node scripts/prepare-native-config.mjs android' });
+  assert.match(inspectCompileCoverage(prodHelper).join('\n'), /references prepare-native-config/);
+
+  const cases = [
+    ['staging mobile bundle', 'npm run build:mobile'],
+    ['Capacitor Android sync', 'npx cap sync android'],
+    ['Gradle assembleDebug', './gradlew assembleDebug'],
+  ];
+  for (const [label, command] of cases) {
+    const dropped = healthy();
+    dropped.jobs[COMPILE_JOB].steps = dropped.jobs[COMPILE_JOB].steps.filter((step) => !step.run.includes(command));
+    assert.match(inspectCompileCoverage(dropped).join('\n'), new RegExp(label), label);
+  }
+
+  // A debug build without --mode staging still compiles, but it is not the
+  // command this repository proved; requiring the flag keeps one shape.
+  const noMode = healthy();
+  noMode.jobs[COMPILE_JOB].steps[0].run = 'npm run build:mobile';
+  assert.match(inspectCompileCoverage(noMode).join('\n'), /staging mobile bundle/);
+});
+
+test('production input guard: rejects a removed or env-less production configuration step', () => {
+  assert.deepStrictEqual(inspectProductionInput(loadYaml(WORKFLOW)), [], 'the real workflow must pass');
+
+  const withoutStep = { jobs: { [JOB]: { steps: [{ run: './gradlew assembleRelease' }] } } };
+  assert.match(inspectProductionInput(withoutStep).join('\n'), /prepare-native-config\.mjs\) removed/);
+
+  const withoutEnv = {
+    jobs: { [JOB]: { steps: [{ run: 'node scripts/prepare-native-config.mjs android' }] } },
+  };
+  assert.match(inspectProductionInput(withoutEnv).join('\n'), /must still receive MOBILE_PRODUCTION_ENV/);
 });

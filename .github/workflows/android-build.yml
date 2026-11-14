@@ -1,10 +1,10 @@
 name: Android Build (Capacitor)
 
+# Manual release only. This workflow signs a production APK/AAB with the real
+# release keystore, so it runs when a human asks for a release — not on every
+# commit. PR-time Android compile coverage lives in .github/workflows/ci.yml
+# (job `android`, staging mode, assembleDebug), which needs no production secret.
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
 
 env:
