@@ -286,9 +286,7 @@ function OrderDetailsPage() {
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <AppButton
                   variant="cta"
-                  onClick={() =>
-                    void navigate({ to: "/payment", search: { orderId: order.id } })
-                  }
+                  onClick={() => void navigate({ to: "/payment", search: { orderId: order.id } })}
                 >
                   Complete payment
                 </AppButton>

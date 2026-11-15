@@ -66,12 +66,7 @@ describe("A11Y-L2 — store card icon buttons have accessible names", () => {
       root.render(
         <>
           {stores.map((store) => (
-            <StoreCard
-              key={store.id}
-              store={store}
-              fulfillment="delivery"
-              onSelect={() => {}}
-            />
+            <StoreCard key={store.id} store={store} fulfillment="delivery" onSelect={() => {}} />
           ))}
         </>,
       ),

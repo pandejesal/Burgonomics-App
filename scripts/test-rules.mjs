@@ -21,7 +21,7 @@ if (isWindows) {
   }
 }
 
-const resultFile = '.rules-gate-result.json';
+const resultFile = ".rules-gate-result.json";
 try {
   if (existsSync(resultFile)) unlinkSync(resultFile);
 } catch {
@@ -54,9 +54,9 @@ const result = spawnSync(
 let gateError = null;
 try {
   if (!existsSync(resultFile)) {
-    gateError = 'rules result JSON was not written';
+    gateError = "rules result JSON was not written";
   } else {
-    const summary = JSON.parse(readFileSync(resultFile, 'utf8'));
+    const summary = JSON.parse(readFileSync(resultFile, "utf8"));
     const passed = Number(summary.numPassedTests ?? 0);
     const pending = Number(summary.numPendingTests ?? 0);
     const failed = Number(summary.numFailedTests ?? 0);
@@ -83,5 +83,5 @@ if (result.status === null || result.status !== 0) {
   process.exit(1);
 }
 
-console.log('RULES GATE GREEN: 146+ passed, 0 failed, 0 pending');
+console.log("RULES GATE GREEN: 146+ passed, 0 failed, 0 pending");
 process.exit(0);

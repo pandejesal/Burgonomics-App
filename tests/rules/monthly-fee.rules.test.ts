@@ -127,7 +127,9 @@ describe("Canonical union rules — monthly fee, markers, catalog and customer c
       { paymentChannel: "razorpay" },
       { monthlyFeeHold: { holdPaise: 1 } },
     ]) {
-      await assertFails(setDoc(doc(db, "orders", `ord_plant_${Object.keys(planted)[0]}`), { ...base, ...planted }));
+      await assertFails(
+        setDoc(doc(db, "orders", `ord_plant_${Object.keys(planted)[0]}`), { ...base, ...planted }),
+      );
     }
   });
 
@@ -158,20 +160,42 @@ describe("Canonical union rules — monthly fee, markers, catalog and customer c
     if (!emulatorAvailable) return context.skip();
     const docId = `${BRANCH}_2026-11`;
     await assertSucceeds(
-      getDoc(doc(testEnv!.authenticatedContext("branch_owner_1").firestore(), "branch_monthly_fees", docId)),
+      getDoc(
+        doc(
+          testEnv!.authenticatedContext("branch_owner_1").firestore(),
+          "branch_monthly_fees",
+          docId,
+        ),
+      ),
     );
     await assertSucceeds(
-      getDoc(doc(testEnv!.authenticatedContext("brand_owner_1").firestore(), "branch_monthly_fees", docId)),
+      getDoc(
+        doc(
+          testEnv!.authenticatedContext("brand_owner_1").firestore(),
+          "branch_monthly_fees",
+          docId,
+        ),
+      ),
     );
     await assertFails(
-      getDoc(doc(testEnv!.authenticatedContext("branch_owner_2").firestore(), "branch_monthly_fees", docId)),
+      getDoc(
+        doc(
+          testEnv!.authenticatedContext("branch_owner_2").firestore(),
+          "branch_monthly_fees",
+          docId,
+        ),
+      ),
     );
     await assertFails(
-      getDoc(doc(testEnv!.authenticatedContext("cust_100").firestore(), "branch_monthly_fees", docId)),
+      getDoc(
+        doc(testEnv!.authenticatedContext("cust_100").firestore(), "branch_monthly_fees", docId),
+      ),
     );
     const branchDb = testEnv!.authenticatedContext("branch_owner_1").firestore();
     await assertFails(setDoc(doc(branchDb, "branch_monthly_fees", "forged"), { branchId: BRANCH }));
-    await assertFails(updateDoc(doc(branchDb, "branch_monthly_fees", docId), { feeCollectedPaise: 0 }));
+    await assertFails(
+      updateDoc(doc(branchDb, "branch_monthly_fees", docId), { feeCollectedPaise: 0 }),
+    );
   });
 
   it("22i: branch cannot repriced catalog data, but the 86 toggle still works", async (context) => {

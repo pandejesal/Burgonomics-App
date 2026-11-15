@@ -41,8 +41,13 @@ export async function retrieveDeliveryCode(
     return ok(parsed.data);
   } catch (error) {
     if (!current()) return changed();
-    const transport = error as { status?: number; code?: string; response?: { data?: { code?: string; error?: { code?: string } } } } | null;
-    const code = transport?.response?.data?.error?.code ?? transport?.response?.data?.code ?? transport?.code;
+    const transport = error as {
+      status?: number;
+      code?: string;
+      response?: { data?: { code?: string; error?: { code?: string } } };
+    } | null;
+    const code =
+      transport?.response?.data?.error?.code ?? transport?.response?.data?.code ?? transport?.code;
     if (code === "LEGACY_OTP_UNAVAILABLE") {
       return fail(code, "The delivery code for this older order can't be reopened.");
     }

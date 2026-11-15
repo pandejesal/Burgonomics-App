@@ -81,8 +81,14 @@ import {
 import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
 import type { Order } from "@/features/orders/models";
-import { classifyResumableOrder, isTerminalResumeRefusal } from "@/features/payments/utils/resumeOrder";
-import { resumeContextFromOrder, resumeDisplayTotals } from "@/features/payments/utils/resumeContext";
+import {
+  classifyResumableOrder,
+  isTerminalResumeRefusal,
+} from "@/features/payments/utils/resumeOrder";
+import {
+  resumeContextFromOrder,
+  resumeDisplayTotals,
+} from "@/features/payments/utils/resumeContext";
 import {
   persistPaymentReconciliation,
   clearPaymentReconciliation,
@@ -145,9 +151,7 @@ function PaymentPage() {
   const search =
     (Route as unknown as { useSearch?: () => { orderId?: unknown } }).useSearch?.() ?? {};
   const resumeOrderId =
-    typeof search.orderId === "string" && search.orderId.trim()
-      ? search.orderId.trim()
-      : undefined;
+    typeof search.orderId === "string" && search.orderId.trim() ? search.orderId.trim() : undefined;
 
   const lines = useCartStore((s) => s.lines);
   const promo = useCartStore((s) => s.promo);
@@ -622,8 +626,7 @@ function PaymentPage() {
     const quoteNow = deliveryQuoteView({
       state: useCheckoutStore.getState().checkoutFees,
       fulfillment: billingFulfillment,
-      hasAddress:
-        Number.isFinite(billingAddress?.lat) && Number.isFinite(billingAddress?.lng),
+      hasAddress: Number.isFinite(billingAddress?.lat) && Number.isFinite(billingAddress?.lng),
     });
     if (!quoteNow.payEnabled) {
       payInFlight.current = false;
@@ -1237,7 +1240,10 @@ function PaymentPage() {
                 <CreditCard className="h-6 w-6" aria-hidden />
               </div>
               <div className="min-w-0 flex-1">
-                <Text variant="titleMedium" className="font-semibold leading-snug text-primary-text">
+                <Text
+                  variant="titleMedium"
+                  className="font-semibold leading-snug text-primary-text"
+                >
                   Pay Online
                 </Text>
                 <Text variant="bodyMedium" tone="secondary" className="mt-1 leading-relaxed">
@@ -1377,13 +1383,10 @@ function PaymentPage() {
             <div className="py-4">
               <div className="mb-2 flex items-center justify-between">
                 <Text variant="titleMedium" className="font-bold">
-                  Order Summary ({billingItemCount}{" "}
-                  {billingItemCount === 1 ? "item" : "items"})
+                  Order Summary ({billingItemCount} {billingItemCount === 1 ? "item" : "items"})
                 </Text>
                 {resume ? (
-                  <span className="type-label-large text-text-secondary">
-                    From this order
-                  </span>
+                  <span className="type-label-large text-text-secondary">From this order</span>
                 ) : (
                   <Link to="/cart" className="type-label-large text-primary hover:underline">
                     Edit Cart

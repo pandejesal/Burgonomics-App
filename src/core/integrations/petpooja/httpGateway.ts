@@ -1,13 +1,6 @@
 import { auth, db } from "@/core/config/firebase";
 import { defaultFunctionsBase } from "@/core/config/functionsBase";
-import {
-  collection,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { collection, getDocs, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import type {
   GatewayAlert,
   GatewayHealth,
@@ -209,7 +202,9 @@ export class HttpPetpoojaGateway implements PetpoojaGateway {
       const res = await this.get<{ status?: string }>("/health");
       latencyMs = Date.now() - started;
       connected = res?.status === "healthy";
-      message = !connected ? "API reachable but reports unhealthy" : "Live — Petpooja bridge connected";
+      message = !connected
+        ? "API reachable but reports unhealthy"
+        : "Live — Petpooja bridge connected";
     } catch (err) {
       message = err instanceof Error ? err.message : message;
     }

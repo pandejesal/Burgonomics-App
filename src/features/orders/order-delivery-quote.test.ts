@@ -55,9 +55,7 @@ const ORDER_STUB = {
 } as unknown as Order;
 
 beforeEach(() => {
-  createOrder = vi
-    .spyOn(ordersService, "createOrder")
-    .mockResolvedValue(ok(ORDER_STUB));
+  createOrder = vi.spyOn(ordersService, "createOrder").mockResolvedValue(ok(ORDER_STUB));
   vi.spyOn(cartRepository, "calculateTotals").mockResolvedValue(
     ok({
       subtotal: 300,

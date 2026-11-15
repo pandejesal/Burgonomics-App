@@ -20,10 +20,7 @@ export function SectionHeader({ id, title, subtitle, actionLabel, actionTo, clas
       )}
     >
       <div className="min-w-0 flex-1 basis-40">
-        <h2
-          id={id}
-          className="type-subheading text-xl leading-snug text-text-primary break-words"
-        >
+        <h2 id={id} className="type-subheading text-xl leading-snug text-text-primary break-words">
           {title}
         </h2>
         {subtitle && <p className="mt-1 text-sm leading-relaxed text-text-secondary">{subtitle}</p>}

@@ -175,13 +175,7 @@ async function startVite() {
   await mkdir(RAWLOGS_DIR, { recursive: true });
   const child = spawnLogged(
     process.execPath,
-    [
-      viteBin,
-      "--config",
-      path.join(HERE, "vite.emulator.config.ts"),
-      "--mode",
-      "emulator",
-    ],
+    [viteBin, "--config", path.join(HERE, "vite.emulator.config.ts"), "--mode", "emulator"],
     { cwd: PROJECT_ROOT, env: process.env, logFile: VITE_LOG },
   );
 
@@ -305,7 +299,10 @@ async function positive() {
   await mkdir(RAWLOGS_DIR, { recursive: true });
   await writeFile(path.join(RAWLOGS_DIR, "seed.log"), `${seed.stdout ?? ""}${seed.stderr ?? ""}`);
   if (seed.error || seed.status !== 0) {
-    fail(`seed failed (status=${seed.status}, error=${seed.error?.message ?? "none"}). See rawlogs/seed.log`, 7);
+    fail(
+      `seed failed (status=${seed.status}, error=${seed.error?.message ?? "none"}). See rawlogs/seed.log`,
+      7,
+    );
   }
   const proof = await readSeedProof();
   log(
@@ -314,7 +311,9 @@ async function positive() {
   );
 
   const vite = await startVite();
-  log(`vite ready pid=${vite.child.pid ?? "?"} identity=${vite.startToken ? "os-token" : "degraded"}`);
+  log(
+    `vite ready pid=${vite.child.pid ?? "?"} identity=${vite.startToken ? "os-token" : "degraded"}`,
+  );
 
   const playwright = runPlaywright([specArg("emulator-catalog.spec.ts")], "positive");
   const result = await playwright.exited;
@@ -417,7 +416,9 @@ async function negative() {
     }),
     probeReport,
   );
-  log(`negative probe exit=${probe.code} gate=${probeGate.ok} counts=${JSON.stringify(probeGate.counts)}`);
+  log(
+    `negative probe exit=${probe.code} gate=${probeGate.ok} counts=${JSON.stringify(probeGate.counts)}`,
+  );
 
   // The real catalogue spec MUST fail without the emulator — and only for the
   // intended card-count reason, corroborated by the browser's own evidence.

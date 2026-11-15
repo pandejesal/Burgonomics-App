@@ -1209,10 +1209,16 @@ export const ordersService = {
       return status === "completed" || status === "captured" ? "paid" : status;
     };
     const nestedPayment = normalizePayment(order.payment?.status);
-    const topPayment = normalizePayment((order as Order & { paymentStatus?: unknown }).paymentStatus);
-    const displayPayment = [nestedPayment, topPayment].includes("refunded") ? "refunded"
-      : topPayment && topPayment !== nestedPayment ? "pending"
-      : nestedPayment === "paid" ? "paid" : order.payment?.status;
+    const topPayment = normalizePayment(
+      (order as Order & { paymentStatus?: unknown }).paymentStatus,
+    );
+    const displayPayment = [nestedPayment, topPayment].includes("refunded")
+      ? "refunded"
+      : topPayment && topPayment !== nestedPayment
+        ? "pending"
+        : nestedPayment === "paid"
+          ? "paid"
+          : order.payment?.status;
     const etaMinutes = order.estimatedAt
       ? Math.max(0, Math.round((+new Date(order.estimatedAt) - Date.now()) / 60_000))
       : undefined;

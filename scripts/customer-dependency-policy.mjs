@@ -102,7 +102,8 @@ export const KNOWN_RESIDUALS = Object.freeze([
   },
   {
     node: "archiver",
-    detail: "firebase-tools 15.30.2 declares ^7.0.0; 7.0.0-7.0.1 are the advisory range and no 7.0.2 exists.",
+    detail:
+      "firebase-tools 15.30.2 declares ^7.0.0; 7.0.0-7.0.1 are the advisory range and no 7.0.2 exists.",
   },
 ]);
 

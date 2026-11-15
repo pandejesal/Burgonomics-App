@@ -329,7 +329,7 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
             await assertFails(updateDoc(doc(db, "orders", OWN_ORDER), patch));
           } catch (err) {
             if (String(err).includes("Expected request to fail")) {
-              throw new Error(`ROLE=${actor.label} was ALLOWED to patch ${field}`);
+              throw new Error(`ROLE=${actor.label} was ALLOWED to patch ${field}`, { cause: err });
             }
             throw err;
           }

@@ -11,27 +11,44 @@ vi.mock("../services/deliveryCodeService", () => ({ retrieveDeliveryCode: reques
 vi.mock("@/features/auth/state/authStore", async () => {
   const { create } = await import("zustand");
   return {
-    useAuthStore: create(() => ({ status: "authenticated", accessToken: "fixture", user: { id: "owner-a", phone: "+910000000001" } })),
-    selectIsAuthenticated: (s: { status: string; accessToken: string | null; user: { id: string; phone: string } | null }) => s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone,
+    useAuthStore: create(() => ({
+      status: "authenticated",
+      accessToken: "fixture",
+      user: { id: "owner-a", phone: "+910000000001" },
+    })),
+    selectIsAuthenticated: (s: {
+      status: string;
+      accessToken: string | null;
+      user: { id: string; phone: string } | null;
+    }) => s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone,
   };
 });
 import { useAuthStore } from "@/features/auth/state/authStore";
 import { DeliveryCodeCard } from "./DeliveryCodeCard";
 
-const order = (overrides: Partial<Order> = {}): Order => ({
-  id: "order-a",
-  shortCode: "BG-A",
-  fulfillment: "delivery",
-  status: { code: "PREPARING", label: "Preparing", kind: "in_progress", terminal: false },
-  payment: { status: "paid", method: "online", label: "Paid" },
-  // Real v2 shape: a code is only reopenable when the server wrote the version.
-  deliveryOtpVersion: 2,
-  ...overrides,
-} as Order);
-const success = (orderId = "order-a", deliveryOtp = "4826") => ({ success: true, data: { orderId, deliveryOtp, version: 2 } });
+const order = (overrides: Partial<Order> = {}): Order =>
+  ({
+    id: "order-a",
+    shortCode: "BG-A",
+    fulfillment: "delivery",
+    status: { code: "PREPARING", label: "Preparing", kind: "in_progress", terminal: false },
+    payment: { status: "paid", method: "online", label: "Paid" },
+    // Real v2 shape: a code is only reopenable when the server wrote the version.
+    deliveryOtpVersion: 2,
+    ...overrides,
+  }) as Order;
+const success = (orderId = "order-a", deliveryOtp = "4826") => ({
+  success: true,
+  data: { orderId, deliveryOtp, version: 2 },
+});
 function deferred() {
   let resolve!: (value: ReturnType<typeof success>) => void;
-  return { promise: new Promise<ReturnType<typeof success>>((r) => { resolve = r; }), resolve: (value: ReturnType<typeof success>) => resolve(value) };
+  return {
+    promise: new Promise<ReturnType<typeof success>>((r) => {
+      resolve = r;
+    }),
+    resolve: (value: ReturnType<typeof success>) => resolve(value),
+  };
 }
 let container: HTMLDivElement;
 let root: Root;
@@ -47,7 +64,11 @@ async function retry() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  useAuthStore.setState({ status: "authenticated", accessToken: "fixture", user: { id: "owner-a", phone: "+910000000001" } });
+  useAuthStore.setState({
+    status: "authenticated",
+    accessToken: "fixture",
+    user: { id: "owner-a", phone: "+910000000001" },
+  });
   request.mockResolvedValue(success());
   container = document.createElement("div");
   document.body.append(container);
@@ -89,7 +110,10 @@ describe("delivery handover code in component memory only", () => {
   });
 
   it("has a 44px retry target and a bounded explicit retry, not an automatic poll", async () => {
-    request.mockResolvedValue({ success: false, error: { code: "DELIVERY_CODE_UNAVAILABLE", retryable: true } });
+    request.mockResolvedValue({
+      success: false,
+      error: { code: "DELIVERY_CODE_UNAVAILABLE", retryable: true },
+    });
     await render();
     const button = container.querySelector("button");
     expect(button?.className).toContain("min-h-11");
@@ -103,36 +127,56 @@ describe("delivery handover code in component memory only", () => {
   });
 
   it("can recover from a transient error on explicit retry", async () => {
-    request.mockResolvedValueOnce({ success: false, error: { code: "DELIVERY_CODE_UNAVAILABLE", retryable: true } });
+    request.mockResolvedValueOnce({
+      success: false,
+      error: { code: "DELIVERY_CODE_UNAVAILABLE", retryable: true },
+    });
     await render();
     await retry();
     expect(code()).toBe("4826");
   });
 
-  it.each(["LEGACY_OTP_UNAVAILABLE", "AUTH_CHANGED", "ORDER_NOT_ELIGIBLE"])("stops on %s without leaking a cached verify code", async (code) => {
-    request.mockResolvedValue({ success: false, error: { code, retryable: false } });
-    await render(order({ meta: { deliveryOtp: "1111" } }));
-    expect(container.querySelector("[data-sensitive]")).toBeNull();
-    expect(container.querySelector("button")).toBeNull();
-    if (code === "LEGACY_OTP_UNAVAILABLE") expect(container.textContent).toContain("older order");
-    await render(order({ status: { code: "OUT_FOR_DELIVERY", label: "On the way", kind: "in_progress", terminal: false } }));
-    expect(request).toHaveBeenCalledTimes(1);
-    expect(container.textContent).not.toContain("1111");
-  });
+  it.each(["LEGACY_OTP_UNAVAILABLE", "AUTH_CHANGED", "ORDER_NOT_ELIGIBLE"])(
+    "stops on %s without leaking a cached verify code",
+    async (code) => {
+      request.mockResolvedValue({ success: false, error: { code, retryable: false } });
+      await render(order({ meta: { deliveryOtp: "1111" } }));
+      expect(container.querySelector("[data-sensitive]")).toBeNull();
+      expect(container.querySelector("button")).toBeNull();
+      if (code === "LEGACY_OTP_UNAVAILABLE") expect(container.textContent).toContain("older order");
+      await render(
+        order({
+          status: {
+            code: "OUT_FOR_DELIVERY",
+            label: "On the way",
+            kind: "in_progress",
+            terminal: false,
+          },
+        }),
+      );
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(container.textContent).not.toContain("1111");
+    },
+  );
 
   it.each([
-    { fulfillment: "takeaway" }, { fulfillment: "dinein" },
-    { payment: { status: "pending" } }, { payment: { status: "refunded" } },
-    { payment: { status: "CASH_PENDING" } }, { payment: { status: "completed" } },
+    { fulfillment: "takeaway" },
+    { fulfillment: "dinein" },
+    { payment: { status: "pending" } },
+    { payment: { status: "refunded" } },
+    { payment: { status: "CASH_PENDING" } },
+    { payment: { status: "completed" } },
     { status: { code: "DELIVERED", terminal: true } },
     { status: { code: "CANCELLED", terminal: false } },
     { status: { code: "REFUNDING", terminal: false } },
     { status: { code: "FAILED", terminal: true } },
     { status: { code: "FUTURE_UNKNOWN", terminal: false } },
     { deliveryOtpConsumedAt: "fixture-time" },
-    { refundStatus: "pending" }, { refundStatus: "refunded" },
+    { refundStatus: "pending" },
+    { refundStatus: "refunded" },
     { payment: { status: "paid", refundStatus: "initiated" } },
-    { refundActiveClaim: "fixture-claim" }, { refundClaimedAt: "fixture-time" },
+    { refundActiveClaim: "fixture-claim" },
+    { refundClaimedAt: "fixture-time" },
     { reconciliation: { state: "payment_review" } },
   ])("does not request or expose an ineligible order: %j", async (overrides) => {
     await render(order(overrides as Partial<Order>));
@@ -146,30 +190,44 @@ describe("delivery handover code in component memory only", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it.each(["logout", "account", "order", "terminal", "refund", "unpaid", "consumed"])("hides the previous code immediately on %s", async (change) => {
-    const first = deferred();
-    const next = deferred();
-    request.mockReturnValueOnce(first.promise).mockReturnValue(next.promise);
-    await render();
-    await act(async () => first.resolve(success()));
-    expect(code()).toBe("4826");
-    if (change === "logout" || change === "account") {
-      await act(async () => useAuthStore.setState(change === "logout" ? { status: "guest", user: null, accessToken: null } : { user: { id: "owner-b", phone: "+910000000002" } }));
-    } else {
-      const updates: Record<string, Partial<Order>> = {
-        order: { id: "order-b" }, terminal: { status: { code: "DELIVERED", terminal: true, kind: "completed", label: "Delivered" } },
-        refund: { payment: { status: "refunded", method: "online", label: "Refunded" } },
-        unpaid: { payment: { status: "pending", method: "online", label: "Pending" } },
-        consumed: { deliveryOtpConsumedAt: "fixture-time" },
-      };
-      await render(order(updates[change]));
-    }
-    expect(code()).toBeUndefined();
-    // The new scope may receive its OWN fresh response, never the old scope's
-    // state. The separate pending-response tests below cover orphaned requests.
-    await act(async () => next.resolve(success(change === "order" ? "order-b" : "order-a", "7351")));
-    expect(container.textContent).not.toContain("4826");
-  });
+  it.each(["logout", "account", "order", "terminal", "refund", "unpaid", "consumed"])(
+    "hides the previous code immediately on %s",
+    async (change) => {
+      const first = deferred();
+      const next = deferred();
+      request.mockReturnValueOnce(first.promise).mockReturnValue(next.promise);
+      await render();
+      await act(async () => first.resolve(success()));
+      expect(code()).toBe("4826");
+      if (change === "logout" || change === "account") {
+        await act(async () =>
+          useAuthStore.setState(
+            change === "logout"
+              ? { status: "guest", user: null, accessToken: null }
+              : { user: { id: "owner-b", phone: "+910000000002" } },
+          ),
+        );
+      } else {
+        const updates: Record<string, Partial<Order>> = {
+          order: { id: "order-b" },
+          terminal: {
+            status: { code: "DELIVERED", terminal: true, kind: "completed", label: "Delivered" },
+          },
+          refund: { payment: { status: "refunded", method: "online", label: "Refunded" } },
+          unpaid: { payment: { status: "pending", method: "online", label: "Pending" } },
+          consumed: { deliveryOtpConsumedAt: "fixture-time" },
+        };
+        await render(order(updates[change]));
+      }
+      expect(code()).toBeUndefined();
+      // The new scope may receive its OWN fresh response, never the old scope's
+      // state. The separate pending-response tests below cover orphaned requests.
+      await act(async () =>
+        next.resolve(success(change === "order" ? "order-b" : "order-a", "7351")),
+      );
+      expect(container.textContent).not.toContain("4826");
+    },
+  );
 
   it("discards pending owner A responses after switching to owner B on the same order", async () => {
     const old = deferred();
@@ -177,7 +235,9 @@ describe("delivery handover code in component memory only", () => {
     request.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
     await render();
     const oldSignal = request.mock.calls[0][2] as AbortSignal;
-    await act(async () => useAuthStore.setState({ user: { id: "owner-b", phone: "+910000000002" } }));
+    await act(async () =>
+      useAuthStore.setState({ user: { id: "owner-b", phone: "+910000000002" } }),
+    );
     expect(oldSignal.aborted).toBe(true);
     await act(async () => old.resolve(success()));
     expect(code()).toBeUndefined();
@@ -242,7 +302,10 @@ describe("delivery handover code in component memory only", () => {
     expect(loadingEl?.textContent).toContain("Loading delivery code");
     expect(container.querySelector("[role=alert]")).toBeNull();
 
-    request.mockResolvedValue({ success: false, error: { code: "DELIVERY_CODE_UNAVAILABLE", retryable: true } });
+    request.mockResolvedValue({
+      success: false,
+      error: { code: "DELIVERY_CODE_UNAVAILABLE", retryable: true },
+    });
     await render(order({ id: "order-error" }), "order-error");
 
     const alertEl = container.querySelector("[role=alert]");

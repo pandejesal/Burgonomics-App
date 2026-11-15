@@ -298,7 +298,8 @@ function resolveDependency(name) {
 }
 
 function verifyRules() {
-  if (!existsSync(CUSTOMER_RULES_PATH)) blocked(`customer rules missing: ${rel(CUSTOMER_RULES_PATH)}`, 3);
+  if (!existsSync(CUSTOMER_RULES_PATH))
+    blocked(`customer rules missing: ${rel(CUSTOMER_RULES_PATH)}`, 3);
   if (!existsSync(CANONICAL_RULES_PATH)) {
     blocked(
       `canonical backend rules not found at ${CANONICAL_RULES_PATH}. ` +
@@ -383,7 +384,8 @@ async function preflight() {
   const firebaseCli = resolveDependency("firebase-tools/lib/bin/firebase.js");
   if (!firebaseCli) blocked("firebase-tools CLI is not installed in this worktree", 3);
   const playwright = resolveDependency("@playwright/test/cli");
-  if (!playwright) blocked("@playwright/test is declared but not resolvable (no install performed)", 5);
+  if (!playwright)
+    blocked("@playwright/test is declared but not resolvable (no install performed)", 5);
   const rulesUnitTesting = resolveDependency("@firebase/rules-unit-testing");
   if (!rulesUnitTesting) blocked("@firebase/rules-unit-testing is not resolvable", 5);
 
@@ -445,7 +447,8 @@ function writeEffectiveConfig() {
   if (firestore?.port !== FIRESTORE_PORT) problems.push(`firestore port must be ${FIRESTORE_PORT}`);
   if (declared?.emulators?.ui?.enabled !== false) problems.push("emulator UI must be disabled");
   for (const forbidden of ["auth", "functions", "storage", "database", "pubsub"]) {
-    if (declared?.emulators?.[forbidden]) problems.push(`emulator "${forbidden}" must not be declared`);
+    if (declared?.emulators?.[forbidden])
+      problems.push(`emulator "${forbidden}" must not be declared`);
   }
   if (problems.length > 0) {
     blocked(`committed emulator config drifted: ${problems.join("; ")}`, 3);
@@ -795,7 +798,9 @@ async function main() {
     `"${process.execPath}" "${LANE_SCRIPT}"`,
   ];
 
-  log(`positive phase: firebase emulators:exec (java ${state.preflight.java.major}, jar ${state.preflight.jar.version})`);
+  log(
+    `positive phase: firebase emulators:exec (java ${state.preflight.java.major}, jar ${state.preflight.jar.version})`,
+  );
   const positive = await runProcess("positive", process.execPath, cliArgs, {
     // Keep firebase-debug.log / firestore-debug.log OUT of the worktree.
     cwd: ARTIFACTS_DIR,
@@ -867,7 +872,8 @@ async function main() {
       negativeLane?.invertedGate?.ok === true &&
       negativeLane?.vitePortFree === true &&
       negativeLane?.expectationMet === true;
-    if (!negativeGateOk) state.problems.push("negative phase did not meet the intended-failure gate");
+    if (!negativeGateOk)
+      state.problems.push("negative phase did not meet the intended-failure gate");
   } else if (!SKIP_NEGATIVE) {
     negative = { exit: null, skipped: true, reason: "positive phase failed", lane: null };
   }
@@ -953,13 +959,17 @@ async function main() {
   );
   writeReport(manifest);
 
-  log(`verdict: ${manifest.verdict} (positive=${positive.code}, negative=${negative.exit ?? "skipped"})`);
+  log(
+    `verdict: ${manifest.verdict} (positive=${positive.code}, negative=${negative.exit ?? "skipped"})`,
+  );
   log(`report: ${path.join(ARTIFACTS_DIR, "report.md")}`);
   process.exit(manifest.verdict === "PASS" ? 0 : 9);
 }
 
 main().catch((error) => {
   state.problems.push(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.stderr.write(`[run-lane] FAILED: ${error instanceof Error ? error.stack : String(error)}\n`);
+  process.stderr.write(
+    `[run-lane] FAILED: ${error instanceof Error ? error.stack : String(error)}\n`,
+  );
   finishAndExit(9);
 });

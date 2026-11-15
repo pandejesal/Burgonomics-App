@@ -2,10 +2,7 @@ import { useEffect } from "react";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useAppConfig } from "@/core/state/appConfigStore";
 import { isNative } from "@/shared/platform/platform";
-import {
-  loadNativeNetworkClient,
-  type NativeNetworkClient,
-} from "@/shared/platform/networkClient";
+import { loadNativeNetworkClient, type NativeNetworkClient } from "@/shared/platform/networkClient";
 
 /**
  * Connectivity synchronisation between the native Capacitor Network plugin and
@@ -48,9 +45,7 @@ type NetworkClient = NativeNetworkClient;
 export function useOnlineStatus() {
   const setOnline = useAppConfig((state) => state.setOnline);
   const recordBrowserEvidence = useAppConfig((state) => state.recordBrowserEvidence);
-  const setOnlineFromBrowserEvidence = useAppConfig(
-    (state) => state.setOnlineFromBrowserEvidence,
-  );
+  const setOnlineFromBrowserEvidence = useAppConfig((state) => state.setOnlineFromBrowserEvidence);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -140,10 +135,7 @@ export function useOnlineStatus() {
         Network.getStatus()
           .then((status) => {
             // A non-boolean `connected` is not evidence.
-            settle(
-              typeof status?.connected === "boolean" ? "ok" : "fail",
-              status?.connected,
-            );
+            settle(typeof status?.connected === "boolean" ? "ok" : "fail", status?.connected);
           })
           .catch(() => settle("fail"));
       } catch {

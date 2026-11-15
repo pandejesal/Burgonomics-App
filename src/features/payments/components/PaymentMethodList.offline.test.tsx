@@ -62,9 +62,7 @@ let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 
 /** The component's REAL prop types — no hand-written structural copy. */
-type ListProps = React.ComponentProps<
-  typeof import("./PaymentMethodList").PaymentMethodList
->;
+type ListProps = React.ComponentProps<typeof import("./PaymentMethodList").PaymentMethodList>;
 type ListMethod = ListProps["value"];
 
 /** Mount with a controlled `value`/`onChange` pair the test can inspect. */
@@ -96,8 +94,7 @@ async function mountList(
   return { changes, current: () => changes[changes.length - 1] };
 }
 
-const onlineButton = () =>
-  document.querySelector<HTMLButtonElement>("#payment-option-online");
+const onlineButton = () => document.querySelector<HTMLButtonElement>("#payment-option-online");
 const bodyText = () => document.body.textContent ?? "";
 
 beforeEach(() => {

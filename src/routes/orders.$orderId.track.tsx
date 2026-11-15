@@ -68,11 +68,14 @@ function TrackOrderPage() {
   const snapshot = trackingHook.snapshot?.orderId === orderId ? trackingHook.snapshot : null;
   // Derive during render, not a later effect: a live terminal/refund/consumed
   // signal must hide a code in the same commit. No code is ever merged here.
-  const order: Order | null = loadedOrder && loadedOrder.id === orderId ? {
-    ...loadedOrder,
-    ...(snapshot && snapshot.order?.id === orderId ? snapshot.order : {}),
-    status: snapshot?.status ?? loadedOrder.status,
-  } : null;
+  const order: Order | null =
+    loadedOrder && loadedOrder.id === orderId
+      ? {
+          ...loadedOrder,
+          ...(snapshot && snapshot.order?.id === orderId ? snapshot.order : {}),
+          status: snapshot?.status ?? loadedOrder.status,
+        }
+      : null;
   const trackingState = usePorterLiveTracking(order);
   // Loop: no fabricated fallback — a missing store phone must hide the call
   // button, never dial a hardcoded number that isn't the restaurant.
@@ -177,7 +180,8 @@ function TrackOrderPage() {
   // A cancelled, refunded or delivered order has no route to show. Drawing a map
   // with an "Assigning Courier…" card for a cancelled order implied delivery was
   // still in progress, which is a trust bug, not a cosmetic one.
-  const isLiveForMap = !order.status.terminal &&
+  const isLiveForMap =
+    !order.status.terminal &&
     !["cancelled", "canceled", "delivered", "refunded", "completed"].includes(
       (order.status.code ?? "").toLowerCase(),
     ) &&

@@ -32,29 +32,29 @@
 //      purpose; this file asserts both sides so neither can be traded away.
 //
 // Run:  node --test scripts/validate-android-workflow.test.cjs
-'use strict';
+"use strict";
 
-const { test } = require('node:test');
-const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
+const { test } = require("node:test");
+const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 
-const ROOT = path.resolve(__dirname, '..');
-const WORKFLOW = path.join(ROOT, '.github', 'workflows', 'android-build.yml');
-const COMPILE_WORKFLOW = path.join(ROOT, '.github', 'workflows', 'ci.yml');
-const JOB = 'build-android';
-const COMPILE_JOB = 'android';
+const ROOT = path.resolve(__dirname, "..");
+const WORKFLOW = path.join(ROOT, ".github", "workflows", "android-build.yml");
+const COMPILE_WORKFLOW = path.join(ROOT, ".github", "workflows", "ci.yml");
+const JOB = "build-android";
+const COMPILE_JOB = "android";
 
 let yaml;
 try {
-  yaml = require('js-yaml');
+  yaml = require("js-yaml");
 } catch {
   yaml = null;
 }
 
 function loadYaml(file) {
-  assert.ok(yaml, 'js-yaml not resolvable — cannot parse workflows statically');
-  return yaml.load(fs.readFileSync(file, 'utf8'));
+  assert.ok(yaml, "js-yaml not resolvable — cannot parse workflows statically");
+  return yaml.load(fs.readFileSync(file, "utf8"));
 }
 
 function jobSteps(doc, jobName) {
@@ -64,7 +64,7 @@ function jobSteps(doc, jobName) {
 }
 
 function stepRun(step) {
-  return step && typeof step.run === 'string' ? step.run : '';
+  return step && typeof step.run === "string" ? step.run : "";
 }
 
 /** Non-empty, de-indented shell lines; shell comment lines dropped. */
@@ -72,7 +72,7 @@ function shellLines(run) {
   return String(run)
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'));
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
 }
 
 /**
@@ -89,10 +89,10 @@ function unsafeFlag(value) {
 // ---------------------------------------------------------------------------
 
 const REQUIRED_SECRETS = [
-  'RELEASE_KEYSTORE_BASE64',
-  'RELEASE_STORE_PASSWORD',
-  'RELEASE_KEY_PASSWORD',
-  'RELEASE_KEY_ALIAS',
+  "RELEASE_KEYSTORE_BASE64",
+  "RELEASE_STORE_PASSWORD",
+  "RELEASE_KEY_PASSWORD",
+  "RELEASE_KEY_ALIAS",
 ];
 const secretExpression = (name) => `\${{ secrets.${name} }}`;
 
@@ -106,7 +106,10 @@ function variableRef(name) {
  * collapsed. Indentation and the file's trailing semicolons are cosmetic.
  */
 function normalizeShellLine(line) {
-  return String(line).trim().replace(/[;\s]+$/, '').replace(/\s+/g, ' ');
+  return String(line)
+    .trim()
+    .replace(/[;\s]+$/, "")
+    .replace(/\s+/g, " ");
 }
 
 /**
@@ -118,8 +121,8 @@ function acceptedCheckBlock(name) {
   return [
     `if [ -z "\${${name}:-}" ]; then`,
     `echo "::error::${name} secret is empty or missing"`,
-    'exit 1',
-    'fi',
+    "exit 1",
+    "fi",
   ];
 }
 
@@ -131,43 +134,53 @@ function acceptedCheckBlock(name) {
 function inspectSecretPreflight(job) {
   const problems = [];
   const steps = Array.isArray(job && job.steps) ? job.steps : [];
-  const preflights = steps.filter((step) => /preflight/i.test(String((step && step.name) || '')));
+  const preflights = steps.filter((step) => /preflight/i.test(String((step && step.name) || "")));
   if (preflights.length !== 1) {
     return [`expected exactly one release-secret preflight step, found ${preflights.length}`];
   }
   const step = preflights[0];
   const lines = shellLines(stepRun(step));
-  if (lines.length === 0) problems.push('preflight step has no executable run script');
-  const env = step.env && typeof step.env === 'object' && !Array.isArray(step.env) ? step.env : {};
+  if (lines.length === 0) problems.push("preflight step has no executable run script");
+  const env = step.env && typeof step.env === "object" && !Array.isArray(step.env) ? step.env : {};
 
   for (const name of REQUIRED_SECRETS) {
     if (!Object.prototype.hasOwnProperty.call(env, name)) {
-      problems.push(`env.${name} missing — the secret must be mapped through env:, not interpolated into run:`);
+      problems.push(
+        `env.${name} missing — the secret must be mapped through env:, not interpolated into run:`,
+      );
     } else if (env[name] !== secretExpression(name)) {
-      problems.push(`env.${name} must be exactly the ${name} secret expression (a literal or another secret is not the same value)`);
+      problems.push(
+        `env.${name} must be exactly the ${name} secret expression (a literal or another secret is not the same value)`,
+      );
     }
   }
   for (const [key, value] of Object.entries(env)) {
     if (REQUIRED_SECRETS.includes(key)) continue;
-    if (typeof value === 'string' && /\$\{\{\s*secrets\./.test(value)) {
+    if (typeof value === "string" && /\$\{\{\s*secrets\./.test(value)) {
       problems.push(`env.${key} maps an extra secret this step does not check`);
     }
   }
 
   // No GitHub expression may reach the script: it is expanded before the shell
   // parses, which is exactly the injection surface env: removes.
-  const expressionLine = lines.find((line) => line.includes('${{'));
+  const expressionLine = lines.find((line) => line.includes("${{"));
   if (expressionLine !== undefined) {
-    problems.push(`run: script contains an unbounded expression (expanded before the shell; use env:): ${expressionLine}`);
+    problems.push(
+      `run: script contains an unbounded expression (expanded before the shell; use env:): ${expressionLine}`,
+    );
   }
 
   // The preflight must also actually run: a skipped or non-blocking gate checks
   // nothing. Only absent or the literal boolean false is verifiable.
   if (step.if !== undefined) {
-    problems.push(`preflight step must not be conditional (if: ${JSON.stringify(step.if)}) — a skipped gate checks nothing`);
+    problems.push(
+      `preflight step must not be conditional (if: ${JSON.stringify(step.if)}) — a skipped gate checks nothing`,
+    );
   }
-  if (unsafeFlag(step['continue-on-error'])) {
-    problems.push('preflight step must not set continue-on-error — a failing gate must fail the job');
+  if (unsafeFlag(step["continue-on-error"])) {
+    problems.push(
+      "preflight step must not set continue-on-error — a failing gate must fail the job",
+    );
   }
 
   // Whole-body shape: exactly the four accepted blocks, in order, nothing else.
@@ -176,22 +189,27 @@ function inspectSecretPreflight(job) {
   // satisfied by text that merely resembles the commands.
   const normalized = lines.map(normalizeShellLine);
   const expected = REQUIRED_SECRETS.flatMap(acceptedCheckBlock);
-  if (normalized.join('\n') !== expected.join('\n')) {
+  if (normalized.join("\n") !== expected.join("\n")) {
     const firstDiff = expected.findIndex((line, index) => normalized[index] !== line);
     const detail =
       firstDiff === -1
         ? `the body has ${normalized.length - expected.length} extra line(s) after the four accepted checks: ${JSON.stringify(
-            normalized.slice(expected.length)
+            normalized.slice(expected.length),
           )}`
         : `first mismatch at line ${firstDiff + 1}: expected ${JSON.stringify(
-            expected[firstDiff]
-          )}, got ${JSON.stringify(normalized[firstDiff] ?? '(end of script)')}`;
-    problems.push(`preflight body must be exactly the four quoted env checks (fail-closed); ${detail}`);
+            expected[firstDiff],
+          )}, got ${JSON.stringify(normalized[firstDiff] ?? "(end of script)")}`;
+    problems.push(
+      `preflight body must be exactly the four quoted env checks (fail-closed); ${detail}`,
+    );
   }
 
   for (const name of REQUIRED_SECRETS) {
     for (const line of normalized) {
-      if (variableRef(name).test(line) && line !== normalizeShellLine(acceptedCheckBlock(name)[0])) {
+      if (
+        variableRef(name).test(line) &&
+        line !== normalizeShellLine(acceptedCheckBlock(name)[0])
+      ) {
         problems.push(`${name} value is referenced outside the quoted non-empty check: ${line}`);
         break;
       }
@@ -203,14 +221,22 @@ function inspectSecretPreflight(job) {
       continue;
     }
     if (normalized[testIndex] !== normalizeShellLine(acceptedCheckBlock(name)[0])) {
-      problems.push(`${name} expansion must be quoted as "\${${name}:-}" (unquoted or :? is not accepted)`);
+      problems.push(
+        `${name} expansion must be quoted as "\${${name}:-}" (unquoted or :? is not accepted)`,
+      );
     }
     const block = [];
-    for (let index = testIndex; index < normalized.length && normalized[index] !== 'fi'; index += 1) {
+    for (
+      let index = testIndex;
+      index < normalized.length && normalized[index] !== "fi";
+      index += 1
+    ) {
       block.push(normalized[index]);
     }
-    if (!block.includes('exit 1')) {
-      problems.push(`the ${name} check does not exit non-zero — an empty secret must fail the job closed`);
+    if (!block.includes("exit 1")) {
+      problems.push(
+        `the ${name} check does not exit non-zero — an empty secret must fail the job closed`,
+      );
     }
     const message = block.find((line) => line.startsWith('echo "::error::'));
     if (!message || !message.includes(name)) {
@@ -225,9 +251,11 @@ function inspectRunBlocks(doc) {
   const problems = [];
   for (const [jobName, job] of Object.entries((doc && doc.jobs) || {})) {
     for (const step of Array.isArray(job.steps) ? job.steps : []) {
-      const bad = shellLines(stepRun(step)).find((line) => line.includes('${{'));
+      const bad = shellLines(stepRun(step)).find((line) => line.includes("${{"));
       if (bad !== undefined) {
-        problems.push(`${jobName} / ${step.name || step.uses}: run: contains an unbounded expression: ${bad}`);
+        problems.push(
+          `${jobName} / ${step.name || step.uses}: run: contains an unbounded expression: ${bad}`,
+        );
       }
     }
   }
@@ -236,165 +264,208 @@ function inspectRunBlocks(doc) {
 
 // --- fixtures: plain data, never executed ---
 
-const expressionEnv = () => Object.fromEntries(REQUIRED_SECRETS.map((name) => [name, secretExpression(name)]));
+const expressionEnv = () =>
+  Object.fromEntries(REQUIRED_SECRETS.map((name) => [name, secretExpression(name)]));
 
 function preflightScript(names = REQUIRED_SECRETS, template = (name) => `"\${${name}:-}"`) {
   return names
     .map(
       (name) =>
-        `if [ -z ${template(name)} ]; then\n  echo "::error::${name} secret is empty or missing"\n  exit 1\nfi`
+        `if [ -z ${template(name)} ]; then\n  echo "::error::${name} secret is empty or missing"\n  exit 1\nfi`,
     )
-    .join('\n');
+    .join("\n");
 }
 
 function preflightJob({ env = expressionEnv(), run = preflightScript() } = {}) {
-  const step = { name: 'Preflight: Validate release secrets non-empty', run };
+  const step = { name: "Preflight: Validate release secrets non-empty", run };
   if (env) step.env = env;
   return { steps: [step] };
 }
 
-const preflightProblems = (options) => inspectSecretPreflight(preflightJob(options)).join('\n');
+const preflightProblems = (options) => inspectSecretPreflight(preflightJob(options)).join("\n");
 
 // --- assertions against the real workflow ---
 
-test('android-build.yml parses and keeps runner, Java/Gradle and artifact steps', () => {
+test("android-build.yml parses and keeps runner, Java/Gradle and artifact steps", () => {
   const doc = loadYaml(WORKFLOW);
   const job = doc.jobs[JOB];
   assert.ok(job, `${JOB} job missing`);
-  assert.strictEqual(job['runs-on'], 'ubuntu-latest');
-  assert.ok(!unsafeFlag(job['continue-on-error']), 'job-level continue-on-error would hide a failed job');
+  assert.strictEqual(job["runs-on"], "ubuntu-latest");
+  assert.ok(
+    !unsafeFlag(job["continue-on-error"]),
+    "job-level continue-on-error would hide a failed job",
+  );
 
-  const raw = fs.readFileSync(WORKFLOW, 'utf8');
-  assert.ok(raw.includes('workflow_dispatch:'), 'workflow_dispatch trigger removed');
+  const raw = fs.readFileSync(WORKFLOW, "utf8");
+  assert.ok(raw.includes("workflow_dispatch:"), "workflow_dispatch trigger removed");
 
   const steps = jobSteps(doc, JOB);
   const serialized = JSON.stringify(steps);
-  assert.ok(serialized.includes('java-version'), 'JDK setup removed');
-  assert.ok(serialized.includes('gradle/actions/setup-gradle'), 'Gradle setup removed');
-  assert.ok(steps.some((step) => stepRun(step).includes('base64 -d')), 'keystore decode step removed');
-  assert.ok(steps.some((step) => stepRun(step).includes('assembleRelease')), 'Gradle assemble step removed');
-  for (const artifact of ['apk/release/app-release.apk', 'bundle/release/app-release.aab']) {
+  assert.ok(serialized.includes("java-version"), "JDK setup removed");
+  assert.ok(serialized.includes("gradle/actions/setup-gradle"), "Gradle setup removed");
+  assert.ok(
+    steps.some((step) => stepRun(step).includes("base64 -d")),
+    "keystore decode step removed",
+  );
+  assert.ok(
+    steps.some((step) => stepRun(step).includes("assembleRelease")),
+    "Gradle assemble step removed",
+  );
+  for (const artifact of ["apk/release/app-release.apk", "bundle/release/app-release.aab"]) {
     assert.ok(raw.includes(artifact), `artifact path ${artifact} removed`);
   }
 });
 
-test('android: the release-secret preflight maps the four secrets through env and quotes expansions', () => {
+test("android: the release-secret preflight maps the four secrets through env and quotes expansions", () => {
   const doc = loadYaml(WORKFLOW);
   const problems = inspectSecretPreflight(doc.jobs[JOB]);
-  assert.deepStrictEqual(problems, [], `preflight problems:\n  ${problems.join('\n  ')}`);
+  assert.deepStrictEqual(problems, [], `preflight problems:\n  ${problems.join("\n  ")}`);
 });
 
-test('android: no run: block anywhere interpolates a GitHub expression', () => {
+test("android: no run: block anywhere interpolates a GitHub expression", () => {
   const problems = inspectRunBlocks(loadYaml(WORKFLOW));
-  assert.deepStrictEqual(problems, [], `expression-in-script problems:\n  ${problems.join('\n  ')}`);
+  assert.deepStrictEqual(
+    problems,
+    [],
+    `expression-in-script problems:\n  ${problems.join("\n  ")}`,
+  );
 });
 
-test('android: keystore decode and Gradle release steps still receive their secrets via env', () => {
+test("android: keystore decode and Gradle release steps still receive their secrets via env", () => {
   const steps = jobSteps(loadYaml(WORKFLOW), JOB);
-  const decode = steps.find((step) => stepRun(step).includes('base64 -d'));
-  assert.ok(decode, 'keystore decode step missing');
-  assert.strictEqual((decode.env || {}).RELEASE_KEYSTORE_BASE64, secretExpression('RELEASE_KEYSTORE_BASE64'));
-  const gradle = steps.find((step) => stepRun(step).includes('assembleRelease'));
-  assert.ok(gradle, 'Gradle assemble step missing');
-  for (const name of ['RELEASE_STORE_PASSWORD', 'RELEASE_KEY_ALIAS', 'RELEASE_KEY_PASSWORD']) {
-    assert.strictEqual((gradle.env || {})[name], secretExpression(name), `${name} no longer reaches Gradle via env`);
+  const decode = steps.find((step) => stepRun(step).includes("base64 -d"));
+  assert.ok(decode, "keystore decode step missing");
+  assert.strictEqual(
+    (decode.env || {}).RELEASE_KEYSTORE_BASE64,
+    secretExpression("RELEASE_KEYSTORE_BASE64"),
+  );
+  const gradle = steps.find((step) => stepRun(step).includes("assembleRelease"));
+  assert.ok(gradle, "Gradle assemble step missing");
+  for (const name of ["RELEASE_STORE_PASSWORD", "RELEASE_KEY_ALIAS", "RELEASE_KEY_PASSWORD"]) {
+    assert.strictEqual(
+      (gradle.env || {})[name],
+      secretExpression(name),
+      `${name} no longer reaches Gradle via env`,
+    );
   }
 });
 
 // --- negative fixtures: the preflight guard must still reject real regressions ---
 
-test('preflight guard: permits the accepted env-mapped form', () => {
+test("preflight guard: permits the accepted env-mapped form", () => {
   assert.deepStrictEqual(inspectSecretPreflight(preflightJob()), []);
 });
 
-test('preflight guard: rejects an inline secrets expression in run:', () => {
+test("preflight guard: rejects an inline secrets expression in run:", () => {
   const inline = REQUIRED_SECRETS.map(
-    (name) => `if [ -z "\${{ secrets.${name} }}" ]; then\n  echo "::error::${name} secret is empty or missing"\n  exit 1\nfi`
-  ).join('\n');
+    (name) =>
+      `if [ -z "\${{ secrets.${name} }}" ]; then\n  echo "::error::${name} secret is empty or missing"\n  exit 1\nfi`,
+  ).join("\n");
   const problems = preflightProblems({ env: null, run: inline });
-  assert.match(problems, /env\.RELEASE_KEYSTORE_BASE64 missing/, 'the inline form has no env mapping');
-  assert.match(problems, /run: script contains an unbounded expression/, 'an expression in the script must be reported');
+  assert.match(
+    problems,
+    /env\.RELEASE_KEYSTORE_BASE64 missing/,
+    "the inline form has no env mapping",
+  );
+  assert.match(
+    problems,
+    /run: script contains an unbounded expression/,
+    "an expression in the script must be reported",
+  );
 });
 
-test('preflight guard: rejects a missing, swapped, literal or extra env mapping', () => {
+test("preflight guard: rejects a missing, swapped, literal or extra env mapping", () => {
   const missing = expressionEnv();
   delete missing.RELEASE_KEY_ALIAS;
   assert.match(preflightProblems({ env: missing }), /env\.RELEASE_KEY_ALIAS missing/);
 
   const swapped = expressionEnv();
-  swapped.RELEASE_KEY_PASSWORD = secretExpression('RELEASE_STORE_PASSWORD');
+  swapped.RELEASE_KEY_PASSWORD = secretExpression("RELEASE_STORE_PASSWORD");
   assert.match(preflightProblems({ env: swapped }), /env\.RELEASE_KEY_PASSWORD must be exactly/);
 
   const literal = expressionEnv();
-  literal.RELEASE_STORE_PASSWORD = 'not-a-secret-expression';
+  literal.RELEASE_STORE_PASSWORD = "not-a-secret-expression";
   assert.match(preflightProblems({ env: literal }), /env\.RELEASE_STORE_PASSWORD must be exactly/);
 
-  const extra = { ...expressionEnv(), UNCHECKED: secretExpression('SOME_OTHER_SECRET') };
+  const extra = { ...expressionEnv(), UNCHECKED: secretExpression("SOME_OTHER_SECRET") };
   assert.match(preflightProblems({ env: extra }), /env\.UNCHECKED maps an extra secret/);
 
   assert.match(preflightProblems({ env: null }), /env\.RELEASE_KEYSTORE_BASE64 missing/);
 });
 
-test('preflight guard: rejects a missing, unquoted or non-failing non-empty check', () => {
+test("preflight guard: rejects a missing, unquoted or non-failing non-empty check", () => {
   assert.match(
-    preflightProblems({ run: preflightScript(REQUIRED_SECRETS.filter((name) => name !== 'RELEASE_KEY_PASSWORD')) }),
-    /missing non-empty check .*RELEASE_KEY_PASSWORD/
+    preflightProblems({
+      run: preflightScript(REQUIRED_SECRETS.filter((name) => name !== "RELEASE_KEY_PASSWORD")),
+    }),
+    /missing non-empty check .*RELEASE_KEY_PASSWORD/,
   );
   assert.match(
     preflightProblems({ run: preflightScript(REQUIRED_SECRETS, (name) => `\${${name}:-}`) }),
     /must be quoted as/,
-    'an unquoted expansion must not satisfy the check'
+    "an unquoted expansion must not satisfy the check",
   );
   assert.match(
-    preflightProblems({ run: preflightScript(REQUIRED_SECRETS).replace(/ {2}exit 1\n/g, '  echo "warn only"\n') }),
-    /does not exit non-zero/
+    preflightProblems({
+      run: preflightScript(REQUIRED_SECRETS).replace(/ {2}exit 1\n/g, '  echo "warn only"\n'),
+    }),
+    /does not exit non-zero/,
   );
   assert.match(
-    preflightProblems({ run: preflightScript(REQUIRED_SECRETS).replace('::error::RELEASE_KEY_ALIAS secret', '::error::a secret') }),
-    /failure message must name the field/
+    preflightProblems({
+      run: preflightScript(REQUIRED_SECRETS).replace(
+        "::error::RELEASE_KEY_ALIAS secret",
+        "::error::a secret",
+      ),
+    }),
+    /failure message must name the field/,
   );
 });
 
-test('preflight guard: rejects logging or re-consuming a secret value outside the check', () => {
+test("preflight guard: rejects logging or re-consuming a secret value outside the check", () => {
   assert.match(
     preflightProblems({ run: `${preflightScript()}\necho "$RELEASE_STORE_PASSWORD"` }),
-    /RELEASE_STORE_PASSWORD value is referenced outside/
+    /RELEASE_STORE_PASSWORD value is referenced outside/,
   );
   assert.match(
-    preflightProblems({ run: `${preflightScript()}\nbase64 -d <<< "\${RELEASE_KEYSTORE_BASE64:-}"` }),
-    /RELEASE_KEYSTORE_BASE64 value is referenced outside/
+    preflightProblems({
+      run: `${preflightScript()}\nbase64 -d <<< "\${RELEASE_KEYSTORE_BASE64:-}"`,
+    }),
+    /RELEASE_KEYSTORE_BASE64 value is referenced outside/,
   );
 });
 
-test('preflight guard: keeps hostile synthetic values as data, never echo or execute them', () => {
+test("preflight guard: keeps hostile synthetic values as data, never echo or execute them", () => {
   // A value that would break out of unquoted interpolation. It is compared as a
   // string only: no shell, no child process, no signing, no output.
-  const hostile = 'p@ss"w\'o$rd`id`; rm -rf / $(echo x)\nsecond line';
-  const problems = preflightProblems({ env: { ...expressionEnv(), RELEASE_STORE_PASSWORD: hostile } });
+  const hostile = "p@ss\"w'o$rd`id`; rm -rf / $(echo x)\nsecond line";
+  const problems = preflightProblems({
+    env: { ...expressionEnv(), RELEASE_STORE_PASSWORD: hostile },
+  });
   assert.match(problems, /env\.RELEASE_STORE_PASSWORD must be exactly/);
-  assert.ok(!problems.includes('rm -rf'), 'the diagnostic must not echo a rejected value');
+  assert.ok(!problems.includes("rm -rf"), "the diagnostic must not echo a rejected value");
   assert.match(
     preflightProblems({ run: `${preflightScript()}\nprintf '%s' "\${RELEASE_STORE_PASSWORD:-}"` }),
-    /RELEASE_STORE_PASSWORD value is referenced outside/
+    /RELEASE_STORE_PASSWORD value is referenced outside/,
   );
 });
 
-test('preflight guard: rejects a body that only disguises the accepted checks', () => {
+test("preflight guard: rejects a body that only disguises the accepted checks", () => {
   // Positive control: the accepted env-mapped body must still pass.
   assert.deepStrictEqual(inspectSecretPreflight(preflightJob()), []);
 
   const cases = [
     [
-      'logging disguised as a check',
+      "logging disguised as a check",
       `${preflightScript()}\necho -z "\${RELEASE_STORE_PASSWORD:-}"`,
       /referenced outside|preflight body/,
     ],
     [
-      'echoed exit text is not an exit',
+      "echoed exit text is not an exit",
       preflightScript().replace(/exit 1/g, 'echo "exit 1"'),
       /does not exit non-zero|preflight body/,
     ],
-    ['whole preflight skipped', `if false; then\n${preflightScript()}\nfi`, /preflight body/],
+    ["whole preflight skipped", `if false; then\n${preflightScript()}\nfi`, /preflight body/],
   ];
   for (const [label, run, expected] of cases) {
     const problems = preflightProblems({ run });
@@ -403,17 +474,17 @@ test('preflight guard: rejects a body that only disguises the accepted checks', 
   }
 });
 
-test('preflight guard: rejects a conditional or continue-on-error preflight step', () => {
-  assert.deepStrictEqual(inspectSecretPreflight(preflightJob()), [], 'positive control');
+test("preflight guard: rejects a conditional or continue-on-error preflight step", () => {
+  assert.deepStrictEqual(inspectSecretPreflight(preflightJob()), [], "positive control");
 
   const cases = [
-    ['conditional', { if: 'false' }, /must not be conditional/],
-    ['continue-on-error', { 'continue-on-error': true }, /must not set continue-on-error/],
+    ["conditional", { if: "false" }, /must not be conditional/],
+    ["continue-on-error", { "continue-on-error": true }, /must not set continue-on-error/],
   ];
   for (const [label, extra, expected] of cases) {
     const job = preflightJob();
     Object.assign(job.steps[0], extra);
-    assert.match(inspectSecretPreflight(job).join('\n'), expected, label);
+    assert.match(inspectSecretPreflight(job).join("\n"), expected, label);
   }
 });
 
@@ -429,8 +500,8 @@ test('preflight guard: rejects a conditional or continue-on-error preflight step
 // would otherwise hide the command from a line-by-line scan.
 // ---------------------------------------------------------------------------
 
-const PINNED_NODE_VERSION = '22.23.4';
-const INSTALL_COMMAND = 'npm ci --legacy-peer-deps';
+const PINNED_NODE_VERSION = "22.23.4";
+const INSTALL_COMMAND = "npm ci --legacy-peer-deps";
 const NPM_INSTALL_RE = /\bnpm\s+(ci|clean-install|install|i|install-test|add)\b/;
 
 /**
@@ -441,30 +512,35 @@ const NPM_INSTALL_RE = /\bnpm\s+(ci|clean-install|install|i|install-test|add)\b/
 function inspectNodeInstall(job) {
   const problems = [];
   const steps = Array.isArray(job && job.steps) ? job.steps : [];
-  if (unsafeFlag(job && job['continue-on-error'])) {
-    problems.push('job-level continue-on-error would let a failed install or build pass the job');
+  if (unsafeFlag(job && job["continue-on-error"])) {
+    problems.push("job-level continue-on-error would let a failed install or build pass the job");
   }
 
   const setupIndexes = steps
-    .map((step, index) => (String((step && step.uses) || '').startsWith('actions/setup-node@') ? index : -1))
+    .map((step, index) =>
+      String((step && step.uses) || "").startsWith("actions/setup-node@") ? index : -1,
+    )
     .filter((index) => index !== -1);
   if (setupIndexes.length === 0) {
-    problems.push('actions/setup-node step missing');
+    problems.push("actions/setup-node step missing");
   } else if (setupIndexes.length > 1) {
-    problems.push(`${setupIndexes.length} actions/setup-node steps — exactly one pinned toolchain is allowed`);
+    problems.push(
+      `${setupIndexes.length} actions/setup-node steps — exactly one pinned toolchain is allowed`,
+    );
   }
   if (setupIndexes.length >= 1) {
     const setup = steps[setupIndexes[0]] || {};
-    const withBlock = setup.with && typeof setup.with === 'object' ? setup.with : {};
-    const version = withBlock['node-version'];
-    if (typeof version !== 'string' || version !== PINNED_NODE_VERSION) {
+    const withBlock = setup.with && typeof setup.with === "object" ? setup.with : {};
+    const version = withBlock["node-version"];
+    if (typeof version !== "string" || version !== PINNED_NODE_VERSION) {
       problems.push(
-        `node-version must be the quoted exact pin "${PINNED_NODE_VERSION}", got ${JSON.stringify(version)} (${typeof version})`
+        `node-version must be the quoted exact pin "${PINNED_NODE_VERSION}", got ${JSON.stringify(version)} (${typeof version})`,
       );
     }
-    if (withBlock.cache !== 'npm') problems.push('setup-node must keep cache: "npm"');
-    if (setup.if !== undefined) problems.push('setup-node must not be conditional');
-    if (unsafeFlag(setup['continue-on-error'])) problems.push('setup-node must not set continue-on-error');
+    if (withBlock.cache !== "npm") problems.push('setup-node must keep cache: "npm"');
+    if (setup.if !== undefined) problems.push("setup-node must not be conditional");
+    if (unsafeFlag(setup["continue-on-error"]))
+      problems.push("setup-node must not set continue-on-error");
   }
 
   const installIndexes = steps
@@ -473,29 +549,32 @@ function inspectNodeInstall(job) {
   if (installIndexes.length === 0) {
     problems.push(`no "${INSTALL_COMMAND}" step`);
   } else if (installIndexes.length > 1) {
-    problems.push(`${installIndexes.length} npm install steps — exactly one frozen install is allowed`);
+    problems.push(
+      `${installIndexes.length} npm install steps — exactly one frozen install is allowed`,
+    );
   }
   for (const index of installIndexes) {
     const step = steps[index] || {};
     if (stepRun(step).trim() !== INSTALL_COMMAND) {
       problems.push(
-        `install step ${index} must be exactly "${INSTALL_COMMAND}" as its whole run block, got: ${JSON.stringify(stepRun(step).trim())}`
+        `install step ${index} must be exactly "${INSTALL_COMMAND}" as its whole run block, got: ${JSON.stringify(stepRun(step).trim())}`,
       );
     }
     if (step.if !== undefined) problems.push(`install step ${index} must not be conditional (if:)`);
-    if (unsafeFlag(step['continue-on-error'])) problems.push(`install step ${index} must not set continue-on-error`);
+    if (unsafeFlag(step["continue-on-error"]))
+      problems.push(`install step ${index} must not set continue-on-error`);
   }
 
   if (installIndexes.length === 1) {
     const installIndex = installIndexes[0];
     if (setupIndexes.length >= 1 && installIndex < setupIndexes[0]) {
-      problems.push('install runs before the pinned Node setup');
+      problems.push("install runs before the pinned Node setup");
     }
     const buildIndex = steps.findIndex(
-      (step, index) => index !== installIndex && /npm\s+run\s+build:mobile/.test(stepRun(step))
+      (step, index) => index !== installIndex && /npm\s+run\s+build:mobile/.test(stepRun(step)),
     );
     if (buildIndex !== -1 && installIndex > buildIndex) {
-      problems.push('install must run before the web build / cap sync step');
+      problems.push("install must run before the web build / cap sync step");
     }
   }
   return problems;
@@ -512,54 +591,70 @@ function nodeVersionDeclarations(text) {
     .map((match) => match[1]);
 }
 
-test('android: setup-node pins the quoted exact Node patch and keeps the npm cache', () => {
-  const raw = fs.readFileSync(WORKFLOW, 'utf8');
+test("android: setup-node pins the quoted exact Node patch and keeps the npm cache", () => {
+  const raw = fs.readFileSync(WORKFLOW, "utf8");
   assert.deepStrictEqual(nodeVersionDeclarations(raw), [`'${PINNED_NODE_VERSION}'`]);
   const problems = inspectNodeInstall(loadYaml(WORKFLOW).jobs[JOB]);
-  assert.deepStrictEqual(problems, [], `node/install problems:\n  ${problems.join('\n  ')}`);
+  assert.deepStrictEqual(problems, [], `node/install problems:\n  ${problems.join("\n  ")}`);
 });
 
-test('android: .npmrc keeps legacy-peer-deps alongside the explicit flag', () => {
-  const npmrc = fs.readFileSync(path.join(ROOT, '.npmrc'), 'utf8');
+test("android: .npmrc keeps legacy-peer-deps alongside the explicit flag", () => {
+  const npmrc = fs.readFileSync(path.join(ROOT, ".npmrc"), "utf8");
   assert.match(npmrc, /^\s*legacy-peer-deps\s*=\s*true\s*$/m);
 });
 
 // --- fixtures: synthetic job objects, nothing executed ---
 
 const nodeSetupStep = (version = PINNED_NODE_VERSION, extra = {}) => ({
-  uses: 'actions/setup-node@v4',
-  with: { 'node-version': version, cache: 'npm' },
+  uses: "actions/setup-node@v4",
+  with: { "node-version": version, cache: "npm" },
   ...extra,
 });
-const installStep = (run = INSTALL_COMMAND, extra = {}) => ({ name: 'Install Node Dependencies', run, ...extra });
-const buildStep = () => ({ name: 'Build Web Bundle', run: 'npm run build:mobile\nnpx cap sync android' });
+const installStep = (run = INSTALL_COMMAND, extra = {}) => ({
+  name: "Install Node Dependencies",
+  run,
+  ...extra,
+});
+const buildStep = () => ({
+  name: "Build Web Bundle",
+  run: "npm run build:mobile\nnpx cap sync android",
+});
 
-function androidJob({ setup = [nodeSetupStep()], install = [installStep()], build = [buildStep()], job = {} } = {}) {
+function androidJob({
+  setup = [nodeSetupStep()],
+  install = [installStep()],
+  build = [buildStep()],
+  job = {},
+} = {}) {
   return { steps: [...setup, ...install, ...build], ...job };
 }
 
-const nodeProblems = (options) => inspectNodeInstall(androidJob(options)).join('\n');
+const nodeProblems = (options) => inspectNodeInstall(androidJob(options)).join("\n");
 
-test('install guard: permits the pinned fixture itself', () => {
+test("install guard: permits the pinned fixture itself", () => {
   assert.deepStrictEqual(inspectNodeInstall(androidJob()), []);
 });
 
 test('install guard: rejects the pre-existing numeric Node 22 + "npm install" workflow', () => {
   const problems = nodeProblems({
     setup: [nodeSetupStep(22)],
-    install: [installStep('npm install --legacy-peer-deps')],
+    install: [installStep("npm install --legacy-peer-deps")],
   });
   assert.match(problems, /node-version must be the quoted exact pin/);
   assert.match(problems, /must be exactly "npm ci --legacy-peer-deps"/);
 });
 
-test('install guard: rejects floating or wrong Node versions', () => {
-  for (const version of [22, 22.23, '22', '22.x', '^22.23.4', '22.22.2', '24.18.0', null]) {
-    assert.match(nodeProblems({ setup: [nodeSetupStep(version)] }), /node-version/, JSON.stringify(version));
+test("install guard: rejects floating or wrong Node versions", () => {
+  for (const version of [22, 22.23, "22", "22.x", "^22.23.4", "22.22.2", "24.18.0", null]) {
+    assert.match(
+      nodeProblems({ setup: [nodeSetupStep(version)] }),
+      /node-version/,
+      JSON.stringify(version),
+    );
   }
 });
 
-test('install guard: judges the WHOLE install block, not a line inside a wrapper', () => {
+test("install guard: judges the WHOLE install block, not a line inside a wrapper", () => {
   const wrappers = [
     `if false; then\n${INSTALL_COMMAND}\nfi`,
     `set +e\n${INSTALL_COMMAND}\nexit 0`,
@@ -571,61 +666,75 @@ test('install guard: judges the WHOLE install block, not a line inside a wrapper
     assert.match(
       nodeProblems({ install: [installStep(run)] }),
       /must be exactly "npm ci --legacy-peer-deps" as its whole run block/,
-      run
+      run,
     );
   }
 });
 
-test('install guard: rejects conditional or continue-on-error steps and job-level continue-on-error', () => {
-  assert.match(nodeProblems({ install: [installStep(INSTALL_COMMAND, { if: 'false' })] }), /must not be conditional/);
+test("install guard: rejects conditional or continue-on-error steps and job-level continue-on-error", () => {
   assert.match(
-    nodeProblems({ install: [installStep(INSTALL_COMMAND, { 'continue-on-error': true })] }),
-    /install step .* must not set continue-on-error/
+    nodeProblems({ install: [installStep(INSTALL_COMMAND, { if: "false" })] }),
+    /must not be conditional/,
   );
-  assert.match(nodeProblems({ setup: [nodeSetupStep(PINNED_NODE_VERSION, { if: 'false' })] }), /setup-node must not be conditional/);
   assert.match(
-    nodeProblems({ setup: [nodeSetupStep(PINNED_NODE_VERSION, { 'continue-on-error': true })] }),
-    /setup-node must not set continue-on-error/
+    nodeProblems({ install: [installStep(INSTALL_COMMAND, { "continue-on-error": true })] }),
+    /install step .* must not set continue-on-error/,
   );
-  assert.match(nodeProblems({ job: { 'continue-on-error': true } }), /job-level continue-on-error/);
+  assert.match(
+    nodeProblems({ setup: [nodeSetupStep(PINNED_NODE_VERSION, { if: "false" })] }),
+    /setup-node must not be conditional/,
+  );
+  assert.match(
+    nodeProblems({ setup: [nodeSetupStep(PINNED_NODE_VERSION, { "continue-on-error": true })] }),
+    /setup-node must not set continue-on-error/,
+  );
+  assert.match(nodeProblems({ job: { "continue-on-error": true } }), /job-level continue-on-error/);
   // Anything but the literal boolean false is not verifiable, so it is unsafe.
-  for (const value of ['true', '${{ always() }}', 1, null]) {
+  for (const value of ["true", "${{ always() }}", 1, null]) {
     assert.match(
-      nodeProblems({ job: { 'continue-on-error': value } }),
+      nodeProblems({ job: { "continue-on-error": value } }),
       /job-level continue-on-error/,
-      JSON.stringify(value)
+      JSON.stringify(value),
     );
     assert.match(
-      nodeProblems({ install: [installStep(INSTALL_COMMAND, { 'continue-on-error': value })] }),
+      nodeProblems({ install: [installStep(INSTALL_COMMAND, { "continue-on-error": value })] }),
       /must not set continue-on-error/,
-      JSON.stringify(value)
+      JSON.stringify(value),
     );
   }
   // An explicit false stays allowed.
-  assert.deepStrictEqual(inspectNodeInstall(androidJob({ job: { 'continue-on-error': false } })), []);
+  assert.deepStrictEqual(
+    inspectNodeInstall(androidJob({ job: { "continue-on-error": false } })),
+    [],
+  );
 });
 
-test('install guard: rejects a dropped flag, extra arguments, duplicates and wrong ordering', () => {
-  assert.match(nodeProblems({ install: [installStep('npm ci')] }), /must be exactly/);
-  assert.match(nodeProblems({ install: [installStep(`${INSTALL_COMMAND} --omit=dev`)] }), /must be exactly/);
+test("install guard: rejects a dropped flag, extra arguments, duplicates and wrong ordering", () => {
+  assert.match(nodeProblems({ install: [installStep("npm ci")] }), /must be exactly/);
+  assert.match(
+    nodeProblems({ install: [installStep(`${INSTALL_COMMAND} --omit=dev`)] }),
+    /must be exactly/,
+  );
   assert.match(nodeProblems({ install: [installStep(), installStep()] }), /2 npm install steps/);
   assert.match(
     nodeProblems({ install: [], build: [buildStep(), installStep()] }),
-    /install must run before the web build/
+    /install must run before the web build/,
   );
   assert.match(
     nodeProblems({ setup: [], install: [installStep(), nodeSetupStep()] }),
-    /install runs before the pinned Node setup/
+    /install runs before the pinned Node setup/,
   );
   assert.match(nodeProblems({ setup: [] }), /setup-node step missing/);
   assert.match(nodeProblems({ install: [] }), /no "npm ci --legacy-peer-deps" step/);
 });
 
-test('install guard: rejects a bare setup-node version declaration outside setup-node', () => {
+test("install guard: rejects a bare setup-node version declaration outside setup-node", () => {
   // Raw-text scan: a second numeric `node-version:` anywhere in the file fails,
   // so a comment cannot vouch for a pin the runner never sees.
-  assert.deepStrictEqual(nodeVersionDeclarations("          node-version: '22.23.4'"), ["'22.23.4'"]);
-  assert.deepStrictEqual(nodeVersionDeclarations('          # node-version: \'22.23.4\''), []);
+  assert.deepStrictEqual(nodeVersionDeclarations("          node-version: '22.23.4'"), [
+    "'22.23.4'",
+  ]);
+  assert.deepStrictEqual(nodeVersionDeclarations("          # node-version: '22.23.4'"), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -638,8 +747,15 @@ test('install guard: rejects a bare setup-node version declaration outside setup
 // second half of this section pins that coverage in ci.yml, where it belongs.
 // ---------------------------------------------------------------------------
 
-const MANUAL_EVENT = 'workflow_dispatch';
-const AUTOMATIC_EVENTS = ['push', 'pull_request', 'pull_request_target', 'schedule', 'release', 'merge_group'];
+const MANUAL_EVENT = "workflow_dispatch";
+const AUTOMATIC_EVENTS = [
+  "push",
+  "pull_request",
+  "pull_request_target",
+  "schedule",
+  "release",
+  "merge_group",
+];
 
 /**
  * Automatic event declarations found by raw text scan of the top-level `on:`
@@ -653,12 +769,12 @@ function rawTriggerLines(text) {
     .split(/\r?\n/)
     .filter((line) => !/^\s*#/.test(line));
   const start = lines.findIndex((line) => /^on\s*:/.test(line));
-  if (start === -1) return ['on: block missing'];
-  const pattern = new RegExp(`^(?:\\s*-\\s*|\\s+)(${AUTOMATIC_EVENTS.join('|')})\\b`);
+  if (start === -1) return ["on: block missing"];
+  const pattern = new RegExp(`^(?:\\s*-\\s*|\\s+)(${AUTOMATIC_EVENTS.join("|")})\\b`);
   // Flow-style `on: [push, workflow_dispatch]` declares its events on the key
   // line itself, so that line is scanned before the indented block.
-  const inline = (lines[start].replace(/^on\s*:/, '').match(/[A-Za-z_]+/g) || []).filter((name) =>
-    AUTOMATIC_EVENTS.includes(name)
+  const inline = (lines[start].replace(/^on\s*:/, "").match(/[A-Za-z_]+/g) || []).filter((name) =>
+    AUTOMATIC_EVENTS.includes(name),
   );
   const block = [];
   for (let index = start + 1; index < lines.length; index += 1) {
@@ -666,16 +782,16 @@ function rawTriggerLines(text) {
     block.push(lines[index]);
   }
   const found = block.filter((line) => pattern.test(line));
-  const names = found.map((line) => line.trim().replace(/^-\s*/, '').replace(/:.*$/, ''));
+  const names = found.map((line) => line.trim().replace(/^-\s*/, "").replace(/:.*$/, ""));
   return [...new Set([...inline, ...names])];
 }
 
 /** Event names declared by an `on:` string, list or mapping. */
 function declaredEvents(document) {
   const on = document ? document.on : undefined;
-  if (typeof on === 'string') return [on];
+  if (typeof on === "string") return [on];
   if (Array.isArray(on)) return on.map(String);
-  if (on && typeof on === 'object') return Object.keys(on);
+  if (on && typeof on === "object") return Object.keys(on);
   return [];
 }
 
@@ -686,7 +802,7 @@ function declaredEvents(document) {
  */
 function inspectManualReleaseTriggers(document) {
   const events = declaredEvents(document);
-  if (events.length === 0) return ['workflow declares no trigger at all'];
+  if (events.length === 0) return ["workflow declares no trigger at all"];
   const problems = [];
   if (!events.includes(MANUAL_EVENT)) {
     problems.push(`signed release workflow must keep the ${MANUAL_EVENT} trigger`);
@@ -694,7 +810,7 @@ function inspectManualReleaseTriggers(document) {
   for (const event of events) {
     if (event === MANUAL_EVENT) continue;
     problems.push(
-      `signed release workflow runs on "${event}" — production signing must be an explicit manual release, not an automatic side effect`
+      `signed release workflow runs on "${event}" — production signing must be an explicit manual release, not an automatic side effect`,
     );
   }
   return problems;
@@ -708,31 +824,36 @@ function inspectManualReleaseTriggers(document) {
  */
 function inspectCompileCoverage(document) {
   const job = document && document.jobs ? document.jobs[COMPILE_JOB] : undefined;
-  if (!job) return [`Android compile job "${COMPILE_JOB}" missing from ci.yml — native coverage would silently disappear`];
+  if (!job)
+    return [
+      `Android compile job "${COMPILE_JOB}" missing from ci.yml — native coverage would silently disappear`,
+    ];
 
   const problems = [];
-  if (job.if !== undefined) problems.push('Android compile job must not be conditional — a skipped job compiles nothing');
-  if (unsafeFlag(job['continue-on-error'])) problems.push('Android compile job must not set continue-on-error');
+  if (job.if !== undefined)
+    problems.push("Android compile job must not be conditional — a skipped job compiles nothing");
+  if (unsafeFlag(job["continue-on-error"]))
+    problems.push("Android compile job must not set continue-on-error");
 
   const runBlocks = (Array.isArray(job.steps) ? job.steps : []).map(stepRun);
   const requirements = [
-    [/npm\s+run\s+build:mobile\b/, /--mode\s+staging/, 'staging mobile bundle build'],
-    [/\bcap\s+sync\s+android\b/, null, 'Capacitor Android sync'],
-    [/\bgradlew\s+assembleDebug\b/, null, 'Gradle assembleDebug'],
+    [/npm\s+run\s+build:mobile\b/, /--mode\s+staging/, "staging mobile bundle build"],
+    [/\bcap\s+sync\s+android\b/, null, "Capacitor Android sync"],
+    [/\bgradlew\s+assembleDebug\b/, null, "Gradle assembleDebug"],
   ];
   for (const [pattern, extra, label] of requirements) {
-    const found = runBlocks.some(
-      (run) => pattern.test(run) && (extra === null || extra.test(run))
-    );
+    const found = runBlocks.some((run) => pattern.test(run) && (extra === null || extra.test(run)));
     if (!found) problems.push(`Android compile job no longer performs the ${label}`);
   }
 
   // A compile check must not need a production secret or the production
   // configuration helper; that is precisely what made it unrunnable.
   const serialized = JSON.stringify(job);
-  for (const forbidden of ['MOBILE_PRODUCTION_ENV', 'prepare-native-config']) {
+  for (const forbidden of ["MOBILE_PRODUCTION_ENV", "prepare-native-config"]) {
     if (serialized.includes(forbidden)) {
-      problems.push(`Android compile job references ${forbidden} — the ordinary compile check must not require production input`);
+      problems.push(
+        `Android compile job references ${forbidden} — the ordinary compile check must not require production input`,
+      );
     }
   }
   return problems;
@@ -744,124 +865,170 @@ function inspectProductionInput(document) {
   if (!job) return [`job ${JOB} missing`];
   const problems = [];
   const steps = Array.isArray(job.steps) ? job.steps : [];
-  const prepare = steps.find((step) => stepRun(step).includes('prepare-native-config.mjs'));
+  const prepare = steps.find((step) => stepRun(step).includes("prepare-native-config.mjs"));
   if (!prepare) {
-    return ['production configuration step (prepare-native-config.mjs) removed from the signed job'];
+    return [
+      "production configuration step (prepare-native-config.mjs) removed from the signed job",
+    ];
   }
-  const env = prepare.env && typeof prepare.env === 'object' ? prepare.env : {};
-  if (env.MOBILE_PRODUCTION_ENV !== secretExpression('MOBILE_PRODUCTION_ENV')) {
-    problems.push('the production configuration step must still receive MOBILE_PRODUCTION_ENV through env:');
+  const env = prepare.env && typeof prepare.env === "object" ? prepare.env : {};
+  if (env.MOBILE_PRODUCTION_ENV !== secretExpression("MOBILE_PRODUCTION_ENV")) {
+    problems.push(
+      "the production configuration step must still receive MOBILE_PRODUCTION_ENV through env:",
+    );
   }
   return problems;
 }
 
-test('android-build.yml is manual-only: no push, no pull_request, nothing but workflow_dispatch', () => {
+test("android-build.yml is manual-only: no push, no pull_request, nothing but workflow_dispatch", () => {
   const doc = loadYaml(WORKFLOW);
-  assert.deepStrictEqual(declaredEvents(doc), [MANUAL_EVENT], 'the signed release workflow must declare exactly one trigger');
+  assert.deepStrictEqual(
+    declaredEvents(doc),
+    [MANUAL_EVENT],
+    "the signed release workflow must declare exactly one trigger",
+  );
   const problems = inspectManualReleaseTriggers(doc);
-  assert.deepStrictEqual(problems, [], `trigger problems:\n  ${problems.join('\n  ')}`);
+  assert.deepStrictEqual(problems, [], `trigger problems:\n  ${problems.join("\n  ")}`);
 
   // Raw text too: a commented-out `push:` block must not read as a trigger, and
   // a live one must not survive behind a YAML construct the parse flattens.
-  const automatic = rawTriggerLines(fs.readFileSync(WORKFLOW, 'utf8'));
-  assert.deepStrictEqual(automatic, [], `automatic trigger still declared in the on: block: ${automatic.join(', ')}`);
+  const automatic = rawTriggerLines(fs.readFileSync(WORKFLOW, "utf8"));
+  assert.deepStrictEqual(
+    automatic,
+    [],
+    `automatic trigger still declared in the on: block: ${automatic.join(", ")}`,
+  );
 });
 
-test('android: the signed job keeps its production configuration input', () => {
+test("android: the signed job keeps its production configuration input", () => {
   const problems = inspectProductionInput(loadYaml(WORKFLOW));
-  assert.deepStrictEqual(problems, [], `production input problems:\n  ${problems.join('\n  ')}`);
+  assert.deepStrictEqual(problems, [], `production input problems:\n  ${problems.join("\n  ")}`);
 });
 
-test('ci.yml keeps an unconditional Android compile job that needs no production input', () => {
+test("ci.yml keeps an unconditional Android compile job that needs no production input", () => {
   const problems = inspectCompileCoverage(loadYaml(COMPILE_WORKFLOW));
-  assert.deepStrictEqual(problems, [], `compile coverage problems:\n  ${problems.join('\n  ')}`);
+  assert.deepStrictEqual(problems, [], `compile coverage problems:\n  ${problems.join("\n  ")}`);
 });
 
 // --- negative fixtures: the C guards must reject real regressions too ---
 
-test('trigger guard: permits manual-only and rejects every automatic trigger', () => {
+test("trigger guard: permits manual-only and rejects every automatic trigger", () => {
   assert.deepStrictEqual(inspectManualReleaseTriggers({ on: { [MANUAL_EVENT]: null } }), []);
   assert.deepStrictEqual(inspectManualReleaseTriggers({ on: MANUAL_EVENT }), []);
   assert.deepStrictEqual(inspectManualReleaseTriggers({ on: [MANUAL_EVENT] }), []);
 
-  for (const event of ['push', 'pull_request', 'pull_request_target', 'schedule', 'release']) {
-    const problems = inspectManualReleaseTriggers({ on: { [MANUAL_EVENT]: null, [event]: null } }).join('\n');
+  for (const event of ["push", "pull_request", "pull_request_target", "schedule", "release"]) {
+    const problems = inspectManualReleaseTriggers({
+      on: { [MANUAL_EVENT]: null, [event]: null },
+    }).join("\n");
     assert.match(problems, new RegExp(`runs on "${event}"`), event);
   }
-  assert.match(inspectManualReleaseTriggers({}).join('\n'), /no trigger/);
-  assert.match(inspectManualReleaseTriggers({ on: { push: null } }).join('\n'), /keep the workflow_dispatch trigger/);
+  assert.match(inspectManualReleaseTriggers({}).join("\n"), /no trigger/);
+  assert.match(
+    inspectManualReleaseTriggers({ on: { push: null } }).join("\n"),
+    /keep the workflow_dispatch trigger/,
+  );
 });
 
-test('trigger guard: the raw scan sees a live automatic trigger and ignores commented ones', () => {
+test("trigger guard: the raw scan sees a live automatic trigger and ignores commented ones", () => {
   assert.deepStrictEqual(
-    rawTriggerLines('on:\n  workflow_dispatch:\nenv:\n  TEAM_ID: x\njobs:\n  a:\n'),
+    rawTriggerLines("on:\n  workflow_dispatch:\nenv:\n  TEAM_ID: x\njobs:\n  a:\n"),
     [],
-    'the real manual-only shape must scan clean'
+    "the real manual-only shape must scan clean",
   );
-  assert.deepStrictEqual(rawTriggerLines('on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n'), ['push']);
-  assert.deepStrictEqual(rawTriggerLines('on: [push, workflow_dispatch]'), ['push']);
   assert.deepStrictEqual(
-    rawTriggerLines('on:\n  # push:\n  workflow_dispatch:\n'),
-    [],
-    'a commented trigger is not a trigger'
+    rawTriggerLines("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n"),
+    ["push"],
   );
-  assert.deepStrictEqual(rawTriggerLines('on:\n  pull_request:\n  schedule:\n'), ['pull_request', 'schedule']);
+  assert.deepStrictEqual(rawTriggerLines("on: [push, workflow_dispatch]"), ["push"]);
+  assert.deepStrictEqual(
+    rawTriggerLines("on:\n  # push:\n  workflow_dispatch:\n"),
+    [],
+    "a commented trigger is not a trigger",
+  );
+  assert.deepStrictEqual(rawTriggerLines("on:\n  pull_request:\n  schedule:\n"), [
+    "pull_request",
+    "schedule",
+  ]);
 });
 
-test('compile guard: rejects a missing, gated or production-dependent Android job', () => {
+test("compile guard: rejects a missing, gated or production-dependent Android job", () => {
   const healthy = () => ({
     jobs: {
       [COMPILE_JOB]: {
-        steps: [{ run: 'npm run build:mobile -- --mode staging' }, { run: 'npx cap sync android' }, { run: './gradlew assembleDebug' }],
+        steps: [
+          { run: "npm run build:mobile -- --mode staging" },
+          { run: "npx cap sync android" },
+          { run: "./gradlew assembleDebug" },
+        ],
       },
     },
   });
-  assert.deepStrictEqual(inspectCompileCoverage(healthy()), [], 'positive control');
+  assert.deepStrictEqual(inspectCompileCoverage(healthy()), [], "positive control");
 
-  assert.match(inspectCompileCoverage({ jobs: {} }).join('\n'), /native coverage would silently disappear/);
+  assert.match(
+    inspectCompileCoverage({ jobs: {} }).join("\n"),
+    /native coverage would silently disappear/,
+  );
 
   const conditional = healthy();
-  conditional.jobs[COMPILE_JOB].if = 'false';
-  assert.match(inspectCompileCoverage(conditional).join('\n'), /must not be conditional/);
+  conditional.jobs[COMPILE_JOB].if = "false";
+  assert.match(inspectCompileCoverage(conditional).join("\n"), /must not be conditional/);
 
   const skipped = healthy();
-  skipped.jobs[COMPILE_JOB]['continue-on-error'] = 'true';
-  assert.match(inspectCompileCoverage(skipped).join('\n'), /must not set continue-on-error/);
+  skipped.jobs[COMPILE_JOB]["continue-on-error"] = "true";
+  assert.match(inspectCompileCoverage(skipped).join("\n"), /must not set continue-on-error/);
 
   const prodSecret = healthy();
-  prodSecret.jobs[COMPILE_JOB].steps[0].env = { MOBILE_PRODUCTION_ENV: '${{ secrets.MOBILE_PRODUCTION_ENV }}' };
-  assert.match(inspectCompileCoverage(prodSecret).join('\n'), /references MOBILE_PRODUCTION_ENV/);
+  prodSecret.jobs[COMPILE_JOB].steps[0].env = {
+    MOBILE_PRODUCTION_ENV: "${{ secrets.MOBILE_PRODUCTION_ENV }}",
+  };
+  assert.match(inspectCompileCoverage(prodSecret).join("\n"), /references MOBILE_PRODUCTION_ENV/);
 
   const prodHelper = healthy();
-  prodHelper.jobs[COMPILE_JOB].steps.unshift({ run: 'node scripts/prepare-native-config.mjs android' });
-  assert.match(inspectCompileCoverage(prodHelper).join('\n'), /references prepare-native-config/);
+  prodHelper.jobs[COMPILE_JOB].steps.unshift({
+    run: "node scripts/prepare-native-config.mjs android",
+  });
+  assert.match(inspectCompileCoverage(prodHelper).join("\n"), /references prepare-native-config/);
 
   const cases = [
-    ['staging mobile bundle', 'npm run build:mobile'],
-    ['Capacitor Android sync', 'npx cap sync android'],
-    ['Gradle assembleDebug', './gradlew assembleDebug'],
+    ["staging mobile bundle", "npm run build:mobile"],
+    ["Capacitor Android sync", "npx cap sync android"],
+    ["Gradle assembleDebug", "./gradlew assembleDebug"],
   ];
   for (const [label, command] of cases) {
     const dropped = healthy();
-    dropped.jobs[COMPILE_JOB].steps = dropped.jobs[COMPILE_JOB].steps.filter((step) => !step.run.includes(command));
-    assert.match(inspectCompileCoverage(dropped).join('\n'), new RegExp(label), label);
+    dropped.jobs[COMPILE_JOB].steps = dropped.jobs[COMPILE_JOB].steps.filter(
+      (step) => !step.run.includes(command),
+    );
+    assert.match(inspectCompileCoverage(dropped).join("\n"), new RegExp(label), label);
   }
 
   // A debug build without --mode staging still compiles, but it is not the
   // command this repository proved; requiring the flag keeps one shape.
   const noMode = healthy();
-  noMode.jobs[COMPILE_JOB].steps[0].run = 'npm run build:mobile';
-  assert.match(inspectCompileCoverage(noMode).join('\n'), /staging mobile bundle/);
+  noMode.jobs[COMPILE_JOB].steps[0].run = "npm run build:mobile";
+  assert.match(inspectCompileCoverage(noMode).join("\n"), /staging mobile bundle/);
 });
 
-test('production input guard: rejects a removed or env-less production configuration step', () => {
-  assert.deepStrictEqual(inspectProductionInput(loadYaml(WORKFLOW)), [], 'the real workflow must pass');
+test("production input guard: rejects a removed or env-less production configuration step", () => {
+  assert.deepStrictEqual(
+    inspectProductionInput(loadYaml(WORKFLOW)),
+    [],
+    "the real workflow must pass",
+  );
 
-  const withoutStep = { jobs: { [JOB]: { steps: [{ run: './gradlew assembleRelease' }] } } };
-  assert.match(inspectProductionInput(withoutStep).join('\n'), /prepare-native-config\.mjs\) removed/);
+  const withoutStep = { jobs: { [JOB]: { steps: [{ run: "./gradlew assembleRelease" }] } } };
+  assert.match(
+    inspectProductionInput(withoutStep).join("\n"),
+    /prepare-native-config\.mjs\) removed/,
+  );
 
   const withoutEnv = {
-    jobs: { [JOB]: { steps: [{ run: 'node scripts/prepare-native-config.mjs android' }] } },
+    jobs: { [JOB]: { steps: [{ run: "node scripts/prepare-native-config.mjs android" }] } },
   };
-  assert.match(inspectProductionInput(withoutEnv).join('\n'), /must still receive MOBILE_PRODUCTION_ENV/);
+  assert.match(
+    inspectProductionInput(withoutEnv).join("\n"),
+    /must still receive MOBILE_PRODUCTION_ENV/,
+  );
 });

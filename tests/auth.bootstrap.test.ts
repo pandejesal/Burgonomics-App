@@ -96,9 +96,7 @@ describe("authStore.bootstrap Firebase trust gate (real store)", () => {
     // Intercept ancillary I/O at the public singleton boundaries so no
     // background Firestore read or HTTPS call is attempted. Spies are
     // installed BEFORE any auth action and restored after every case.
-    profileRefresh = vi
-      .spyOn(profileRepository, "refresh")
-      .mockResolvedValue(ok(null));
+    profileRefresh = vi.spyOn(profileRepository, "refresh").mockResolvedValue(ok(null));
     loyaltyRefresh = vi
       .spyOn(useLoyaltyStore.getState(), "refreshFromServer")
       .mockResolvedValue(undefined);

@@ -36,7 +36,10 @@ export async function quoteCheckoutFees(
   // No store selected yet, or delivery without a pinned address: there is
   // nothing the server could price. Idle keeps PAY disabled without inventing
   // a fee (the screens explain what is missing).
-  if (!ctx.storeId || (ctx.orderType === "delivery" && (ctx.dropLat === null || ctx.dropLng === null))) {
+  if (
+    !ctx.storeId ||
+    (ctx.orderType === "delivery" && (ctx.dropLat === null || ctx.dropLng === null))
+  ) {
     useCheckoutStore.getState().applyCheckoutFees(seq, key, { status: "idle" });
     return useCheckoutStore.getState().checkoutFees;
   }

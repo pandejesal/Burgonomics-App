@@ -56,7 +56,10 @@ function contrast(fg: string, bg: string): number {
 /* -------------------------------------------------------------------------- */
 
 function repoFile(rel: string): string {
-  const candidates = [resolve(process.cwd(), rel), resolve(process.cwd(), "burgonomics-foundation-core", rel)];
+  const candidates = [
+    resolve(process.cwd(), rel),
+    resolve(process.cwd(), "burgonomics-foundation-core", rel),
+  ];
   const hit = candidates.find((c) => existsSync(c));
   if (!hit) throw new Error(`B01 fixture: cannot locate ${rel} under ${process.cwd()}`);
   return hit;
@@ -73,8 +76,7 @@ const css = stylesCss.replace(/\/\*[\s\S]*?\*\//g, "");
  * (&:is(.dark *))` mentions `.dark` long before the real `.dark {` block.
  */
 function ruleBody(selector: string, from = 0, exact = false): string {
-  const needle =
-    exact || selector.trimEnd().endsWith("{") ? selector : `${selector} {`;
+  const needle = exact || selector.trimEnd().endsWith("{") ? selector : `${selector} {`;
   const at = css.indexOf(needle, from);
   expect(at, `src/styles.css: missing "${needle}"`).toBeGreaterThanOrEqual(0);
   const open = css.indexOf("{", at);
@@ -163,9 +165,10 @@ describe("B01: semantic CTA pair (accent fill + on-accent label)", () => {
 describe("B01: orange text on a surface (--accent-text)", () => {
   it("light clears 4.5:1 on every light surface", () => {
     for (const [name, bg] of lightSurfaces) {
-      expect(contrast(light.accentText, bg), `light --accent-text on ${name}`).toBeGreaterThanOrEqual(
-        TEXT_AA,
-      );
+      expect(
+        contrast(light.accentText, bg),
+        `light --accent-text on ${name}`,
+      ).toBeGreaterThanOrEqual(TEXT_AA);
     }
   });
 
@@ -193,7 +196,9 @@ describe("B01: orange text on a surface (--accent-text)", () => {
 describe("B01: keyboard focus ring", () => {
   it("clears 3:1 against every surface of its theme", () => {
     for (const [name, bg] of lightSurfaces) {
-      expect(contrast(light.ring, bg), `light --ring on ${name}`).toBeGreaterThanOrEqual(NONTEXT_AA);
+      expect(contrast(light.ring, bg), `light --ring on ${name}`).toBeGreaterThanOrEqual(
+        NONTEXT_AA,
+      );
     }
     for (const [name, bg] of darkSurfaces) {
       expect(contrast(dark.ring, bg), `dark --ring on ${name}`).toBeGreaterThanOrEqual(NONTEXT_AA);
@@ -223,7 +228,11 @@ describe("B01: decorative / legacy orange is never a text-bearing token", () => 
   };
 
   it("no decorative orange is the value of a CTA-fill or orange-text token", () => {
-    const forbidden = [decorative.brandMark, decorative.specHeader, ...decorative.darkGradientStops];
+    const forbidden = [
+      decorative.brandMark,
+      decorative.specHeader,
+      ...decorative.darkGradientStops,
+    ];
     const forbiddenLower = forbidden.map((f) => f.toLowerCase());
     // --accent-hover is excluded on purpose: it is a fill (its bar is the white
     // label on it, asserted above), not orange text painted on a surface.
@@ -232,10 +241,9 @@ describe("B01: decorative / legacy orange is never a text-bearing token", () => 
     const textBearing = ["--accent", "--accent-foreground", "--accent-text"] as const;
     for (const block of [rootBlock, darkBlock]) {
       for (const name of textBearing) {
-        expect(
-          forbiddenLower,
-          `${name} must stay out of the decorative family`,
-        ).not.toContain(token(block, name).toLowerCase());
+        expect(forbiddenLower, `${name} must stay out of the decorative family`).not.toContain(
+          token(block, name).toLowerCase(),
+        );
       }
     }
   });
@@ -277,7 +285,9 @@ describe("B01: parent-owned invariants preserved by this lane", () => {
   it("route transitions keep the no-fill-mode + will-change cleanup contract", () => {
     for (const selector of [".route-transition-push {", ".route-transition-pop {"]) {
       const body = ruleBody(selector);
-      expect(body).toMatch(/animation:\s*nativeRoute(Push|Pop)\s+[\d.]+ms\s+cubic-bezier\([^)]*\)\s+none;/);
+      expect(body).toMatch(
+        /animation:\s*nativeRoute(Push|Pop)\s+[\d.]+ms\s+cubic-bezier\([^)]*\)\s+none;/,
+      );
       expect(body).toMatch(/will-change:\s*transform, opacity;/);
     }
   });
@@ -294,7 +304,9 @@ describe("B01: parent-owned invariants preserved by this lane", () => {
 
   it("fixed-footer / safe-area helpers keep their clearances", () => {
     expect(ruleBody(".pb-tabs-safe")).toContain("calc(72px + env(safe-area-inset-bottom, 0px))");
-    expect(ruleBody(".bottom-tabs-safe")).toContain("calc(72px + env(safe-area-inset-bottom, 0px))");
+    expect(ruleBody(".bottom-tabs-safe")).toContain(
+      "calc(72px + env(safe-area-inset-bottom, 0px))",
+    );
     expect(ruleBody(".pb-safe")).toContain("env(safe-area-inset-bottom, 0px)");
   });
 

@@ -98,12 +98,9 @@ beforeEach(async () => {
 // Production ID tokens always carry a `role` custom claim (the rules read
 // request.auth.token.role directly in hasRole, so an emulator token without it
 // is not a faithful fixture). Each context therefore mirrors the real claim.
-const staffDb = () =>
-  env.authenticatedContext(STAFF_UID, { role: "branch_staff" }).firestore();
-const brandDb = () =>
-  env.authenticatedContext(BRAND_UID, { role: "brand_owner" }).firestore();
-const customerDb = () =>
-  env.authenticatedContext(CUSTOMER_UID, { role: "customer" }).firestore();
+const staffDb = () => env.authenticatedContext(STAFF_UID, { role: "branch_staff" }).firestore();
+const brandDb = () => env.authenticatedContext(BRAND_UID, { role: "brand_owner" }).firestore();
+const customerDb = () => env.authenticatedContext(CUSTOMER_UID, { role: "customer" }).firestore();
 
 // ---------------------------------------------------------------------------
 // F1 â€” admin_stores
@@ -141,10 +138,13 @@ describe("F1 admin_stores create is not an unscoped staff privilege", () => {
   it("still allows public read (guest store discovery depends on it)", async () => {
     const guest = env.unauthenticatedContext().firestore();
     await assertSucceeds(
-      setDoc(doc(env.withSecurityRulesDisabled ? brandDb() : brandDb(), "admin_stores", "store_read"), {
-        title: "Readable",
-        branchId: BRANCH,
-      }),
+      setDoc(
+        doc(env.withSecurityRulesDisabled ? brandDb() : brandDb(), "admin_stores", "store_read"),
+        {
+          title: "Readable",
+          branchId: BRANCH,
+        },
+      ),
     );
     const { getDoc } = await import("firebase/firestore");
     await assertSucceeds(getDoc(doc(guest, "admin_stores", "store_read")));
@@ -168,9 +168,7 @@ describe("F2 legacy money fields are server-owned on an existing order", () => {
 
   for (const [key, value] of moneyKeys) {
     it(`DENIES branch_staff rewriting ${key}`, async () => {
-      await assertFails(
-        updateDoc(doc(staffDb(), "orders", "order_paid_01"), { [key]: value }),
-      );
+      await assertFails(updateDoc(doc(staffDb(), "orders", "order_paid_01"), { [key]: value }));
     });
   }
 
@@ -251,7 +249,12 @@ describe("F3 a chat message cannot forge its sender identity", () => {
     await assertFails(
       addDoc(
         collection(staffDb(), "chats", "chat_pair_01", "messages"),
-        legit({ senderId: STAFF_UID, senderName: "Support", senderRole: "brand_owner", readBy: [STAFF_UID] }),
+        legit({
+          senderId: STAFF_UID,
+          senderName: "Support",
+          senderRole: "brand_owner",
+          readBy: [STAFF_UID],
+        }),
       ),
     );
   });
@@ -265,7 +268,12 @@ describe("F3 a chat message cannot forge its sender identity", () => {
     await assertSucceeds(
       addDoc(
         collection(staffDb(), "chats", "chat_pair_01", "messages"),
-        legit({ senderId: STAFF_UID, senderName: "Staff", senderRole: "branch_staff", readBy: [STAFF_UID] }),
+        legit({
+          senderId: STAFF_UID,
+          senderName: "Staff",
+          senderRole: "branch_staff",
+          readBy: [STAFF_UID],
+        }),
       ),
     );
   });
@@ -296,7 +304,12 @@ describe("F3 a chat message cannot forge its sender identity", () => {
     await assertSucceeds(
       addDoc(
         collection(brandDb(), "chats", "chat_pair_01", "messages"),
-        legit({ senderId: BRAND_UID, senderName: "Brand", senderRole: "brand_owner", readBy: [BRAND_UID] }),
+        legit({
+          senderId: BRAND_UID,
+          senderName: "Brand",
+          senderRole: "brand_owner",
+          readBy: [BRAND_UID],
+        }),
       ),
     );
   });
@@ -331,15 +344,11 @@ describe("F4 franchise leads cannot be born approved", () => {
   });
 
   it("still allows a plain applicant payload", async () => {
-    await assertSucceeds(
-      setDoc(doc(customerDb(), "franchise_leads", "lead_3"), applicant()),
-    );
+    await assertSucceeds(setDoc(doc(customerDb(), "franchise_leads", "lead_3"), applicant()));
   });
 
   it("still allows a plain franchise_inquiries payload", async () => {
-    await assertSucceeds(
-      setDoc(doc(customerDb(), "franchise_inquiries", "inq_1"), applicant()),
-    );
+    await assertSucceeds(setDoc(doc(customerDb(), "franchise_inquiries", "inq_1"), applicant()));
   });
 
   it("DENIES an inquiry planting an approval flag", async () => {

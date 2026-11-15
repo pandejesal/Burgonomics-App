@@ -149,7 +149,12 @@ describe("POST /checkout/fees request", () => {
       deliveryFee: 0,
     });
     const res = await requestCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "takeaway", dropLat: 23.03, dropLng: 72.58 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "takeaway",
+        dropLat: 23.03,
+        dropLng: 72.58,
+      }),
       { transport, ...NO_TOKENS },
     );
 
@@ -171,7 +176,12 @@ describe("POST /checkout/fees request", () => {
       deliveryFee: 57,
     });
     const res = await requestCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "delivery",
+        dropLat: 23.03,
+        dropLng: 72.58,
+      }),
       { transport, ...NO_TOKENS },
     );
     expect(res.success).toBe(false);
@@ -193,7 +203,12 @@ describe("POST /checkout/fees request", () => {
       },
     };
     const res = await requestCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "delivery",
+        dropLat: 23.03,
+        dropLng: 72.58,
+      }),
       { transport, ...NO_TOKENS },
     );
 
@@ -211,7 +226,12 @@ describe("POST /checkout/fees request", () => {
       },
     };
     const res = await requestCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.03, dropLng: 72.58 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "delivery",
+        dropLat: 23.03,
+        dropLng: 72.58,
+      }),
       { transport, ...NO_TOKENS },
     );
     expect(res.success).toBe(false);
@@ -368,8 +388,12 @@ describe("delivery quote state machine", () => {
       dropLng: 72.6,
     });
 
-    const oldQuote = quoteCheckoutFees(oldCtx, { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) });
-    const newQuote = quoteCheckoutFees(newCtx, { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) });
+    const oldQuote = quoteCheckoutFees(oldCtx, {
+      request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }),
+    });
+    const newQuote = quoteCheckoutFees(newCtx, {
+      request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }),
+    });
     await newQuote;
     expect(useCheckoutStore.getState().checkoutFees).toMatchObject({
       status: "ready",
@@ -397,7 +421,12 @@ describe("delivery quote state machine", () => {
       message: "Address outside the serviced radius",
     });
     const state = await quoteCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "delivery",
+        dropLat: 23.0,
+        dropLng: 72.5,
+      }),
       { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
@@ -416,7 +445,12 @@ describe("delivery quote state machine", () => {
       post: () => Promise.reject(new Error("NO_SERVICEABLE_PROVIDER")),
     };
     const state = await quoteCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "delivery",
+        dropLat: 23.0,
+        dropLng: 72.5,
+      }),
       { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
@@ -446,7 +480,12 @@ describe("delivery quote state machine", () => {
       },
     };
     const state = await quoteCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "delivery",
+        dropLat: 23.0,
+        dropLng: 72.5,
+      }),
       { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
@@ -464,7 +503,12 @@ describe("delivery quote state machine", () => {
   it("uses the quoted fee and packaging in the bill once ready", async () => {
     const { transport, ...NO_TOKENS } = transportReturning(deliveryResponse(57, "q_ready"));
     await quoteCheckoutFees(
-      buildCheckoutFeesContext({ storeId: "demo", orderType: "delivery", dropLat: 23.0, dropLng: 72.5 }),
+      buildCheckoutFeesContext({
+        storeId: "demo",
+        orderType: "delivery",
+        dropLat: 23.0,
+        dropLng: 72.5,
+      }),
       { request: (c) => requestCheckoutFees(c, { transport, ...NO_TOKENS }) },
     );
 
@@ -532,7 +576,11 @@ describe("fee-failure wording follows the fulfillment", () => {
   const errorState: CheckoutFeesState = { status: "error", code: "DELIVERY_QUOTE_FAILED" };
 
   it("a takeaway fee failure talks about the price and keeps Retry", () => {
-    const view = deliveryQuoteView({ state: errorState, fulfillment: "takeaway", hasAddress: true });
+    const view = deliveryQuoteView({
+      state: errorState,
+      fulfillment: "takeaway",
+      hasAddress: true,
+    });
     expect(view.payEnabled).toBe(false);
     expect(view.canRetry).toBe(true);
     expect(view.message).toBe("We couldn't load your order price. Please try again.");
@@ -540,7 +588,11 @@ describe("fee-failure wording follows the fulfillment", () => {
   });
 
   it("a delivery fee failure still says delivery is unavailable", () => {
-    const view = deliveryQuoteView({ state: errorState, fulfillment: "delivery", hasAddress: true });
+    const view = deliveryQuoteView({
+      state: errorState,
+      fulfillment: "delivery",
+      hasAddress: true,
+    });
     expect(view.message).toBe("Delivery isn't available to this address");
     expect(view.canRetry).toBe(true);
   });

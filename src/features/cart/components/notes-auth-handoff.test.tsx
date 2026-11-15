@@ -141,7 +141,9 @@ afterEach(async () => {
 });
 
 async function typeNote(value: string) {
-  const toggle = container.querySelector<HTMLButtonElement>('[aria-controls="cooking-notes-field"]');
+  const toggle = container.querySelector<HTMLButtonElement>(
+    '[aria-controls="cooking-notes-field"]',
+  );
   expect(toggle).not.toBeNull();
   await act(async () => toggle!.click());
   const field = container.querySelector<HTMLTextAreaElement>("#order-notes");

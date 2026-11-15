@@ -87,7 +87,10 @@ export function FulfillmentDetailsCard({
               aria-live="polite"
               className="flex min-h-[3.25rem] items-center gap-2 py-1"
             >
-              <span className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-bg-secondary" aria-hidden />
+              <span
+                className="h-4 w-4 shrink-0 animate-pulse rounded-full bg-bg-secondary"
+                aria-hidden
+              />
               <span className="type-body-medium text-text-secondary">
                 Delivery address not confirmed yet
               </span>

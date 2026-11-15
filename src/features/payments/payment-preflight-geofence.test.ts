@@ -58,10 +58,21 @@ const addressAt = (lat: number, lng: number) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  cartRepositoryMock.validateCart.mockResolvedValue({ success: true, data: { valid: true, issues: [] } });
+  cartRepositoryMock.validateCart.mockResolvedValue({
+    success: true,
+    data: { valid: true, issues: [] },
+  });
   cartRepositoryMock.calculateTotals.mockResolvedValue({
     success: true,
-    data: { subtotal: 500, taxes: 0, packingFee: 0, deliveryFee: 0, promoDiscount: 0, loyaltyDiscount: 0, grandTotal: 500 },
+    data: {
+      subtotal: 500,
+      taxes: 0,
+      packingFee: 0,
+      deliveryFee: 0,
+      promoDiscount: 0,
+      loyaltyDiscount: 0,
+      grandTotal: 500,
+    },
   });
   useCartStore.setState({
     lines: [

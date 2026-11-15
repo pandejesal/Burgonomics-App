@@ -1,40 +1,62 @@
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const yaml = require('js-yaml');
-const root = path.resolve(__dirname, '..');
-const doc = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/ios-build.yml'), 'utf8'));
-const steps = doc.jobs['build-ios'].steps;
-test('staging and nonfunctional fixture are mutually exclusive, explicit lanes', () => {
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const yaml = require("js-yaml");
+const root = path.resolve(__dirname, "..");
+const doc = yaml.load(fs.readFileSync(path.join(root, ".github/workflows/ios-build.yml"), "utf8"));
+const steps = doc.jobs["build-ios"].steps;
+test("staging and nonfunctional fixture are mutually exclusive, explicit lanes", () => {
   assert.equal(doc.on.workflow_dispatch.inputs.real_staging.default, false);
-  const fixture = steps.find(s => s.run?.includes('prepare-simulator-config.mjs'));
-  const staging = steps.find(s => s.run?.includes('prepare-demo-simulator.mjs'));
+  const fixture = steps.find((s) => s.run?.includes("prepare-simulator-config.mjs"));
+  const staging = steps.find((s) => s.run?.includes("prepare-demo-simulator.mjs"));
   assert.match(fixture.if, /inputs.real_staging != true/);
-  assert.match(staging.if, /github.event_name == 'workflow_dispatch' && inputs.real_staging == true/);
+  assert.match(
+    staging.if,
+    /github.event_name == 'workflow_dispatch' && inputs.real_staging == true/,
+  );
   assert.match(staging.env.MOBILE_STAGING_ENV, /secrets.MOBILE_STAGING_ENV/);
-  assert.match(staging.env.STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64, /secrets.STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64/);
-  assert.equal(staging.env.CI_SIMULATOR_ONLY, 'true');
+  assert.match(
+    staging.env.STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64,
+    /secrets.STAGING_GOOGLE_SERVICE_INFO_PLIST_BASE64/,
+  );
+  assert.equal(staging.env.CI_SIMULATOR_ONLY, "true");
   assert.doesNotMatch(staging.run, /secrets\.|echo|printenv/);
-  assert.ok(steps.indexOf(staging) < steps.findIndex(s => s.run?.includes('build:mobile')));
+  assert.ok(steps.indexOf(staging) < steps.findIndex((s) => s.run?.includes("build:mobile")));
   // The archive lane moved to ios-distribution.yml. The real-staging lane must
   // remain simulator-only and must not reach the distribution workflow.
-  const distribution = fs.readFileSync(path.join(__dirname, '../.github/workflows/ios-distribution.yml'), 'utf8');
-  assert.doesNotMatch(distribution, /real_staging/, 'distribution must not be triggered by the real_staging lane');
-  assert.doesNotMatch(distribution, /prepare-demo-simulator\.mjs/, 'distribution must not run the demo prepare step');
+  const distribution = fs.readFileSync(
+    path.join(__dirname, "../.github/workflows/ios-distribution.yml"),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    distribution,
+    /real_staging/,
+    "distribution must not be triggered by the real_staging lane",
+  );
+  assert.doesNotMatch(
+    distribution,
+    /prepare-demo-simulator\.mjs/,
+    "distribution must not run the demo prepare step",
+  );
 });
-test('manual simulator lane launches app, captures rendering, and verifies liveness', () => {
-  const smoke = doc.jobs['ios-sim-smoke'];
-  assert.equal(smoke.needs, 'build-ios');
-  const run = smoke.steps.map(s => s.run || '').join('\n');
+test("manual simulator lane launches app, captures rendering, and verifies liveness", () => {
+  const smoke = doc.jobs["ios-sim-smoke"];
+  assert.equal(smoke.needs, "build-ios");
+  const run = smoke.steps.map((s) => s.run || "").join("\n");
   assert.match(run, /simctl install/);
   // Without a simulated position the store picker waits on GPS forever.
   assert.match(run, /simctl privacy "\$UDID" grant location com\.burgonomics/);
   assert.match(run, /simctl location "\$UDID" set 23\.0225,72\.5714/);
-  assert.ok(run.indexOf('simctl location') < run.indexOf('simctl launch'), 'location must be set before launch');
+  assert.ok(
+    run.indexOf("simctl location") < run.indexOf("simctl launch"),
+    "location must be set before launch",
+  );
   assert.match(run, /simctl launch.*com\.burgonomics/);
   assert.match(run, /after-45s\.png/);
   assert.match(run, /launchctl list/);
   assert.match(run, /scope\.txt/);
-  assert.ok(smoke.steps.some(s => s.if === 'always()' && s.uses?.startsWith('actions/upload-artifact')));
+  assert.ok(
+    smoke.steps.some((s) => s.if === "always()" && s.uses?.startsWith("actions/upload-artifact")),
+  );
 });

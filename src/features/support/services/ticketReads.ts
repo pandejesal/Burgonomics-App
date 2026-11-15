@@ -118,8 +118,7 @@ export function mapTicketDoc(id: string, data: Record<string, unknown>): TicketR
     attachments: attachmentUrls(data.attachments),
     managerResponse: resolutionText(data.resolution),
     createdAt: toIso(data.createdAt) ?? new Date(0).toISOString(),
-    resolvedAt:
-      toIso(data.resolvedAt ?? data.closedAt) ?? resolutionResolvedAt(data.resolution),
+    resolvedAt: toIso(data.resolvedAt ?? data.closedAt) ?? resolutionResolvedAt(data.resolution),
   };
 }
 

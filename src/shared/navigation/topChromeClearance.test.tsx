@@ -211,7 +211,9 @@ describe("TopBar publishes its measured sticky height", () => {
 
 describe("the /menu rail publishes its own band", () => {
   it("positions the rail below the measured TopBar, not a fixed 56px assumption", () => {
-    expect(MENU_SRC).toContain("top-[var(--top-chrome-height,calc(3.5rem+env(safe-area-inset-top,0px)))]");
+    expect(MENU_SRC).toContain(
+      "top-[var(--top-chrome-height,calc(3.5rem+env(safe-area-inset-top,0px)))]",
+    );
     expect(MENU_SRC).not.toContain("sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))]");
   });
 

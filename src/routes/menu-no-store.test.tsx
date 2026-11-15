@@ -81,9 +81,8 @@ vi.mock("@/core/services/haptics", () => ({
 
 import { Route as MenuRoute } from "./menu.index";
 
-const MenuPage = (
-  MenuRoute as unknown as { options: { component: React.ComponentType } }
-).options.component;
+const MenuPage = (MenuRoute as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

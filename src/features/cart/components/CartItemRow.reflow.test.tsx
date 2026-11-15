@@ -43,8 +43,7 @@ const TEXT_200 = {
   imagePx: 5 * 32, // h-20 w-20
   gapPx: 1 * 32, // gap-4
 };
-const TEXT_200_COLUMN_PX =
-  TEXT_200.articleContentPx - TEXT_200.imagePx - TEXT_200.gapPx; // 118
+const TEXT_200_COLUMN_PX = TEXT_200.articleContentPx - TEXT_200.imagePx - TEXT_200.gapPx; // 118
 
 /** Resolve a `h-11` / `w-11` style Tailwind size to px at the given root size. */
 function twSizeToPx(className: string, axis: "h" | "w", rootFontPx: number): number | null {

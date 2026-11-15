@@ -1096,20 +1096,20 @@ export function CheckoutPage() {
                     : !isAuthenticated
                       ? "Sign in to continue"
                       : !quoteView.payEnabled
-                      ? (quoteView.message ?? "Getting delivery price")
-                      : reconciliationPending
-                        ? "We are confirming your payment — please do not pay again"
-                        : legacyNotesPending
-                          ? "Review your saved cooking note in the cart first"
-                          : !kitchen.isOpen
-                            ? KITCHEN_CLOSED_MESSAGE
-                            : !isOnline
-                              ? "Back online to place your order"
-                              : totalsFailed
-                                ? "Couldn't compute your bill — retry above"
-                                : totals === null
-                                  ? "Bill is still being computed"
-                                  : undefined
+                        ? (quoteView.message ?? "Getting delivery price")
+                        : reconciliationPending
+                          ? "We are confirming your payment — please do not pay again"
+                          : legacyNotesPending
+                            ? "Review your saved cooking note in the cart first"
+                            : !kitchen.isOpen
+                              ? KITCHEN_CLOSED_MESSAGE
+                              : !isOnline
+                                ? "Back online to place your order"
+                                : totalsFailed
+                                  ? "Couldn't compute your bill — retry above"
+                                  : totals === null
+                                    ? "Bill is still being computed"
+                                    : undefined
               }
               className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 type-button text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
@@ -1122,28 +1122,28 @@ export function CheckoutPage() {
                     : !isAuthenticated
                       ? "Sign in to continue"
                       : !quoteView.payEnabled
-                      ? quoteView.storeNotLinked
-                        ? "Online ordering unavailable"
-                        : quoteView.status === "idle" || quoteView.status === "loading"
-                          ? isDelivery
-                            ? "Pay — getting delivery price"
-                            : "Pay — getting order price"
-                          : isDelivery
-                            ? "Pay — delivery unavailable"
-                            : "Pay — price unavailable"
-                      : reconciliationPending
-                        ? "Payment under review"
-                        : busy
-                          ? "Processing Order..."
-                          : !kitchen.isOpen
-                            ? "Kitchen closed"
-                            : !isOnline
-                              ? "Offline — reconnect to pay"
-                              : totalsFailed
-                                ? "Pay — bill unavailable"
-                                : totals === null
-                                  ? "Pay — checking bill"
-                                  : `Pay ${formatINR(finalPayable)} securely`}
+                        ? quoteView.storeNotLinked
+                          ? "Online ordering unavailable"
+                          : quoteView.status === "idle" || quoteView.status === "loading"
+                            ? isDelivery
+                              ? "Pay — getting delivery price"
+                              : "Pay — getting order price"
+                            : isDelivery
+                              ? "Pay — delivery unavailable"
+                              : "Pay — price unavailable"
+                        : reconciliationPending
+                          ? "Payment under review"
+                          : busy
+                            ? "Processing Order..."
+                            : !kitchen.isOpen
+                              ? "Kitchen closed"
+                              : !isOnline
+                                ? "Offline — reconnect to pay"
+                                : totalsFailed
+                                  ? "Pay — bill unavailable"
+                                  : totals === null
+                                    ? "Pay — checking bill"
+                                    : `Pay ${formatINR(finalPayable)} securely`}
               </span>
             </button>
           </div>
@@ -1243,7 +1243,9 @@ export function CheckoutPage() {
               // smaller would still let the ready state collapse the space the
               // loading state needed.
               "min-h-[8.75rem] rounded-[var(--radius-large)]",
-              quoteView.message && !quoteView.payEnabled && "border border-warning/30 bg-warning/10",
+              quoteView.message &&
+                !quoteView.payEnabled &&
+                "border border-warning/30 bg-warning/10",
             )}
           >
             {quoteView.message && !quoteView.payEnabled && (
@@ -1577,9 +1579,7 @@ export function CheckoutPage() {
             ) : null}
 
             <div className="flex items-start justify-between gap-3 border-t border-divider pt-3 type-title-medium text-text-primary">
-              <span>
-                {quoteView.packagingPending ? "Total so far" : "To Pay"}
-              </span>
+              <span>{quoteView.packagingPending ? "Total so far" : "To Pay"}</span>
               <span className="type-price shrink-0 whitespace-nowrap text-right text-lg text-text-primary">
                 {totals && quoteView.showTotal ? formatINR(finalPayable) : "—"}
               </span>

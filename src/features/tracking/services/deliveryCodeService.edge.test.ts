@@ -18,7 +18,11 @@ const transport = vi.hoisted(() => ({
   headers: vi.fn(),
 }));
 vi.mock("@/core/config/firebase", () => ({
-  auth: { get currentUser() { return transport.uid ? { uid: transport.uid } : null; } },
+  auth: {
+    get currentUser() {
+      return transport.uid ? { uid: transport.uid } : null;
+    },
+  },
 }));
 vi.mock("@/core/network/httpClient", () => ({ httpClient: { post: transport.post } }));
 vi.mock("@/features/checkout/services/deliveryQuoteService", () => ({

@@ -43,7 +43,9 @@ describe("CUS-08 — test keys are accepted only in an explicit staging build", 
   it("production mode refuses rzp_test_ keys exactly as before", () => {
     expect(isStagingBuild("production")).toBe(false);
     expect(testKeysAllowedForBuild(releaseContext(false))).toBe(false);
-    expect(razorpayKeyVerdict("rzp_test_prod_refused", { staging: false, productionGate: true })).toEqual({
+    expect(
+      razorpayKeyVerdict("rzp_test_prod_refused", { staging: false, productionGate: true }),
+    ).toEqual({
       level: "error",
       message: PROD_MESSAGE,
     });
@@ -60,7 +62,9 @@ describe("CUS-08 — test keys are accepted only in an explicit staging build", 
   it("staging mode accepts rzp_test_ keys", () => {
     expect(isStagingBuild("staging")).toBe(true);
     expect(testKeysAllowedForBuild(releaseContext(true))).toBe(true);
-    expect(razorpayKeyVerdict("rzp_test_staging_ok", { staging: true, productionGate: true })).toEqual({
+    expect(
+      razorpayKeyVerdict("rzp_test_staging_ok", { staging: true, productionGate: true }),
+    ).toEqual({
       level: "ok",
     });
   });

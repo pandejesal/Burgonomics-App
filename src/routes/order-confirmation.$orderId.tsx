@@ -44,7 +44,10 @@ import {
   shouldOfferPushPrompt,
   type PushPromptDecision,
 } from "@/features/notifications/pushPrompt";
-import { getPushStatusSnapshot, requestPushPermissionsWithListeners } from "@/shared/platform/pushNotifications";
+import {
+  getPushStatusSnapshot,
+  requestPushPermissionsWithListeners,
+} from "@/shared/platform/pushNotifications";
 import { getPlatform } from "@/shared/platform/platform";
 import { db } from "@/core/config/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -239,9 +242,7 @@ function OrderConfirmationPage() {
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <AppButton
                   variant="cta"
-                  onClick={() =>
-                    void navigate({ to: "/payment", search: { orderId: order.id } })
-                  }
+                  onClick={() => void navigate({ to: "/payment", search: { orderId: order.id } })}
                 >
                   Complete payment
                 </AppButton>

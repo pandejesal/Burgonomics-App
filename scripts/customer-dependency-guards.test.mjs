@@ -251,7 +251,10 @@ test("firebase-tools leaf floors are reached inside its own parent ranges", () =
   );
   assert.ok(bodyParserOne.length > 0, "a body-parser 1.x copy must exist");
   for (const version of bodyParserOne) {
-    assert.ok(atLeast(version, TRANSITIVE_FLOORS["body-parser"]), `body-parser ${version} below floor`);
+    assert.ok(
+      atLeast(version, TRANSITIVE_FLOORS["body-parser"]),
+      `body-parser ${version} below floor`,
+    );
   }
 });
 
@@ -260,7 +263,11 @@ test("firebase-tools leaf floors are reached inside its own parent ranges", () =
 test("no @grpc/grpc-js override exists outside Firestore's own range", () => {
   const overrides = pkg.overrides ?? {};
   assert.equal(overrides["@grpc/grpc-js"], undefined, "grpc override is out of Firestore's range");
-  assert.equal(lock.packages?.[""]?.overrides?.["@grpc/grpc-js"], undefined, "lock must not carry it");
+  assert.equal(
+    lock.packages?.[""]?.overrides?.["@grpc/grpc-js"],
+    undefined,
+    "lock must not carry it",
+  );
 });
 
 test("no overrides block at all is introduced by this slice", () => {

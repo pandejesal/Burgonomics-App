@@ -90,7 +90,8 @@ export function addressFromOrderSnapshot(
   return {
     id: `order:${snapshot.line1}`,
     label: snapshot.label === "home" || snapshot.label === "work" ? snapshot.label : "other",
-    customLabel: snapshot.label === "home" || snapshot.label === "work" ? undefined : snapshot.label,
+    customLabel:
+      snapshot.label === "home" || snapshot.label === "work" ? undefined : snapshot.label,
     contactName: snapshot.contactName,
     contactPhone: snapshot.contactPhone,
     line1: snapshot.line1,
@@ -99,8 +100,10 @@ export function addressFromOrderSnapshot(
     city: snapshot.city,
     state: snapshot.state,
     pincode: snapshot.pincode,
-    lat: typeof snapshot.lat === "number" && Number.isFinite(snapshot.lat) ? snapshot.lat : undefined,
-    lng: typeof snapshot.lng === "number" && Number.isFinite(snapshot.lng) ? snapshot.lng : undefined,
+    lat:
+      typeof snapshot.lat === "number" && Number.isFinite(snapshot.lat) ? snapshot.lat : undefined,
+    lng:
+      typeof snapshot.lng === "number" && Number.isFinite(snapshot.lng) ? snapshot.lng : undefined,
     isDefault: false,
   };
 }
@@ -157,9 +160,8 @@ export function resumeContextFromOrder(order: Order | null): ResumePaymentContex
     },
     totals: totalsFromOrder(order),
     address: addressFromOrderSnapshot(order.deliveryAddress ?? order.address),
-    tipAmount: typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount)
-      ? order.tipAmount
-      : 0,
+    tipAmount:
+      typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount) ? order.tipAmount : 0,
   };
 }
 

@@ -167,10 +167,7 @@ export function parseExpiresAt(value: unknown): number | null {
  * Parses the endpoint's response. Returns null when a required field is
  * missing — the caller treats that as an error rather than inventing a fee.
  */
-export function parseCheckoutFees(
-  raw: unknown,
-  orderType: CheckoutOrderType,
-): CheckoutFees | null {
+export function parseCheckoutFees(raw: unknown, orderType: CheckoutOrderType): CheckoutFees | null {
   if (!raw || typeof raw !== "object") return null;
   const body = raw as Record<string, unknown>;
   const packagingFee = finiteFee(body.packagingFee);

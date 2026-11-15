@@ -181,7 +181,9 @@ vi.mock("@/features/addresses", () => ({
 }));
 vi.mock("@/features/auth/state/authStore", async () => {
   const { create } = await import("zustand");
-  const useAuthStore = create<{ user: { id: string; phone: string } | null }>(() => ({ user: null }));
+  const useAuthStore = create<{ user: { id: string; phone: string } | null }>(() => ({
+    user: null,
+  }));
   return {
     useAuthStore,
     selectIsAuthenticated: (state: { user: unknown }) => Boolean(state.user),
@@ -478,8 +480,9 @@ describe("cart publishes the measured summary height", () => {
 describe("cart summary leaves usable space in short zoomed viewports", () => {
   it("moves an over-tall summary into flow rather than covering the entire focus band", async () => {
     vi.stubGlobal("innerHeight", 390);
-    await mountCart(); stubSummaryHeights(241);
-    await act(async () => allObservers().forEach(observer => observer.trigger()));
+    await mountCart();
+    stubSummaryHeights(241);
+    await act(async () => allObservers().forEach((observer) => observer.trigger()));
     const summary = document.querySelector<HTMLElement>('[data-testid="cart-summary"]');
     expect(summary).not.toBeNull();
     expect(summary!.className.split(/\s+/)).not.toContain("fixed");
@@ -488,36 +491,44 @@ describe("cart summary leaves usable space in short zoomed viewports", () => {
   });
   it("returns to a pinned summary when only the viewport height grows", async () => {
     vi.stubGlobal("innerHeight", 390);
-    await mountCart(); stubSummaryHeights(241);
-    await act(async () => allObservers().forEach(observer => observer.trigger()));
+    await mountCart();
+    stubSummaryHeights(241);
+    await act(async () => allObservers().forEach((observer) => observer.trigger()));
     expect(rootHeightVar()).toBe("0px");
     vi.stubGlobal("innerHeight", 844);
     await act(async () => window.dispatchEvent(new Event("resize")));
-    expect(document.querySelector('[data-testid="cart-summary"]')!.className.split(/\s+/)).toContain("fixed");
+    expect(
+      document.querySelector('[data-testid="cart-summary"]')!.className.split(/\s+/),
+    ).toContain("fixed");
     expect(rootHeightVar()).toBe("241px");
   });
   it("also recomputes viewport fit without ResizeObserver", async () => {
-    vi.stubGlobal("ResizeObserver", undefined); vi.stubGlobal("innerHeight", 390);
-    await mountCart(); stubSummaryHeights(241);
+    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal("innerHeight", 390);
+    await mountCart();
+    stubSummaryHeights(241);
     await act(async () => window.dispatchEvent(new Event("resize")));
     expect(document.querySelector('[data-testid="cart-summary"]')).not.toBeNull();
     expect(rootHeightVar()).toBe("0px");
   });
   it("ignores a queued observer after the summary unmounts", async () => {
-    await mountCart(); stubSummaryHeights(162);
+    await mountCart();
+    stubSummaryHeights(162);
     const observers = allObservers();
-    await act(async () => observers.forEach(observer => observer.trigger()));
+    await act(async () => observers.forEach((observer) => observer.trigger()));
     expect(rootHeightVar()).toBe("162px");
-    await act(async () => root!.unmount()); root = null;
-    await act(async () => observers.forEach(observer => observer.trigger()));
+    await act(async () => root!.unmount());
+    root = null;
+    await act(async () => observers.forEach((observer) => observer.trigger()));
     expect(rootHeightVar()).toBe("");
   });
   it("does not retain or publish a zero or non-finite measured clearance", async () => {
-    await mountCart(); stubSummaryHeights(162);
-    await act(async () => allObservers().forEach(observer => observer.trigger()));
+    await mountCart();
+    stubSummaryHeights(162);
+    await act(async () => allObservers().forEach((observer) => observer.trigger()));
     for (const height of [0, Number.NaN]) {
       stubSummaryHeights(height);
-      await act(async () => allObservers().forEach(observer => observer.trigger()));
+      await act(async () => allObservers().forEach((observer) => observer.trigger()));
       expect(rootHeightVar()).toBe("");
     }
   });
@@ -741,10 +752,7 @@ describe("StrictMode double-mount lifecycle", () => {
     root = null;
 
     expect(rootHeightVar()).toBe("");
-    expect(
-      activeObservers().length,
-      "no observer may outlive the route",
-    ).toBe(0);
+    expect(activeObservers().length, "no observer may outlive the route").toBe(0);
     expect(document.documentElement.style.getPropertyValue("--bottom-nav-offset")).toBe("154px");
     expect(document.documentElement.style.getPropertyValue("color-scheme")).toBe("dark");
   });

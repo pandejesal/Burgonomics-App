@@ -85,10 +85,7 @@ export function checkoutFeesKey(ctx: CheckoutFeesContext): string {
 }
 
 /** True once the server will refuse this quote as expired. */
-export function isCheckoutFeesExpired(
-  state: CheckoutFeesState,
-  now: number = Date.now(),
-): boolean {
+export function isCheckoutFeesExpired(state: CheckoutFeesState, now: number = Date.now()): boolean {
   if (state.status !== "ready" || state.expiresAt === null) return false;
   return now >= state.expiresAt;
 }
@@ -97,10 +94,7 @@ export function isCheckoutFeesExpired(
  * A quote may back a payment only when it is ready, belongs to this order type
  * and has not expired. Delivery additionally requires a quote id and pins.
  */
-export function isCheckoutFeesUsable(
-  state: CheckoutFeesState,
-  now: number = Date.now(),
-): boolean {
+export function isCheckoutFeesUsable(state: CheckoutFeesState, now: number = Date.now()): boolean {
   if (state.status !== "ready") return false;
   if (isCheckoutFeesExpired(state, now)) return false;
   if (state.orderType === "delivery") {

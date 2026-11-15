@@ -167,9 +167,7 @@ async function settleReleasedImport(): Promise<void> {
  * Restoring before the loader settles would let a late resolution leak into the
  * next case.
  */
-async function dispose(
-  handle: { settled: Promise<void>; release: () => void },
-): Promise<void> {
+async function dispose(handle: { settled: Promise<void>; release: () => void }): Promise<void> {
   handle.release();
   await settleReleasedImport();
   await handle.settled;

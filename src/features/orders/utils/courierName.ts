@@ -24,11 +24,7 @@ export function courierDisplayName(order: Order | null | undefined): string {
       | undefined
   )?.delivery;
 
-  const candidates = [
-    order?.deliveryPartner?.name,
-    delivery?.providerName,
-    delivery?.partnerName,
-  ];
+  const candidates = [order?.deliveryPartner?.name, delivery?.providerName, delivery?.partnerName];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }

@@ -51,11 +51,23 @@ const PRODUCTION_HOST =
 const FORBIDDEN_FAILURE_PATTERNS = [
   [/seed proof missing/i, "missing seed proof"],
   [/beforeAll hook|beforeEach hook|afterAll hook|afterEach hook/i, "hook failure"],
-  [/Missing #app root|ConfigErrorScreen|FirebaseConfigMissingKeysError/i, "config/blank-page failure"],
-  [/browserType\.launch|Executable doesn't exist|browser has been closed|Target page, context or browser has been closed/i, "browser launch failure"],
-  [/Playwright Test did not expect|Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError/i, "module/config load failure"],
+  [
+    /Missing #app root|ConfigErrorScreen|FirebaseConfigMissingKeysError/i,
+    "config/blank-page failure",
+  ],
+  [
+    /browserType\.launch|Executable doesn't exist|browser has been closed|Target page, context or browser has been closed/i,
+    "browser launch failure",
+  ],
+  [
+    /Playwright Test did not expect|Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError/i,
+    "module/config load failure",
+  ],
   [/Test timeout of \d+ms exceeded/i, "whole-test timeout (not the intended assertion)"],
-  [/page\.goto|ECONNREFUSED[^\n]*:5199|net::ERR_CONNECTION_REFUSED[^\n]*:5199/i, "Vite/page navigation failure"],
+  [
+    /page\.goto|ECONNREFUSED[^\n]*:5199|net::ERR_CONNECTION_REFUSED[^\n]*:5199/i,
+    "Vite/page navigation failure",
+  ],
   [/sticky form|search input|header missing/i, "geometry harness failure"],
 ];
 
@@ -154,7 +166,9 @@ export function classifyPositiveReport(report, options = {}) {
   // truncated report must not pass.
   for (const key of ["expected", "skipped", "unexpected", "flaky"]) {
     if (report.stats[key] !== counts[key]) {
-      problems.push(`stats.${key}=${report.stats[key]} disagrees with report records (${counts[key]})`);
+      problems.push(
+        `stats.${key}=${report.stats[key]} disagrees with report records (${counts[key]})`,
+      );
     }
   }
 
@@ -171,7 +185,8 @@ export function classifyPositiveReport(report, options = {}) {
 
   const missingTitles = expectedTitles.filter((title) => !byTitle.has(title));
   const extraTitles = [...byTitle.keys()].filter((title) => !expectedTitles.includes(title));
-  if (missingTitles.length > 0) problems.push(`missing required tests: ${JSON.stringify(missingTitles)}`);
+  if (missingTitles.length > 0)
+    problems.push(`missing required tests: ${JSON.stringify(missingTitles)}`);
   if (extraTitles.length > 0) {
     problems.push(
       `tests not covered by the gate manifest (add them explicitly): ${JSON.stringify(extraTitles)}`,
@@ -206,7 +221,8 @@ export function classifyPositiveReport(report, options = {}) {
     }
   }
 
-  if (counts.skipped > 0) problems.push(`skipped tests are not a pass: ${JSON.stringify(skippedTitles)}`);
+  if (counts.skipped > 0)
+    problems.push(`skipped tests are not a pass: ${JSON.stringify(skippedTitles)}`);
   if (counts.unexpected > 0) problems.push(`failed tests: ${JSON.stringify(failedTitles)}`);
   if (counts.flaky > 0) problems.push(`flaky tests: ${JSON.stringify(flakyTitles)}`);
   if (counts.expected !== expectedTitles.length) {
@@ -243,7 +259,12 @@ export function classifyPositiveReport(report, options = {}) {
 export function classifyNegativeReport({ report, networkProof, parseError, logText } = {}) {
   const problems = [];
   if (parseError) {
-    return { ok: false, problems: [`report JSON unreadable: ${String(parseError)}`], failure: null, signature: null };
+    return {
+      ok: false,
+      problems: [`report JSON unreadable: ${String(parseError)}`],
+      failure: null,
+      signature: null,
+    };
   }
   const shapeError = validateReportShape(report);
   if (shapeError) {
@@ -261,8 +282,10 @@ export function classifyNegativeReport({ report, networkProof, parseError, logTe
   if (counts.unexpected !== 1) {
     problems.push(`expected exactly 1 failing test, observed ${counts.unexpected}`);
   }
-  if (counts.expected !== 0) problems.push(`unexpected passing tests in the emulator-down run: ${counts.expected}`);
-  if (counts.skipped !== 0) problems.push(`skipped tests are not a failure proof: ${counts.skipped}`);
+  if (counts.expected !== 0)
+    problems.push(`unexpected passing tests in the emulator-down run: ${counts.expected}`);
+  if (counts.skipped !== 0)
+    problems.push(`skipped tests are not a failure proof: ${counts.skipped}`);
   if (counts.flaky !== 0) problems.push(`flaky tests are not a failure proof: ${counts.flaky}`);
   if (total !== 1) problems.push(`expected exactly 1 executed test, observed ${total}`);
 
@@ -283,7 +306,8 @@ export function classifyNegativeReport({ report, networkProof, parseError, logTe
   // Strip reporter colour codes before matching: the real JSON contains
   // "Expected: \u001b[32m2\u001b[39m", not a plain "2".
   const message = stripAnsi(failureText(result));
-  const statusOk = test?.status === "unexpected" && result?.status === "failed" && (result?.retry ?? 0) === 0;
+  const statusOk =
+    test?.status === "unexpected" && result?.status === "failed" && (result?.retry ?? 0) === 0;
   if (!statusOk) {
     problems.push(
       `failure status must be unexpected/failed with no retry (test=${String(test?.status)}, result=${String(result?.status)})`,
@@ -310,9 +334,12 @@ export function classifyNegativeReport({ report, networkProof, parseError, logTe
     problems.push("missing browser network proof for the inverted run");
   } else {
     if (networkProof.phase !== "negative-inverted") {
-      problems.push(`network proof phase is ${String(networkProof.phase)}, expected negative-inverted`);
+      problems.push(
+        `network proof phase is ${String(networkProof.phase)}, expected negative-inverted`,
+      );
     }
-    if (networkProof.tests !== 1) problems.push(`network proof recorded ${String(networkProof.tests)} tests`);
+    if (networkProof.tests !== 1)
+      problems.push(`network proof recorded ${String(networkProof.tests)} tests`);
     const blocked = Array.isArray(networkProof.blockedAttempts) ? networkProof.blockedAttempts : [];
     const nonProbe = blocked.filter(
       (attempt) =>
@@ -325,7 +352,9 @@ export function classifyNegativeReport({ report, networkProof, parseError, logTe
       problems.push(`blocked non-probe attempts: ${JSON.stringify(nonProbe.slice(0, 3))}`);
     }
     const requests = Array.isArray(networkProof.requests) ? networkProof.requests : [];
-    const loopbackAttempts = requests.filter((url) => /^https?:\/\/127\.0\.0\.1:8099(?:[/?]|$)/.test(url));
+    const loopbackAttempts = requests.filter((url) =>
+      /^https?:\/\/127\.0\.0\.1:8099(?:[/?]|$)/.test(url),
+    );
     if (loopbackAttempts.length === 0) {
       problems.push("no loopback:8099 connection attempt was recorded");
     }
@@ -333,7 +362,9 @@ export function classifyNegativeReport({ report, networkProof, parseError, logTe
     if (production.length > 0) {
       problems.push(`production host contacted: ${JSON.stringify(production.slice(0, 3))}`);
     }
-    const consoleMessages = Array.isArray(networkProof.consoleMessages) ? networkProof.consoleMessages : [];
+    const consoleMessages = Array.isArray(networkProof.consoleMessages)
+      ? networkProof.consoleMessages
+      : [];
     const pageErrors = Array.isArray(networkProof.pageErrors) ? networkProof.pageErrors : [];
     const backendUnavailable = consoleMessages.some((text) =>
       /Could not reach Cloud Firestore backend|code=unavailable|Connection failed/i.test(text),
@@ -342,9 +373,14 @@ export function classifyNegativeReport({ report, networkProof, parseError, logTe
       problems.push("missing captured Firestore backend-unavailable signature");
     }
     const harnessError = [...consoleMessages, ...pageErrors].find((text) =>
-      /ConfigErrorScreen|Missing #app root|FirebaseConfigMissingKeysError|seed proof missing/i.test(text),
+      /ConfigErrorScreen|Missing #app root|FirebaseConfigMissingKeysError|seed proof missing/i.test(
+        text,
+      ),
     );
-    if (harnessError) problems.push(`harness/config error in browser evidence: ${String(harnessError).slice(0, 200)}`);
+    if (harnessError)
+      problems.push(
+        `harness/config error in browser evidence: ${String(harnessError).slice(0, 200)}`,
+      );
   }
 
   if (typeof logText === "string" && logText.trim().length === 0) {
@@ -366,11 +402,15 @@ export function classifyNegativeReport({ report, networkProof, parseError, logTe
       ? {
           backendUnavailable: Array.isArray(networkProof.consoleMessages)
             ? networkProof.consoleMessages.some((text) =>
-                /Could not reach Cloud Firestore backend|code=unavailable|Connection failed/i.test(text),
+                /Could not reach Cloud Firestore backend|code=unavailable|Connection failed/i.test(
+                  text,
+                ),
               )
             : false,
           loopbackAttempts: Array.isArray(networkProof.requests)
-            ? networkProof.requests.filter((url) => /^https?:\/\/127\.0\.0\.1:8099(?:[/?]|$)/.test(url)).length
+            ? networkProof.requests.filter((url) =>
+                /^https?:\/\/127\.0\.0\.1:8099(?:[/?]|$)/.test(url),
+              ).length
             : 0,
         }
       : null,

@@ -69,7 +69,13 @@ describe("owner typography roles", () => {
   });
 
   it("keeps body, caption, button and price roles on Inter", () => {
-    for (const role of ["type-body", "type-caption", "type-button", "type-price", "type-label-large"]) {
+    for (const role of [
+      "type-body",
+      "type-caption",
+      "type-button",
+      "type-price",
+      "type-label-large",
+    ]) {
       expect(block(`.${role}`)).toContain("font-family: var(--font-sans)");
     }
     expect(block(".type-body")).toContain("font-weight: 400");
@@ -93,7 +99,8 @@ describe("owner typography roles", () => {
     // Advance width of "BURGONOMICS" in MonstroSolid.ttf, measured from the
     // shipped font (5706/1024 units per em), so layout math is not guessed.
     const WORDMARK_EM = 5.5723;
-    const sizeMatch = /\.brand-wordmark \{[\s\S]*?font-size:\s*min\(([\d.]+)rem,\s*([\d.]+)vw\)/.exec(css);
+    const sizeMatch =
+      /\.brand-wordmark \{[\s\S]*?font-size:\s*min\(([\d.]+)rem,\s*([\d.]+)vw\)/.exec(css);
     expect(sizeMatch).not.toBeNull();
     const sizePx = Number(sizeMatch![1]) * 16;
     expect(sizePx).toBeGreaterThanOrEqual(32);

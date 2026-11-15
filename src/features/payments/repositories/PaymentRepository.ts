@@ -408,11 +408,7 @@ export class PaymentRepository {
     // A gateway order already minted for this exact checkout is reused as-is:
     // exactly ONE Razorpay order per attempt, on the server's own amount, and
     // no second order write or network round-trip.
-    if (
-      !opts?.resumeOrderId &&
-      recorded?.gatewayOrder &&
-      !quoteChangedAfterGateway
-    ) {
+    if (!opts?.resumeOrderId && recorded?.gatewayOrder && !quoteChangedAfterGateway) {
       usePaymentStore.getState().setInternalOrderId(recorded.internalOrderId);
       usePaymentStore
         .getState()
@@ -505,9 +501,7 @@ export class PaymentRepository {
       //     failed/ambiguous gateway call, keep the SAME key — including when
       //     the retry now sees `gatewayOrder: null` and no longer looks like a
       //     "fresh attempt".
-      idempotencyKey: this.idempotencyKeyFor(
-        JSON.stringify([fingerprint, internalOrderId]),
-      ),
+      idempotencyKey: this.idempotencyKeyFor(JSON.stringify([fingerprint, internalOrderId])),
       checkoutToken,
       checkoutSnapshot,
     });

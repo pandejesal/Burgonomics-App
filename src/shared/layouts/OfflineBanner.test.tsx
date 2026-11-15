@@ -59,9 +59,7 @@ function setNavigatorOnline(value: boolean): () => void {
 async function load(native: boolean) {
   vi.resetModules();
   setNative(native);
-  const { useAppConfig, selectObservedOffline } = await import(
-    "@/core/state/appConfigStore"
-  );
+  const { useAppConfig, selectObservedOffline } = await import("@/core/state/appConfigStore");
   const { OfflineBanner } = await import("./OfflineBanner");
   const { useStoreSelection } = await import("@/features/stores/state/storeStore");
   return { useAppConfig, selectObservedOffline, OfflineBanner, useStoreSelection };
@@ -82,9 +80,7 @@ async function mount(element: React.ReactElement) {
     invalidateCalls += 1;
   });
   await act(async () => {
-    root!.render(
-      <QueryClientProvider client={queryClient}>{element}</QueryClientProvider>,
-    );
+    root!.render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
   });
   // `useHydrated` flips after its mount effect.
   await act(async () => {
@@ -281,22 +277,38 @@ describe("predicate", () => {
 
     // Unconfirmed with no browser evidence is NOT observed offline.
     expect(
-      selectObservedOffline({ isOnline: false, connectionStatusKnown: false, browserOnlineEvidence: null }),
+      selectObservedOffline({
+        isOnline: false,
+        connectionStatusKnown: false,
+        browserOnlineEvidence: null,
+      }),
     ).toBe(false);
 
     // Unconfirmed but the browser reports offline IS observed offline.
     expect(
-      selectObservedOffline({ isOnline: false, connectionStatusKnown: false, browserOnlineEvidence: false }),
+      selectObservedOffline({
+        isOnline: false,
+        connectionStatusKnown: false,
+        browserOnlineEvidence: false,
+      }),
     ).toBe(true);
 
     // Confirmed offline is observed offline.
     expect(
-      selectObservedOffline({ isOnline: false, connectionStatusKnown: true, browserOnlineEvidence: true }),
+      selectObservedOffline({
+        isOnline: false,
+        connectionStatusKnown: true,
+        browserOnlineEvidence: true,
+      }),
     ).toBe(true);
 
     // Online is never observed offline.
     expect(
-      selectObservedOffline({ isOnline: true, connectionStatusKnown: true, browserOnlineEvidence: false }),
+      selectObservedOffline({
+        isOnline: true,
+        connectionStatusKnown: true,
+        browserOnlineEvidence: false,
+      }),
     ).toBe(false);
   });
 });

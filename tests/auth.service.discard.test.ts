@@ -206,11 +206,7 @@ describe("authService challenge generation", () => {
     const firstResult = await first;
     expect(firstResult.success).toBe(true);
     // The profile-sync boundary really ran for THIS uid.
-    expect(profileDoc.doc).toHaveBeenCalledWith(
-      expect.anything(),
-      "users",
-      REF.uid,
-    );
+    expect(profileDoc.doc).toHaveBeenCalledWith(expect.anything(), "users", REF.uid);
     expect(profileDoc.getDoc).toHaveBeenCalledTimes(1);
     // An existing profile is not re-written.
     expect(profileDoc.setDoc).not.toHaveBeenCalled();

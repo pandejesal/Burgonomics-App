@@ -20,16 +20,23 @@ const fixture = vi.hoisted(() => ({
   raw: {} as Record<string, unknown>,
   request: vi.fn(),
 }));
-vi.mock("@/features/tracking/services/deliveryCodeService", () => ({ retrieveDeliveryCode: fixture.request }));
+vi.mock("@/features/tracking/services/deliveryCodeService", () => ({
+  retrieveDeliveryCode: fixture.request,
+}));
 vi.mock("@/features/auth/state/authStore", async () => {
   const { create } = await import("zustand");
   return {
-    useAuthStore: create(() => ({ status: "authenticated", accessToken: "fixture", user: { id: "owner-a", phone: "+910000000001" } })),
+    useAuthStore: create(() => ({
+      status: "authenticated",
+      accessToken: "fixture",
+      user: { id: "owner-a", phone: "+910000000001" },
+    })),
     selectIsAuthenticated: () => true,
   };
 });
 vi.mock("@/features/orders", () => ({
-  useOrdersStore: (select: (s: { byId: Record<string, Order> }) => unknown) => select({ byId: fixture.order ? { [fixture.order.id]: fixture.order } : {} }),
+  useOrdersStore: (select: (s: { byId: Record<string, Order> }) => unknown) =>
+    select({ byId: fixture.order ? { [fixture.order.id]: fixture.order } : {} }),
   selectOrderById: (id: string) => (s: { byId: Record<string, Order> }) => s.byId[id] ?? null,
   orderRepository: { getOrder: async () => ({ success: true, data: fixture.order }) },
   useOrderTracking: () => ({ status: "tracking", snapshot: fixture.snapshot, refresh: vi.fn() }),
@@ -41,26 +48,45 @@ vi.mock("@/features/tracking", () => ({
   usePorterLiveTracking: () => ({ storeLocation: null, dropLocation: null, paymentState: "paid" }),
 }));
 vi.mock("@tanstack/react-router", () => ({
-  createFileRoute: () => (options: { component: React.ComponentType }) => ({ ...options, useParams: () => ({ orderId: "order-a" }) }),
+  createFileRoute: () => (options: { component: React.ComponentType }) => ({
+    ...options,
+    useParams: () => ({ orderId: "order-a" }),
+  }),
   useNavigate: () => vi.fn(),
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }));
 vi.mock("@/shared/hooks/useHydrated", () => ({ useHydrated: () => true }));
-vi.mock("@/shared/layouts/AppShell", () => ({ AppShell: ({ children }: { children?: React.ReactNode }) => <main>{children}</main> }));
-vi.mock("@/features/auth/components/ProtectedRoute", () => ({ ProtectedRoute: ({ children }: { children?: React.ReactNode }) => <>{children}</> }));
+vi.mock("@/shared/layouts/AppShell", () => ({
+  AppShell: ({ children }: { children?: React.ReactNode }) => <main>{children}</main>,
+}));
+vi.mock("@/features/auth/components/ProtectedRoute", () => ({
+  ProtectedRoute: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+}));
 vi.mock("@/features/orders/hooks/useStorePhone", () => ({ useStorePhone: () => undefined }));
 vi.mock("@/core/config/firebase", () => ({ auth: { currentUser: { uid: "owner-a" } }, db: {} }));
-vi.mock("firebase/firestore", () => ({ doc: () => ({}), getDoc: async () => ({ exists: () => true, data: () => fixture.raw }) }));
+vi.mock("firebase/firestore", () => ({
+  doc: () => ({}),
+  getDoc: async () => ({ exists: () => true, data: () => fixture.raw }),
+}));
 
 import TrackOrderPage from "./orders.$orderId.track";
 import { useAuthStore } from "@/features/auth/state/authStore";
 
 const makeOrder = (): Order => ({
-  id: "order-a", shortCode: "BG-A", fulfillment: "delivery",
+  id: "order-a",
+  shortCode: "BG-A",
+  fulfillment: "delivery",
   status: { code: "OUT_FOR_DELIVERY", label: "On the way", terminal: false, kind: "in_progress" },
   payment: { status: "paid", method: "online", label: "Paid" },
   deliveryOtpVersion: 2,
-  store: { id: "fixture-outlet", name: "Fixture outlet", address: "Fixture address", area: "Fixture area", city: "Fixture city", phone: "" },
+  store: {
+    id: "fixture-outlet",
+    name: "Fixture outlet",
+    address: "Fixture address",
+    area: "Fixture area",
+    city: "Fixture city",
+    phone: "",
+  },
   items: [],
   totals: {
     grandTotal: 100,
@@ -90,17 +116,30 @@ const success = (deliveryOtp = "4826") => ({
 });
 function deferred() {
   let resolve!: (value: ReturnType<typeof success>) => void;
-  const promise = new Promise<ReturnType<typeof success>>((res) => { resolve = res; });
+  const promise = new Promise<ReturnType<typeof success>>((res) => {
+    resolve = res;
+  });
   return { promise, resolve };
 }
 let container: HTMLDivElement;
 let root: Root;
-async function render() { await act(async () => root.render(<TrackOrderPage />)); }
+async function render() {
+  await act(async () => root.render(<TrackOrderPage />));
+}
 const code = () => container.querySelector("[data-sensitive=delivery-code]")?.textContent;
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal("fetch", vi.fn(() => { throw new Error("No network allowed in delivery-code fixtures"); }));
-  useAuthStore.setState({ status: "authenticated", accessToken: "fixture", user: { id: "owner-a", phone: "+910000000001" } });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => {
+      throw new Error("No network allowed in delivery-code fixtures");
+    }),
+  );
+  useAuthStore.setState({
+    status: "authenticated",
+    accessToken: "fixture",
+    user: { id: "owner-a", phone: "+910000000001" },
+  });
   fixture.order = makeOrder();
   fixture.snapshot = null;
   fixture.raw = { ...makeOrder(), userId: "owner-a", customerId: "owner-a" };
@@ -162,14 +201,14 @@ describe("tracking snapshot vs loaded order disagreement", () => {
 describe("account scope and snapshot payload at the route", () => {
   it("re-scopes to the new account's own code after an in-app switch", async () => {
     const second = deferred();
-    fixture.request
-      .mockResolvedValueOnce(success("4826"))
-      .mockReturnValueOnce(second.promise);
+    fixture.request.mockResolvedValueOnce(success("4826")).mockReturnValueOnce(second.promise);
 
     await render();
     expect(code()).toBe("4826");
 
-    await act(async () => useAuthStore.setState({ user: { id: "owner-b", phone: "+910000000002" } }));
+    await act(async () =>
+      useAuthStore.setState({ user: { id: "owner-b", phone: "+910000000002" } }),
+    );
     expect(container.querySelector("[data-sensitive]")).toBeNull();
     expect(fixture.request).toHaveBeenCalledTimes(2);
     expect(fixture.request.mock.calls[1][1]).toBe("owner-b");

@@ -4,7 +4,11 @@ import { describe, it, expect } from "vitest";
 // REAL decision helper: a wrong branch either invites a double charge (Retry
 // on paid money) or strands a payer (no support path).
 
-import { describePaymentFailure, isNonRetryableOrderFailure, STORE_NOT_LINKED } from "../src/features/payments/utils/paymentFailure";
+import {
+  describePaymentFailure,
+  isNonRetryableOrderFailure,
+  STORE_NOT_LINKED,
+} from "../src/features/payments/utils/paymentFailure";
 
 describe("Payment FailurePanel branches (real decision logic)", () => {
   it("paid-but-no-order hides Retry, shows support, never claims no charge", () => {

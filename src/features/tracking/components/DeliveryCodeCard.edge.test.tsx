@@ -22,9 +22,16 @@ vi.mock("../services/deliveryCodeService", () => ({ retrieveDeliveryCode: reques
 vi.mock("@/features/auth/state/authStore", async () => {
   const { create } = await import("zustand");
   return {
-    useAuthStore: create(() => ({ status: "authenticated", accessToken: "fixture", user: { id: "owner-a", phone: "+910000000001" } })),
-    selectIsAuthenticated: (s: { status: string; accessToken: string | null; user: { id: string; phone: string } | null }) =>
-      s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone,
+    useAuthStore: create(() => ({
+      status: "authenticated",
+      accessToken: "fixture",
+      user: { id: "owner-a", phone: "+910000000001" },
+    })),
+    selectIsAuthenticated: (s: {
+      status: string;
+      accessToken: string | null;
+      user: { id: string; phone: string } | null;
+    }) => s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone,
   };
 });
 import { useAuthStore } from "@/features/auth/state/authStore";
@@ -53,7 +60,10 @@ const retryableFailure = {
 function deferred<T = ReturnType<typeof success>>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
   return { promise, resolve, reject };
 }
 const user = (id: string) => ({ id, phone: id === "owner-a" ? "+910000000001" : "+910000000002" });
@@ -89,7 +99,10 @@ describe("delivery-code card identity and route scope", () => {
     const first = deferred();
     const second = deferred();
     const third = deferred();
-    request.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockReturnValue(third.promise);
+    request
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValue(third.promise);
 
     await render();
     await act(async () => first.resolve(success()));
@@ -133,7 +146,9 @@ describe("delivery-code card identity and route scope", () => {
     expect(container.innerHTML).toBe("");
     expect(request).toHaveBeenCalledTimes(1);
 
-    await act(async () => root.render(<DeliveryCodeCard order={order({ id: "order-b" })} orderId="order-b" />));
+    await act(async () =>
+      root.render(<DeliveryCodeCard order={order({ id: "order-b" })} orderId="order-b" />),
+    );
     expect(request).toHaveBeenCalledTimes(2);
     expect(request.mock.calls[1][0]).toBe("order-b");
     expect(code()).toBe("8642");
@@ -147,7 +162,9 @@ describe("delivery-code card identity and route scope", () => {
     expect(request).toHaveBeenCalledTimes(3);
     expect(container.querySelector("button")).toBeNull();
 
-    await act(async () => root.render(<DeliveryCodeCard order={order({ id: "order-b" })} orderId="order-b" />));
+    await act(async () =>
+      root.render(<DeliveryCodeCard order={order({ id: "order-b" })} orderId="order-b" />),
+    );
     expect(request).toHaveBeenCalledTimes(4);
     expect(request.mock.calls[3][0]).toBe("order-b");
     expect(container.querySelector("button")?.textContent).toContain("Retry");
@@ -166,7 +183,9 @@ describe("delivery-code card retry and unmount boundaries", () => {
     // One press = one request (the handler's state change must not double-fetch).
     expect(request).toHaveBeenCalledTimes(2);
     expect(container.querySelector("[data-sensitive]")).toBeNull();
-    expect(container.querySelector("[role=status]")?.textContent).toContain("Loading delivery code");
+    expect(container.querySelector("[role=status]")?.textContent).toContain(
+      "Loading delivery code",
+    );
     expect(container.querySelector("[role=alert]")).toBeNull();
 
     await act(async () => retried.resolve(success()));

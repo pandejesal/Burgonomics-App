@@ -10,14 +10,23 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 class Observer {
   static all: Observer[] = [];
   disconnected = false;
-  constructor(private readonly callback: ResizeObserverCallback) { Observer.all.push(this); }
+  constructor(private readonly callback: ResizeObserverCallback) {
+    Observer.all.push(this);
+  }
   observe() {}
-  disconnect() { this.disconnected = true; }
+  disconnect() {
+    this.disconnected = true;
+  }
   // A queued delivery can arrive after disconnect; cleanup must fence it.
-  deliver() { this.callback([], this as unknown as ResizeObserver); }
+  deliver() {
+    this.callback([], this as unknown as ResizeObserver);
+  }
 }
 
-function Owner({ name = "--probe-height", enabled = true }: {
+function Owner({
+  name = "--probe-height",
+  enabled = true,
+}: {
   name?: `--${string}`;
   enabled?: boolean;
 }) {
@@ -40,8 +49,15 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", Observer);
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => height);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({
-    x: 0, y: 0, top: 0, bottom: height * scale, left: 0, right: 100,
-    width: 100, height: height * scale, toJSON: () => ({}),
+    x: 0,
+    y: 0,
+    top: 0,
+    bottom: height * scale,
+    left: 0,
+    right: 100,
+    width: 100,
+    height: height * scale,
+    toJSON: () => ({}),
   }));
   container = document.createElement("div");
   document.body.append(container);
@@ -53,16 +69,21 @@ afterEach(async () => {
   container.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  for (const name of ["--probe-height", "--next-height"]) document.documentElement.style.removeProperty(name);
+  for (const name of ["--probe-height", "--next-height"])
+    document.documentElement.style.removeProperty(name);
 });
 
 describe("measured root-height lifecycle", () => {
   it("keeps a live observer after StrictMode's extra attach/detach cycle", async () => {
-    await render(<React.StrictMode><Owner /></React.StrictMode>);
+    await render(
+      <React.StrictMode>
+        <Owner />
+      </React.StrictMode>,
+    );
     expect(value()).toBe("100px");
-    expect(Observer.all.filter(o => !o.disconnected)).toHaveLength(1);
+    expect(Observer.all.filter((o) => !o.disconnected)).toHaveLength(1);
     height = 132;
-    await act(async () => Observer.all.filter(o => !o.disconnected).forEach(o => o.deliver()));
+    await act(async () => Observer.all.filter((o) => !o.disconnected).forEach((o) => o.deliver()));
     expect(value()).toBe("132px");
   });
 

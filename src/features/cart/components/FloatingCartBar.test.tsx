@@ -132,7 +132,9 @@ describe("FloatingCartBar compact shell", () => {
     )!;
     const tokens = pill.className.split(/\s+/);
     expect(tokens, "the pill absorbs the shortage").not.toContain("shrink-0");
-    expect(tokens, "by wrapping its label, so nothing is clipped").not.toContain("whitespace-nowrap");
+    expect(tokens, "by wrapping its label, so nothing is clipped").not.toContain(
+      "whitespace-nowrap",
+    );
     expect(tokens, "while staying a 44px target").toEqual(
       expect.arrayContaining(["min-w-11", "min-h-[44px]"]),
     );

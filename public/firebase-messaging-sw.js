@@ -141,15 +141,17 @@ self.addEventListener("notificationclick", function (event) {
   if (!targetUrl) return;
 
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
-      var match = findMatchingClient(clientList || [], targetPath, origin);
-      if (match) {
-        return match.focus();
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
-    })
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then(function (clientList) {
+        var match = findMatchingClient(clientList || [], targetPath, origin);
+        if (match) {
+          return match.focus();
+        }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      }),
   );
 });
 

@@ -72,7 +72,11 @@ function requireMatchedNativeGraph() {
   const core = installedVersion("@capacitor/core");
   const cli = installedVersion("@capacitor/cli");
   const ios = installedVersion("@capacitor/ios");
-  const missing = Object.entries({ "@capacitor/core": core, "@capacitor/cli": cli, "@capacitor/ios": ios })
+  const missing = Object.entries({
+    "@capacitor/core": core,
+    "@capacitor/cli": cli,
+    "@capacitor/ios": ios,
+  })
     .filter(([, version]) => !version)
     .map(([name]) => name);
   if (missing.length > 0) {
@@ -163,9 +167,9 @@ const OFFICIAL_SWIFT_PM_URL = "https://github.com/ionic-team/capacitor-swift-pm.
  */
 function findOfficialRequirements(text, origin) {
   // Any mention of the official URL, with whatever follows it.
-  const mentions = [
-    ...text.matchAll(/\.package\(\s*url:\s*"([^"]+)"\s*,\s*([^)]*)\)/g),
-  ].filter((match) => match[1] === OFFICIAL_SWIFT_PM_URL);
+  const mentions = [...text.matchAll(/\.package\(\s*url:\s*"([^"]+)"\s*,\s*([^)]*)\)/g)].filter(
+    (match) => match[1] === OFFICIAL_SWIFT_PM_URL,
+  );
 
   if (mentions.length === 0) {
     // Distinguish "wrong URL that merely looks like ours" from "absent".
@@ -265,7 +269,10 @@ for (const baseDir of pluginRoots) {
 
 if (fs.existsSync(LOCAL_ALIAS_MANIFEST)) {
   const origin = path.relative(process.cwd(), LOCAL_ALIAS_MANIFEST).replace(/\\/g, "/");
-  const requirement = findOfficialRequirements(fs.readFileSync(LOCAL_ALIAS_MANIFEST, "utf8"), origin);
+  const requirement = findOfficialRequirements(
+    fs.readFileSync(LOCAL_ALIAS_MANIFEST, "utf8"),
+    origin,
+  );
   validateRequirement(requirement.kind, requirement.version, target, origin);
   validatedManifests += 1;
 }

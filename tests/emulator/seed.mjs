@@ -78,7 +78,10 @@ function assertTarget() {
 
 async function sha256(filePath) {
   const bytes = await readFile(filePath);
-  return { sha256: createHash("sha256").update(bytes).digest("hex").toUpperCase(), bytes: bytes.length };
+  return {
+    sha256: createHash("sha256").update(bytes).digest("hex").toUpperCase(),
+    bytes: bytes.length,
+  };
 }
 
 /** Customer copy must equal the explicit canonical path; never silently fall back. */
@@ -361,7 +364,10 @@ async function main() {
       outOfStockIds,
       outOfStockCount: outOfStockIds.length,
       firstProductId: alphaDocs.map((d) => d.id).sort()[0],
-      lastProductId: alphaDocs.map((d) => d.id).sort().at(-1),
+      lastProductId: alphaDocs
+        .map((d) => d.id)
+        .sort()
+        .at(-1),
       burgerNames: alphaDocs
         .filter((d) => d.categoryId === "emu_cat_burgers")
         .map((d) => d.name)

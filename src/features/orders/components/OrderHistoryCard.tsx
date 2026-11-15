@@ -61,8 +61,7 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
   // CUS-16: a pending online order is not confirmed. Derive the visible label
   // from the server's payment state; paid/cash orders keep their label.
   const paymentState = orderPaymentState(order);
-  const statusLabel =
-    displayOrderStatus(order)?.label || statusCode || "Status unavailable";
+  const statusLabel = displayOrderStatus(order)?.label || statusCode || "Status unavailable";
   const isCancelled =
     order.status?.kind === "cancelled" || statusCode.toUpperCase().includes("CANCEL");
   const isUnpaid = paymentState === "unpaid";

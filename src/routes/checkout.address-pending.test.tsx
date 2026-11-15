@@ -89,10 +89,9 @@ vi.mock("@/features/cart", () => {
       validateCart: vi.fn(),
       clear: vi.fn(async () => ({ success: true })),
     },
-    useCartStore: Object.assign(
-      (select: (s: typeof cartState) => unknown) => select(cartState),
-      { getState: () => cartState },
-    ),
+    useCartStore: Object.assign((select: (s: typeof cartState) => unknown) => select(cartState), {
+      getState: () => cartState,
+    }),
     selectItemCount: (s: { lines: unknown[] }) => s.lines.length,
     PromoInput: () => null,
   };
@@ -133,8 +132,7 @@ vi.mock("@/features/auth/state/authStore", async () => {
       status: string;
       accessToken: string | null;
       user: { id?: string; phone?: string } | null;
-    }) =>
-      s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone,
+    }) => s.status === "authenticated" && !!s.accessToken && !!s.user?.id && !!s.user?.phone,
     selectIsGuest: (s: { status: string }) => s.status !== "authenticated",
   };
 });
@@ -157,10 +155,8 @@ vi.mock("@/features/addresses", async () => {
   return {
     useAddressStore,
     selectAddresses: (s: { addresses: unknown[] }) => s.addresses,
-    selectSelectedAddress: (s: {
-      addresses: Array<{ id: string }>;
-      selectedId: string | null;
-    }) => s.addresses.find((a) => a.id === s.selectedId) ?? null,
+    selectSelectedAddress: (s: { addresses: Array<{ id: string }>; selectedId: string | null }) =>
+      s.addresses.find((a) => a.id === s.selectedId) ?? null,
     addressRepository: {
       hydrate: async () => {
         const result = await fixture.hydrate();

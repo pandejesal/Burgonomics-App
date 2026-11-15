@@ -194,9 +194,7 @@ describe("login route — reCAPTCHA host is the element the service binds", () =
 
     await submitPhone();
     expect(bound.length).toBeGreaterThanOrEqual(2);
-    expect(bound.every((item) => item.element === host && item.connectedAtConstruction)).toBe(
-      true,
-    );
+    expect(bound.every((item) => item.element === host && item.connectedAtConstruction)).toBe(true);
     expect(useAuthStore.getState().status).toBe("otp_sent");
   });
 

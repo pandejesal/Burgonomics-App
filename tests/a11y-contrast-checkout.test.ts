@@ -89,9 +89,10 @@ describe("A11Y-04 — placeholders carry information", () => {
       const placeholder = token(block, "--text-placeholder");
       const surface = token(block, "--surface");
       const input = token(block, "--bg-secondary");
-      expect(contrast(placeholder, surface), `${name} placeholder on surface`).toBeGreaterThanOrEqual(
-        TEXT_AA,
-      );
+      expect(
+        contrast(placeholder, surface),
+        `${name} placeholder on surface`,
+      ).toBeGreaterThanOrEqual(TEXT_AA);
       expect(contrast(placeholder, input), `${name} placeholder on input`).toBeGreaterThanOrEqual(
         TEXT_AA,
       );
@@ -110,9 +111,7 @@ describe("A11Y-04 — placeholders carry information", () => {
       expect(read(file), file).not.toContain("placeholder:text-text-disabled");
       expect(read(file), file).toContain("placeholder:text-text-placeholder");
     }
-    expect(read("src/features/home/components/ComboCard.tsx")).not.toContain(
-      "text-text-disabled",
-    );
+    expect(read("src/features/home/components/ComboCard.tsx")).not.toContain("text-text-disabled");
     expect(read("src/features/cart/components/CartItemRow.tsx")).not.toContain(
       "text-text-disabled",
     );

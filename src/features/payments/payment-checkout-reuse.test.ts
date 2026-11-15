@@ -85,7 +85,10 @@ beforeEach(() => {
     success: true,
     data: { checkoutToken: "chk_token_1" },
   });
-  mocks.createFromCurrentContext.mockResolvedValue({ success: true, data: { id: "ord_created_1" } });
+  mocks.createFromCurrentContext.mockResolvedValue({
+    success: true,
+    data: { id: "ord_created_1" },
+  });
   mocks.markPaymentFailed.mockResolvedValue({ success: true, data: null });
   mocks.createOrder.mockResolvedValue({ success: true, data: gatewayOrder });
 

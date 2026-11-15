@@ -4,11 +4,7 @@ import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import { auth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
-import {
-  acquireForFlow,
-  dirtyFlow,
-  isFlowMounted,
-} from "@/features/auth/state/authBinding";
+import { acquireForFlow, dirtyFlow, isFlowMounted } from "@/features/auth/state/authBinding";
 import type { AuthFlowId } from "@/features/auth/utils/authErrors";
 
 export interface RequestOtpResponse {

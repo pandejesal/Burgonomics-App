@@ -863,7 +863,6 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-
   // =========================================================================
   // R17: users/{uid} tenant/trust field protection
   // =========================================================================
@@ -970,8 +969,6 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
     await assertFails(getDoc(doc(custDb, "branches", "branch_01")));
   });
-
-
 
   it("33a. [ORDERS-CREATE-NESTED-SETTLEMENT-DENY] Customer create cannot mint a nested payment.status settlement marker", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
@@ -1176,7 +1173,6 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       }),
     );
   });
-
 
   it("53. [ORDERS-CREATE-WITH-ITEMS-ALLOW] Order creation with `items` (customer and walk-in lanes) still SUCCEEDS", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();

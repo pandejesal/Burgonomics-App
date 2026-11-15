@@ -84,10 +84,7 @@ const { network, loader } = vi.hoisted(() => {
             network.probes.push({ resolve, reject });
           });
         },
-        addListener: (
-          _event: string,
-          listener: (status: { connected: boolean }) => void,
-        ) => {
+        addListener: (_event: string, listener: (status: { connected: boolean }) => void) => {
           network.addListenerCalls += 1;
           network.callLog.push("addListener");
           network.listeners.push(listener);

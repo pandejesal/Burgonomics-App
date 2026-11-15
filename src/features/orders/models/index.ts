@@ -251,9 +251,17 @@ export interface OrderTrackingSnapshot {
   orderId: Id;
   status: OrderStatusMeta;
   /** Ephemeral live eligibility projection, not a persisted order or code cache. */
-  order?: Pick<Order,
-    "id" | "fulfillment" | "payment" | "reconciliation" | "deliveryOtpConsumedAt" |
-    "deliveryOtpVersion" | "refundStatus" | "refundActiveClaim" | "refundClaimedAt"
+  order?: Pick<
+    Order,
+    | "id"
+    | "fulfillment"
+    | "payment"
+    | "reconciliation"
+    | "deliveryOtpConsumedAt"
+    | "deliveryOtpVersion"
+    | "refundStatus"
+    | "refundActiveClaim"
+    | "refundClaimedAt"
   > & {
     /**
      * Courier-lifecycle signals the owner endpoint also refuses on. Declared

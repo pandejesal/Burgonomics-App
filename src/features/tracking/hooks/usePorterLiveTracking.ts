@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Order } from "@/features/orders";
-import {
-  DEFAULT_COURIER_NAME,
-  courierDisplayName,
-} from "@/features/orders/utils/courierName";
+import { DEFAULT_COURIER_NAME, courierDisplayName } from "@/features/orders/utils/courierName";
 import { orderPaymentState, type CustomerPaymentState } from "@/features/orders/utils/paymentState";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 
@@ -67,8 +64,7 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
   // from the already-loaded outlet registry. Real registry entries only — an
   // unknown id still yields null (no invented pin).
   if (!storeLocation) {
-    const storeId =
-      order?.store?.id || (order as any)?.branchId || (order as any)?.storeId;
+    const storeId = order?.store?.id || (order as any)?.branchId || (order as any)?.storeId;
     if (storeId) {
       try {
         const matched = useStoreSelection
@@ -180,11 +176,20 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     };
   }
 
-  if (statusCode.includes("PREPAR") || statusCode.includes("KITCHEN") || statusCode.includes("BAK")) {
+  if (
+    statusCode.includes("PREPAR") ||
+    statusCode.includes("KITCHEN") ||
+    statusCode.includes("BAK")
+  ) {
     stage = 2;
     stageName = "Freshly Grilling in Kitchen";
     stageDescription = "Chefs are assembling your fresh artisanal smash burgers.";
-  } else if (statusCode.includes("DELIVERY") || statusCode.includes("DISPATCH") || statusCode.includes("TRANSIT") || statusCode.includes("READY")) {
+  } else if (
+    statusCode.includes("DELIVERY") ||
+    statusCode.includes("DISPATCH") ||
+    statusCode.includes("TRANSIT") ||
+    statusCode.includes("READY")
+  ) {
     stage = 3;
     stageName = isTakeaway
       ? "Packed & Ready for Counter Pickup"
@@ -196,7 +201,11 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
         ? `Your food is packed warm. Show order reference #${orderReference} at the counter.`
         : "Your food is packed warm. Show this screen's order reference at the counter."
       : `${partnerName} is en-route with your insulated food pack.`;
-  } else if (statusCode.includes("DELIVER") || statusCode.includes("COMPLETE") || statusCode.includes("PICKED_UP")) {
+  } else if (
+    statusCode.includes("DELIVER") ||
+    statusCode.includes("COMPLETE") ||
+    statusCode.includes("PICKED_UP")
+  ) {
     stage = 4;
     stageName = isTakeaway ? "Collected at Counter" : "Delivered at Doorstep";
     stageDescription = "Meal successfully handed over. Enjoy your feast!";
@@ -230,8 +239,10 @@ export function getTrackingStateFromOrder(order: Order | null): PorterTrackingSt
     riderLocation,
     // Loop: no fabricated fallback rider — stage 3 with no assigned rider
     // must show "contact upon dispatch", never a fake name/phone/plate.
-    riderName: deliveryObj?.name || deliveryObj?.riderName || (order as any)?.riderName || undefined,
-    riderPhone: deliveryObj?.phone || deliveryObj?.riderPhone || (order as any)?.riderPhone || undefined,
+    riderName:
+      deliveryObj?.name || deliveryObj?.riderName || (order as any)?.riderName || undefined,
+    riderPhone:
+      deliveryObj?.phone || deliveryObj?.riderPhone || (order as any)?.riderPhone || undefined,
     riderVehicleNumber: deliveryObj?.vehicleNumber || deliveryObj?.riderVehicleNumber || undefined,
     partnerName: isSelfDelivery ? "Burgonomics In-House Fleet" : partnerName,
     // Tracking URL only when the real backend provides one — never a

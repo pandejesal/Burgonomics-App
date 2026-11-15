@@ -76,8 +76,7 @@ function construct(
   size: RecaptchaSize,
 ): BindingResultInternal {
   try {
-    let verifier: RecaptchaVerifier;
-    verifier = factory(firebaseAuth, element, {
+    const verifier: RecaptchaVerifier = factory(firebaseAuth, element, {
       size,
       callback: () => undefined,
       "expired-callback": () => {
@@ -117,12 +116,13 @@ export function bindHost(
       : { ok: false, code: "HOST_CONFLICT" };
   }
 
-  let width = 0;
-  try {
-    width = measure();
-  } catch {
-    width = 0;
-  }
+  const width = (() => {
+    try {
+      return measure();
+    } catch {
+      return 0;
+    }
+  })();
   if (!Number.isFinite(width) || width <= 0) {
     return { ok: false, code: "RECAPTCHA_CONTAINER_NOT_READY" };
   }

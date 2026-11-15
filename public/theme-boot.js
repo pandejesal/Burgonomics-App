@@ -22,7 +22,10 @@
             ? parsed.state
             : parsed
           : null;
-      if (state && (state.theme === "system" || state.theme === "light" || state.theme === "dark")) {
+      if (
+        state &&
+        (state.theme === "system" || state.theme === "light" || state.theme === "dark")
+      ) {
         theme = state.theme;
       }
     }

@@ -20,7 +20,10 @@ export type CustomerPaymentState = "paid" | "cash" | "confirming" | "unpaid";
 
 const CASH_STATUSES = new Set(["CASH_PENDING", "PAY_AT_STORE"]);
 
-export function orderPaymentState(order: Order | null, now: number = Date.now()): CustomerPaymentState {
+export function orderPaymentState(
+  order: Order | null,
+  now: number = Date.now(),
+): CustomerPaymentState {
   const payment = order?.payment;
   // Legacy documents with no payment block kept their previous presentation.
   if (!payment) return "paid";

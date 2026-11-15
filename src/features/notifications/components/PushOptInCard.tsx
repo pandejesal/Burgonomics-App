@@ -45,7 +45,7 @@ export function PushOptInCard({ onRequestPermission, onAnswered }: PushOptInCard
   const handleTurnOn = React.useCallback(async () => {
     if (answeredRef.current || busy) return;
     setBusy(true);
-    let granted = false;
+    let granted: boolean;
     try {
       granted = await onRequestPermission();
     } catch (err) {

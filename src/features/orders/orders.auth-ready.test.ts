@@ -22,7 +22,7 @@ vi.mock("@/core/config/firebase", () => ({
     get currentUser() {
       return fixture.currentUser;
     },
-    authStateReady: () => (fixture.ready ?? Promise.resolve()),
+    authStateReady: () => fixture.ready ?? Promise.resolve(),
   },
   db: { kind: "db" },
 }));
@@ -48,7 +48,14 @@ const ORDER = {
   fulfillment: "takeaway",
   store: { id: "demo", name: "DEMO", address: "", area: "", city: "", phone: "" },
   items: [],
-  totals: { subtotal: 10, taxes: 0.48, packingFee: 0, deliveryFee: 0, promoDiscount: 0, grandTotal: 10 },
+  totals: {
+    subtotal: 10,
+    taxes: 0.48,
+    packingFee: 0,
+    deliveryFee: 0,
+    promoDiscount: 0,
+    grandTotal: 10,
+  },
   placedAt: "2026-11-01T09:42:57.472Z",
   userId: "uid_live",
   customerId: "uid_live",
@@ -140,7 +147,7 @@ describe("ordersService waits for the persisted auth session before reading", ()
     fixture.getDocs.mockRejectedValue(
       Object.assign(new Error("Missing or insufficient permissions."), {
         code: "permission-denied",
-      })
+      }),
     );
 
     const res = await ordersService.listOrders({ bucket: "ongoing" });
@@ -154,7 +161,7 @@ describe("ordersService waits for the persisted auth session before reading", ()
     fixture.getDoc.mockRejectedValue(
       Object.assign(new Error("Missing or insufficient permissions."), {
         code: "permission-denied",
-      })
+      }),
     );
 
     const res = await ordersService.getOrder("ord_missing");

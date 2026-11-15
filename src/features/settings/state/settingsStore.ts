@@ -67,12 +67,13 @@ function isLanguage(value: unknown): value is LanguagePreference {
  * untouched in legacy storage for the per-uid migration prompt to inspect.
  */
 function migrateLegacyUiPayload(): string | null {
-  let storage: Storage | null = null;
-  try {
-    storage = typeof window !== "undefined" ? window.localStorage : null;
-  } catch {
-    return null;
-  }
+  const storage = (() => {
+    try {
+      return typeof window !== "undefined" ? window.localStorage : null;
+    } catch {
+      return null;
+    }
+  })();
   if (!storage) return null;
   try {
     const raw = storage.getItem(LEGACY_SETTINGS_STORAGE_KEY);

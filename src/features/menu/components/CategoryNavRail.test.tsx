@@ -263,12 +263,27 @@ describe("keyboard focus stays inside the rail's own visible width", () => {
     { name: "already visible", left: 25, width: 100, expected: 100 },
   ])("reveals a $name chip without selecting a category", async ({ left, width, expected }) => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    const host = document.createElement("div"); document.body.append(host);
-    const root = createRoot(host), select = vi.fn();
-    await act(async () => root.render(<CategoryNavRail categories={categories} onSelectCategory={select} />));
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host),
+      select = vi.fn();
+    await act(async () =>
+      root.render(<CategoryNavRail categories={categories} onSelectCategory={select} />),
+    );
     try {
-      const rail = host.querySelector("nav")!, chip = rail.querySelector("button")!;
-      const rect = (x: number, w: number) => ({ x, y: 68, top: 68, bottom: 112, left: x, right: x + w, width: w, height: 44, toJSON: () => ({}) });
+      const rail = host.querySelector("nav")!,
+        chip = rail.querySelector("button")!;
+      const rect = (x: number, w: number) => ({
+        x,
+        y: 68,
+        top: 68,
+        bottom: 112,
+        left: x,
+        right: x + w,
+        width: w,
+        height: 44,
+        toJSON: () => ({}),
+      });
       Object.defineProperty(rail, "clientWidth", { value: 150 });
       rail.getBoundingClientRect = () => rect(10, 150);
       chip.getBoundingClientRect = () => rect(left, width);
@@ -278,6 +293,9 @@ describe("keyboard focus stays inside the rail's own visible width", () => {
       expect(rail.scrollLeft).toBe(expected);
       expect(select).not.toHaveBeenCalled();
       expect(chip.getAttribute("aria-current")).toBeNull();
-    } finally { await act(async () => root.unmount()); host.remove(); }
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
   });
 });

@@ -39,8 +39,7 @@ function TermsPage() {
               Terms & Conditions
             </Text>
             <Text variant="caption" tone="secondary">
-              Last updated: November 1, 2026 · {legalEntityProse}, trading as {APP.tradeName},
-              India
+              Last updated: November 1, 2026 · {legalEntityProse}, trading as {APP.tradeName}, India
             </Text>
           </div>
         </div>

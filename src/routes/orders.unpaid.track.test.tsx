@@ -110,18 +110,25 @@ const TrackOrderPage = (Route as unknown as { options: { component: React.Compon
   .component;
 
 /** The real server document shape for the stuck staging order. */
-function serverOrder(overrides: {
-  paymentStatus?: "pending" | "paid";
-  method?: "online" | "cod";
-  placedAt?: string;
-  statusCode?: string;
-} = {}): Order {
+function serverOrder(
+  overrides: {
+    paymentStatus?: "pending" | "paid";
+    method?: "online" | "cod";
+    placedAt?: string;
+    statusCode?: string;
+  } = {},
+): Order {
   return {
     id: fixture.orderId,
     shortCode: "BG-PKKEDF",
     userId: "ueVCEFPxfEW5tJy4NgBebTqudgy1",
     customerId: "ueVCEFPxfEW5tJy4NgBebTqudgy1",
-    status: { code: overrides.statusCode ?? "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+    status: {
+      code: overrides.statusCode ?? "PLACED",
+      label: "Order placed",
+      kind: "upcoming",
+      terminal: false,
+    },
     fulfillment: "takeaway",
     store: {
       id: "demo",
@@ -281,7 +288,9 @@ describe("CUS-16 — tracking derives status from the real payment state", () =>
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     await mount();
 
-    const cancel = container.querySelector<HTMLButtonElement>('[data-testid="cancel-unpaid-order"]');
+    const cancel = container.querySelector<HTMLButtonElement>(
+      '[data-testid="cancel-unpaid-order"]',
+    );
     expect(cancel).not.toBeNull();
     await act(async () => cancel!.click());
 

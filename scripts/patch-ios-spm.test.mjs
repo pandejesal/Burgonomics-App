@@ -23,28 +23,31 @@
 //
 // Run: node --test scripts/patch-ios-spm.test.mjs
 
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CUSTOMER_ROOT = path.resolve(HERE, '..');
-const PATCH_SCRIPT = path.join(HERE, 'patch-ios-spm.js');
+const CUSTOMER_ROOT = path.resolve(HERE, "..");
+const PATCH_SCRIPT = path.join(HERE, "patch-ios-spm.js");
 
 /** The only URL this script treats as the official Capacitor SPM package. */
-const OFFICIAL_SWIFT_PM_URL = 'https://github.com/ionic-team/capacitor-swift-pm.git';
+const OFFICIAL_SWIFT_PM_URL = "https://github.com/ionic-team/capacitor-swift-pm.git";
 
 /** Fixed project path for the locally-vendored app-check alias. */
-const APP_CHECK_ALIAS = 'ios/App/LocalPackages/capacitor-firebase-app-check/Package.swift';
+const APP_CHECK_ALIAS = "ios/App/LocalPackages/capacitor-firebase-app-check/Package.swift";
 
 // Keys each patched plugin must read through a typed PluginConfig getter.
-const SPLASH_SOURCE = 'node_modules/@capacitor/splash-screen/ios/Sources/SplashScreenPlugin/SplashScreenPlugin.swift';
-const STATUS_SOURCE = 'node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBarPlugin.swift';
-const PUSH_SOURCE = 'node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsHandler.swift';
+const SPLASH_SOURCE =
+  "node_modules/@capacitor/splash-screen/ios/Sources/SplashScreenPlugin/SplashScreenPlugin.swift";
+const STATUS_SOURCE =
+  "node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBarPlugin.swift";
+const PUSH_SOURCE =
+  "node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsHandler.swift";
 const AFFECTED_SOURCES = [SPLASH_SOURCE, STATUS_SOURCE, PUSH_SOURCE];
 
 // Any of these in generated Swift means the crash is back. `value(forKey:
@@ -66,23 +69,23 @@ private func fixturePlaceholder() {
 
 /** Seeds a minimal but shape-correct tree for the patch script. */
 function seedFixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patch-ios-spm-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "patch-ios-spm-"));
 
   const write = (relative, content) => {
     const file = path.join(root, relative);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, content, 'utf8');
+    fs.writeFileSync(file, content, "utf8");
   };
 
   // The script derives its SPM target from the INSTALLED native graph and
   // refuses to run on a mismatched or missing one, so the fixture must carry
   // real package.json metadata for core / cli / ios.
-  writeNativeGraph(root, write, { core: '8.6.0', cli: '8.6.0', ios: '8.6.0' });
+  writeNativeGraph(root, write, { core: "8.6.0", cli: "8.6.0", ios: "8.6.0" });
 
   // Step 1 target: needs .iOS(.v15) and the CLI-generated exact pin, which the
   // CLI writes to match the installed @capacitor/ios.
   write(
-    'ios/App/CapApp-SPM/Package.swift',
+    "ios/App/CapApp-SPM/Package.swift",
     `// swift-tools-version: 5.9
 import PackageDescription
 
@@ -108,7 +111,7 @@ let package = Package(
   // Step 2 targets: the real upstream shape is `from: "8.0.0"` (verified from
   // the public 8.1.2 tarball), which already admits 8.6.0. These must survive
   // the run byte-identical — the script validates them, never rewrites them.
-  for (const pkg of ['splash-screen', 'status-bar', 'push-notifications']) {
+  for (const pkg of ["splash-screen", "status-bar", "push-notifications"]) {
     write(
       `node_modules/@capacitor/${pkg}/Package.swift`,
       `// swift-tools-version: 5.9
@@ -127,7 +130,8 @@ let package = Package(
 
   // Vulnerable pre-patch sources. The stub marker proves the script rewrote
   // the file rather than the fixture already being clean.
-  write(SPLASH_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);  write(STATUS_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);
+  write(SPLASH_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);
+  write(STATUS_SOURCE, `import Foundation\nimport Capacitor\n\n${VULNERABLE_STUB}`);
   write(
     PUSH_SOURCE,
     `import Capacitor\n\n${VULNERABLE_STUB.replace(
@@ -138,21 +142,21 @@ let package = Package(
 
   // Non-config siblings the script also replaces when present.
   write(
-    'node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBar.swift',
-    '// FIXTURE_STUB_MARKER\n',
+    "node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/StatusBar.swift",
+    "// FIXTURE_STUB_MARKER\n",
   );
   write(
-    'node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/UIColor.swift',
-    '// FIXTURE_STUB_MARKER\n',
+    "node_modules/@capacitor/status-bar/ios/Sources/StatusBarPlugin/UIColor.swift",
+    "// FIXTURE_STUB_MARKER\n",
   );
   write(
-    'node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsPlugin.swift',
-    '// FIXTURE_STUB_MARKER\n',
+    "node_modules/@capacitor/push-notifications/ios/Sources/PushNotificationsPlugin/PushNotificationsPlugin.swift",
+    "// FIXTURE_STUB_MARKER\n",
   );
 
   // @capacitor-firebase/app-check is a real graph member in its own namespace.
   write(
-    'node_modules/@capacitor-firebase/app-check/Package.swift',
+    "node_modules/@capacitor-firebase/app-check/Package.swift",
     `// swift-tools-version: 5.9
 import PackageDescription
 
@@ -176,10 +180,13 @@ let package = Package(
  */
 function writeNativeGraph(_root, write, versions) {
   for (const [name, version] of Object.entries(versions)) {
-    write(`node_modules/@capacitor/${name}/package.json`, JSON.stringify({
-      name: `@capacitor/${name}`,
-      version,
-    }));
+    write(
+      `node_modules/@capacitor/${name}/package.json`,
+      JSON.stringify({
+        name: `@capacitor/${name}`,
+        version,
+      }),
+    );
   }
 }
 
@@ -187,7 +194,7 @@ function writeNativeGraph(_root, write, versions) {
 function runPatch(root) {
   const result = spawnSync(process.execPath, [PATCH_SCRIPT], {
     cwd: root,
-    encoding: 'utf8',
+    encoding: "utf8",
     timeout: 180000,
   });
   assert.equal(
@@ -202,10 +209,10 @@ function runPatch(root) {
 function runPatchExpectFailure(root, reasonPattern) {
   const result = spawnSync(process.execPath, [PATCH_SCRIPT], {
     cwd: root,
-    encoding: 'utf8',
+    encoding: "utf8",
     timeout: 180000,
   });
-  assert.notEqual(result.status, 0, 'expected the patch script to fail closed');
+  assert.notEqual(result.status, 0, "expected the patch script to fail closed");
   const output = `${result.stdout}\n${result.stderr}`;
   assert.match(output, reasonPattern, `failure message did not explain the refusal:\n${output}`);
   return result;
@@ -214,7 +221,7 @@ function runPatchExpectFailure(root, reasonPattern) {
 function readGenerated(root, relative) {
   const file = path.join(root, relative);
   assert.ok(fs.existsSync(file), `patch script did not write ${relative}`);
-  return fs.readFileSync(file, 'utf8');
+  return fs.readFileSync(file, "utf8");
 }
 
 let cachedFixture = null;
@@ -239,8 +246,8 @@ test.after(() => {
 // RED-before-fix tripwire: no private-config KVC may reach native code.
 // ---------------------------------------------------------------------------
 
-test('patch script source no longer reads PluginConfig through KVC', () => {
-  const script = fs.readFileSync(PATCH_SCRIPT, 'utf8');
+test("patch script source no longer reads PluginConfig through KVC", () => {
+  const script = fs.readFileSync(PATCH_SCRIPT, "utf8");
   for (const pattern of PRIVATE_CONFIG_KVC) {
     assert.doesNotMatch(
       script,
@@ -250,31 +257,23 @@ test('patch script source no longer reads PluginConfig through KVC', () => {
   }
 });
 
-test('generated splash-screen plugin reads config through typed getters only', () => {
+test("generated splash-screen plugin reads config through typed getters only", () => {
   const source = readGenerated(patchedFixture(), SPLASH_SOURCE);
   for (const pattern of PRIVATE_CONFIG_KVC) {
-    assert.doesNotMatch(
-      source,
-      pattern,
-      `generated SplashScreenPlugin.swift contains ${pattern}`,
-    );
+    assert.doesNotMatch(source, pattern, `generated SplashScreenPlugin.swift contains ${pattern}`);
   }
-  assert.doesNotMatch(source, /FIXTURE_STUB_MARKER/, 'stub was not replaced');
+  assert.doesNotMatch(source, /FIXTURE_STUB_MARKER/, "stub was not replaced");
 });
 
-test('generated status-bar plugin reads config through typed getters only', () => {
+test("generated status-bar plugin reads config through typed getters only", () => {
   const source = readGenerated(patchedFixture(), STATUS_SOURCE);
   for (const pattern of PRIVATE_CONFIG_KVC) {
-    assert.doesNotMatch(
-      source,
-      pattern,
-      `generated StatusBarPlugin.swift contains ${pattern}`,
-    );
+    assert.doesNotMatch(source, pattern, `generated StatusBarPlugin.swift contains ${pattern}`);
   }
-  assert.doesNotMatch(source, /FIXTURE_STUB_MARKER/, 'stub was not replaced');
+  assert.doesNotMatch(source, /FIXTURE_STUB_MARKER/, "stub was not replaced");
 });
 
-test('generated push handler reads config through typed getters only', () => {
+test("generated push handler reads config through typed getters only", () => {
   const source = readGenerated(patchedFixture(), PUSH_SOURCE);
   for (const pattern of PRIVATE_CONFIG_KVC) {
     assert.doesNotMatch(
@@ -283,7 +282,7 @@ test('generated push handler reads config through typed getters only', () => {
       `generated PushNotificationsHandler.swift contains ${pattern}`,
     );
   }
-  assert.doesNotMatch(source, /FIXTURE_STUB_MARKER/, 'stub was not replaced');
+  assert.doesNotMatch(source, /FIXTURE_STUB_MARKER/, "stub was not replaced");
 });
 
 // ---------------------------------------------------------------------------
@@ -303,7 +302,7 @@ function assertDefaultFlowsThrough(source, prop, getter, key) {
   );
 }
 
-test('splash-screen config uses supported getters and keeps struct defaults', () => {
+test("splash-screen config uses supported getters and keeps struct defaults", () => {
   const source = readGenerated(patchedFixture(), SPLASH_SOURCE);
 
   // Strings: hex colours parse through UIColor.fromHex, spinner style mapping
@@ -316,25 +315,25 @@ test('splash-screen config uses supported getters and keeps struct defaults', ()
   // Defaults that existed before the rewrite: showSpinner=false,
   // launchShowDuration=500, launchAutoHide=true — all still sourced from the
   // SplashScreenConfig struct, never hardcoded in the plugin.
-  assertDefaultFlowsThrough(source, 'showSpinner', 'getBoolean', 'showSpinner');
-  assertDefaultFlowsThrough(source, 'launchShowDuration', 'getInt', 'launchShowDuration');
-  assertDefaultFlowsThrough(source, 'launchAutoHide', 'getBoolean', 'launchAutoHide');
+  assertDefaultFlowsThrough(source, "showSpinner", "getBoolean", "showSpinner");
+  assertDefaultFlowsThrough(source, "launchShowDuration", "getInt", "launchShowDuration");
+  assertDefaultFlowsThrough(source, "launchAutoHide", "getBoolean", "launchAutoHide");
   assert.doesNotMatch(
     source,
     /getBoolean\("showSpinner",\s*(true|false)\)/,
-    'showSpinner default must come from SplashScreenConfig, not a literal',
+    "showSpinner default must come from SplashScreenConfig, not a literal",
   );
   assert.doesNotMatch(
     source,
     /getInt\("launchShowDuration",\s*\d+\)/,
-    'launchShowDuration default must come from SplashScreenConfig, not a literal',
+    "launchShowDuration default must come from SplashScreenConfig, not a literal",
   );
 });
 
-test('status-bar config uses supported getters and keeps struct defaults', () => {
+test("status-bar config uses supported getters and keeps struct defaults", () => {
   const source = readGenerated(patchedFixture(), STATUS_SOURCE);
 
-  assertDefaultFlowsThrough(source, 'overlaysWebView', 'getBoolean', 'overlaysWebView');
+  assertDefaultFlowsThrough(source, "overlaysWebView", "getBoolean", "overlaysWebView");
   assert.match(source, /getConfig\(\)\.getString\("backgroundColor"\)/);
   assert.match(source, /getConfig\(\)\.getString\("style"\)/);
 
@@ -343,36 +342,39 @@ test('status-bar config uses supported getters and keeps struct defaults', () =>
   assert.match(source, /case "light", "darkcontent":\s*\n\s*return \.darkContent/);
 });
 
-test('push handler reads presentationOptions through getArray', () => {
+test("push handler reads presentationOptions through getArray", () => {
   const source = readGenerated(patchedFixture(), PUSH_SOURCE);
 
   assert.match(
     source,
     /self\.plugin\?\.getConfig\(\)\.getArray\("presentationOptions"\)/,
-    'presentationOptions must be read with PluginConfig.getArray',
+    "presentationOptions must be read with PluginConfig.getArray",
   );
 
   // Notification semantics preserved: silent short-circuit and every option
   // mapping (alert expands to banner + list) still present.
   assert.match(source, /let silent = options\["silent"\] as\? Bool \?\? false/);
-  for (const option of ['banner', 'list', 'alert', 'badge', 'sound']) {
+  for (const option of ["banner", "list", "alert", "badge", "sound"]) {
     assert.match(source, new RegExp(`case "${option}":`));
   }
-  assert.match(source, /presentationOptions\.insert\(\.banner\)\s*\n\s*presentationOptions\.insert\(\.list\)/);
+  assert.match(
+    source,
+    /presentationOptions\.insert\(\.banner\)\s*\n\s*presentationOptions\.insert\(\.list\)/,
+  );
 });
 
 // ---------------------------------------------------------------------------
 // Idempotence + untouched dependency pin.
 // ---------------------------------------------------------------------------
 
-test('re-running the patch produces byte-identical output (idempotent)', () => {
+test("re-running the patch produces byte-identical output (idempotent)", () => {
   const root = patchedFixture();
   const watched = [
-    'ios/App/CapApp-SPM/Package.swift',
+    "ios/App/CapApp-SPM/Package.swift",
     ...AFFECTED_SOURCES,
-    'node_modules/@capacitor/splash-screen/Package.swift',
-    'node_modules/@capacitor/status-bar/Package.swift',
-    'node_modules/@capacitor/push-notifications/Package.swift',
+    "node_modules/@capacitor/splash-screen/Package.swift",
+    "node_modules/@capacitor/status-bar/Package.swift",
+    "node_modules/@capacitor/push-notifications/Package.swift",
   ];
 
   const first = new Map(watched.map((rel) => [rel, readGenerated(root, rel)]));
@@ -383,43 +385,47 @@ test('re-running the patch produces byte-identical output (idempotent)', () => {
   }
 });
 
-test('app aggregator keeps the CLI-generated pin matching the installed @capacitor/ios', () => {
+test("app aggregator keeps the CLI-generated pin matching the installed @capacitor/ios", () => {
   const root = patchedFixture();
-  const spm = readGenerated(root, 'ios/App/CapApp-SPM/Package.swift');
+  const spm = readGenerated(root, "ios/App/CapApp-SPM/Package.swift");
   assert.match(
     spm,
     /capacitor-swift-pm\.git", exact: "8\.6\.0"/,
-    'app pin must stay at the installed @capacitor/ios version (CLI regenerates it)',
+    "app pin must stay at the installed @capacitor/ios version (CLI regenerates it)",
   );
-  assert.doesNotMatch(spm, /exact: "8\.5\.[0-9]+"/, 'the old 8.5.x downgrade must not return');
-  assert.match(spm, /\.iOS\(\.v16\)/, 'deployment target still normalised');
-  assert.doesNotMatch(spm, /keychain-swift/, 'keychain is declared by secure-storage, not injected here');
+  assert.doesNotMatch(spm, /exact: "8\.5\.[0-9]+"/, "the old 8.5.x downgrade must not return");
+  assert.match(spm, /\.iOS\(\.v16\)/, "deployment target still normalised");
+  assert.doesNotMatch(
+    spm,
+    /keychain-swift/,
+    "keychain is declared by secure-storage, not injected here",
+  );
 });
 
-test('plugin manifests are validated read-only and survive byte-identical', () => {
+test("plugin manifests are validated read-only and survive byte-identical", () => {
   const root = patchedFixture();
-  for (const pkg of ['splash-screen', 'status-bar', 'push-notifications']) {
+  for (const pkg of ["splash-screen", "status-bar", "push-notifications"]) {
     const manifest = readGenerated(root, `node_modules/@capacitor/${pkg}/Package.swift`);
     // Upstream declares a range that already admits 8.6.0. Rewriting it was a
     // downgrade; the repair must leave it exactly as published.
     assert.match(manifest, /capacitor-swift-pm\.git", from: "8\.0\.0"/);
     assert.doesNotMatch(manifest, /exact:/, `${pkg} must not be re-pinned`);
     assert.ok(
-      manifest.includes('.iOS(.v15)'),
+      manifest.includes(".iOS(.v15)"),
       `${pkg} deployment target must not be rewritten by this script`,
     );
   }
 });
 
-test('an unrelated Swift package in the app aggregator is untouched', () => {
+test("an unrelated Swift package in the app aggregator is untouched", () => {
   const root = patchedFixture();
-  const spm = readGenerated(root, 'ios/App/CapApp-SPM/Package.swift');
+  const spm = readGenerated(root, "ios/App/CapApp-SPM/Package.swift");
   // firebase-ios-sdk is a different package identity with its own pin. The
   // repair must not touch any requirement that is not capacitor-swift-pm.
   assert.match(
     spm,
     /firebase-ios-sdk\.git", \.upToNextMajor\(from: "12\.7\.0"\)/,
-    'firebase-ios-sdk requirement must be preserved verbatim',
+    "firebase-ios-sdk requirement must be preserved verbatim",
   );
 });
 
@@ -431,14 +437,16 @@ test('an unrelated Swift package in the app aggregator is untouched', () => {
 /** Seeds a fixture with one overridden plugin constraint. */
 function seedWithPluginPin(pkg, kind, version) {
   const root = seedFixture();
-  const manifest = path.join(root, 'node_modules/@capacitor', pkg, 'Package.swift');
+  const manifest = path.join(root, "node_modules/@capacitor", pkg, "Package.swift");
   fs.writeFileSync(
     manifest,
-    fs.readFileSync(manifest, 'utf8').replace(
-      /capacitor-swift-pm\.git", from: "[^"]+"/,
-      `capacitor-swift-pm.git", ${kind}: "${version}"`,
-    ),
-    'utf8',
+    fs
+      .readFileSync(manifest, "utf8")
+      .replace(
+        /capacitor-swift-pm\.git", from: "[^"]+"/,
+        `capacitor-swift-pm.git", ${kind}: "${version}"`,
+      ),
+    "utf8",
   );
   return root;
 }
@@ -446,14 +454,16 @@ function seedWithPluginPin(pkg, kind, version) {
 /** Seeds a fixture with one overridden aggregator constraint. */
 function seedWithAggregatorPin(kind, version, url = OFFICIAL_SWIFT_PM_URL) {
   const root = seedFixture();
-  const manifest = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+  const manifest = path.join(root, "ios/App/CapApp-SPM/Package.swift");
   fs.writeFileSync(
     manifest,
-    fs.readFileSync(manifest, 'utf8').replace(
-      /\.package\(url: "[^"]+", (?:from|exact): "[^"]+"\)/,
-      `.package(url: "${url}", ${kind}: "${version}")`,
-    ),
-    'utf8',
+    fs
+      .readFileSync(manifest, "utf8")
+      .replace(
+        /\.package\(url: "[^"]+", (?:from|exact): "[^"]+"\)/,
+        `.package(url: "${url}", ${kind}: "${version}")`,
+      ),
+    "utf8",
   );
   return root;
 }
@@ -461,27 +471,27 @@ function seedWithAggregatorPin(kind, version, url = OFFICIAL_SWIFT_PM_URL) {
 /** Snapshot of every file the script could write, for before/after equality. */
 function snapshotTree(root) {
   const watched = [
-    'ios/App/CapApp-SPM/Package.swift',
+    "ios/App/CapApp-SPM/Package.swift",
     ...AFFECTED_SOURCES,
-    'node_modules/@capacitor/splash-screen/Package.swift',
-    'node_modules/@capacitor/status-bar/Package.swift',
-    'node_modules/@capacitor/push-notifications/Package.swift',
+    "node_modules/@capacitor/splash-screen/Package.swift",
+    "node_modules/@capacitor/status-bar/Package.swift",
+    "node_modules/@capacitor/push-notifications/Package.swift",
   ];
-  return new Map(watched.map((rel) => [rel, fs.readFileSync(path.join(root, rel), 'utf8')]));
+  return new Map(watched.map((rel) => [rel, fs.readFileSync(path.join(root, rel), "utf8")]));
 }
 
 function assertTreeUnchanged(root, before) {
   for (const [rel, content] of before) {
     assert.equal(
-      fs.readFileSync(path.join(root, rel), 'utf8'),
+      fs.readFileSync(path.join(root, rel), "utf8"),
       content,
       `${rel} was modified even though the run should have failed closed`,
     );
   }
 }
 
-test('a conflicting exact plugin pin is refused before any file is written', () => {
-  const root = seedWithPluginPin('push-notifications', 'exact', '8.5.0');
+test("a conflicting exact plugin pin is refused before any file is written", () => {
+  const root = seedWithPluginPin("push-notifications", "exact", "8.5.0");
   try {
     // The aggregator still needs its deployment-target normalisation, which is
     // exactly the write that must NOT happen when validation fails.
@@ -493,8 +503,8 @@ test('a conflicting exact plugin pin is refused before any file is written', () 
   }
 });
 
-test('a from: range requiring a newer runtime is refused, not force-upgraded', () => {
-  const root = seedWithPluginPin('status-bar', 'from', '8.7.0');
+test("a from: range requiring a newer runtime is refused, not force-upgraded", () => {
+  const root = seedWithPluginPin("status-bar", "from", "8.7.0");
   try {
     const before = snapshotTree(root);
     runPatchExpectFailure(root, /requires a version above the installed/);
@@ -504,8 +514,8 @@ test('a from: range requiring a newer runtime is refused, not force-upgraded', (
   }
 });
 
-test('a different-major plugin range is refused instead of cross-range forced', () => {
-  const root = seedWithPluginPin('splash-screen', 'from', '9.0.0');
+test("a different-major plugin range is refused instead of cross-range forced", () => {
+  const root = seedWithPluginPin("splash-screen", "from", "9.0.0");
   try {
     const before = snapshotTree(root);
     runPatchExpectFailure(root, /different major/);
@@ -515,17 +525,19 @@ test('a different-major plugin range is refused instead of cross-range forced', 
   }
 });
 
-test('a mismatched installed core/platform graph is rejected up front', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patch-ios-spm-mismatch-'));
+test("a mismatched installed core/platform graph is rejected up front", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "patch-ios-spm-mismatch-"));
   try {
     const write = (relative, content) => {
       const file = path.join(root, relative);
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, content, 'utf8');
+      fs.writeFileSync(file, content, "utf8");
     };
     // core/cli at 8.6.0 but ios lagging at 8.5.2.
-    writeNativeGraph(root, write, { core: '8.6.0', cli: '8.6.0', ios: '8.5.2' });
-    write('ios/App/CapApp-SPM/Package.swift', `// swift-tools-version: 5.9
+    writeNativeGraph(root, write, { core: "8.6.0", cli: "8.6.0", ios: "8.5.2" });
+    write(
+      "ios/App/CapApp-SPM/Package.swift",
+      `// swift-tools-version: 5.9
 import PackageDescription
 let package = Package(
     name: "CapApp-SPM",
@@ -535,19 +547,22 @@ let package = Package(
     ],
     targets: []
 )
-`);
+`,
+    );
     runPatchExpectFailure(root, /mismatched native graph/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('a missing installed native graph is rejected, never silently skipped', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patch-ios-spm-missing-'));
+test("a missing installed native graph is rejected, never silently skipped", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "patch-ios-spm-missing-"));
   try {
-    const file = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+    const file = path.join(root, "ios/App/CapApp-SPM/Package.swift");
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, `// swift-tools-version: 5.9
+    fs.writeFileSync(
+      file,
+      `// swift-tools-version: 5.9
 import PackageDescription
 let package = Package(
     name: "CapApp-SPM",
@@ -557,7 +572,8 @@ let package = Package(
     ],
     targets: []
 )
-`);
+`,
+    );
     runPatchExpectFailure(root, /not installed/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -569,8 +585,8 @@ let package = Package(
 // installed platform. A `from:` here would let the native SDK float.
 // ---------------------------------------------------------------------------
 
-test('a from: aggregator pin is refused: the CLI writes exact, never a range', () => {
-  const root = seedWithAggregatorPin('from', '8.0.0');
+test("a from: aggregator pin is refused: the CLI writes exact, never a range", () => {
+  const root = seedWithAggregatorPin("from", "8.0.0");
   try {
     const before = snapshotTree(root);
     runPatchExpectFailure(root, /aggregator must pin exact/i);
@@ -580,8 +596,8 @@ test('a from: aggregator pin is refused: the CLI writes exact, never a range', (
   }
 });
 
-test('an aggregator pinning a different exact version is refused', () => {
-  const root = seedWithAggregatorPin('exact', '8.5.2');
+test("an aggregator pinning a different exact version is refused", () => {
+  const root = seedWithAggregatorPin("exact", "8.5.2");
   try {
     const before = snapshotTree(root);
     runPatchExpectFailure(root, /exact capacitor-swift-pm pin "8\.5\.2" conflicts/);
@@ -596,9 +612,9 @@ test('an aggregator pinning a different exact version is refused', () => {
 // at its fixed vendored alias path. Both forms must be validated.
 // ---------------------------------------------------------------------------
 
-test('a conflicting exact pin in @capacitor-firebase/app-check is refused', () => {
+test("a conflicting exact pin in @capacitor-firebase/app-check is refused", () => {
   const root = seedFixture();
-  const manifest = path.join(root, 'node_modules/@capacitor-firebase/app-check/Package.swift');
+  const manifest = path.join(root, "node_modules/@capacitor-firebase/app-check/Package.swift");
   fs.mkdirSync(path.dirname(manifest), { recursive: true });
   fs.writeFileSync(
     manifest,
@@ -611,7 +627,7 @@ let package = Package(
     ]
 )
 `,
-    'utf8',
+    "utf8",
   );
   try {
     const before = snapshotTree(root);
@@ -622,7 +638,7 @@ let package = Package(
   }
 });
 
-test('a conflicting exact pin at the vendored app-check alias is refused', () => {
+test("a conflicting exact pin at the vendored app-check alias is refused", () => {
   const root = seedFixture();
   const alias = path.join(root, APP_CHECK_ALIAS);
   fs.mkdirSync(path.dirname(alias), { recursive: true });
@@ -637,7 +653,7 @@ let package = Package(
     ]
 )
 `,
-    'utf8',
+    "utf8",
   );
   try {
     const before = snapshotTree(root);
@@ -648,7 +664,7 @@ let package = Package(
   }
 });
 
-test('an absent vendored alias is not an error (it is optional)', () => {
+test("an absent vendored alias is not an error (it is optional)", () => {
   // The default fixture seeds no LocalPackages directory; a successful run
   // proves absence is tolerated rather than treated as a missing requirement.
   const root = seedFixture();
@@ -665,11 +681,11 @@ test('an absent vendored alias is not an error (it is optional)', () => {
 // one current requirement must exist.
 // ---------------------------------------------------------------------------
 
-test('an unrelated URL ending in capacitor-swift-pm.git is not treated as official', () => {
+test("an unrelated URL ending in capacitor-swift-pm.git is not treated as official", () => {
   const root = seedWithAggregatorPin(
-    'exact',
-    '8.0.0',
-    'https://example.invalid/attacker/capacitor-swift-pm.git',
+    "exact",
+    "8.0.0",
+    "https://example.invalid/attacker/capacitor-swift-pm.git",
   );
   try {
     const before = snapshotTree(root);
@@ -682,18 +698,18 @@ test('an unrelated URL ending in capacitor-swift-pm.git is not treated as offici
   }
 });
 
-test('two competing capacitor-swift-pm requirements are refused as ambiguous', () => {
+test("two competing capacitor-swift-pm requirements are refused as ambiguous", () => {
   const root = seedFixture();
-  const manifest = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+  const manifest = path.join(root, "ios/App/CapApp-SPM/Package.swift");
   fs.writeFileSync(
     manifest,
     fs
-      .readFileSync(manifest, 'utf8')
+      .readFileSync(manifest, "utf8")
       .replace(
         /(\.package\(url: "[^"]+", exact: "8\.6\.0"\),)/,
         `$1\n        .package(url: "${OFFICIAL_SWIFT_PM_URL}", from: "8.0.0"),`,
       ),
-    'utf8',
+    "utf8",
   );
   try {
     const before = snapshotTree(root);
@@ -704,8 +720,8 @@ test('two competing capacitor-swift-pm requirements are refused as ambiguous', (
   }
 });
 
-test('an unsupported requirement syntax fails closed instead of being guessed', () => {
-  const root = seedWithAggregatorPin('branch', 'main');
+test("an unsupported requirement syntax fails closed instead of being guessed", () => {
+  const root = seedWithAggregatorPin("branch", "main");
   try {
     const before = snapshotTree(root);
     runPatchExpectFailure(root, /unsupported|unrecognised/i);
@@ -720,31 +736,31 @@ test('an unsupported requirement syntax fails closed instead of being guessed', 
 // from: range that a former broad 8.x rewrite would have clobbered.
 // ---------------------------------------------------------------------------
 
-test('an unrelated SDK with a from: 8.1.2 range is left unchanged', () => {
+test("an unrelated SDK with a from: 8.1.2 range is left unchanged", () => {
   const root = seedFixture();
-  const manifest = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
+  const manifest = path.join(root, "ios/App/CapApp-SPM/Package.swift");
   fs.writeFileSync(
     manifest,
     fs
-      .readFileSync(manifest, 'utf8')
+      .readFileSync(manifest, "utf8")
       .replace(
         /(\.package\(url: "[^"]+", exact: "8\.6\.0"\),)/,
         `$1\n        .package(url: "https://github.com/example/unrelated-sdk.git", from: "8.1.2"),`,
       ),
-    'utf8',
+    "utf8",
   );
   try {
-    const patched = path.join(root, 'ios/App/CapApp-SPM/Package.swift');
-    const original = fs.readFileSync(patched, 'utf8');
+    const patched = path.join(root, "ios/App/CapApp-SPM/Package.swift");
+    const original = fs.readFileSync(patched, "utf8");
     runPatch(root);
-    const after = fs.readFileSync(patched, 'utf8');
+    const after = fs.readFileSync(patched, "utf8");
     assert.match(
       after,
       /unrelated-sdk\.git", from: "8\.1\.2"/,
-      'a broad 8.x rewrite must not touch an unrelated SDK range',
+      "a broad 8.x rewrite must not touch an unrelated SDK range",
     );
     // Only the deployment target differs from the input.
-    assert.equal(after, original.replace(/\.iOS\(\.v15\)/g, '.iOS(.v16)'));
+    assert.equal(after, original.replace(/\.iOS\(\.v15\)/g, ".iOS(.v16)"));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -755,21 +771,19 @@ test('an unrelated SDK with a from: 8.1.2 range is left unchanged', () => {
 // exist on the installed PluginConfig. Skipped when node_modules is absent.
 // ---------------------------------------------------------------------------
 
-test('every typed getter used exists on the installed PluginConfig', (t) => {
+test("every typed getter used exists on the installed PluginConfig", (t) => {
   const pluginConfig = path.join(
     CUSTOMER_ROOT,
-    'node_modules/@capacitor/ios/Capacitor/Capacitor/PluginConfig.swift',
+    "node_modules/@capacitor/ios/Capacitor/Capacitor/PluginConfig.swift",
   );
   if (!fs.existsSync(pluginConfig)) {
-    t.skip('@capacitor/ios not installed — cannot cross-check PluginConfig API');
+    t.skip("@capacitor/ios not installed — cannot cross-check PluginConfig API");
     return;
   }
 
-  const api = fs.readFileSync(pluginConfig, 'utf8');
-  const declared = new Set(
-    [...api.matchAll(/func\s+(get\w+)\s*\(/g)].map((m) => m[1]),
-  );
-  assert.ok(declared.size > 0, 'could not parse any getters from PluginConfig.swift');
+  const api = fs.readFileSync(pluginConfig, "utf8");
+  const declared = new Set([...api.matchAll(/func\s+(get\w+)\s*\(/g)].map((m) => m[1]));
+  assert.ok(declared.size > 0, "could not parse any getters from PluginConfig.swift");
 
   // The premise of this whole fix: `config` is a PRIVATE Swift property, which
   // is exactly why KVC on it throws. If upstream ever makes it public, this
@@ -777,20 +791,23 @@ test('every typed getter used exists on the installed PluginConfig', (t) => {
   assert.match(
     api,
     /private\s+var\s+config\s*:\s*JSObject/,
-    'PluginConfig.config is no longer `private var config: JSObject` — re-verify the KVC crash diagnosis',
+    "PluginConfig.config is no longer `private var config: JSObject` — re-verify the KVC crash diagnosis",
   );
   assert.doesNotMatch(
     api,
     /@objc\s+public\s+var\s+config\b|\bpublic\s+var\s+config\b/,
-    'PluginConfig.config must stay non-public: the typed getters are the supported path',
+    "PluginConfig.config must stay non-public: the typed getters are the supported path",
   );
 
   const root = patchedFixture();
-  const script = fs.readFileSync(PATCH_SCRIPT, 'utf8');
+  const script = fs.readFileSync(PATCH_SCRIPT, "utf8");
   const used = new Set(
     [...script.matchAll(/getConfig\(\)\s*\.\s*(get[A-Za-z]+)\s*\(/g)].map((m) => m[1]),
   );
-  assert.ok(used.size > 0, 'patch script uses no PluginConfig getters at all — did it regress to KVC?');
+  assert.ok(
+    used.size > 0,
+    "patch script uses no PluginConfig getters at all — did it regress to KVC?",
+  );
 
   for (const getter of used) {
     assert.ok(
@@ -799,5 +816,5 @@ test('every typed getter used exists on the installed PluginConfig', (t) => {
     );
   }
   // Sanity: the fixture really did produce files for the used getters.
-  assert.ok(readGenerated(root, SPLASH_SOURCE).includes('getConfig().getString('));
+  assert.ok(readGenerated(root, SPLASH_SOURCE).includes("getConfig().getString("));
 });
