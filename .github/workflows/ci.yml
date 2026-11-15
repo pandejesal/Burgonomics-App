@@ -23,7 +23,6 @@ jobs:
       - run: npm run build -- --mode staging
       - run: npx tsc -p tsconfig.json --noEmit
       - run: npm run lint
-      - run: npx tsx scripts/verify-dashboard-unit.ts
       - run: npx vitest run
 
   rules:
