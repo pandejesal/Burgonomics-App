@@ -3,8 +3,9 @@
  *
  * Owned by the lane only: no global `webServer` (lane.mjs owns Vite so it can
  * teardown deterministically), one worker, no retries, no skips. `serviceWorkers`
- * is blocked and no permissions are granted so a fresh guest context has no
- * notification/push/geolocation capability.
+ * is blocked. Only synthetic geolocation at the seeded outlet is granted by
+ * the catalogue fixture; notification/push permissions remain absent. The
+ * global setup only waits for Vite's cold dependency bundle over loopback.
  */
 import path from "node:path";
 
@@ -22,6 +23,7 @@ export default defineConfig({
   // Relative to this config file.
   testDir: ".",
   testMatch: ["*.spec.ts"],
+  globalSetup: "./lane-warmup.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,

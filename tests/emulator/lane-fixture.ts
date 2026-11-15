@@ -392,9 +392,30 @@ export async function assertLaneMarker(page: Page, proof: SeedProof): Promise<vo
   expect(lane.port).toBe(FIRESTORE_PORT);
 }
 
-export async function gotoStores(page: Page): Promise<void> {
+/** Browser-only synthetic position, derived from the emulator's seed proof. */
+export async function grantSeededLocation(page: Page, proof: SeedProof): Promise<void> {
+  const store = alphaStore(proof);
+  await page.context().setGeolocation({ latitude: store.lat, longitude: store.lng, accuracy: 1 });
+  await page.context().grantPermissions(["geolocation"], { origin: BASE_URL });
+}
+
+/** Dismiss a suggestion, never confirm a store or grant legal consent. */
+export async function dismissNearestSuggestion(page: Page): Promise<void> {
+  const choose = page.getByRole("button", { name: "Choose another store", exact: true });
+  await expect(choose).toBeVisible();
+  await choose.click();
+  await expect(choose).toHaveCount(0);
+}
+
+export async function gotoStores(
+  page: Page,
+  options: { expectNearestSuggestion?: boolean } = {},
+): Promise<void> {
   await page.goto("/");
   await expect(page).toHaveURL(/\/stores$/, { timeout: 25_000 });
+  if (process.env.EMULATOR_LANE_PHASE === "positive" && options.expectNearestSuggestion !== false) {
+    await dismissNearestSuggestion(page);
+  }
   await expect(page.getByRole("heading", { name: "Choose a store" })).toBeVisible();
   await dismissConsentBanner(page);
 }
@@ -431,7 +452,7 @@ export async function selectStore(page: Page, storeName: string): Promise<void> 
 export async function openMenu(page: Page): Promise<void> {
   await page.getByRole("link", { name: "Menu", exact: true }).click();
   await expect(page).toHaveURL(/\/menu$/, { timeout: 20_000 });
-  await expect(page.getByRole("tablist", { name: "Menu categories" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Menu categories" })).toBeVisible();
 }
 
 export async function openSearch(page: Page): Promise<void> {

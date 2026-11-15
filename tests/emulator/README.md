@@ -29,6 +29,29 @@ That single command:
 9. parses the **Playwright JSON report** and requires exactly the 7 manifest-listed tests, all passing, none skipped/failed/flaky/retried;
 10. tears the emulator down and runs a negative phase: the probe must pass **and** the catalogue spec must fail **only** at `toHaveCount` with `Expected: 2 / Received: 0`, corroborated by a captured Firestore backend-unavailable signature and loopback:8099 attempts. A generic timeout, blank page, harness error, wrong test or skipped run is rejected.
 
+The cold-launch test first denies location and requires the real location-required
+state with zero kitchen cards (not a false empty directory). It then grants only
+browser-simulated coordinates read from the synthetic Alpha seed, retries location
+through the UI, and checks the original two-store catalogue. Other catalogue tests
+start at that same synthetic position. The nearest-store suggestion is dismissed,
+not confirmed. Both emulator-down specs (the probe and the inverted catalogue
+run) use that same synthetic position, so their loading state and zero cards prove
+backend failure, not missing location. Production visibility rules are
+unchanged; no real device location, notification permission or auth is used.
+
+The menu is one continuous page, not mutually exclusive tabs. Category controls
+are navigation buttons; the lane jumps to each named section and verifies its
+exact item identities and sold-out set, then requires exactly all 48 Alpha items
+on the page. Beta's exact count and cross-store isolation checks remain intact.
+
+Each run starts Vite with an empty dependency cache. `lane-warmup.ts` (Playwright
+global setup) fetches the lane entry and one optimized dependency over loopback,
+refusing redirects (unit-tested in `lane-warmup.test.ts`);
+Vite holds that response until its cold bundle is ready, so test 1's unchanged
+route wait no longer races the optimizer. `@capacitor/push-notifications`, which
+is only imported dynamically, is pre-bundled so it cannot trigger a mid-test
+reload. Neither change touches an assertion, timeout or test title.
+
 Artifacts (report, manifest, raw logs, JSON reports, screenshots, seed proof) go to
 `%TEMP%/opencode/phase1-emulator-browser` (override `EMULATOR_LANE_ARTIFACTS`).
 

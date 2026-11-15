@@ -22,7 +22,9 @@ import {
   betaStore,
   capture,
   captureBadge,
+  dismissNearestSuggestion,
   gotoStores,
+  grantSeededLocation,
   installNetworkGuard,
   openMenu,
   openSearch,
@@ -79,18 +81,20 @@ test.afterAll(() => {
   );
 });
 
-test.beforeEach(async ({ context, page }) => {
-  // Deterministic geolocation refusal instead of an OS/browser prompt: this is
-  // the "manual decline" path (stores load without coords). No OS permission UI
-  // and no real device location are involved.
-  const cdp = await context.newCDPSession(page);
-  await cdp
-    .send("Browser.setPermission", {
+test.beforeEach(async ({ context, page }, testInfo) => {
+  // The production visibility policy requires a position. Keep denial coverage
+  // in the cold-launch test, then use only the synthetic seed's coordinates.
+  // No real device location, notification permission or app auth is involved.
+  if (process.env.EMULATOR_LANE_PHASE === "positive" && testInfo.title.startsWith("cold launch:")) {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Browser.setPermission", {
       permission: { name: "geolocation" },
       setting: "denied",
       origin: "http://127.0.0.1:5199",
-    })
-    .catch(() => undefined);
+    });
+  } else {
+    await grantSeededLocation(page, proof);
+  }
 
   guard = await installNetworkGuard(page);
   guards.push(guard);
@@ -105,10 +109,18 @@ test.afterEach(async () => {
 test("cold launch: guest / lands on /stores with exactly the two seeded stores", async ({
   page,
 }) => {
-  await gotoStores(page);
+  await gotoStores(page, { expectNearestSuggestion: false });
   await assertLaneMarker(page, proof);
 
   const cards = page.locator('button[aria-label^="EMULATOR ONLY — Test Kitchen"]');
+  if (process.env.EMULATOR_LANE_PHASE === "positive") {
+    await expect(page.getByText("Location is blocked", { exact: true })).toBeVisible();
+    await expect(cards).toHaveCount(0);
+    await expect(page.getByText("No stores found", { exact: true })).toHaveCount(0);
+    await grantSeededLocation(page, proof);
+    await page.getByRole("button", { name: "Use my current location", exact: true }).click();
+    await dismissNearestSuggestion(page);
+  }
   await expect(cards).toHaveCount(2);
   await expect(page.getByText("No stores found")).toHaveCount(0);
 
@@ -121,7 +133,7 @@ test("cold launch: guest / lands on /stores with exactly the two seeded stores",
     els.map((el) => el.getAttribute("aria-label") ?? ""),
   );
   expect(labels).toHaveLength(2);
-  // Alphabetical order without coords: Alpha first, Beta second (no invented order).
+  // The seeded position is Alpha: its actual distance sorts before Beta.
   expect(labels[0].startsWith(alpha.name)).toBe(true);
   expect(labels[1].startsWith(beta.name)).toBe(true);
   // The aria-label carries the real doc facts: name, open state, ETA, distance.
@@ -161,18 +173,23 @@ test("Alpha menu: 3 derived categories, 48 items, every 8th sold out, beta absen
   await selectStore(page, alphaStore(proof).name);
   await openMenu(page);
 
-  const tabs = page.getByRole("tablist", { name: "Menu categories" }).getByRole("tab");
-  await expect(tabs).toHaveCount(proof.alpha.categoryCount);
+  const categories = page.getByRole("navigation", { name: "Menu categories" }).getByRole("button");
+  await expect(categories).toHaveCount(proof.alpha.categoryCount);
 
-  const productLinks = page.locator('a[aria-label*="₹"]');
   let totalRendered = 0;
   let totalSoldOut = 0;
 
   for (const [index, category] of proof.alpha.categories.entries()) {
-    const tab = tabs.nth(index);
-    await expect(tab).toContainText(category.name);
-    await tab.click();
+    const jump = categories.nth(index);
+    await expect(jump).toContainText(category.name);
+    await jump.click();
+    await expect(jump).toHaveAttribute("aria-current", "true");
 
+    // The menu is continuous: other categories stay mounted. Verify the exact
+    // records inside each named section, not a mutually exclusive tab panel.
+    const section = page.getByRole("region", { name: category.name, exact: true });
+    await expect(section.getByRole("heading", { name: category.name, exact: true })).toBeVisible();
+    const productLinks = section.locator('a[aria-label*="₹"]');
     await expect(productLinks).toHaveCount(category.count);
     const labels = await productLinks.evaluateAll((els) =>
       els.map((el) => el.getAttribute("aria-label") ?? ""),
@@ -202,6 +219,7 @@ test("Alpha menu: 3 derived categories, 48 items, every 8th sold out, beta absen
   expect(totalRendered).toBe(proof.alpha.productCount);
   expect(totalSoldOut).toBe(proof.alpha.outOfStockCount);
   expect(totalSoldOut).toBe(proof.alpha.productCount / 8);
+  await expect(page.locator('a[aria-label*="₹"]')).toHaveCount(proof.alpha.productCount);
 
   const bodyText = await page.locator("body").innerText();
   for (const name of proof.beta.names) {
@@ -265,8 +283,8 @@ test("beta store is isolated by restId: 3 sentinels and none of Alpha's menu", a
   await selectStore(page, betaStore(proof).name);
   await openMenu(page);
 
-  const tabs = page.getByRole("tablist", { name: "Menu categories" }).getByRole("tab");
-  await expect(tabs).toHaveCount(1);
+  const categories = page.getByRole("navigation", { name: "Menu categories" }).getByRole("button");
+  await expect(categories).toHaveCount(1);
 
   const productLinks = page.locator('a[aria-label*="₹"]');
   await expect(productLinks).toHaveCount(proof.beta.productCount);

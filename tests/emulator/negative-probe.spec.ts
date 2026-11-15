@@ -11,11 +11,20 @@ import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { ARTIFACTS_DIR, FIRESTORE_PORT, installNetworkGuard } from "./lane-fixture";
+import {
+  ARTIFACTS_DIR,
+  FIRESTORE_PORT,
+  grantSeededLocation,
+  installNetworkGuard,
+  readSeedProof,
+} from "./lane-fixture";
 
 test("unreachable emulator: no synthetic data, no production fallback, no external traffic", async ({
   page,
 }) => {
+  // Stores are listed only for a known position. Use the synthetic seed position
+  // so this proves the emulator-down state, not the location-required gate.
+  await grantSeededLocation(page, readSeedProof());
   const guard = await installNetworkGuard(page);
 
   await page.goto("/");

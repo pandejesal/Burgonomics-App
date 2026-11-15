@@ -140,6 +140,12 @@ export default defineConfig({
     "process.env.NODE_ENV": JSON.stringify("development"),
     "import.meta.env.IS_CAPACITOR_BUILD": "false",
   },
+  optimizeDeps: {
+    // Only reached through a runtime dynamic import. On a cold per-run cache Vite
+    // discovered it after the first bundle, re-bundled and reloaded the page
+    // mid-test. Bundle it with the initial scan instead.
+    include: ["@capacitor/push-notifications"],
+  },
   server: {
     host: EMULATOR_FIRESTORE_HOST,
     port: 5199,
