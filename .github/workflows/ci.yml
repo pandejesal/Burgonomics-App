@@ -16,6 +16,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node --test tests/ci/customer-unit-rules-split.workflow.test.mjs
       # --mode staging: this is a CI compile check, not a release. A default
       # (`production`) build has no release env here and releaseConfigGuard
       # (vite.config.ts) correctly aborts it. A REAL production build must still
@@ -23,7 +24,7 @@ jobs:
       - run: npm run build -- --mode staging
       - run: npx tsc -p tsconfig.json --noEmit
       - run: npm run lint
-      - run: npx vitest run
+      - run: npm test
 
   rules:
     name: Firestore rules suite (emulator)
