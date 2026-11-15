@@ -10,6 +10,28 @@ import { initPushNotifications } from "./pushNotifications";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 
 /**
+ * Top-level route segments this app actually serves, derived from the route
+ * FILES at build time rather than from a hand-kept list. TanStack file routes
+ * name the first segment: `cart.tsx` → `/cart`, `menu.index.tsx` → `/menu`,
+ * `menu.product.$productId.tsx` → `/menu`. A new route file is therefore
+ * addressable immediately and a typo — or a foreign domain — never is.
+ */
+const ROUTE_MODULES = Object.keys(import.meta.glob("../../routes/*.{ts,tsx}"));
+
+function routeHostOf(modulePath: string): string[] {
+  const file = modulePath.slice(modulePath.lastIndexOf("/") + 1);
+  if (/\.test\.tsx?$/.test(file)) return [];
+  const segment = file.replace(/\.tsx?$/, "").split(".")[0];
+  if (!segment || segment === "__root" || segment === "index") return [];
+  return [segment];
+}
+
+/** The accepted first route segments (e.g. "orders", "menu"), sorted. */
+export const APP_ROUTE_HOSTS: readonly string[] = Object.freeze(
+  [...new Set(ROUTE_MODULES.flatMap(routeHostOf))].sort(),
+);
+
+/**
  * Resolves and validates an incoming native app URL (custom scheme or universal link).
  * Returns the safe in-app route string, or null if invalid or unsafe.
  */
@@ -24,12 +46,15 @@ export function resolveAppUrl(rawUrl: string): string | null {
       );
     if (!schemeOk && !hostOk) return null;
 
-    const route =
-      url.protocol === "burgonomics:"
-        ? url.host
-          ? `/${url.host}${url.pathname}`
-          : url.pathname
-        : url.pathname;
+    // A URL parser puts the first path segment of a custom-scheme URL in the
+    // HOSTNAME, so `burgonomics://evil.com/x` would otherwise be pushed into the
+    // router as the in-app path `/evil.com/x`. Only a real top-level route
+    // segment may stand in that position; the host-less `burgonomics:///path`
+    // form keeps resolving from the pathname alone.
+    const host = schemeOk ? url.hostname.toLowerCase() : "";
+    if (schemeOk && host && !APP_ROUTE_HOSTS.includes(host)) return null;
+
+    const route = schemeOk ? (host ? `/${host}${url.pathname}` : url.pathname) : url.pathname;
     const path = route + url.search + url.hash;
     const safe = sanitizeRedirectUrl(path, "");
     return safe || null;

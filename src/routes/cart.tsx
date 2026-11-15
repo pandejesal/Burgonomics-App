@@ -317,9 +317,11 @@ function CartPage() {
         <div
           ref={attachSummary}
           data-testid="cart-summary"
-          className={`border-t border-divider bg-surface p-4 ${summaryPinned
-            ? "fixed inset-x-0 bottom-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))] z-30"
-            : "relative mb-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))]"}`}
+          className={`border-t border-divider bg-surface p-4 ${
+            summaryPinned
+              ? "fixed inset-x-0 bottom-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))] z-30"
+              : "relative mb-[calc(var(--bottom-nav-offset,86px)+env(safe-area-inset-bottom,0px))]"
+          }`}
         >
           <div className="mx-auto flex max-w-[520px] flex-wrap items-center justify-between gap-3">
             <div>
@@ -349,13 +351,18 @@ function CartPage() {
         {/* Kitchen closed: menu browsing stays open, checkout is gated. */}
         <KitchenClosedBanner />
 
-        {/* Offline pending-sync notice — cart persists locally either way */}
+        {/* Offline change notice. The cart lives on THIS device (zustand
+            persist → `burg.cart`); nothing is queued for a server, so this must
+            not promise a background sync. The honest statement is what really
+            happens: prices and availability are re-checked by
+            CartRepository.validateCart when the customer continues online. */}
         {syncPending && (
           <div
             role="status"
             className="rounded-[var(--radius-large)] border border-divider bg-bg-secondary p-4 type-caption text-text-secondary"
           >
-            Offline changes saved on this device — will sync when back online.
+            Your cart is saved on this device. When you continue to checkout, we&apos;ll re-check
+            prices and availability before you pay.
           </div>
         )}
         {/* Fulfillment & Store Banner */}
