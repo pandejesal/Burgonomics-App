@@ -571,9 +571,10 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("34. [ORDERS-CREATE-WALKIN-ALLOW] Branch staff CAN birth a POS walk-in order (customerId 'cust_walkin' + staff userId + own branch, born completed)", async () => {
+  it("34. [ORDERS-CREATE-WALKIN-DENY] Branch staff cannot birth a POS walk-in order", async () => {
     const branch1Db = testEnv.authenticatedContext("branch_owner_1").firestore();
-    await assertSucceeds(
+    // ORDER-SECURITY-CONTRACT-R1 §A: sentinel creation moves to POST /orders/createWalkIn.
+    await assertFails(
       setDoc(doc(branch1Db, "orders", "ord_pos_01"), {
         customerId: "cust_walkin",
         userId: "branch_owner_1",
@@ -1116,7 +1117,8 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         payment: { status: "completed", routeTransfer: { id: "fake" } },
       }),
     );
-    await assertSucceeds(
+    // ORDER-SECURITY-CONTRACT-R1 §A: sentinel creation moves to POST /orders/createWalkIn.
+    await assertFails(
       setDoc(doc(branch1Db, "orders", "ord_pos_pay_ok"), {
         ...base,
         payment: { method: "cash", label: "Cash", status: "completed" },
@@ -1174,7 +1176,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("53. [ORDERS-CREATE-WITH-ITEMS-ALLOW] Order creation with `items` (customer and walk-in lanes) still SUCCEEDS", async () => {
+  it("53. [ORDERS-CREATE-WITH-ITEMS] Customer create succeeds; direct walk-in fails", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
     await assertSucceeds(
       setDoc(doc(custDb, "orders", "ord_create_items_cust"), {
@@ -1189,7 +1191,8 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
 
     const branchOwnerDb = testEnv.authenticatedContext("branch_owner_1").firestore();
-    await assertSucceeds(
+    // ORDER-SECURITY-CONTRACT-R1 §A: sentinel creation moves to POST /orders/createWalkIn.
+    await assertFails(
       setDoc(doc(branchOwnerDb, "orders", "ord_create_items_walkin"), {
         customerId: "cust_walkin",
         userId: "branch_owner_1",
