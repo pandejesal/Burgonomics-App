@@ -519,25 +519,21 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
     );
   });
 
-  it(
-    "dec01-create: partner walk-in create-with-items still succeeds (POS state server-owned at birth)",
-    { timeout: 120000 },
-    async () => {
-      const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
-      await assertSucceeds(
-        setDoc(doc(staffDb, "orders", "ord_rules_create_walkin"), {
-          customerId: "cust_walkin",
-          userId: "branch_staff_1",
-          branchId: BRANCH,
-          status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
-          items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
-          paymentMethod: "cash",
-          paymentStatus: "completed",
-          total: 149,
-        }),
-      );
-    },
-  );
+  it("dec01-create: partner walk-in creation is server-only", { timeout: 120000 }, async () => {
+    const staffDb = databaseFor({ label: "branch_staff(own branch)", uid: "branch_staff_1" });
+    await assertFails(
+      setDoc(doc(staffDb, "orders", "ord_rules_create_walkin"), {
+        customerId: "cust_walkin",
+        userId: "branch_staff_1",
+        branchId: BRANCH,
+        status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
+        items: [{ productId: "p1", name: "Classic Burger", quantity: 1, unitPrice: 149 }],
+        paymentMethod: "cash",
+        paymentStatus: "completed",
+        total: 149,
+      }),
+    );
+  });
 
   it(
     "dec01-create: walk-in cannot stamp POS/dispatch/refund/OTP state at birth either",
