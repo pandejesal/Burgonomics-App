@@ -27,10 +27,12 @@ const {
   mockQuery,
   mockWhere,
   authState,
+  httpClientPost,
 } = vi.hoisted(() => {
   const authState: { currentUser: { uid: string } | null } = { currentUser: null };
   return {
     authState,
+    httpClientPost: vi.fn(async () => ({ data: {} })),
     mockSetDoc: vi.fn(),
     mockGetDoc: vi.fn(),
     mockGetDocs: vi.fn(),
@@ -79,6 +81,17 @@ vi.mock("../src/core/integrations/petpooja", () => ({
 
 vi.mock("../src/core/logging/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+// F24: cancelOrder is now SERVER-FIRST (POST /orders/customerCancel). The
+// transport is mocked so case C can drive a server refusal instead of a denied
+// local `setDoc` write; the R03 cache guard is the property under test.
+vi.mock("../src/core/config/functionsBase", () => ({
+  defaultFunctionsBase: () => "https://fn.test/api",
+}));
+
+vi.mock("../src/core/network/httpClient", () => ({
+  httpClient: { post: httpClientPost },
 }));
 
 import { ordersService } from "../src/features/orders/services/ordersService";
@@ -311,51 +324,70 @@ describe("C. cancellation never reports false success", () => {
     return created.data.id;
   }
 
-  it("returns CANCEL_PERSIST_FAILED and leaves the order uncancelled in cache when the write fails", async () => {
+  it("returns an honest failure and leaves the order uncancelled in cache when the server refuses", async () => {
     const orderId = await createOrderFor("cust_a");
 
-    mockSetDoc.mockRejectedValueOnce(new Error("permission-denied"));
+    // F24: the server owns cancellation. A refusal (e.g. the rider is already
+    // assigned, or the order is past PREPARING) must NOT commit the cancelled
+    // record into the cache — the old case drove a denied local `setDoc`, which
+    // no longer exists on this path.
+    httpClientPost.mockRejectedValueOnce(
+      Object.assign(new Error("not cancellable"), {
+        status: 409,
+        code: "ORDER_NOT_CANCELLABLE",
+      }),
+    );
     const cancelled = await ordersService.cancelOrder(orderId);
     expect(cancelled.success).toBe(false);
     if (cancelled.success) return;
-    expect(cancelled.error.code).toBe("CANCEL_PERSIST_FAILED");
-    expect(cancelled.error.retryable).toBe(true);
+    expect(cancelled.error.code).toBe("ORDER_NOT_CANCELLABLE");
 
     // The cache must NOT hold the cancelled state: the server still says
     // PLACED, and the service must reflect that instead of a phantom
-    // memory-only cancel (old code committed CANCELLED before the write).
+    // memory-only cancel.
     const after = await ordersService.getOrder(orderId);
     expect(after.success).toBe(true);
     if (!after.success) return;
     expect(after.data?.status.code).toBe("PLACED");
   });
 
-  it("commits and returns the cancelled order when the server write lands", async () => {
+  it("commits and returns the cancelled order when the server confirms", async () => {
     const orderId = await createOrderFor("cust_a");
 
-    mockSetDoc.mockResolvedValueOnce(undefined);
+    httpClientPost.mockResolvedValueOnce({ data: { orderId, alreadyCancelled: false } });
     const cancelled = await ordersService.cancelOrder(orderId);
     expect(cancelled.success).toBe(true);
     if (!cancelled.success) return;
     expect(cancelled.data?.status.code).toBe("CANCELLED");
     expect(cancelled.data?.status.terminal).toBe(true);
 
-    // The landed write carries the cancelled status to Partner/KDS.
-    const payload = mockSetDoc.mock.calls.at(-1)?.[1] as Record<string, any>;
-    expect(payload.status.code).toBe("CANCELLED");
+    // The cancel travels as a server request — never a client order write.
+    expect(httpClientPost).toHaveBeenLastCalledWith(
+      "https://fn.test/api/orders/customerCancel",
+      { orderId },
+      expect.anything(),
+    );
+    const writesAfterCancel = mockSetDoc.mock.calls.length;
+    for (const call of mockSetDoc.mock.calls) {
+      const payload = call[1] as Record<string, any>;
+      expect(payload?.status?.code).not.toBe("CANCELLED");
+    }
+    expect(writesAfterCancel).toBe(mockSetDoc.mock.calls.length);
   });
 
   it("keeps the terminal-order no-op without any extra write", async () => {
     const orderId = await createOrderFor("cust_a");
-    mockSetDoc.mockResolvedValueOnce(undefined);
+    httpClientPost.mockResolvedValueOnce({ data: { orderId, alreadyCancelled: false } });
     const first = await ordersService.cancelOrder(orderId);
     expect(first.success).toBe(true);
 
     const writesBefore = mockSetDoc.mock.calls.length;
+    const callsBefore = httpClientPost.mock.calls.length;
     const second = await ordersService.cancelOrder(orderId);
     expect(second.success).toBe(true);
     if (!second.success) return;
     expect(second.data?.status.code).toBe("CANCELLED");
     expect(mockSetDoc.mock.calls.length).toBe(writesBefore);
+    expect(httpClientPost.mock.calls.length).toBe(callsBefore);
   });
 });

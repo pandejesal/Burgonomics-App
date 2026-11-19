@@ -91,6 +91,14 @@ describe("Firestore Security Rules — franchise applicant PII is brand-only", (
         role: "branch_staff",
         branchId: "branch_01",
       });
+      // F06: staff authorization is fail-closed on `users/{uid}.active`.
+      for (const [uid, role] of [
+        ["brand_owner_1", "brand_owner"],
+        ["branch_owner_1", "branch_owner"],
+        ["branch_staff_1", "branch_staff"],
+      ] as const) {
+        await setDoc(doc(db, "users", uid), { role, active: true });
+      }
       await setDoc(doc(db, "franchise_leads", LEAD), applicantPii);
       await setDoc(doc(db, "franchise_inquiries", INQUIRY), applicantPii);
     });

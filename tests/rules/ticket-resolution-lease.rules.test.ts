@@ -125,6 +125,15 @@ describe("Firestore Security Rules — ticket audit state (lease + terminal lock
         role: "branch_owner",
         branchId: "branch_02",
       });
+      // F06: staff authorization is fail-closed on `users/{uid}.active`.
+      for (const [uid, role] of [
+        ["brand_owner_1", "brand_owner"],
+        ["dual_role_1", "branch_owner"],
+        ["branch_owner_1", "branch_owner"],
+        ["branch_owner_2", "branch_owner"],
+      ] as const) {
+        await setDoc(doc(db, "users", uid), { role, active: true });
+      }
       const base = {
         ticketNumber: "TKT-LEASE-1",
         subject: "Refund not received",

@@ -101,6 +101,20 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
         fullName: "Rahul Patel",
       });
 
+      // F06: staff authorization is fail-closed on `users/{uid}.active`, so
+      // every operator UID this suite signs in as needs an ACTIVE profile.
+      for (const [uid, role] of [
+        ["brand_owner_1", "brand_owner"],
+        ["developer_1", "developer"],
+        ["branch_owner_1", "branch_owner"],
+        ["branch_owner_2", "branch_owner"],
+        ["branch_staff_1", "branch_staff"],
+        ["support_1", "support"],
+        ["regional_1", "regional_manager"],
+      ] as const) {
+        await setDoc(doc(db, "users", uid), { role, active: true });
+      }
+
       // Existing Branch 01
       await setDoc(doc(db, "branches", "branch_01"), {
         name: "Burgonomics Navrangpura",
@@ -943,14 +957,23 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("54. [USERS-BRAND-ASSIGNMENT-PATH-ALLOW] Authorized brand authority retains tenant/trust field assignment path", async () => {
+  it("54. [USERS-BRAND-ASSIGNMENT-PATH-ALLOW] Authorized brand authority retains tenant-field assignment but NOT the server-owned lifecycle fields", async () => {
     const brandDb = testEnv.authenticatedContext("brand_owner_1").firestore();
+    // Tenant scope stays brand-writable (unchanged contract).
     await assertSucceeds(
       updateDoc(doc(brandDb, "users", "cust_100"), {
         branchIds: ["branch_01"],
         cityIds: ["Ahmedabad"],
-        active: false,
-        isDeleted: true,
+      }),
+    );
+    // F06: `active` (suspension), `isDeleted` and `deletedAt` are SERVER-OWNED.
+    // The old arm admitted any non-fcmTokens key, which is how the partner
+    // "Suspend" button changed a flag that authorization now consults. Only
+    // POST /auth/suspendStaff (and the server lifecycle lane) may write them.
+    await assertFails(updateDoc(doc(brandDb, "users", "cust_100"), { active: false }));
+    await assertFails(updateDoc(doc(brandDb, "users", "cust_100"), { isDeleted: true }));
+    await assertFails(
+      updateDoc(doc(brandDb, "users", "cust_100"), {
         deletedAt: new Date().toISOString(),
       }),
     );

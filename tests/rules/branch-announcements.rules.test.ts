@@ -87,6 +87,17 @@ describe("Firestore Security Rules — branch_announcements is branch-scoped", (
         role: "brand_owner",
         email: "brand@burgonomics.com",
       });
+      // F06: staff authorization is fail-closed on `users/{uid}.active`, so
+      // every operator fixture needs an ACTIVE profile document.
+      for (const [uid, role] of [
+        ["brand_owner_1", "brand_owner"],
+        ["branch_owner_1", "branch_owner"],
+        ["branch_owner_2", "branch_owner"],
+        ["support_1", "support"],
+        ["regional_1", "regional_manager"],
+      ] as const) {
+        await setDoc(doc(db, "users", uid), { role, active: true });
+      }
       await setDoc(doc(db, "admins", "branch_owner_1"), {
         role: "branch_owner",
         branchId: "branch_01",

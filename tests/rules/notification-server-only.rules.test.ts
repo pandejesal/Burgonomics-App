@@ -113,6 +113,16 @@ describe("Firestore Security Rules — N09 notification server-only paths", () =
         name: "Support",
       });
 
+      // F06: staff authorization is fail-closed on `users/{uid}.active`, so
+      // every privileged fixture needs an ACTIVE profile document.
+      for (const [uid, role] of [
+        ["brand_owner_1", "brand_owner"],
+        ["developer_1", "developer"],
+        ["support_1", "support"],
+      ] as const) {
+        await setDoc(doc(db, "users", uid), { role, active: true });
+      }
+
       await setDoc(doc(db, "users", USER_UID), {
         fullName: "Prefs Owner",
         fcmTokens: ["tok_a"],

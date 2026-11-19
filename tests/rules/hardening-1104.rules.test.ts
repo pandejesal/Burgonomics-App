@@ -7,7 +7,8 @@ import {
   assertFails,
   assertSucceeds,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc, updateDoc, collection, addDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc, collection, addDoc, getDoc, getDocs } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore";
 
 /**
  * Rules-hardening lane (independent audit, 4 Nov 2026).
@@ -67,6 +68,11 @@ beforeEach(async () => {
       role: "brand_owner",
       email: "brand@fixture.test",
     });
+    // F06: staff authorization is fail-closed on `users/{uid}.active`. Every
+    // operator fixture therefore needs an ACTIVE profile document; a missing
+    // one now denies (behavioural F06 cases live in users-fcm-tokens.rules.test.ts).
+    await setDoc(doc(db, "users", STAFF_UID), { role: "branch_staff", active: true });
+    await setDoc(doc(db, "users", BRAND_UID), { role: "brand_owner", active: true });
     await setDoc(doc(db, "orders", "order_paid_01"), {
       customerId: CUSTOMER_UID,
       userId: CUSTOMER_UID,
@@ -148,6 +154,239 @@ describe("F1 admin_stores create is not an unscoped staff privilege", () => {
     );
     const { getDoc } = await import("firebase/firestore");
     await assertSucceeds(getDoc(doc(guest, "admin_stores", "store_read")));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F17 — admin_stores / admin_stores_private privacy split
+// ---------------------------------------------------------------------------
+// The anonymous collection used to hold the kitchen roster, compliance
+// documents, manager contacts, Petpooja webhook metadata, queue counters and
+// financial analytics. Those now live in a brand-only companion document, and
+// every brand write to the public document must be a FULL, shape-validated
+// replacement - which is exactly how legacy PII gets removed from an already
+// world-readable document.
+describe("F17 admin_stores is discovery-only, admin_stores_private is brand-only", () => {
+  const STORE = "store_public_01";
+  const OWNED_STORE = BRANCH;
+
+  const staffPii = [
+    {
+      id: "STF-1",
+      name: "Ravi Kumar",
+      role: "Chef",
+      phone: "+919820011224",
+      email: "ravi@example.test",
+    },
+  ];
+
+  const seedPublicDoc = async (id: string, withPii: boolean) => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "admin_stores", id), {
+        title: "Legacy outlet",
+        name: "Burgonomics Adajan",
+        address: "Adajan Gam, Surat",
+        city: "Surat",
+        area: "Adajan",
+        phone: "+919820011223",
+        lat: 21.195,
+        lng: 72.793,
+        hours: { open: "10:00", close: "23:00" },
+        supports: { delivery: true, takeaway: true, dineIn: true },
+        isOpen: true,
+        ...(withPii
+          ? {
+              staff: staffPii,
+              documents: [{ id: "DOC-1", name: "FSSAI", type: "FSSAI" }],
+              email: "manager.personal@example.test",
+              managerName: "Ops Manager",
+              managerPhone: "+919820099887",
+              webhookUrl: "https://hooks.example.test/secret",
+              webhookStatus: "active",
+              todayRevenue: 48210,
+            }
+          : {}),
+      });
+      await setDoc(doc(ctx.firestore(), "admin_stores_private", id), {
+        staff: staffPii,
+        email: "manager.personal@example.test",
+        webhookStatus: "active",
+      });
+    });
+  };
+
+  beforeEach(async () => {
+    await seedPublicDoc(STORE, true);
+    await seedPublicDoc(OWNED_STORE, false);
+  });
+
+  it("still allows anonymous read of the public store document", async () => {
+    const guest = env.unauthenticatedContext().firestore();
+    await assertSucceeds(getDoc(doc(guest, "admin_stores", STORE)));
+  });
+
+  it("DENIES anonymous get AND list on the private companion", async () => {
+    const guest = env.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(guest, "admin_stores_private", STORE)));
+    await assertFails(getDocs(collection(guest, "admin_stores_private")));
+  });
+
+  it("DENIES customer and branch_staff reads/writes of the private companion", async () => {
+    await assertFails(getDoc(doc(customerDb(), "admin_stores_private", STORE)));
+    await assertFails(getDocs(collection(customerDb(), "admin_stores_private")));
+    await assertFails(getDoc(doc(staffDb(), "admin_stores_private", STORE)));
+    await assertFails(updateDoc(doc(staffDb(), "admin_stores_private", STORE), { staff: [] }));
+    await assertFails(
+      setDoc(doc(staffDb(), "admin_stores_private", "store_injected"), { staff: staffPii }),
+    );
+  });
+
+  it("allows a brand owner to read and write the private companion", async () => {
+    await assertSucceeds(getDoc(doc(brandDb(), "admin_stores_private", STORE)));
+    await assertSucceeds(
+      updateDoc(doc(brandDb(), "admin_stores_private", STORE), { staff: staffPii }),
+    );
+  });
+
+  it("DENIES a brand owner publishing staff/compliance/contact/webhook/financial keys", async () => {
+    for (const leak of [
+      { staff: staffPii },
+      { email: "manager.personal@example.test" },
+      { managerPhone: "+919820099887" },
+      { documents: [{ id: "DOC-1" }] },
+      { webhookUrl: "https://hooks.example.test/secret" },
+      { todayRevenue: 1 },
+      { autoAcceptOrders: true },
+    ]) {
+      await assertFails(
+        updateDoc(doc(brandDb(), "admin_stores", STORE), leak as Record<string, unknown>),
+      );
+    }
+  });
+
+  it("DENIES nested PII smuggled through a public discovery key", async () => {
+    await assertFails(
+      updateDoc(doc(brandDb(), "admin_stores", STORE), {
+        name: { staff: staffPii },
+      } as Record<string, unknown>),
+    );
+    await assertFails(
+      updateDoc(doc(brandDb(), "admin_stores", STORE), {
+        supports: { delivery: true, takeaway: true, dineIn: true, staff: staffPii },
+      } as Record<string, unknown>),
+    );
+    await assertFails(
+      updateDoc(doc(brandDb(), "admin_stores", STORE), {
+        hours: { open: "10:00", close: "23:00", managerPhone: "+919820099887" },
+      } as Record<string, unknown>),
+    );
+  });
+
+  it("ALLOWS a brand full replacement that removes legacy PII from the public doc", async () => {
+    // Exactly the sanitized projection adminStoresService commits: discovery
+    // keys only - no staff/documents/manager contacts/webhook/financials.
+    await assertSucceeds(
+      setDoc(doc(brandDb(), "admin_stores", STORE), {
+        name: "Burgonomics Adajan",
+        address: "Adajan Gam, Surat",
+        city: "Surat",
+        area: "Adajan",
+        phone: "+919820011223",
+        lat: 21.195,
+        lng: 72.793,
+        latitude: 21.195,
+        longitude: 72.793,
+        hours: { open: "10:00", close: "23:00" },
+        supports: { delivery: true, takeaway: true, dineIn: true },
+        isOpen: true,
+        pricing: { deliveryFeeFlat: 29 },
+        petpoojaRestId: null,
+      }),
+    );
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), "admin_stores", STORE));
+      const data = snap.data() as Record<string, any>;
+      expect(data.staff).toBeUndefined();
+      expect(data.email).toBeUndefined();
+      expect(data.managerPhone).toBeUndefined();
+      expect(data.webhookUrl).toBeUndefined();
+      expect(data.todayRevenue).toBeUndefined();
+    });
+  });
+
+  it("keeps the narrow branch operator phone/isActive arm on its own clean public doc", async () => {
+    await assertSucceeds(
+      updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), {
+        phone: "+919820011999",
+        isActive: true,
+      }),
+    );
+    // ...but the branch arm still cannot reach any other key.
+    await assertFails(updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), { staff: staffPii }));
+    await assertFails(updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), { todayRevenue: 0 }));
+    await assertFails(
+      updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), { email: "x@example.test" }),
+    );
+  });
+
+  it("still DENIES a branch operator creating a public store", async () => {
+    await assertFails(
+      setDoc(doc(staffDb(), "admin_stores", "store_branch_created"), {
+        name: "Own branch but staff-created",
+        city: "Surat",
+        lat: 21.195,
+        lng: 72.793,
+      }),
+    );
+  });
+
+  // F17 review round 2 — the branch arm is typed, not just key-masked.
+  it("DENIES a branch operator smuggling a nested map under an allowed scalar key", async () => {
+    for (const smuggled of [
+      { phone: { staff: staffPii } },
+      { name: { staff: staffPii } },
+      { address: { staff: staffPii } },
+      { city: { staff: staffPii } },
+      { area: { staff: staffPii } },
+      { title: { staff: staffPii } },
+      { isActive: { staff: staffPii } },
+      { phone: staffPii },
+    ]) {
+      await assertFails(
+        updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), smuggled as Record<string, unknown>),
+      );
+    }
+  });
+
+  it("ALLOWS a branch operator typing a real string + boolean metadata edit", async () => {
+    // The exact shipped branch metadata shape: a string phone and a boolean
+    // isActive, plus a Timestamp updatedAt (what useBranches writes today).
+    await assertSucceeds(
+      updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), {
+        phone: "+919820011999",
+        isActive: false,
+        name: "Burgonomics Adajan (renamed)",
+        city: "Surat",
+      }),
+    );
+  });
+
+  it("ALLOWS a branch operator string updatedAt (legacy importer format)", async () => {
+    await assertSucceeds(
+      updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), {
+        phone: "+919820011999",
+        updatedAt: "2026-11-17T10:00:00.000Z",
+      }),
+    );
+  });
+
+  it("ALLOWS a branch operator Timestamp updatedAt (shipped useBranches format)", async () => {
+    await assertSucceeds(
+      updateDoc(doc(staffDb(), "admin_stores", OWNED_STORE), {
+        phone: "+919820011999",
+        updatedAt: Timestamp.now(),
+      }),
+    );
   });
 });
 
