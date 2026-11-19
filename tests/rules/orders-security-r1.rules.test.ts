@@ -56,6 +56,15 @@ describe("R1 orders security", () => {
         setDoc(doc(db, "admins", "wrongrole"), { role: "support", branchIds: ["a"] }),
         setDoc(doc(db, "admins", "staff"), { role: "branch_staff", branchId: "a" }),
         setDoc(doc(db, "admins", "brand"), { role: "brand_owner" }),
+        // F06: staff authorization is fail-closed on `users/{uid}.active`.
+        // Only the UIDs the suite expects to be ADMITTED get an active profile;
+        // the deliberate negative fixtures (missing/empty/malformed/noids/blank/
+        // wrongrole) and the forged `users/missing` doc stay absent or inactive.
+        setDoc(doc(db, "users", "support"), { role: "support", active: true }),
+        setDoc(doc(db, "users", "regional"), { role: "regional_manager", active: true }),
+        setDoc(doc(db, "users", "mixed"), { role: "regional_manager", active: true }),
+        setDoc(doc(db, "users", "staff"), { role: "branch_staff", active: true }),
+        setDoc(doc(db, "users", "brand"), { role: "brand_owner", active: true }),
         setDoc(doc(db, "orders", "a"), {
           customerId: "customer",
           userId: "customer",
@@ -192,6 +201,15 @@ describe("R1 orders security", () => {
       environment.withSecurityRulesDisabled(async (context) => {
         const server = context.firestore();
         await setDoc(doc(server, "admins", "operator"), { role, branchId: "a", branchIds: ["a"] });
+        // F06: staff authorization is fail-closed on `users/{uid}.active`, so every
+        // seeded operator needs an ACTIVE profile carrying its role (and the same
+        // branch scope as its registry row) to be admitted at all. `developer` is
+        // in brandRoles(), so it resolves through the same brand arm as brand_owner.
+        await setDoc(doc(server, "users", "operator"), {
+          role,
+          active: true,
+          branchIds: ["a"],
+        });
         await setDoc(doc(server, "orders", "server-walkin"), storedOrder);
       });
 

@@ -111,6 +111,34 @@ describe("Firestore Security Rules — users/{uid}.fcmTokens is removal-only", (
         role: "brand_owner",
         email: "brand@burgonomics.com",
       });
+      // F06: staff authorization is fail-closed on `users/{uid}.active`, so
+      // the brand UID needs an ACTIVE profile for the brand-path assertions.
+      await setDoc(doc(db, "users", "brand_owner_1"), { role: "brand_owner", active: true });
+
+      // F06 fixtures: a branch operator whose activation state the last describe
+      // flips, and a branch order both operators try to read.
+      await setDoc(doc(db, "admins", "f06_staff"), {
+        role: "branch_staff",
+        branchId: "branch_01",
+      });
+      await setDoc(doc(db, "users", "f06_staff"), {
+        role: "branch_staff",
+        active: true,
+        branchIds: ["branch_01"],
+      });
+      await setDoc(doc(db, "orders", "f06_order_1"), {
+        customerId: "f06_customer",
+        userId: "f06_customer",
+        branchId: "branch_01",
+        status: { code: "PREPARING", label: "Preparing", kind: "in_progress", terminal: false },
+        totals: { grandTotal: 199 },
+        payment: { method: "cod", status: "pending" },
+      });
+      await setDoc(doc(db, "branches", "branch_01"), {
+        name: "Fixture Branch",
+        city: "Surat",
+        status: "active",
+      });
     });
   });
 
@@ -221,7 +249,14 @@ describe("Firestore Security Rules — users/{uid}.fcmTokens is removal-only", (
         fcmTokens: [FOREIGN_TOKEN],
       }),
     );
+    // F06: the brand arm still admits tenant fields, but `active` is
+    // SERVER-OWNED (suspension only through POST /auth/suspendStaff).
     await assertSucceeds(
+      updateDoc(doc(brandDb, "users", OWNER_UID), {
+        branchIds: ["branch_01"],
+      }),
+    );
+    await assertFails(
       updateDoc(doc(brandDb, "users", OWNER_UID), {
         active: false,
         fcmTokens: ["tok_owner_aaa"],
@@ -349,5 +384,119 @@ describe("Firestore Security Rules — users/{uid}.fcmTokens is removal-only", (
         fcmTokens: ["tok_owner_aaa"],
       }),
     );
+  });
+
+  /**
+   * F06 — suspension is an AUTHORIZATION input, and `users/{uid}.active` is
+   * server-owned.
+   *
+   * Before F06, `hasRole` consulted only `admins/{uid}` + token claims, so a
+   * suspended operator kept every branch read/write; and the brand `users/{uid}`
+   * update arm was `isBrandOwner() && fcmTokensRemovalOnly()`, which admits ANY
+   * non-`fcmTokens` key — including `active`. These cases flip one fixture UID's
+   * flag and prove the same session loses access, then prove a customer is
+   * unaffected (no staff-profile prerequisite leaks into customer flows).
+   *
+   * Seeded in the shared beforeEach: `f06_staff` (branch_staff, active:true,
+   * branchIds ["branch_01"]), `f06_order_1` (branch_01 order) and the customer
+   * `f06_customer` (NO users/{uid} profile at all).
+   */
+  describe("F06 suspension is enforced by the rules and is server-owned", () => {
+    const STAFF = "f06_staff";
+    const ORDER = "f06_order_1";
+
+    const staffClaims = { role: "branch_staff", branchIds: ["branch_01"] };
+
+    it("f06-a. an ACTIVE branch_staff can read their branch order", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      const db = testEnv!.authenticatedContext(STAFF, staffClaims).firestore();
+      await assertSucceeds(getDoc(doc(db, "orders", ORDER)));
+    });
+
+    it("f06-b. the SAME branch_staff flipped to active:false is DENIED that read", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        await updateDoc(doc(ctx.firestore(), "users", STAFF), { active: false });
+      });
+      const db = testEnv!.authenticatedContext(STAFF, staffClaims).firestore();
+      await assertFails(getDoc(doc(db, "orders", ORDER)));
+    });
+
+    it("f06-c. a suspended brand owner cannot update a branch", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        await updateDoc(doc(ctx.firestore(), "users", "brand_owner_1"), { active: false });
+      });
+      const db = testEnv!
+        .authenticatedContext("brand_owner_1", { role: "brand_owner" })
+        .firestore();
+      await assertFails(updateDoc(doc(db, "branches", "branch_01"), { name: "Hijacked" }));
+    });
+
+    it("f06-d. a suspended branch_staff cannot patch an order's non-status field", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        await updateDoc(doc(ctx.firestore(), "users", STAFF), { active: false });
+      });
+      const db = testEnv!.authenticatedContext(STAFF, staffClaims).firestore();
+      await assertFails(updateDoc(doc(db, "orders", ORDER), { notes: "suspended write" }));
+    });
+
+    it("f06-e. a staff UID with NO users/{uid} document is DENIED (fail closed)", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const db = ctx.firestore();
+        await setDoc(doc(db, "admins", "f06_unprovisioned"), {
+          role: "branch_staff",
+          branchId: "branch_01",
+        });
+      });
+      const db = testEnv!.authenticatedContext("f06_unprovisioned", staffClaims).firestore();
+      await assertFails(getDoc(doc(db, "orders", ORDER)));
+    });
+
+    it("f06-f. a CUSTOMER with no staff profile still reads their OWN order", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      // No users/{uid} document exists for this customer, by design: the
+      // customer arm must not inherit the staff-profile prerequisite.
+      const db = testEnv!.authenticatedContext("f06_customer").firestore();
+      await assertSucceeds(getDoc(doc(db, "orders", ORDER)));
+    });
+
+    it("f06-g. a customer can still toggle whatsappOptIn on their own order", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      const db = testEnv!.authenticatedContext("f06_customer").firestore();
+      await assertSucceeds(
+        updateDoc(doc(db, "orders", ORDER), {
+          whatsappOptIn: true,
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("f06-h. a customer cannot write it to CANCELLED (F24: server-owned)", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      const db = testEnv!.authenticatedContext("f06_customer").firestore();
+      await assertFails(updateDoc(doc(db, "orders", ORDER), { status: "CANCELLED" }));
+    });
+
+    it("f06-i. a brand owner cannot write users/{uid}.active directly (server-owned)", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      const db = testEnv!
+        .authenticatedContext("brand_owner_1", { role: "brand_owner" })
+        .firestore();
+      await assertFails(updateDoc(doc(db, "users", STAFF), { active: false }));
+      // A non-suspension brand edit still lands (the arm is narrowed, not closed).
+      await assertSucceeds(updateDoc(doc(db, "users", STAFF), { branchIds: ["branch_01"] }));
+    });
+
+    it("f06-j. a suspended staff member can still READ their own users/{uid} profile", async (context) => {
+      if (!emulatorAvailable) return context.skip();
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        await updateDoc(doc(ctx.firestore(), "users", STAFF), { active: false });
+      });
+      const db = testEnv!.authenticatedContext(STAFF, staffClaims).firestore();
+      await assertSucceeds(getDoc(doc(db, "users", STAFF)));
+    });
   });
 });

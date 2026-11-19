@@ -2,10 +2,15 @@
  * OrdersService — order transport for the orders module (hybrid).
  *
  * Every function returns the same `ApiResult<T>` envelope. Bodies are NOT
- * mock-only: createOrder/cancelOrder persist to Firestore `orders` (with the
+ * mock-only: createOrder persists to Firestore `orders` (with the
  * partner-query mirrors userId/customerId/createdAt/branchId), listOrders/
  * getOrder live-read the same collection. Do NOT "finish the migration" by
  * ripping out the Firestore sync — the partner app reads these docs directly.
+ *
+ * F24: cancelOrder is now SERVER-FIRST (POST /orders/customerCancel). A direct
+ * client status write skipped the server-owned cancellation obligations
+ * (durable rider-cancel intent + idempotent Grill-Coins restore) and the
+ * rules no longer admit one.
  *
  * KOTs are NOT pushed from here: POST /petpooja/pushOrder is staff-only, so a
  * customer call was a guaranteed 403 hidden in a local outbox. The server owns
@@ -14,7 +19,11 @@
  *
  * Backend map (live):
  *   Firestore `orders` (write + read)     → createOrder / listOrders /
- *                                            getOrder / cancelOrder
+ *                                            getOrder
+ *   POST /orders/customerCancel (server)  → cancelOrder (F24: ownership +
+ *                                            cancellable window re-checked in
+ *                                            the status transaction; rider-
+ *                                            cancel intent + coin restore)
  *   Firestore `orders` (read-only observe)→ finalizePaidOrder /
  *                                            markPaymentFailed (server-truth
  *                                            observation; never writes —
@@ -1607,43 +1616,60 @@ export const ordersService = {
     const existing = orders.get(id);
     if (!existing) return ok(null);
     if (existing.status.terminal) return ok(existing);
-    const cancelled: Order = {
-      ...existing,
-      status: resolveStatus("CANCELLED"),
-      completedAt: new Date().toISOString(),
-    };
-    // Persist BEFORE committing locally (R03): a memory-only cancel is
-    // invisible to Partner/KDS, so the old commit-then-write order told the
-    // customer "cancelled" — and the UI believed it — even when the server
-    // write failed and the kitchen kept cooking. Only a landed write may
-    // commit the cancelled record or return ok; a failed write returns an
-    // honest failure with the order left untouched in cache.
+    if (!startedUid) {
+      return fail("UNAUTHORIZED", "Please sign in again to cancel this order.");
+    }
+    // F24: cancellation is SERVER-OWNED. A direct Firestore status write bypassed
+    // the server's cancellation obligations (a durable rider-cancel intent and
+    // the idempotent Grill-Coins restore), and the rules no longer admit one.
+    // POST /orders/customerCancel re-checks ownership and the cancellable
+    // window inside its own transaction.
+    // Auth: `authSetup` injects the Firebase ID token on every `httpClient`
+    // request, so no header plumbing is needed here.
+    const { defaultFunctionsBase } = await import("@/core/config/functionsBase");
+    const { httpClient } = await import("@/core/network/httpClient");
     try {
-      const { db } = await import("@/core/config/firebase");
-      const { doc, setDoc } = await import("firebase/firestore");
-      await setDoc(
-        doc(db, "orders", id),
-        {
-          status: cancelled.status,
-          completedAt: cancelled.completedAt,
-        },
-        { merge: true },
+      // `httpClient` throws a typed error for non-2xx; the server is idempotent
+      // (`alreadyCancelled`), so a user retry converges.
+      await httpClient.post<unknown>(
+        `${defaultFunctionsBase()}/orders/customerCancel`,
+        { orderId: id },
+        { retry: { attempts: 1, backoffMs: 400 } },
       );
-    } catch (err) {
+    } catch (err: unknown) {
+      const transport = err as {
+        status?: number;
+        code?: string;
+        response?: { data?: { code?: string; error?: { code?: string } } };
+      } | null;
       const { logger } = await import("@/core/logging/logger");
-      logger.warn("ordersService.cancel_persist_failed", {
+      logger.warn("ordersService.cancel_server_refused", {
         id,
+        status: transport?.status,
         message: err instanceof Error ? err.message : String(err),
       });
+      const serverCode =
+        transport?.response?.data?.error?.code ??
+        transport?.response?.data?.code ??
+        transport?.code;
+      // The server's own refusal copy is deliberately NOT echoed: 403/409 bodies
+      // are stable enough to map, but an unexpected 5xx must read as a
+      // transport failure the customer can act on.
+      const message =
+        serverCode === "ORDER_NOT_OWNED"
+          ? "This order belongs to a different account."
+          : serverCode === "ORDER_NOT_CANCELLABLE"
+            ? "This order can no longer be cancelled in the app - please contact the store."
+            : "We couldn't cancel this order - the store wasn't notified. Please call the store.";
       return fail(
-        "CANCEL_PERSIST_FAILED",
-        "We couldn't cancel this order — the store wasn't notified. Please call the store.",
-        true,
+        serverCode ?? "CANCEL_REQUEST_FAILED",
+        message,
+        transport?.status === undefined || transport.status >= 500,
       );
     }
-    // The write landed, but if the account changed mid-flight the cancelled
-    // record belongs to the previous session: don't commit it into the new
-    // account's cache or report success to the new session (R03).
+    // Only a CONFIRMED server cancel may touch the cache. If the account
+    // changed mid-flight the result belongs to the previous session (R03):
+    // re-anchor and refuse instead of reporting success to the new account.
     if ((auth.currentUser?.uid ?? null) !== startedUid) {
       syncCacheScope(auth.currentUser);
       return fail(
@@ -1652,7 +1678,15 @@ export const ordersService = {
         true,
       );
     }
+    const cancelled: Order = {
+      ...existing,
+      status: resolveStatus("CANCELLED"),
+      completedAt: new Date().toISOString(),
+    };
     orders.set(id, cancelled);
+    // Server truth (refund markers, cancellationReason) lands on the next
+    // poll; this call is best-effort and never changes the returned result.
+    void this.refreshOrder(id);
     return ok(cancelled);
   },
 

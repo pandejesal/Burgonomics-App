@@ -67,6 +67,14 @@ describe("Canonical union rules — monthly fee, markers, catalog and customer c
         role: "branch_owner",
         branchId: "branch_02",
       });
+      // F06: staff authorization is fail-closed on `users/{uid}.active`.
+      for (const [uid, role] of [
+        ["brand_owner_1", "brand_owner"],
+        ["branch_owner_1", "branch_owner"],
+        ["branch_owner_2", "branch_owner"],
+      ] as const) {
+        await setDoc(doc(db, "users", uid), { role, active: true });
+      }
       await setDoc(doc(db, "branches", BRANCH), {
         name: "Branch One",
         city: "Surat",

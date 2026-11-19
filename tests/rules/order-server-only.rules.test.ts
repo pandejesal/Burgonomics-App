@@ -21,9 +21,10 @@ import { doc, getDoc, setDoc, updateDoc, deleteField } from "firebase/firestore"
  *
  * Writer inventory (source-verified before enforcement):
  *  - Customer app ordersService.ts: createOrder -> setDoc CREATE (with items),
- *    setWhatsappOptIn -> merge {whatsappOptIn, updatedAt}, cancelOrder ->
- *    merge {status CANCELLED, completedAt}; markPaymentFailed/finalizePaidOrder
- *    are zero-write server-truth readers.
+ *    setWhatsappOptIn -> merge {whatsappOptIn, updatedAt}; cancelOrder ->
+ *    POST /orders/customerCancel (F24: the client no longer writes the order
+ *    document at all); markPaymentFailed/finalizePaidOrder are zero-write
+ *    server-truth readers.
  *  - Partner useOrders.ts updateOrderStatus -> HTTP POST /orders/bumpStatus
  *    (no direct client write); adminOrdersService.ts is read-only.
  *  - Partner walk-in counter lane -> one-time CREATE with items via
@@ -36,8 +37,9 @@ import { doc, getDoc, setDoc, updateDoc, deleteField } from "firebase/firestore"
  *     field of an existing order, including nested/dotted patches and
  *     FieldValue.delete removals under protected maps.
  *  2. The explicitly safe scoped updates survive: operator status bumps,
- *     customer cancel + whatsapp opt-in lanes, takeaway completion for
- *     operators (delivery DELIVERED stays server-OTP-only for everyone).
+ *     customer whatsapp opt-in, takeaway completion for operators (delivery
+ *     DELIVERED stays server-OTP-only for everyone). Customer cancellation is
+ *     no longer a client write at all — POST /orders/customerCancel owns it (F24).
  *  3. Legitimate initial CREATE with items (customer checkout and walk-in)
  *     stays allowed; POS state stays server-stamped at birth too.
  *  4. The server lane keeps full control (Admin SDK / withSecurityRulesDisabled).
@@ -274,6 +276,23 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
         name: "Alias",
       });
 
+      // F06: staff authorization is fail-closed on `users/{uid}.active`. Every
+      // privileged fixture needs an ACTIVE profile document, including the
+      // claims-only operator (the token-claim arm is gated too).
+      for (const [uid, role] of [
+        ["brand_owner_1", "brand_owner"],
+        ["developer_1", "developer"],
+        ["regional_manager_1", "regional_manager"],
+        ["branch_owner_1", "branch_owner"],
+        ["branch_owner_2", "branch_owner"],
+        ["branch_staff_1", "branch_staff"],
+        ["support_1", "support"],
+        ["alias_brand_owner", "Brand_Owner"],
+        ["claims_staff", "branch_staff"],
+      ] as const) {
+        await setDoc(doc(db, "users", uid), { role, active: true });
+      }
+
       await setDoc(doc(db, "customers", CUSTOMER_UID), {
         customerId: CUSTOMER_UID,
         fullName: "Owner Customer",
@@ -447,14 +466,23 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
   );
 
   it(
-    "dec01-safe: customer cancel + whatsapp opt-in scoped lanes survive",
+    "dec01-safe: customer whatsapp opt-in lane survives (cancel is now server-only)",
     { timeout: 120000 },
     async () => {
       const custDb = databaseFor({ label: "customer(order owner)", uid: CUSTOMER_UID });
-      await assertSucceeds(
+      // F24: the direct CANCELLED arm is GONE (the server route owns the
+      // cancellation's obligations). The surviving customer write is the
+      // notification preference, and it must keep working.
+      await assertFails(
         updateDoc(doc(custDb, "orders", OWN_ORDER), {
           status: { code: "CANCELLED", kind: "cancelled", label: "Cancelled", terminal: true },
           completedAt: new Date().toISOString(),
+        }),
+      );
+      await assertSucceeds(
+        updateDoc(doc(custDb, "orders", OWN_ORDER), {
+          whatsappOptIn: true,
+          updatedAt: new Date().toISOString(),
         }),
       );
     },
@@ -463,12 +491,10 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
   // -------------------------------------------------------------------------
   // 2b. CANCEL-ARM KEY MASK (proven silent gap, 4 Nov 2026)
   //
-  // The customer cancel arm names only status/completedAt/updatedAt, but no
-  // test wrote the CANCELLED shape PLUS a protected field, so widening the
-  // mask (e.g. adding 'totals') survived the suite untouched. These two are
-  // paired: the DENY is the mutant-biting assertion, the ALLOW is the genuine
-  // CANCELLED-only control that must keep passing so the arm is not simply
-  // broken closed.
+  // F24: the cancel arm itself is GONE. The masked-smuggle case below stays as
+  // the retained regression guard (it must still fail), and the "allow"
+  // control is FLIPPED to a DENY because a direct CANCELLED-only write is now
+  // exactly the write the server route replaces.
   // -------------------------------------------------------------------------
 
   it(
@@ -487,11 +513,11 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
   );
 
   it(
-    "dec01-cancel-allow: customer CANCELLED-only patch still succeeds",
+    "f24-cancel-deny: a CANCELLED-only client patch is DENIED (server route required)",
     { timeout: 120000 },
     async () => {
       const custDb = databaseFor({ label: "customer(order owner)", uid: CUSTOMER_UID });
-      await assertSucceeds(
+      await assertFails(
         updateDoc(doc(custDb, "orders", OWN_ORDER), {
           status: { code: "CANCELLED", kind: "cancelled", label: "Cancelled", terminal: true },
           completedAt: new Date().toISOString(),
@@ -499,6 +525,21 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
       );
     },
   );
+
+  it("f24-cancel-deny: a foreign customer cannot cancel either", { timeout: 120000 }, async () => {
+    const custDb = databaseFor({ label: "customer(foreign)", uid: "cust_foreign_f24" });
+    await assertFails(
+      updateDoc(doc(custDb, "orders", OWN_ORDER), {
+        status: { code: "CANCELLED", kind: "cancelled", label: "Cancelled", terminal: true },
+        completedAt: new Date().toISOString(),
+      }),
+    );
+  });
+
+  // F24 REPLACES the old `dec01-cancel-allow` control: the direct
+  // CANCELLED-only client write is now the very write that must be DENIED, so
+  // its slot is the `f24-cancel-deny` case above (same payload, inverted
+  // expectation). No case was weakened: the assertion is the stricter one.
 
   // -------------------------------------------------------------------------
   // 3. CREATE-WITH-ITEMS CONTRACT (not blanket-denied)
