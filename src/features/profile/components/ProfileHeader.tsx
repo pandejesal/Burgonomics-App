@@ -3,7 +3,6 @@ import { Text } from "@/shared/components/common/Text";
 import { AppBadge } from "@/shared/components/common/AppBadge";
 import { SafeImage } from "@/shared/components/common/SafeImage";
 import { CompletionRing } from "./CompletionRing";
-import { useLoyaltyTier } from "@/features/loyalty/state/loyaltyStore";
 import type { UserProfile, ProfileCompletion } from "@/features/profile/models";
 
 interface Props {
@@ -12,10 +11,9 @@ interface Props {
 }
 
 export function ProfileHeader({ profile, completion }: Props) {
-  // Tier always derives from the live loyalty balance (same source as the
-  // wallet card) — never the static profile field, so the two can never
-  // contradict each other.
-  const tier = useLoyaltyTier();
+  // Loyalty is NOT part of the launch (owner decision 2026-11-20): the tier
+  // chip derived from a loyalty balance was removed with the wallet. A "Gold"
+  // badge with no balance behind it promised a programme that does not exist.
   const initials = (profile.fullName || profile.phone)
     .split(" ")
     .map((s) => s[0])
@@ -54,9 +52,6 @@ export function ProfileHeader({ profile, completion }: Props) {
             <h3 className="type-title-large text-text">
               {profile.fullName || "Burger Connoisseur"}
             </h3>
-            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-sm font-semibold text-primary-text">
-              {tier}
-            </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 text-sm text-text-secondary">

@@ -52,7 +52,6 @@ const SWEPT_SURFACES = [
   "src/features/orders/components/OrderTimeline.tsx",
   "src/features/profile/components/ProfileHeader.tsx",
   "src/features/profile/components/ProfileMenuList.tsx",
-  "src/features/profile/components/GrillCoinsWalletCard.tsx",
   "src/features/support/components/CreateTicketForm.tsx",
   "src/features/support/components/TicketListAccordion.tsx",
   "src/features/offers/components/CouponCard.tsx",

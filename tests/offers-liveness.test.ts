@@ -1,69 +1,112 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Loop 14/120: the client preview must refuse inactive/expired coupons just
-// like the server pricing engine — never promise savings refused at charge.
+/**
+ * Liveness: the client must never promise savings the server refuses at charge.
+ *
+ * Originally (Loop 14/120) this suite proved that by checking
+ * `petpooja_offers` locally. That check is gone with the collection: the server
+ * coupon authority now owns every rule (active, expiry, minimum, branch,
+ * per-customer limit, cap). What still needs proving on the client is that the
+ * verdict it shows IS the server's — no local fallback, no optimistic discount.
+ */
 
-vi.mock("../src/core/config/firebase", () => ({ db: {} }));
+const fetchMock = vi.fn();
 
-const liveOffers: Record<string, any>[] = [
-  {
-    id: "off_live",
-    code: "LIVE10",
-    title: "Live offer",
-    status: "active",
-    expiresAt: new Date(Date.now() + 86400000).toISOString(),
-    discount: { mode: "flat", value: 50 },
-  },
-  {
-    id: "off_dead",
-    code: "DEAD10",
-    title: "Inactive offer",
-    status: "paused",
-    discount: { mode: "flat", value: 50 },
-  },
-  {
-    id: "off_old",
-    code: "OLD10",
-    title: "Expired offer",
-    status: "active",
-    expiresAt: new Date(Date.now() - 86400000).toISOString(),
-    discount: { mode: "flat", value: 50 },
-  },
-];
-
-vi.mock("firebase/firestore", async (importOriginal) => {
-  const actual: any = await importOriginal();
-  return {
-    ...actual,
-    collection: vi.fn(() => ({})),
-    getDocs: vi.fn(async () => ({
-      empty: false,
-      forEach: (cb: (d: any) => void) => liveOffers.forEach((o) => cb({ data: () => o })),
-    })),
-    doc: vi.fn(() => ({})),
-    getDoc: vi.fn(async () => ({ exists: false })),
-  };
-});
+vi.mock("../src/core/config/env", () => ({
+  appConfig: { integrations: { paymentsApiBaseUrl: "https://api.test/api" } },
+}));
+vi.mock("../src/core/storage/secureStorage", () => ({
+  secureStorage: { get: async () => null },
+  SECURE_KEYS: { ACCESS_TOKEN: "access_token" },
+}));
+vi.mock("../src/core/config/firebase", () => ({
+  db: {},
+  getAppCheckToken: async () => null,
+}));
 
 import { offersService } from "../src/features/offers/services/offersService";
 
-describe("offersService liveness gate (Loop 14/120)", () => {
-  it("applies a live coupon", async () => {
-    const res = await offersService.apply({ code: "LIVE10", subtotal: 500 } as any);
+function jsonResponse(status: number, body: unknown) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
+}
+
+const LINES = [{ productId: "p1", quantity: 1 }];
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+});
+
+describe("offersService liveness", () => {
+  it("applies a live coupon at the server's value", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        valid: true,
+        code: "LIVE10",
+        title: "Live offer",
+        discount: 50,
+        subtotal: 500,
+        totalAfterDiscount: 450,
+        message: "Coupon applied.",
+        reason: "OK",
+      }),
+    );
+    const res = await offersService.apply({ code: "LIVE10", lines: LINES });
     expect(res.success).toBe(true);
+    if (res.success) expect(res.data.discount).toBe(50);
   });
 
-  it("refuses an inactive coupon at apply time", async () => {
-    const res = await offersService.apply({ code: "DEAD10", subtotal: 500 } as any);
+  it("refuses an inactive coupon at apply time, with the server's code", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, {
+        valid: false,
+        code: "COUPON_INACTIVE",
+        error: "This coupon is no longer active.",
+        reason: "COUPON_INACTIVE",
+      }),
+    );
+    const res = await offersService.apply({ code: "DEAD10", lines: LINES });
     expect(res.success).toBe(false);
     if (!res.success) expect(res.error.code).toBe("COUPON_INACTIVE");
   });
 
   it("refuses an expired coupon at validate and apply time", async () => {
-    const v = await offersService.validateCoupon("OLD10", { subtotal: 500 } as any);
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, {
+        valid: false,
+        code: "COUPON_EXPIRED",
+        error: "This coupon has expired.",
+        reason: "COUPON_EXPIRED",
+      }),
+    );
+    const v = await offersService.validateCoupon("OLD10", { lines: LINES });
     expect(v.success).toBe(false);
-    const a = await offersService.apply({ code: "OLD10", subtotal: 500 } as any);
+    const a = await offersService.apply({ code: "OLD10", lines: LINES });
     expect(a.success).toBe(false);
     if (!a.success) expect(a.error.code).toBe("COUPON_EXPIRED");
+  });
+
+  it("never reports a discount the server did not send", async () => {
+    // A 200 that claims validity but carries no discount: the client shows 0,
+    // it does not compute one from the code or the cart.
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        valid: true,
+        code: "ODD",
+        title: "Odd",
+        subtotal: 500,
+        totalAfterDiscount: 500,
+        message: "Coupon applied.",
+        reason: "OK",
+      }),
+    );
+    const res = await offersService.apply({ code: "ODD", lines: LINES });
+    if (!res.success) throw new Error(res.error.code);
+    expect(res.data.discount).toBe(0);
   });
 });
