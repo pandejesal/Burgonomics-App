@@ -32,6 +32,13 @@ interface BindingEntry {
   verifier: RecaptchaVerifier | null;
   size: RecaptchaSize;
   state: BindingState;
+  /**
+   * True once the SDK reported that the challenge was solved. Used only to pick
+   * honest copy when a request times out: an unsolved widget means no SMS was
+   * ever dispatched, so "tick the box" is actionable; a solved one means the
+   * outcome is genuinely unknown.
+   */
+  solved: boolean;
 }
 
 export type RecaptchaFactory = (
@@ -78,15 +85,22 @@ function construct(
   try {
     const verifier: RecaptchaVerifier = factory(firebaseAuth, element, {
       size,
-      callback: () => undefined,
+      callback: () => {
+        // Solved. Only the entry that owns this exact verifier may flip.
+        const current = bindings.get(flow);
+        if (current && current.hostId === hostId && current.verifier === verifier) {
+          current.solved = true;
+        }
+      },
       "expired-callback": () => {
         const current = bindings.get(flow);
         if (current && current.hostId === hostId && current.verifier === verifier) {
           current.state = "dirty";
+          current.solved = false;
         }
       },
     });
-    const entry: BindingEntry = { hostId, element, verifier, size, state: "ready" };
+    const entry: BindingEntry = { hostId, element, verifier, size, state: "ready", solved: false };
     bindings.set(flow, entry);
     return { ok: true, size };
   } catch (error) {
@@ -166,11 +180,38 @@ export function acquireForFlow(flow: AuthFlowId): AcquireResult {
 
 export function dirtyFlow(flow: AuthFlowId): void {
   const existing = bindings.get(flow);
-  if (existing) existing.state = "dirty";
+  if (existing) {
+    existing.state = "dirty";
+    // A dirty host is re-armed before its next use, so the previous solve can
+    // never be reported as "solved" for the next request.
+    existing.solved = false;
+  }
+}
+
+/** True only when the SDK reported the current challenge as solved. */
+export function isFlowSolved(flow: AuthFlowId): boolean {
+  return bindings.get(flow)?.solved === true;
 }
 
 export function isFlowMounted(flow: AuthFlowId): boolean {
   return bindings.has(flow);
+}
+
+/**
+ * Renders the reCAPTCHA widget for a bound flow so the visible "I'm not a
+ * robot" checkbox appears before the customer taps Continue. Idempotent per
+ * RecaptchaVerifier instance (the SDK documents this). Never throws: catches
+ * all errors and returns "unavailable".
+ */
+export async function renderFlow(flow: AuthFlowId): Promise<"ok" | "unavailable"> {
+  const entry = bindings.get(flow);
+  if (!entry || !entry.verifier) return "unavailable";
+  try {
+    await entry.verifier.render();
+    return "ok";
+  } catch {
+    return "unavailable";
+  }
 }
 
 export function getBindingSize(flow: AuthFlowId): RecaptchaSize | null {

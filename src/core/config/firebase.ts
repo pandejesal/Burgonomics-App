@@ -128,7 +128,7 @@ export async function initAppCheck(): Promise<void> {
     const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
     if (!siteKey) return;
     const { initializeAppCheck, ReCaptchaV3Provider } = await import("firebase/app-check");
-    if (window.location.hostname === "localhost") {
+    if (import.meta.env.DEV && window.location.hostname === "localhost") {
       (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
     }
     appCheckInstance = initializeAppCheck(app, {

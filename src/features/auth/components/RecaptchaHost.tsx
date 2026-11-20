@@ -1,6 +1,11 @@
 import * as React from "react";
 import { useEffect, useId, useRef, useState } from "react";
-import { bindHost, releaseHost, type RecaptchaSize } from "@/features/auth/state/authBinding";
+import {
+  bindHost,
+  releaseHost,
+  renderFlow,
+  type RecaptchaSize,
+} from "@/features/auth/state/authBinding";
 import type { AuthFlowId } from "@/features/auth/utils/authErrors";
 
 const MAX_FRAME_RETRIES = 10;
@@ -57,6 +62,14 @@ export function RecaptchaHost({ flow, measure }: RecaptchaHostProps) {
       if (result.ok) {
         setSize(result.size);
         setFailed(false);
+        // Render the widget eagerly so the checkbox is visible before the
+        // customer taps Continue. If render fails, show the authored message.
+        void renderFlow(flow).then((outcome) => {
+          if (cancelled) return;
+          if (outcome === "unavailable") {
+            setFailed(true);
+          }
+        });
       } else {
         setFailed(true);
       }
@@ -72,13 +85,22 @@ export function RecaptchaHost({ flow, measure }: RecaptchaHostProps) {
   }, [flow, hostId, measure]);
 
   return (
-    <div
-      ref={elementRef}
-      id={`recaptcha-${hostId}`}
-      data-recaptcha-flow={flow}
-      data-recaptcha-size={size ?? undefined}
-      data-recaptcha-failed={failed ? "true" : undefined}
-      className="mx-auto flex w-full min-w-0 max-w-full justify-center overflow-hidden"
-    />
+    <div className="flex w-full min-w-0 flex-col items-center">
+      {/* The reCAPTCHA SDK owns the children of this node. Never render React
+          children inside it, or a re-render can fight the widget's iframe. */}
+      <div
+        ref={elementRef}
+        id={`recaptcha-${hostId}`}
+        data-recaptcha-flow={flow}
+        data-recaptcha-size={size ?? undefined}
+        data-recaptcha-failed={failed ? "true" : undefined}
+        className="mx-auto flex w-full min-w-0 max-w-full justify-center overflow-hidden"
+      />
+      {failed && (
+        <p className="py-2 text-center text-sm text-text-secondary" role="status">
+          We couldn't load the security check. Check your connection and try again.
+        </p>
+      )}
+    </div>
   );
 }

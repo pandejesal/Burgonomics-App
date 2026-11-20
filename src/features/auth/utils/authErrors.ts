@@ -68,6 +68,13 @@ const COPY: Record<string, string> = {
   AUTH_OTP_REQUEST_FAILED: "Failed to send the SMS verification code. Please try again.",
   AUTH_OTP_VERIFY_FAILED: "Verification failed. Please check the code and try again.",
   AUTH_REFRESH_FAILED: "Your session could not be refreshed. Please sign in again.",
+  AUTH_DOMAIN_NOT_AUTHORIZED:
+    "Sign-in isn't set up for this web address. Please use the Burgonomics app or contact support.",
+  AUTH_PHONE_SIGNIN_DISABLED: "Phone sign-in is switched off right now. Please try again later.",
+  AUTH_APP_NOT_AUTHORIZED:
+    "This app build isn't authorised to sign in. Please update the app or contact support.",
+  AUTH_CAPTCHA_TIMEOUT:
+    "We didn't get the security check in time. Please tick the box above and try again.",
 };
 
 const FIREBASE_CODE_MAP: Record<string, string> = {
@@ -83,6 +90,11 @@ const FIREBASE_CODE_MAP: Record<string, string> = {
   "auth/captcha-check-failed": "AUTH_CAPTCHA_FAILED",
   "auth/credential-already-in-use": "AUTH_CREDENTIAL_IN_USE",
   "auth/internal-error": "AUTH_INTERNAL",
+  "auth/unauthorized-domain": "AUTH_DOMAIN_NOT_AUTHORIZED",
+  "auth/operation-not-allowed": "AUTH_PHONE_SIGNIN_DISABLED",
+  "auth/missing-app-credential": "AUTH_APP_NOT_AUTHORIZED",
+  "auth/app-not-authorized": "AUTH_APP_NOT_AUTHORIZED",
+  "auth/invalid-app-credential": "AUTH_CAPTCHA_FAILED",
 };
 
 /** Reads only the SDK code field; never message/customData (they may hold PII). */

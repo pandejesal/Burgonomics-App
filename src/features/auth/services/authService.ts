@@ -4,8 +4,13 @@ import { isSyntheticEmail } from "@/features/profile/state/profileStore";
 import { auth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
-import { acquireForFlow, dirtyFlow, isFlowMounted } from "@/features/auth/state/authBinding";
-import type { AuthFlowId } from "@/features/auth/utils/authErrors";
+import {
+  acquireForFlow,
+  dirtyFlow,
+  isFlowMounted,
+  isFlowSolved,
+} from "@/features/auth/state/authBinding";
+import { mapFirebaseAuthCode, authCopy, type AuthFlowId } from "@/features/auth/utils/authErrors";
 
 export interface RequestOtpResponse {
   otpToken: string;
@@ -26,6 +31,26 @@ export interface VerifyOtpResponse {
 
 let recaptchaVerifier: RecaptchaVerifier | null = null;
 let confirmationResult: ConfirmationResult | null = null;
+
+/**
+ * Hard deadline for the `signInWithPhoneNumber` round-trip. The reCAPTCHA
+ * widget can silently block (off-screen / behind keyboard / challenge unsolved),
+ * in which case the SDK promise never settles and the UI shows a spinner
+ * forever. Racing against this deadline ensures the customer always gets
+ * feedback.
+ */
+export const AUTH_REQUEST_DEADLINE_MS = 60_000;
+
+/**
+ * Bounds `verifier.render()`. A blocked reCAPTCHA script (WebView, offline,
+ * proxy) can leave render pending forever, which would hang the request before
+ * the SMS deadline is even armed.
+ */
+export const RECAPTCHA_RENDER_DEADLINE_MS = 20_000;
+
+/** Internal sentinels; never shown to a customer. */
+const DEADLINE_SENTINEL = "AUTH_REQUEST_DEADLINE";
+const RENDER_SENTINEL = "AUTH_RECAPTCHA_RENDER_DEADLINE";
 
 /**
  * Bumped on every cancel / new request. A Firebase callback that resolves
@@ -156,14 +181,80 @@ export const authService = {
         );
       }
 
-      // Explicitly trigger render if not yet rendered
+      // Explicitly trigger render if not yet rendered — bounded, because a
+      // blocked reCAPTCHA script must not hang the flow before the SMS deadline
+      // is even armed (this is the WebView/offline case).
+      let renderTimer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await verifier.render();
-      } catch {
-        // Container might already have widget rendered
+        await Promise.race([
+          verifier.render(),
+          new Promise<never>((_resolve, reject) => {
+            renderTimer = setTimeout(
+              () => reject(new Error(RENDER_SENTINEL)),
+              RECAPTCHA_RENDER_DEADLINE_MS,
+            );
+          }),
+        ]);
+      } catch (renderError: any) {
+        if (renderError?.message === RENDER_SENTINEL) {
+          if (isFlowMounted(flow)) dirtyFlow(flow);
+          authService.cancelChallenge();
+          return fail("RECAPTCHA_RENDER_FAILED", authCopy("RECAPTCHA_RENDER_FAILED"));
+        }
+        // Container might already have the widget rendered.
+      } finally {
+        if (renderTimer) clearTimeout(renderTimer);
       }
 
-      const result = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+      // Race the SDK call against a hard deadline. An unsolved or off-screen
+      // reCAPTCHA widget causes signInWithPhoneNumber to hang forever: no
+      // request is ever sent and the button spins with no error. The timer is
+      // always cleared so a fast success cannot leave a rejection behind.
+      const sdkPromise = signInWithPhoneNumber(auth, formattedPhone, verifier);
+      let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<never>((_resolve, reject) => {
+        deadlineTimer = setTimeout(
+          () => reject(new Error(DEADLINE_SENTINEL)),
+          AUTH_REQUEST_DEADLINE_MS,
+        );
+      });
+
+      let result: Awaited<typeof sdkPromise>;
+      try {
+        result = await Promise.race([sdkPromise, deadline]);
+      } catch (raceError: any) {
+        if (raceError?.message === DEADLINE_SENTINEL) {
+          // Capture before dirtying: dirtyFlow() resets the solved flag.
+          const wasSolved = isFlowSolved(flow);
+          // The SDK promise is still pending — attach a no-op catch so its
+          // eventual rejection cannot surface as unhandled, then clean up the
+          // reCAPTCHA state so the customer can retry.
+          sdkPromise.catch(() => {});
+          challengeGeneration += 1;
+          confirmationResult = null;
+          if (isFlowMounted(flow)) {
+            dirtyFlow(flow);
+            recaptchaVerifier = null;
+          } else if (recaptchaVerifier) {
+            try {
+              recaptchaVerifier.clear();
+            } catch {
+              // ignore
+            }
+            recaptchaVerifier = null;
+            authService.initRecaptcha("recaptcha-container");
+          }
+          // An unsolved widget means no code was dispatched, so "tick the box"
+          // is the truthful instruction. A solved one is genuinely unknown.
+          const deadlineCode = wasSolved ? "AUTH_LAST_ATTEMPT_UNKNOWN" : "AUTH_CAPTCHA_TIMEOUT";
+          return fail(deadlineCode, authCopy(deadlineCode));
+        }
+        // Not a deadline — re-throw so the outer catch handles it.
+        throw raceError;
+      } finally {
+        if (deadlineTimer) clearTimeout(deadlineTimer);
+      }
+
       if (generation !== challengeGeneration) {
         // Cancelled / superseded while the SMS was being dispatched.
         return fail("AUTH_OTP_SUPERSEDED", "This code request was cancelled. Please try again.");
@@ -178,7 +269,8 @@ export const authService = {
       });
     } catch (error: any) {
       // Code only: the raw Firebase error embeds the phone in message/customData.
-      logger.error("auth.otp_request_failed", error, { code: error?.code });
+      const code = error?.code;
+      logger.error("auth.otp_request_failed", error, { code });
       // Reset the widget on error so the customer can retry cleanly. A bound
       // host is marked dirty and re-armed on the SAME element by the next
       // attempt; a legacy container is rebuilt in place.
@@ -196,11 +288,8 @@ export const authService = {
       }
       // A failed request must not leave the previous challenge confirmable.
       authService.cancelChallenge();
-      return fail(
-        error.code || "AUTH_OTP_REQUEST_FAILED",
-        error.message ||
-          "Failed to send SMS verification code. Please check the number and try again.",
-      );
+      const mappedCode = mapFirebaseAuthCode(error, "AUTH_OTP_REQUEST_FAILED");
+      return fail(mappedCode, authCopy(mappedCode));
     }
   },
 
@@ -280,10 +369,10 @@ export const authService = {
       });
     } catch (error: any) {
       logger.error("auth.otp_verify_failed", error, { code: error?.code });
-      return fail(
-        error.code || "AUTH_OTP_VERIFY_FAILED",
-        error.message || "Invalid verification code. Please check and try again.",
-      );
+      // Authored copy only: provider text can embed the phone number and is
+      // never customer-readable.
+      const mappedCode = mapFirebaseAuthCode(error, "AUTH_OTP_VERIFY_FAILED");
+      return fail(mappedCode, authCopy(mappedCode));
     } finally {
       verifyInFlight = false;
     }

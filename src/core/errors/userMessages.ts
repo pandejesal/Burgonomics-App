@@ -115,6 +115,22 @@ const AUTHORED_AUTH_COPY = new Set<string>([
   "Failed to send SMS verification code. Please check the number and try again.", // authService.ts:131
   "No active verification session found. Please request a new code.", // authService.ts:141
   "Invalid verification code. Please check and try again.", // authService.ts:193
+  // authErrors — authored auth copy that travels as a bare string via the store
+  "We couldn't confirm this request. A code may arrive; request a new code to continue.", // AUTH_LAST_ATTEMPT_UNKNOWN
+  "Sign-in isn't set up for this web address. Please use the Burgonomics app or contact support.", // AUTH_DOMAIN_NOT_AUTHORIZED
+  "Phone sign-in is switched off right now. Please try again later.", // AUTH_PHONE_SIGNIN_DISABLED
+  "This app build isn't authorised to sign in. Please update the app or contact support.", // AUTH_APP_NOT_AUTHORIZED
+  "We didn't get the security check in time. Please tick the box above and try again.", // AUTH_CAPTCHA_TIMEOUT
+  "Failed to send the SMS verification code. Please try again.", // AUTH_OTP_REQUEST_FAILED
+  "Verification failed. Please check the code and try again.", // AUTH_OTP_VERIFY_FAILED
+  "Please check the mobile number and try again.", // AUTH_INVALID_PHONE
+  "That code didn't match. Check it and try again.", // AUTH_INVALID_CODE
+  "That code has expired. Request a new code.", // AUTH_CODE_EXPIRED
+  "Too many attempts. Please wait before requesting another code.", // AUTH_TOO_MANY_REQUESTS
+  "We couldn't reach the verification service. Please try again.", // AUTH_NETWORK
+  "Verification failed. Please refresh and try again.", // AUTH_CAPTCHA_FAILED
+  "This number is already linked to another account.", // AUTH_CREDENTIAL_IN_USE
+  "Something went wrong while verifying. Please try again.", // AUTH_INTERNAL
 ]);
 
 /** authStore's store-owned cooldown copy: `Please wait <n>s before…`. */

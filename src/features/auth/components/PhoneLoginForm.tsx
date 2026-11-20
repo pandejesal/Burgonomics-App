@@ -105,6 +105,13 @@ export function PhoneLoginForm({
               </Text>
             </div>
           )}
+
+          {/* Per-mount reCAPTCHA host — above Continue so the checkbox is visible
+              before the customer taps the button. min-h-[78px] reserves the
+              reCAPTCHA normal widget height to avoid layout jumps. */}
+          <div className="min-h-[78px]">
+            <RecaptchaHost flow="login" />
+          </div>
         </div>
       </div>
 
@@ -132,9 +139,6 @@ export function PhoneLoginForm({
           </Link>
           .
         </Text>
-
-        {/* Per-mount reCAPTCHA host (no global container id). */}
-        <RecaptchaHost flow="login" />
       </div>
     </form>
   );
