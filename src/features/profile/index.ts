@@ -8,4 +8,3 @@ export { GuestProfilePrompt } from "./components/GuestProfilePrompt";
 export { CompletionRing } from "./components/CompletionRing";
 export { EditProfileForm } from "./components/EditProfileForm";
 export { AddressFormModal } from "./components/AddressFormModal";
-export { GrillCoinsWalletCard } from "./components/GrillCoinsWalletCard";

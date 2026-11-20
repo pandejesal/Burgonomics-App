@@ -131,7 +131,6 @@ vi.mock("@/features/cart", () => ({
   CartItemRow: () => null,
   CartItemList: () => null,
   BillBreakdown: () => null,
-  GrillCoinsRedemption: () => null,
   DeliveryTipSelector: () => null,
   OrderSummary: () => null,
   PromoInput: () => null,

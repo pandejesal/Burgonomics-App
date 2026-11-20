@@ -106,14 +106,9 @@ export function BillBreakdown({
           </div>
         )}
 
-        {coinsRedeemed > 0 && (
-          <div className="flex items-start justify-between gap-3 text-success">
-            <span className="min-w-0 font-medium">Loyalty Points Redeemed</span>
-            <span className="type-price shrink-0 whitespace-nowrap text-right">
-              - {formatINR(coinsRedeemed)}
-            </span>
-          </div>
-        )}
+        {/* Loyalty redemption is not part of the launch (owner decision
+            2026-11-20): the "Loyalty Points Redeemed" row was removed with the
+            rest of the programme. No coin/tier/points line renders anywhere. */}
 
         <div className="flex items-start justify-between gap-3 text-text-secondary">
           <span

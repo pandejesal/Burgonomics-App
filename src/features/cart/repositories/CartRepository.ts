@@ -209,9 +209,10 @@ export class CartRepository {
   // -- Promo / offers --------------------------------------------------
 
   /**
-   * Apply an offer to the cart. Delegates to OfferRepository — the
-   * frontend never validates or computes discounts locally. Accepts
-   * either a coupon `code` or a repository-provided `offerId`.
+   * Apply an offer to the cart. Delegates to OfferRepository — the frontend
+   * never validates or computes discounts locally: the SERVER prices the cart
+   * and answers with the discount (audit 2026-11-20 §1.6). Accepts either a
+   * coupon `code` or a repository-provided `offerId`.
    */
   async applyPromo(
     codeOrInput: string | { code?: string; offerId?: string },
@@ -219,18 +220,18 @@ export class CartRepository {
     const s = useCartStore.getState();
 
     try {
-      const totals = calculateTotals({
-        lines: s.lines,
-        fulfillment: this.getFulfillment(),
-        promo: null,
-        pricingConfig: this.pricingConfigFor(),
-      });
       const payload = typeof codeOrInput === "string" ? { code: codeOrInput } : codeOrInput;
       const res = await offerRepository.apply({
         ...payload,
         storeId: s.storeId ?? undefined,
         fulfillment: this.getFulfillment(),
-        subtotal: totals.subtotal,
+        // The server prices these from the catalogue; the local subtotal is
+        // kept only for callers that still read it, and is never trusted.
+        lines: s.lines.map((line) => ({
+          productId: String(line.productId),
+          quantity: line.quantity,
+          price: line.unitPrice,
+        })),
       });
       if (!res.success) return res;
       const applied: AppliedPromo = {
@@ -319,15 +320,37 @@ export class CartRepository {
     // a discount the offers backend wouldn't grant right now.
     const promo = useCartStore.getState().promo;
     if (promo) {
-      const totals = await this.calculateTotals().catch(() => null);
+      // The SERVER prices the cart, so it needs the lines — not the local
+      // subtotal. Sending only a subtotal made every recheck fail
+      // `CART_EMPTY`, which wiped a perfectly good coupon and halted checkout.
+      const current = useCartStore.getState();
       const recheck = await offerRepository.apply({
         code: promo.code,
         offerId: promo.offerId,
-        storeId: useCartStore.getState().storeId ?? undefined,
+        storeId: current.storeId ?? undefined,
         fulfillment: this.getFulfillment(),
-        subtotal: totals && totals.success ? totals.data.subtotal : 0,
+        lines: current.lines.map((line) => ({
+          productId: String(line.productId),
+          quantity: line.quantity,
+          price: line.unitPrice,
+        })),
       });
       if (!recheck.success) {
+        if (recheck.error.retryable) {
+          // The authority could not be reached. That does NOT prove the code is
+          // bad, so the coupon is kept and checkout is blocked pending a retry
+          // rather than silently deleting a discount the customer chose.
+          return ok({
+            valid: false,
+            issues: [
+              {
+                code: "other",
+                message:
+                  "We couldn't verify your coupon just now. Check your connection and try again.",
+              },
+            ],
+          });
+        }
         useCartStore.getState().setPromo(null);
         return ok({
           valid: false,
