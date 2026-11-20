@@ -46,6 +46,7 @@ import {
   useCheckoutFees,
   deliveryQuoteView,
   isDeliveryQuoteRefusal,
+  cashOnDeliveryAvailability,
   AddressSelector,
   FulfillmentDetailsCard,
   PaymentMethodSelector,
@@ -377,6 +378,27 @@ export function CheckoutPage() {
     void recompute();
   }, [hydrated, lines, fulfillment, promo, recompute, feesState]);
 
+  const rawGrandTotal = totals?.grandTotal ?? 0;
+  // The delivery tip is a real charge: the server reprices with the same
+  // `tipAmount` this screen reads, so it must already sit inside To Pay —
+  // otherwise checkout quotes less than the gateway collects.
+  const finalPayable = Math.max(0, rawGrandTotal + persistedTip);
+  // Owner decision 2026-11-20: cash on delivery is offered only where the
+  // branch allows it, and only under its per-order ceiling. The quote carries
+  // that answer; the create route enforces it again on the server.
+  const codAvailability = cashOnDeliveryAvailability(
+    feesState,
+    totals ? Math.round(finalPayable * 100) : null,
+  );
+  // Never leave a customer on a tender the branch refuses: switch the selection
+  // back to online as soon as the server says cash is unavailable for this bill.
+  // Declared before the loading/empty early returns so hook order is stable.
+  React.useEffect(() => {
+    if (!codAvailability.allowed && paymentMethod === "cash") {
+      setPaymentMethod("upi");
+    }
+  }, [codAvailability.allowed, paymentMethod, setPaymentMethod]);
+
   if (!hydrated) {
     return (
       <AppShell title="Checkout" backTo="/cart" showTabs={false} showTopBar>
@@ -421,12 +443,6 @@ export function CheckoutPage() {
   // different path and must stay offerable once the customer switches to it;
   // switching back to online re-offers the attempt (the server answers again).
   const onlineOrderingUnavailable = orderingUnavailable && paymentMethod !== "cash";
-  const rawGrandTotal = totals?.grandTotal ?? 0;
-  // The delivery tip is a real charge: the server reprices with the same
-  // `tipAmount` this screen reads, so it must already sit inside To Pay —
-  // otherwise checkout quotes less than the gateway collects.
-  const finalPayable = Math.max(0, rawGrandTotal + persistedTip);
-
   // R8: the server refused the payment because the courier quote was missing or
   // had expired. Re-quote the CURRENT address, then surface the updated figure
   // through the existing price dialog — never open Razorpay on the stale one.
@@ -1606,6 +1622,7 @@ export function CheckoutPage() {
             onSelectMethod={(method) => setPaymentMethod(method)}
             isDelivery={isDelivery}
             isTakeaway={isTakeaway}
+            cashDisabledReason={codAvailability.reason}
           />
         </section>
       </div>

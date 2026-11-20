@@ -65,6 +65,8 @@ const fixture = vi.hoisted(() => {
     validateForPayment: vi.fn(),
     createPaymentOrder: vi.fn(),
     createFromCurrentContext: vi.fn(),
+    // Owner decision 2026-11-20: cash orders are created by the SERVER.
+    createCashOrder: vi.fn(),
     verifyPayment: vi.fn(),
     initialize: vi.fn(async () => {}),
     openCheckout: vi.fn(),
@@ -259,6 +261,7 @@ vi.mock("@/features/addresses", () => {
 vi.mock("@/features/orders", () => ({
   orderRepository: {
     createFromCurrentContext: fixture.createFromCurrentContext,
+    createCashOrder: fixture.createCashOrder,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
   },
@@ -303,6 +306,7 @@ beforeEach(() => {
   fixture.validateForPayment.mockReset();
   fixture.createPaymentOrder.mockReset();
   fixture.createFromCurrentContext.mockReset();
+  fixture.createCashOrder.mockReset();
   fixture.openCheckout.mockReset();
   fixture.initialize.mockReset();
 
@@ -325,6 +329,10 @@ beforeEach(() => {
     },
   });
   fixture.createFromCurrentContext.mockResolvedValue({
+    success: true,
+    data: { id: "ord_fulfill_cash" },
+  });
+  fixture.createCashOrder.mockResolvedValue({
     success: true,
     data: { id: "ord_fulfill_cash" },
   });
@@ -514,9 +522,10 @@ describe("payment route — valid supported modes still work", () => {
     await act(async () => pay!.click());
     await act(async () => {});
 
-    expect(fixture.createFromCurrentContext).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentMethod: "cash", paymentStatus: "CASH_PENDING" }),
-    );
+    // Owner decision 2026-11-20: the SERVER creates the cash order (it prices
+    // every line and stamps the cash marker); the app no longer writes it.
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
   });
 
   it.each(["takeaway", "dinein"] as const)(
@@ -532,9 +541,8 @@ describe("payment route — valid supported modes still work", () => {
       await act(async () => pay!.click());
       await act(async () => {});
 
-      expect(fixture.createFromCurrentContext).toHaveBeenCalledWith(
-        expect.objectContaining({ paymentMethod: "cash", paymentStatus: "PAY_AT_STORE" }),
-      );
+      expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+      expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
     },
   );
 });

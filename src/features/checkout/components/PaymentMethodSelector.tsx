@@ -10,6 +10,13 @@ interface PaymentMethodSelectorProps {
   isDelivery?: boolean;
   isTakeaway?: boolean;
   className?: string;
+  /**
+   * Owner decision 2026-11-20: the branch decides whether cash is offered and
+   * up to what order value. `null`/absent = no refusal; a string is the
+   * server's own sentence, shown on a disabled option (never silently hidden —
+   * a customer who expected cash needs to know why it is gone).
+   */
+  cashDisabledReason?: string | null;
 }
 
 export function PaymentMethodSelector({
@@ -18,7 +25,9 @@ export function PaymentMethodSelector({
   isDelivery = true,
   isTakeaway = false,
   className,
+  cashDisabledReason = null,
 }: PaymentMethodSelectorProps) {
+  const cashBlocked = typeof cashDisabledReason === "string" && cashDisabledReason.length > 0;
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -86,12 +95,16 @@ export function PaymentMethodSelector({
           type="button"
           role="radio"
           aria-checked={selectedMethod === "cash"}
+          aria-disabled={cashBlocked || undefined}
+          disabled={cashBlocked}
           onClick={() => {
+            if (cashBlocked) return;
             void HapticService.selection();
             onSelectMethod("cash");
           }}
           className={cn(
             "flex min-h-[64px] w-full cursor-pointer select-none items-center justify-between gap-3 rounded-[var(--radius-large)] border p-4 text-left transition-colors",
+            cashBlocked && "cursor-not-allowed opacity-60",
             selectedMethod === "cash"
               ? "border-primary bg-primary/5 ring-1 ring-primary shadow-xs"
               : "border-divider bg-surface hover:border-primary/50",
@@ -110,7 +123,9 @@ export function PaymentMethodSelector({
                     : "Pay at Dine-In Counter"}
               </p>
               <p className="type-caption text-text-secondary break-words">
-                Pay in cash or via QR upon receiving your order
+                {cashBlocked
+                  ? cashDisabledReason
+                  : "Pay in cash or via QR upon receiving your order"}
               </p>
             </div>
           </div>

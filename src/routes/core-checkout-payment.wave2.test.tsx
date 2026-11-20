@@ -74,6 +74,8 @@ const fixture = vi.hoisted(() => {
     fulfillment: "delivery" as "delivery" | "takeaway" | "dinein",
     refreshQuote: vi.fn(async () => checkoutState.checkoutFees),
     createFromCurrentContext: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
+    // Owner decision 2026-11-20: cash orders are created by the SERVER.
+    createCashOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     cart: {
       calculateTotals: vi.fn(),
       validateCart: vi.fn(async () => ({
@@ -180,7 +182,13 @@ vi.mock("@/features/cart", () => ({
   ),
   CookingInstructionsSection: () => null,
 }));
-vi.mock("@/features/checkout", () => {
+vi.mock("@/features/checkout", async () => {
+  // Owner decision 2026-11-20: use the REAL cash-availability helper (it is a
+  // pure function over the quote state) so the route's cash gating is exercised
+  // exactly as it ships.
+  const { cashOnDeliveryAvailability } = await vi.importActual<
+    typeof import("@/features/checkout/state/checkoutFeesTypes")
+  >("@/features/checkout/state/checkoutFeesTypes");
   return {
     useCheckoutStore: Object.assign(
       (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
@@ -196,6 +204,7 @@ vi.mock("@/features/checkout", () => {
     deliveryQuoteView: () => fixture.quote,
     isDeliveryQuoteRefusal: (code: string | null | undefined) =>
       code === "DELIVERY_QUOTE_EXPIRED" || code === "DELIVERY_QUOTE_REQUIRED",
+    cashOnDeliveryAvailability,
     AddressSelector: () => null,
     FulfillmentDetailsCard: () => null,
     PaymentMethodSelector: () => null,
@@ -267,6 +276,7 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 vi.mock("@/features/orders", () => ({
   orderRepository: {
     createFromCurrentContext: fixture.createFromCurrentContext,
+    createCashOrder: fixture.createCashOrder,
     finalizePaidOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     markPaymentFailed: vi.fn(async () => ({ success: true })),
   },
@@ -951,7 +961,7 @@ describe("R8 — payment is gated on a live delivery quote", () => {
     await act(async () => buttonWithText("Place COD Order")!.click());
     await act(async () => {});
 
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createCashOrder).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Delivery isn't available to this address");
   });
 
@@ -961,7 +971,9 @@ describe("R8 — payment is gated on a live delivery quote", () => {
     await act(async () => buttonWithText("Place COD Order")!.click());
     await act(async () => {});
 
-    expect(fixture.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    // The SERVER creates the cash order now (owner decision 2026-11-20).
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
   });
 

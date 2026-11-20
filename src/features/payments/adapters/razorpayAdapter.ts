@@ -37,6 +37,7 @@ import type {
 } from "@/core/integrations/razorpay/types";
 import { appConfig, isStagingBuild } from "@/core/config/env";
 import { logger } from "@/core/logging/logger";
+import { isAndroid } from "@/shared/platform/platform";
 
 export interface RazorpayInitInput {
   order: PaymentOrder;
@@ -317,6 +318,14 @@ export const razorpayAdapter: RazorpayAdapter = {
         image: "/brand/burgonomics-logo.png",
         prefill: init.prefill,
         theme: { color: init.theme?.color ?? "#0E4825" },
+        // OWNER-REPORT 2026-11-20 / payments.md Defect 4: on Android native,
+        // Razorpay's netbanking opens the bank page in a popup / intent
+        // redirect that the Capacitor WebView blocks (there is no Browser
+        // bridge in this shell), so the sheet hangs or closes before the bank.
+        // Hiding ONLY netbanking keeps cards, UPI and wallets working, and is
+        // the documented mitigation until the bridge exists and has been
+        // verified on a device. Web and iOS are untouched.
+        ...(isAndroid() ? { config: { display: { hide: [{ method: "netbanking" }] } } } : {}),
         modal: {
           ondismiss: () => {
             if (!failureReported) handlers.onCancel();

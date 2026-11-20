@@ -48,6 +48,8 @@ const fixture = vi.hoisted(() => {
     checkoutState,
     calculateTotals: vi.fn(),
     createFromCurrentContext: vi.fn(),
+    // Owner decision 2026-11-20: cash orders are created by the SERVER.
+    createCashOrder: vi.fn(),
     navigate: vi.fn(),
     clearCart: vi.fn(async () => ({ success: true as const })),
     resetCheckout: vi.fn(),
@@ -263,6 +265,7 @@ vi.mock("@/features/addresses", () => ({
 vi.mock("@/features/orders", () => ({
   orderRepository: {
     createFromCurrentContext: fixture.createFromCurrentContext,
+    createCashOrder: fixture.createCashOrder,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
   },
@@ -308,6 +311,8 @@ beforeEach(() => {
   fixture.calculateTotals.mockReset();
   fixture.createFromCurrentContext.mockReset();
   fixture.createFromCurrentContext.mockResolvedValue({ success: true, data: { id: "ord_cod" } });
+  fixture.createCashOrder.mockReset();
+  fixture.createCashOrder.mockResolvedValue({ success: true, data: { id: "ord_cod" } });
   validateForPayment.mockResolvedValue({ success: true, data: { valid: true, issues: [] } });
   usePaymentStore.getState().reset();
   sessionStorage.clear();
@@ -350,23 +355,22 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     await act(async () => {});
 
     // Blocked: no order for a total the customer never accepted…
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createCashOrder).not.toHaveBeenCalled();
     const dialog = container.querySelector("[data-testid='reprice-dialog']");
     expect(dialog).toBeTruthy();
     expect(dialog?.textContent).toContain("Your total has been updated");
     expect(dialog?.textContent).toContain("249");
     expect(dialog?.textContent).toContain("199");
 
-    // …and accepted explicitly, the same flow re-enters and creates it.
+    // …and accepted explicitly, the same flow re-enters and creates it. The
+    // SERVER creates the order now (owner decision 2026-11-20).
     await act(async () => {
       buttonWithText("Continue")!.click();
     });
     await act(async () => {});
 
-    expect(fixture.createFromCurrentContext).toHaveBeenCalledTimes(1);
-    expect(fixture.createFromCurrentContext).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentMethod: "cash" }),
-    );
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
   });
 
   it("creates the COD order immediately when the refreshed total is unchanged (positive control)", async () => {
@@ -377,6 +381,6 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     await act(async () => {});
 
     expect(container.querySelector("[data-testid='reprice-dialog']")).toBeNull();
-    expect(fixture.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
   });
 });

@@ -18,9 +18,11 @@ import { defaultFunctionsBase } from "@/core/config/functionsBase";
 import { logger } from "@/core/logging/logger";
 import { STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
 import type {
+  CashOnDeliveryQuote,
   CheckoutFeesContext,
   CheckoutOrderType,
 } from "@/features/checkout/state/checkoutFeesTypes";
+import { DEFAULT_CASH_ON_DELIVERY } from "@/features/checkout/state/checkoutFeesTypes";
 
 export const CHECKOUT_FEES_PATH = "/checkout/fees";
 
@@ -52,6 +54,8 @@ export interface ServiceableCheckoutFees {
   deliveryQuoteId: string | null;
   provider: string | null;
   expiresAt: number | null;
+  /** Branch's cash-on-delivery switch + ceiling (owner decision 2026-11-20). */
+  cashOnDelivery: CashOnDeliveryQuote;
 }
 
 export interface UnserviceableCheckoutFees {
@@ -59,6 +63,7 @@ export interface UnserviceableCheckoutFees {
   packagingFee: number;
   reason: string | null;
   message: string;
+  cashOnDelivery: CashOnDeliveryQuote;
 }
 
 export type CheckoutFees = ServiceableCheckoutFees | UnserviceableCheckoutFees;
@@ -164,6 +169,26 @@ export function parseExpiresAt(value: unknown): number | null {
 }
 
 /**
+ * The branch's cash-on-delivery answer. An OLDER backend omits the field, so a
+ * missing/odd value keeps the documented default (COD on, no ceiling stated) —
+ * the create route is the authority and refuses a branch that has it off.
+ */
+export function parseCashOnDelivery(raw: unknown): CashOnDeliveryQuote {
+  if (!raw || typeof raw !== "object") return DEFAULT_CASH_ON_DELIVERY;
+  const block = raw as Record<string, unknown>;
+  const enabled =
+    typeof block.enabled === "boolean" ? block.enabled : DEFAULT_CASH_ON_DELIVERY.enabled;
+  const cap = block.maxOrderValuePaise;
+  const maxOrderValuePaise =
+    typeof cap === "number" && Number.isSafeInteger(cap) && cap > 0
+      ? cap
+      : cap === null
+        ? null
+        : DEFAULT_CASH_ON_DELIVERY.maxOrderValuePaise;
+  return { enabled, maxOrderValuePaise };
+}
+
+/**
  * Parses the endpoint's response. Returns null when a required field is
  * missing — the caller treats that as an error rather than inventing a fee.
  */
@@ -172,6 +197,7 @@ export function parseCheckoutFees(raw: unknown, orderType: CheckoutOrderType): C
   const body = raw as Record<string, unknown>;
   const packagingFee = finiteFee(body.packagingFee);
   if (packagingFee === null) return null;
+  const cashOnDelivery = parseCashOnDelivery(body.cashOnDelivery);
 
   if (orderType !== "delivery") {
     return {
@@ -181,6 +207,7 @@ export function parseCheckoutFees(raw: unknown, orderType: CheckoutOrderType): C
       deliveryQuoteId: null,
       provider: null,
       expiresAt: null,
+      cashOnDelivery,
     };
   }
 
@@ -190,6 +217,7 @@ export function parseCheckoutFees(raw: unknown, orderType: CheckoutOrderType): C
       packagingFee,
       reason: typeof body.reason === "string" ? body.reason : null,
       message: typeof body.message === "string" ? body.message : "",
+      cashOnDelivery,
     };
   }
 
@@ -211,6 +239,7 @@ export function parseCheckoutFees(raw: unknown, orderType: CheckoutOrderType): C
     deliveryQuoteId,
     provider: typeof body.provider === "string" ? body.provider : null,
     expiresAt,
+    cashOnDelivery,
   };
 }
 

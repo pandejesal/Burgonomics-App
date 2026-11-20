@@ -16,6 +16,11 @@
 import { ok, fail, type ApiResult } from "@/core/network/http";
 import { logger } from "@/core/logging/logger";
 import { ordersService } from "@/features/orders/services/ordersService";
+import {
+  createCashOrderOnServer,
+  type CashOrderRequest,
+} from "@/features/payments/services/cashOrderService";
+import { generateSecureId } from "@/shared/utils/cryptoUtils";
 import { buildTrackUrl } from "@/features/orders/utils/trackUrl";
 import { useOrdersStore, selectAllOrders } from "@/features/orders/state/ordersStore";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
@@ -107,6 +112,137 @@ export class OrderRepository {
   }
 
   // -- Create ----------------------------------------------------------
+
+  /**
+   * CASH ON DELIVERY / PAY AT STORE (owner decision 2026-11-20).
+   *
+   * The SERVER creates this order: `POST /orders/createCashOrder` resolves the
+   * branch, prices every line from the catalogue, enforces the branch's COD
+   * switch and per-order ceiling, and stamps `paymentChannel: "cash"`. The app
+   * never writes a cash order itself, because the amount a rider collects at
+   * the door must be the server's number — not the cart's.
+   *
+   * The order id is generated here and reused across retries, so a lost
+   * response can never create two orders (the route replays its receipt).
+   */
+  async createCashOrder(
+    opts: {
+      orderId?: string;
+    } = {},
+  ): Promise<ApiResult<Order>> {
+    const cart = useCartStore.getState();
+    const sel = useStoreSelection.getState();
+    const address = selectSelectedAddress(useAddressStore.getState());
+    const checkout = useCheckoutStore.getState();
+    if (!sel.activeStore || !sel.fulfillment) {
+      return {
+        success: false,
+        error: {
+          code: "MISSING_CONTEXT",
+          message: "Store and fulfillment method are required.",
+        },
+      };
+    }
+    if (cart.lines.length === 0) {
+      return fail("CART_EMPTY", "Your cart is empty.", false);
+    }
+    const totalsRes = await cartRepository.calculateTotals();
+    if (!totalsRes.success) return totalsRes;
+    const minCheck = checkMinimumOrder(
+      totalsRes.data.subtotal,
+      sel.fulfillment,
+      sel.activeStore.pricing?.minOrderAmount,
+    );
+    if (!minCheck.met) {
+      return fail("MIN_ORDER", minOrderShortfallMessage(minCheck), true);
+    }
+
+    const isDelivery = sel.fulfillment === "delivery";
+    const deliveryQuoteId =
+      isDelivery && checkout.checkoutFees.status === "ready"
+        ? (checkout.checkoutFees.deliveryQuoteId ?? undefined)
+        : undefined;
+    const addressSnapshot =
+      isDelivery && address
+        ? {
+            label: address.label === "other" ? (address.customLabel ?? "Address") : address.label,
+            contactName: address.contactName ?? "",
+            contactPhone: address.contactPhone ?? "",
+            line1: address.line1,
+            line2: address.line2,
+            landmark: address.landmark,
+            city: address.city,
+            state: address.state ?? "",
+            pincode: address.pincode,
+            lat: address.lat,
+            lng: address.lng,
+          }
+        : undefined;
+    const fulfillmentInstructions =
+      sel.fulfillment === "delivery"
+        ? checkout.deliveryInstructions
+        : sel.fulfillment === "takeaway"
+          ? checkout.pickupInstructions
+          : checkout.diningNotes;
+
+    const orderId = opts.orderId ?? `ord_${Date.now()}_${generateSecureId(6)}`;
+    const request: CashOrderRequest = {
+      orderId,
+      storeId: sel.activeStore.id,
+      ...(sel.activeStore.partnerBranchId ? { branchId: sel.activeStore.partnerBranchId } : {}),
+      orderType: sel.fulfillment,
+      items: cart.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        ...(Array.isArray(line.customizations) && line.customizations.length > 0
+          ? { customizations: line.customizations as unknown as Array<Record<string, unknown>> }
+          : {}),
+        ...(Array.isArray(line.modifiers) && line.modifiers.length > 0
+          ? { modifiers: line.modifiers as unknown as Array<Record<string, unknown>> }
+          : {}),
+        ...(line.notes ? { notes: line.notes } : {}),
+      })),
+      // The bill the customer is looking at. The server refuses a different
+      // number (PRICE_CHANGED) instead of silently moving it.
+      expectedTotalPaise: Math.round(totalsRes.data.grandTotal * 100),
+      ...(deliveryQuoteId ? { deliveryQuoteId } : {}),
+      ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
+      ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
+      ...(checkout.orderNotes ? { notes: checkout.orderNotes } : {}),
+      ...(fulfillmentInstructions ? { fulfillmentInstructions } : {}),
+      ...(sel.fulfillment === "dinein" && checkout.tableNumber
+        ? { tableNumber: checkout.tableNumber }
+        : {}),
+      ...(addressSnapshot?.contactName ? { customerName: addressSnapshot.contactName } : {}),
+      ...(addressSnapshot?.contactPhone ? { customerPhone: addressSnapshot.contactPhone } : {}),
+      store: toStoreSnapshot(sel.activeStore) as unknown as Record<string, unknown>,
+      ...(addressSnapshot
+        ? {
+            address: addressSnapshot as unknown as Record<string, unknown>,
+            deliveryAddress: addressSnapshot as unknown as Record<string, unknown>,
+          }
+        : {}),
+      ...(cart.promo ? { promo: cart.promo as unknown as Record<string, unknown> } : {}),
+    };
+
+    const created = await createCashOrderOnServer(request);
+    if (!created.success) return created;
+
+    // Read the SERVER's document back so the screen shows server truth (totals,
+    // status, payment) rather than anything composed locally.
+    const hydrated = await this.service.getOrder(created.data.orderId);
+    if (hydrated.success && hydrated.data) {
+      const order = hydrated.data;
+      useOrdersStore.getState().upsert(order);
+      useOrdersStore.getState().setActiveOrderId(order.id);
+      return ok(order);
+    }
+    return fail(
+      "ORDER_SYNC_PENDING",
+      "Your order was placed, but we couldn't load it yet. Check your orders before trying again.",
+      true,
+    );
+  }
 
   /**
    * Compose an order from the current cart / store / address / payment

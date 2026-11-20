@@ -733,15 +733,11 @@ function PaymentPage() {
           setRepricePrompt({ displayed: totals.grandTotal, authoritative: fresh.data.grandTotal });
           return;
         }
-        const isDelivery = fulfillment === "delivery";
-        const paymentStatus: PaymentDisplayStatus = isDelivery ? "CASH_PENDING" : "PAY_AT_STORE";
-        const paymentLabel = isDelivery ? "Cash on Delivery" : "Pay at Store";
-
-        const created = await orderRepository.createFromCurrentContext({
-          paymentMethod: "cash",
-          paymentStatus,
-          paymentLabel,
-        });
+        // The SERVER creates the cash order (owner decision 2026-11-20): it
+        // prices every line from the catalogue, enforces the branch's COD
+        // switch + ceiling, and stamps the cash marker the kitchen and the
+        // hand-over code key on. The app no longer writes this document.
+        const created = await orderRepository.createCashOrder();
 
         if (!created.success) {
           setStatus("failed");
@@ -749,7 +745,7 @@ function PaymentPage() {
           setFailure({
             code: created.error.code,
             message,
-            retryable: true,
+            retryable: created.error.retryable !== false,
           });
           toast.error("Couldn't place order", { description: message });
           return;

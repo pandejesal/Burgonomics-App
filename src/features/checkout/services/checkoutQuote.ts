@@ -61,6 +61,7 @@ export async function quoteCheckoutFees(
         deliveryQuoteId: res.data.deliveryQuoteId,
         provider: res.data.provider,
         expiresAt: res.data.expiresAt,
+        cashOnDelivery: res.data.cashOnDelivery,
       }
     : {
         status: "unserviceable",

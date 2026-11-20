@@ -15,6 +15,18 @@ import type { PricingFulfillment } from "@/shared/pricing/pricingEngine";
 
 export type CheckoutOrderType = PricingFulfillment;
 
+/**
+ * Owner decision 2026-11-20: cash on delivery is in the launch scope, but each
+ * BRANCH decides whether it is offered and up to what order value. This is the
+ * server's answer from `POST /checkout/fees`; the create route re-reads the same
+ * branch document and enforces it, so this only decides what the screen shows.
+ */
+export interface CashOnDeliveryQuote {
+  enabled: boolean;
+  /** `null` = the branch set no ceiling. */
+  maxOrderValuePaise: number | null;
+}
+
 export interface CheckoutFeesReady {
   status: "ready";
   orderType: CheckoutOrderType;
@@ -27,6 +39,12 @@ export interface CheckoutFeesReady {
   provider: string | null;
   /** Epoch ms after which the quote is refused by the server. Null off-delivery. */
   expiresAt: number | null;
+  /**
+   * Branch's cash-on-delivery switch + ceiling. Optional because a persisted
+   * or older state may not carry it; readers fall back to
+   * `DEFAULT_CASH_ON_DELIVERY` and the create route remains the authority.
+   */
+  cashOnDelivery?: CashOnDeliveryQuote;
 }
 
 export interface CheckoutFeesUnserviceable {
@@ -125,4 +143,46 @@ export const DELIVERY_QUOTE_EXPIRED = "DELIVERY_QUOTE_EXPIRED";
 
 export function isDeliveryQuoteRefusal(code: string | null | undefined): boolean {
   return code === DELIVERY_QUOTE_REQUIRED || code === DELIVERY_QUOTE_EXPIRED;
+}
+
+/** The default the screen assumes until the server has answered. */
+export const DEFAULT_CASH_ON_DELIVERY: CashOnDeliveryQuote = {
+  enabled: true,
+  maxOrderValuePaise: null,
+};
+
+/**
+ * Whether the cash option may be CHOSEN for this bill.
+ *
+ * Fail-open while the quote is unknown: the option is the offline fallback and
+ * hiding it during loading would strand a customer with no tender. Once the
+ * server has answered, the branch's switch and ceiling are binding — and the
+ * create route enforces the same values again, so a stale screen can never
+ * place a cash order the branch refuses.
+ */
+export function cashOnDeliveryAvailability(
+  state: CheckoutFeesState,
+  totalPaise: number | null,
+): { allowed: boolean; reason: string | null } {
+  if (state.status !== "ready") return { allowed: true, reason: null };
+  const cod = state.cashOnDelivery ?? DEFAULT_CASH_ON_DELIVERY;
+  if (cod.enabled !== true) {
+    return {
+      allowed: false,
+      reason: "Cash on delivery is not available at this outlet. Please pay online.",
+    };
+  }
+  const cap = cod.maxOrderValuePaise;
+  if (
+    typeof cap === "number" &&
+    Number.isFinite(cap) &&
+    typeof totalPaise === "number" &&
+    totalPaise > cap
+  ) {
+    return {
+      allowed: false,
+      reason: `Cash on delivery is available up to ₹${Math.floor(cap / 100)} for one order. Please pay online for this order.`,
+    };
+  }
+  return { allowed: true, reason: null };
 }
