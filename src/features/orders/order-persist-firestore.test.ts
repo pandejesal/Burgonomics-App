@@ -30,7 +30,7 @@
  * and the instance is terminated afterwards.
  */
 import { deleteApp, initializeApp } from "firebase/app";
-import { disableNetwork, doc, getFirestore, setDoc, terminate } from "firebase/firestore";
+import { connectFirestoreEmulator, disableNetwork, doc, getFirestore, setDoc, terminate } from "firebase/firestore";
 import { describe, expect, it } from "vitest";
 import { db as appDb } from "@/core/config/firebase";
 import type { Order } from "@/features/orders/models";
@@ -112,7 +112,12 @@ function persistedOrderPayload(): Record<string, unknown> {
 
 describe("CUS-06 — the app's Firestore instance accepts the real order payload", () => {
   it("setDoc validates an order carrying undefined leaves without throwing", async () => {
-    // Offline FIRST: the client must not attempt delivery of the queued write.
+    // Loopback FIRST: bind the channel to 127.0.0.1 so no public name is ever
+    // resolvable, then go offline. Without this, gRPC's resolver backoff can
+    // resolve the real backend host in a timer that outlives this worker, which
+    // the hermetic egress guard (correctly) refuses and records as a block.
+    connectFirestoreEmulator(appDb, "127.0.0.1", 8080);
+    // Offline: the client must not attempt delivery of the queued write.
     await disableNetwork(appDb);
 
     let write: Promise<void> | undefined;
@@ -130,6 +135,9 @@ describe("CUS-06 — the app's Firestore instance accepts the real order payload
   it("control: the same payload on a plain getFirestore() instance is rejected", async () => {
     const controlApp = initializeApp(DUMMY_CONFIG, `cus06-control-${Date.now()}`);
     const plainDb = getFirestore(controlApp);
+    // Loopback FIRST, for the same reason as above: the control instance must
+    // not be able to resolve a public backend name either.
+    connectFirestoreEmulator(plainDb, "127.0.0.1", 8080);
     // Offline too: this case asserts a LOCAL rejection, never a delivery attempt.
     await disableNetwork(plainDb);
     expect(() =>

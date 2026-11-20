@@ -11,6 +11,24 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+// Test-only: importing the checkout barrel reaches QuickAuthSheet -> the
+// loyalty store -> "@/core/config/firebase", whose module body calls
+// initializeApp()/initializeFirestore(). A live Firestore client then resolves
+// the real backend host from a gRPC backoff timer while this file is still
+// running, which the hermetic egress guard correctly refuses. Stubbing the
+// config module keeps this test's graph inert; nothing here asserts on Firebase.
+// The mock mirrors every export of the module so no consumer sees a new hole.
+vi.mock("@/core/config/firebase", () => ({
+  app: {},
+  auth: {},
+  db: {},
+  isFirebaseConfigured: true,
+  firestoreSettings: { ignoreUndefinedProperties: true },
+  FirebaseConfigMissingKeysError: class extends Error {},
+  initAppCheck: async () => {},
+  getAppCheckToken: async () => null,
+}));
+
 // The route mounts standalone here; TanStack's Link/useNavigate dereference
 // the router, so stub them with inert implementations.
 vi.mock("@tanstack/react-router", async (importOriginal) => {
