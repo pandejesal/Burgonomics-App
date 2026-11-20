@@ -102,22 +102,11 @@ export const useLoyaltyStore = create<LoyaltyState>((set, get) => ({
   },
 }));
 
-// Loop 65/120: tier derives from the server-verified balance, not the
-// retired local lifetime counter (phantom 250 + local mints inflated every
-// fresh user toward Silver). Single source of truth — both the wallet card
-// and the profile header tier chip must use useLoyaltyTier() so they can
-// never contradict each other (GOLD-vs-BRONZE class bug).
-export function tierFor(balance: number): string {
-  if (balance >= 700) return "Gold";
-  if (balance >= 300) return "Silver";
-  return "Bronze";
-}
-
-/** Live tier label derived from the cached server balance. */
-export function useLoyaltyTier(): string {
-  const balance = useLoyaltyStore((s) => s.balance);
-  return tierFor(balance);
-}
+// Loyalty is NOT part of the launch (owner decision 2026-11-20). The tier
+// derivation and its badge were removed with the wallet card: a "Gold" chip
+// over a balance nobody can earn or spend was a promise the product does not
+// keep. `balance` survives only as a synced server value with no UI attached
+// (see OPEN-EARN-1: whether earning stops at launch is still the owner's call).
 
 // auto-hydrate cache on module load (browser only); truth arrives via
 // refreshFromServer once the auth identity is known.

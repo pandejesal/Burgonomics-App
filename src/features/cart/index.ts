@@ -6,7 +6,6 @@ export { CartItemRow } from "./components/CartItemRow";
 export { CookingInstructionsSection } from "./components/CookingInstructionsSection";
 export { CartItemList } from "./components/CartItemList";
 export { BillBreakdown } from "./components/BillBreakdown";
-export { GrillCoinsRedemption, LoyaltyPointsRedemption } from "./components/GrillCoinsRedemption";
 export { DeliveryTipSelector } from "./components/DeliveryTipSelector";
 export { OrderSummary } from "./components/OrderSummary";
 export { PromoInput } from "./components/PromoInput";
