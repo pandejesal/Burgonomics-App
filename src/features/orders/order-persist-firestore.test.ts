@@ -30,7 +30,14 @@
  * and the instance is terminated afterwards.
  */
 import { deleteApp, initializeApp } from "firebase/app";
-import { connectFirestoreEmulator, disableNetwork, doc, getFirestore, setDoc, terminate } from "firebase/firestore";
+import {
+  connectFirestoreEmulator,
+  disableNetwork,
+  doc,
+  getFirestore,
+  setDoc,
+  terminate,
+} from "firebase/firestore";
 import { describe, expect, it } from "vitest";
 import { db as appDb } from "@/core/config/firebase";
 import type { Order } from "@/features/orders/models";
