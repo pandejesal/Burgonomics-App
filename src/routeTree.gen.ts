@@ -14,11 +14,13 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as CartRouteImport } from './routes/cart'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as ForceUpdateRouteImport } from './routes/force-update'
+import { Route as GrievanceRouteImport } from './routes/grievance'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as MaintenanceRouteImport } from './routes/maintenance'
 import { Route as OffersRouteImport } from './routes/offers'
 import { Route as PaymentRouteImport } from './routes/payment'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SplashRouteImport } from './routes/splash'
 import { Route as StoresRouteImport } from './routes/stores'
@@ -65,6 +67,11 @@ const ForceUpdateRoute = ForceUpdateRouteImport.update({
   path: '/force-update',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GrievanceRoute = GrievanceRouteImport.update({
+  id: '/grievance',
+  path: '/grievance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
@@ -88,6 +95,11 @@ const PaymentRoute = PaymentRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RefundPolicyRoute = RefundPolicyRouteImport.update({
+  id: '/refund-policy',
+  path: '/refund-policy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchRoute = SearchRouteImport.update({
@@ -198,11 +210,13 @@ export interface FileRoutesByFullPath {
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/force-update': typeof ForceUpdateRoute
+  '/grievance': typeof GrievanceRoute
   '/home': typeof HomeRoute
   '/maintenance': typeof MaintenanceRoute
   '/offers': typeof OffersRoute
   '/payment': typeof PaymentRoute
   '/privacy': typeof PrivacyRoute
+  '/refund-policy': typeof RefundPolicyRoute
   '/search': typeof SearchRoute
   '/splash': typeof SplashRoute
   '/stores': typeof StoresRoute
@@ -230,11 +244,13 @@ export interface FileRoutesByTo {
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/force-update': typeof ForceUpdateRoute
+  '/grievance': typeof GrievanceRoute
   '/home': typeof HomeRoute
   '/maintenance': typeof MaintenanceRoute
   '/offers': typeof OffersRoute
   '/payment': typeof PaymentRoute
   '/privacy': typeof PrivacyRoute
+  '/refund-policy': typeof RefundPolicyRoute
   '/search': typeof SearchRoute
   '/splash': typeof SplashRoute
   '/stores': typeof StoresRoute
@@ -263,11 +279,13 @@ export interface FileRoutesById {
   '/cart': typeof CartRoute
   '/checkout': typeof CheckoutRoute
   '/force-update': typeof ForceUpdateRoute
+  '/grievance': typeof GrievanceRoute
   '/home': typeof HomeRoute
   '/maintenance': typeof MaintenanceRoute
   '/offers': typeof OffersRoute
   '/payment': typeof PaymentRoute
   '/privacy': typeof PrivacyRoute
+  '/refund-policy': typeof RefundPolicyRoute
   '/search': typeof SearchRoute
   '/splash': typeof SplashRoute
   '/stores': typeof StoresRoute
@@ -297,11 +315,13 @@ export interface FileRouteTypes {
     | '/cart'
     | '/checkout'
     | '/force-update'
+    | '/grievance'
     | '/home'
     | '/maintenance'
     | '/offers'
     | '/payment'
     | '/privacy'
+    | '/refund-policy'
     | '/search'
     | '/splash'
     | '/stores'
@@ -329,11 +349,13 @@ export interface FileRouteTypes {
     | '/cart'
     | '/checkout'
     | '/force-update'
+    | '/grievance'
     | '/home'
     | '/maintenance'
     | '/offers'
     | '/payment'
     | '/privacy'
+    | '/refund-policy'
     | '/search'
     | '/splash'
     | '/stores'
@@ -361,11 +383,13 @@ export interface FileRouteTypes {
     | '/cart'
     | '/checkout'
     | '/force-update'
+    | '/grievance'
     | '/home'
     | '/maintenance'
     | '/offers'
     | '/payment'
     | '/privacy'
+    | '/refund-policy'
     | '/search'
     | '/splash'
     | '/stores'
@@ -394,11 +418,13 @@ export interface RootRouteChildren {
   CartRoute: typeof CartRoute
   CheckoutRoute: typeof CheckoutRoute
   ForceUpdateRoute: typeof ForceUpdateRoute
+  GrievanceRoute: typeof GrievanceRoute
   HomeRoute: typeof HomeRoute
   MaintenanceRoute: typeof MaintenanceRoute
   OffersRoute: typeof OffersRoute
   PaymentRoute: typeof PaymentRoute
   PrivacyRoute: typeof PrivacyRoute
+  RefundPolicyRoute: typeof RefundPolicyRoute
   SearchRoute: typeof SearchRoute
   SplashRoute: typeof SplashRoute
   StoresRoute: typeof StoresRoute
@@ -458,6 +484,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForceUpdateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/grievance': {
+      id: '/grievance'
+      path: '/grievance'
+      fullPath: '/grievance'
+      preLoaderRoute: typeof GrievanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/home': {
       id: '/home'
       path: '/home'
@@ -491,6 +524,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/refund-policy': {
+      id: '/refund-policy'
+      path: '/refund-policy'
+      fullPath: '/refund-policy'
+      preLoaderRoute: typeof RefundPolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -642,11 +682,13 @@ const rootRouteChildren: RootRouteChildren = {
   CartRoute: CartRoute,
   CheckoutRoute: CheckoutRoute,
   ForceUpdateRoute: ForceUpdateRoute,
+  GrievanceRoute: GrievanceRoute,
   HomeRoute: HomeRoute,
   MaintenanceRoute: MaintenanceRoute,
   OffersRoute: OffersRoute,
   PaymentRoute: PaymentRoute,
   PrivacyRoute: PrivacyRoute,
+  RefundPolicyRoute: RefundPolicyRoute,
   SearchRoute: SearchRoute,
   SplashRoute: SplashRoute,
   StoresRoute: StoresRoute,

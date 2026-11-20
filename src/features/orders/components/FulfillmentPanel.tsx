@@ -2,6 +2,7 @@ import { Phone, MapPin, Utensils, Package, Bike, Copy } from "lucide-react";
 import { Text } from "@/shared/components/common/Text";
 import { AppButton } from "@/shared/components/common/AppButton";
 import { isSafeTelNumber } from "@/shared/utils/urlSafety";
+import { useStorePhone } from "@/features/orders/hooks/useStorePhone";
 import type { Order } from "@/features/orders/models";
 
 interface Props {
@@ -123,6 +124,10 @@ export function FulfillmentPanel({ order, etaMinutes }: Props) {
 }
 
 function StoreContact({ order, address }: { order: Order; address?: boolean }) {
+  // The checkout snapshot can carry a blank phone (legacy / imported orders),
+  // while the outlet directory still has the number. Same fallback as the
+  // tracker; with neither source the button is hidden, never a default.
+  const storePhone = useStorePhone(order);
   return (
     <Section icon={<MapPin className="h-4 w-4" aria-hidden />} title="Store contact">
       <Text variant="titleMedium">{order.store.name}</Text>
@@ -131,13 +136,13 @@ function StoreContact({ order, address }: { order: Order; address?: boolean }) {
           {order.store.address}
         </Text>
       )}
-      {order.store.phone && (
+      {storePhone && (
         <AppButton
           size="sm"
           variant="outlined"
           className="mt-2"
           iconLeft={<Phone className="h-4 w-4" aria-hidden />}
-          onClick={() => callPhone(order.store.phone)}
+          onClick={() => callPhone(storePhone)}
         >
           Call store
         </AppButton>

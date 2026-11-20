@@ -4,6 +4,7 @@ import { Timer, XCircle, Phone, MessageCircle } from "lucide-react";
 
 import type { Order } from "@/features/orders/models";
 import { ordersService } from "@/features/orders/services/ordersService";
+import { useStorePhone } from "@/features/orders/hooks/useStorePhone";
 import { isSafeTelNumber } from "@/shared/utils/urlSafety";
 
 /** Free-cancellation window (seconds) after an order is placed. */
@@ -80,7 +81,10 @@ export function OrderCancellationGrace({ order, onCancelled }: OrderCancellation
   // 3. Window closed (or kitchen already accepted) → help / support CTAs.
   const showSupport = !showCountdown && (remaining === 0 || supportStatus || !cancellableStatus);
 
-  const storePhone = order.store?.phone?.trim() ?? "";
+  // Snapshot first, outlet directory as the honest fallback (a blank snapshot
+  // used to kill this button); the hook's order is stable across renders.
+  const resolvedStorePhone = useStorePhone(order);
+  const storePhone = resolvedStorePhone?.trim() ?? "";
   const canCall = isSafeTelNumber(storePhone);
   const waNumber = canCall ? toWhatsAppNumber(storePhone) : "";
   const waHref = waNumber
