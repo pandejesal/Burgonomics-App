@@ -13,16 +13,23 @@ import { APP } from "../src/core/constants/app";
  * from real app config.
  *
  * The sources are the app's own pages/flows:
- *   terms.tsx    — pricing/GST, fee breakup, delivery fee, cancellation, refund
- *   privacy.tsx  — account deletion, retention, Razorpay handling
+ *   legal content — pricing/GST, fee breakup, delivery fee, cancellation, refund
+ *   (rendered by src/routes/{terms,refund-policy,privacy}.tsx)
+ *   privacy content — account deletion, retention, Razorpay handling
  *   orders track — live status
  *   support UI   — ticket creation, photo attach
  *   APP          — contact addresses, veg promise
+ *
+ * The legal copy moved out of the route files into
+ * `src/features/legal/content/legalContent.ts` so the in-app pages and the
+ * public store-listing URLs render the same text. The assertions below are the
+ * same statements as before, read from that single source.
  */
 
 const read = (p: string) => readFileSync(resolve(__dirname, p), "utf8");
-const termsSrc = read("../src/routes/terms.tsx");
-const privacySrc = read("../src/routes/privacy.tsx");
+const termsSrc = read("../src/features/legal/content/legalContent.ts");
+const privacySrc = termsSrc;
+const refundSrc = termsSrc;
 
 const byId = (id: string) => {
   const faq = LOCAL_FAQS.find((f) => f.id === id);
@@ -41,11 +48,15 @@ describe("FAQ answers are grounded in the app's own statements", () => {
     expect(a).toContain("never added on top");
   });
 
-  it("fee-breakup answer matches the checkout formula in terms.tsx", () => {
-    expect(termsSrc).toContain("Item Total + Packaging + Delivery Fee = Total to Pay");
-    expect(byId("faq-charges-breakup").answer).toContain(
-      "Item Total + Packaging + Delivery Fee = Total to Pay",
-    );
+  it("fee-breakup answer matches the checkout formula in the legal content", () => {
+    // src/features/cart/components/BillBreakdown.tsx computes
+    // subtotal - coupon - coins + packaging + delivery + tip. The old copy said
+    // "Item Total + Packaging + Delivery Fee = Total to Pay", which omitted both
+    // the coupon line and the rider tip a customer can add.
+    expect(termsSrc).not.toContain("Item Total + Packaging + Delivery Fee");
+    expect(termsSrc).toContain("less any coupon discount");
+    expect(byId("faq-charges-breakup").answer).toContain("less any coupon discount");
+    expect(byId("faq-charges-breakup").answer).toMatch(/rider tip/i);
   });
 
   it("delivery-fee answer says it is a live courier quote, as terms states", () => {
@@ -64,11 +75,16 @@ describe("FAQ answers are grounded in the app's own statements", () => {
     expect(a).toContain("Razorpay");
   });
 
-  it("cancellation answer restates the kitchen-confirmation rule", () => {
-    expect(termsSrc).toMatch(/prior to kitchen confirmation/);
+  it("cancellation answer restates the server's cancellation rule", () => {
+    // The rule the SERVER enforces (functions/src/modules/orders/customerCancel.ts):
+    // "being prepared or earlier" AND no rider assigned. The old copy said
+    // "prior to kitchen confirmation", which the server does not enforce — a
+    // customer may still cancel while the kitchen is preparing.
+    expect(refundSrc).toMatch(/before a rider has been assigned/);
     const a = byId("faq-cancel").answer;
-    expect(a).toMatch(/kitchen confirms/i);
-    expect(a).toMatch(/cannot be accepted/i);
+    expect(a).toMatch(/before a rider is assigned/i);
+    expect(a).toMatch(/cannot cancel/i);
+    expect(a).not.toMatch(/kitchen confirms/i);
   });
 
   it("account-deletion answer matches privacy.tsx paths and retention", () => {

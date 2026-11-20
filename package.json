@@ -6,8 +6,8 @@
   "type": "module",
   "packageManager": "npm@11.17.0",
   "scripts": {
-    "prebuild": "node scripts/generate-aasa.mjs",
-    "prebuild:mobile": "node scripts/generate-aasa.mjs",
+    "prebuild": "node scripts/generate-aasa.mjs && tsx scripts/render-legal-html.ts",
+    "prebuild:mobile": "node scripts/generate-aasa.mjs && tsx scripts/render-legal-html.ts",
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
@@ -25,7 +25,9 @@
     "test": "vitest run --exclude \"tests/rules/**\"",
     "test:rules": "node scripts/test-rules.mjs",
     "test:sticky": "playwright test -c tests/playwright/playwright.sticky-scroll.config.ts",
-    "test:sticky:types": "tsc -p tests/playwright/tsconfig.browser-tests.json --noEmit"
+    "test:sticky:types": "tsc -p tests/playwright/tsconfig.browser-tests.json --noEmit",
+    "legal:html": "tsx scripts/render-legal-html.ts",
+    "legal:facts": "tsx scripts/render-legal-facts.ts"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.0",

@@ -11,6 +11,8 @@ import {
   Lock,
   FileText,
   LogOut,
+  RotateCcw,
+  ShieldAlert,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { AppShell } from "@/shared/layouts/AppShell";
@@ -127,12 +129,21 @@ function Page() {
     },
   ];
 
+  // The four legal documents the stores require, kept together so a reviewer
+  // (and a customer with a complaint) reaches all of them without hunting.
   const helpItems: ProfileMenuItem[] = [
     { id: "support", label: "Help & support", to: "/support", Icon: LifeBuoy },
     { id: "settings", label: "Settings", to: "/profile/settings", Icon: SettingsIcon },
     { id: "about", label: "About Burgonomics", to: "/about", Icon: Info },
     { id: "privacy", label: "Privacy policy", to: "/privacy", Icon: Lock },
-    { id: "terms", label: "Terms & conditions", to: "/terms", Icon: FileText },
+    { id: "terms", label: "Terms of use", to: "/terms", Icon: FileText },
+    {
+      id: "refund-policy",
+      label: "Refund & cancellation",
+      to: "/refund-policy",
+      Icon: RotateCcw,
+    },
+    { id: "grievance", label: "Grievance redressal", to: "/grievance", Icon: ShieldAlert },
   ];
 
   const dangerItems: ProfileMenuItem[] = [

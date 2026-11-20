@@ -30,9 +30,12 @@ export const LOCAL_FAQS: FaqItem[] = [
     id: "faq-charges-breakup",
     category: "Pricing",
     question: "What makes up my total?",
-    // Source: terms.tsx §2 — Item Total + Packaging + Delivery Fee = Total.
+    // Source: legalContent.ts § terms/pricing — item total less coupon, plus
+    // packaging and delivery fee (and an optional rider tip) is what you pay.
     answer:
-      "Checkout shows the full breakup before you pay: Item Total + Packaging + Delivery Fee = Total to Pay. " +
+      "Checkout shows the full breakup before you pay: your item total, less any coupon discount, " +
+      "plus packaging and any delivery fee, plus an optional rider tip if you add one — that is the " +
+      "amount you pay. GST is already inside the item prices and is never added on top. " +
       "The packaging charge is set by the outlet.",
   },
   {
@@ -71,10 +74,13 @@ export const LOCAL_FAQS: FaqItem[] = [
     id: "faq-cancel",
     category: "Orders",
     question: "Can I cancel my order?",
-    // Source: terms.tsx §3 Cancellations & Refunds.
+    // Source: the Refund & Cancellation Policy, which restates the rule the
+    // server actually enforces (functions/src/modules/orders/customerCancel.ts):
+    // cancellable while PREPARING or earlier, and before a rider is assigned.
     answer:
-      "You can cancel free of charge before the kitchen confirms your order. Once food preparation has " +
-      "begun, cancellations cannot be accepted because the food is perishable.",
+      "Yes — free of charge while your order is being prepared or earlier, and before a rider is assigned. " +
+      "Once a rider is assigned, or the order is ready, picked up or out for delivery, the app cannot " +
+      "cancel it; call the store from the order screen or raise a support ticket and the store will help.",
   },
   {
     id: "faq-refund",
