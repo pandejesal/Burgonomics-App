@@ -377,6 +377,35 @@ function asIso(value: unknown): string | null {
 }
 
 /**
+ * F7 — normalize a live Firestore doc into the Customer render shape.
+ *
+ * Server-created cash/COD docs predate the client writer: the doc REF is the
+ * order id, but the body may have no `id`, no display `store`, and a
+ * serverTimestamp-shaped `placedAt`. Hydrate identity and the timestamp here
+ * (never invent a store) so list, tracking and confirmation see the same
+ * order the partner app wrote. A doc with no readable timestamp keeps its raw
+ * value and is quarantined by the existing shape check instead of rendering
+ * with a fabricated date.
+ */
+function orderFromFirestore(id: string | undefined, data: Record<string, any>): Order {
+  const { userId, ...orderData } = data;
+  // Real Firestore snapshots expose `id` on the ref. Older test doubles (and
+  // pre-F7 docs) carry it only in the body; keep that fallback so a missing
+  // snapshot id cannot quarantine an otherwise valid order.
+  const resolvedId =
+    id ??
+    (typeof data.id === "string" ? data.id : undefined) ??
+    (typeof data.orderId === "string" ? data.orderId : undefined) ??
+    "";
+  const placedAt = asIso(data.placedAt) ?? asIso(data.createdAt);
+  return {
+    ...orderData,
+    id: resolvedId,
+    ...(placedAt ? { placedAt } : {}),
+  } as Order;
+}
+
+/**
  * Record the timeline clock for an order hydrated from Firestore.
  *
  * Replaces the timestamps the DEV ticker used to synthesise: `PLACED` comes
@@ -1004,10 +1033,10 @@ export const ordersService = {
         } else {
           const fsOrders: Array<{ order: Order; server: Record<string, any> }> = [];
           snapshot.forEach((doc) => {
-            const data = doc.data() as any;
-            // Ensure we don't accidentally leak userId in the frontend Order model
-            const { userId, ...orderData } = data;
-            fsOrders.push({ order: orderData as Order, server: data });
+            const data = doc.data() as Record<string, any>;
+            // F7: the doc REF is authoritative for id/timestamp on server-
+            // created cash orders; the body alone is not a renderable Order.
+            fsOrders.push({ order: orderFromFirestore(doc.id, data), server: data });
           });
 
           // Merge with the memory map (createOrder/cancelOrder writes land here
@@ -1133,9 +1162,9 @@ export const ordersService = {
           // Ownership check: never load or cache another user's order fetched
           // by raw id (order ids are guessable). Mismatch reads as not-found.
           if (!isOrderVisibleTo(data, myUid)) return ok(null);
-          const { userId, ...orderData } = data;
-          orders.set(id, orderData as Order);
-          seedProgression(id, orderData as Order, data);
+          const order = orderFromFirestore(id, data);
+          orders.set(id, order);
+          seedProgression(id, order, data);
         }
       } catch (err: unknown) {
         // Permission/offline failures used to masquerade as not-found with
@@ -1180,10 +1209,10 @@ export const ordersService = {
         return;
       }
       if (!isOrderVisibleTo(data, myUid)) return;
-      const { userId, ...orderData } = data;
-      orders.set(id, orderData as Order);
+      const order = orderFromFirestore(id, data);
+      orders.set(id, order);
       // Server truth just landed: keep the timeline clock in step with it.
-      seedProgression(id, orderData as Order, data);
+      seedProgression(id, order, data);
     } catch (err) {
       // Best-effort: keep memory, but say so — a silent refresh failure
       // leaves tracking showing pre-terminal states forever.

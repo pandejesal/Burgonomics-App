@@ -401,10 +401,18 @@ function OrderConfirmationPage() {
             </MetaRow>
 
             <MetaRow icon={<MapPin className="h-4 w-4" />} label="Branch outlet">
-              <span className="block font-semibold text-text">{order.store.name}</span>
-              <span className="block leading-relaxed text-text-secondary">
-                {order.store.address}
-              </span>
+              {order.store?.name ? (
+                <>
+                  <span className="block font-semibold text-text">{order.store.name}</span>
+                  <span className="block leading-relaxed text-text-secondary">
+                    {order.store.address}
+                  </span>
+                </>
+              ) : (
+                // F7: server-created cash docs can omit the display store.
+                // Say so instead of throwing on `order.store.name`.
+                <span className="block text-text-secondary">Outlet details unavailable</span>
+              )}
             </MetaRow>
 
             <MetaRow icon={<FileText className="h-4 w-4" />} label="Payment status">
