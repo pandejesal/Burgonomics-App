@@ -2,11 +2,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 /**
- * F11 (P3) — the loyalty balance is a CACHE of server truth but was only ever
- * refreshed at checkout. After a cold boot or a silent token refresh the
- * wallet/profile tier rendered yesterday's (or zero) balance for the whole
- * session. Both bootstrap restore paths must refresh it from the server,
- * right alongside device-token linking.
+ * F11 (P3) — RETIRED with loyalty (owner decision 2026-11-20: "Loyalty no:
+ * hide coins, tiers and points everywhere").
+ *
+ * This suite used to pin the opposite behaviour: after a cold boot or a silent
+ * token refresh the auth store refreshed the coin balance from the server, so
+ * the wallet/profile tier did not render a stale number. The wallet, the tier
+ * and the order-confirmation credit are all gone, so that read has no consumer.
+ *
+ * The assertions are inverted rather than deleted: the device-token link must
+ * still fire on both restore paths (that seam is NOT part of the retirement),
+ * and the coin balance must stay untouched with NO `customers/{uid}` read. The
+ * store and the getDoc spy stay installed so a re-introduced refresh fails
+ * here instead of silently passing.
  */
 const { mockGetDoc } = vi.hoisted(() => ({ mockGetDoc: vi.fn() }));
 
@@ -49,7 +57,7 @@ async function seedSession(accessToken: string) {
 const customerReads = () =>
   mockGetDoc.mock.calls.filter((call) => call[0]?.[1] === "customers" && call[0]?.[2] === USER.id);
 
-describe("authStore.bootstrap loyalty refresh (F11)", () => {
+describe("authStore.bootstrap after the loyalty retirement (F11 retired)", () => {
   beforeEach(async () => {
     useAuthStore.setState({
       status: "idle",
@@ -78,19 +86,21 @@ describe("authStore.bootstrap loyalty refresh (F11)", () => {
     await secureStorage.remove(SECURE_KEYS.USER);
   });
 
-  it("refreshes the balance on the unexpired-token restore path", async () => {
+  it("does NOT refresh a coin balance on the unexpired-token restore path", async () => {
     await seedSession(jwt(3600));
     const link = vi.mocked(notificationsService.linkUserToDeviceToken);
 
     await useAuthStore.getState().bootstrap(async () => USER.id);
     expect(useAuthStore.getState().status).toBe("authenticated");
 
-    await vi.waitFor(() => expect(useLoyaltyStore.getState().balance).toBe(88));
-    expect(customerReads().length).toBeGreaterThan(0);
-    expect(link).toHaveBeenCalledWith(USER.id);
+    // The session is adopted and the device token is still linked — that seam
+    // is untouched by the retirement — but no balance is fetched.
+    await vi.waitFor(() => expect(link).toHaveBeenCalledWith(USER.id));
+    expect(customerReads()).toHaveLength(0);
+    expect(useLoyaltyStore.getState().balance).toBe(0);
   });
 
-  it("refreshes the balance on the silent-token-refresh restore path", async () => {
+  it("does NOT refresh a coin balance on the silent-token-refresh restore path", async () => {
     await seedSession(jwt(-60));
     vi.spyOn(authRepository, "refresh").mockResolvedValue({
       success: true,
@@ -101,9 +111,9 @@ describe("authStore.bootstrap loyalty refresh (F11)", () => {
     await useAuthStore.getState().bootstrap(async () => USER.id);
     expect(useAuthStore.getState().status).toBe("authenticated");
 
-    await vi.waitFor(() => expect(useLoyaltyStore.getState().balance).toBe(88));
-    expect(customerReads().length).toBeGreaterThan(0);
-    expect(link).toHaveBeenCalledWith(USER.id);
+    await vi.waitFor(() => expect(link).toHaveBeenCalledWith(USER.id));
+    expect(customerReads()).toHaveLength(0);
+    expect(useLoyaltyStore.getState().balance).toBe(0);
   });
 
   it("does not query loyalty for a rejected (stolen) session", async () => {

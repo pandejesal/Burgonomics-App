@@ -9,9 +9,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
  * confirm attempts, duplicate 429s). The guard must also RESET after a failure
  * so the customer can retry.
  *
- * F11 (P3) — a successful verification refreshes the loyalty balance from the
- * server right beside token linking, so the wallet never shows a stale/zero
- * balance for the rest of the session.
+ * F11 (P3) — RETIRED with loyalty (owner decision 2026-11-20: "Loyalty no:
+ * hide coins, tiers and points everywhere"). A successful verification used
+ * to also refresh the coin balance from the server; nothing renders or spends
+ * that balance now, so the read is gone and the suite asserts its ABSENCE while
+ * still proving single-flight.
  */
 const { mockGetDoc } = vi.hoisted(() => ({ mockGetDoc: vi.fn() }));
 
@@ -52,7 +54,7 @@ const seedChallenge = () =>
     error: null,
   });
 
-describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => {
+describe("authStore.verifyOtp single-flight (F12) + loyalty retirement (F11)", () => {
   beforeEach(() => {
     mockGetDoc.mockReset();
     seedChallenge();
@@ -108,7 +110,7 @@ describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => 
     expect(verify).toHaveBeenCalledTimes(2);
   });
 
-  it("refreshes the loyalty balance from the server after success (F11)", async () => {
+  it("does NOT refresh a coin balance after success (F11 retired)", async () => {
     mockGetDoc.mockResolvedValue({
       exists: () => true,
       data: () => ({ loyaltyPoints: 275 }),
@@ -120,13 +122,13 @@ describe("authStore.verifyOtp single-flight + loyalty refresh (F12/F11)", () => 
 
     const res = await useAuthStore.getState().verifyOtp("login", "handle_verify_1", "123456");
     expect(res.ok).toBe(true);
+    expect(useAuthStore.getState().status).toBe("authenticated");
 
-    await vi.waitFor(() => {
-      expect(useLoyaltyStore.getState().balance).toBe(275);
-    });
+    // The balance stays where it was and no `customers/{uid}` read is made.
+    expect(useLoyaltyStore.getState().balance).toBe(0);
     const customerReads = mockGetDoc.mock.calls.filter(
       (call) => call[0]?.[1] === "customers" && call[0]?.[2] === USER.id,
     );
-    expect(customerReads.length).toBeGreaterThan(0);
+    expect(customerReads).toHaveLength(0);
   });
 });
