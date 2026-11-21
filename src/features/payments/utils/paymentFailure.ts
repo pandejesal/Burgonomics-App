@@ -16,12 +16,35 @@ export interface FailurePanelContent {
 export const STORE_NOT_LINKED = "STORE_NOT_LINKED";
 
 /**
+ * F2 (staging 2026-11-21, Test 9): staff closed the outlet, so NO new online
+ * customer order can be taken — checkout fees, online payment and cash order
+ * all answer this 409. It is a static refusal (the shop has to reopen), so a
+ * Retry button would only invite a second failed attempt.
+ */
+export const STORE_CLOSED = "STORE_CLOSED";
+
+/**
+ * F1 (staging 2026-11-21, Test 8): the coupon would take ₹0 off the bill, so
+ * the server refuses it instead of saying "Coupon applied.". The app shows the
+ * server's sentence and does not attach the coupon.
+ */
+export const COUPON_NO_DISCOUNT = "COUPON_NO_DISCOUNT";
+
+/** True when the refusal is "this outlet is closed right now". */
+export function isStoreClosedRefusal(code?: string): boolean {
+  return code === STORE_CLOSED;
+}
+
+/**
  * Order/payment failures that a Retry can never fix: a reconciliation block
- * (money may already have moved) and a store that is not taking online orders
- * at all. Everything else keeps its previous retry affordance.
+ * (money may already have moved), a store that is not taking online orders at
+ * all, and an outlet that is currently closed. Everything else keeps its
+ * previous retry affordance.
  */
 export function isNonRetryableOrderFailure(code?: string): boolean {
-  return code === "PAYMENT_RECONCILIATION_PENDING" || code === STORE_NOT_LINKED;
+  return (
+    code === "PAYMENT_RECONCILIATION_PENDING" || code === STORE_NOT_LINKED || code === STORE_CLOSED
+  );
 }
 
 export function describePaymentFailure(input: {
@@ -37,6 +60,16 @@ export function describePaymentFailure(input: {
       body: `${message} You can try again. If your bank shows a charge, contact support.`,
       showRetry: true,
       showContactSupport: false,
+    };
+  }
+  if (code === STORE_CLOSED) {
+    // F2: the shop is closed. Nothing was created and nothing was charged; the
+    // fix is "order during opening hours", which a Retry cannot provide.
+    return {
+      title: "Outlet is closed",
+      body: message,
+      showRetry: false,
+      showContactSupport: true,
     };
   }
   if (code === STORE_NOT_LINKED) {

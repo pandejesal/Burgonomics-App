@@ -119,6 +119,9 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   // order transport preserves the server's structured code.
   "ITEM_UNAVAILABLE",
   "ITEM_PRICE_UNVERIFIED",
+  // F2 (staging 2026-11-21, Test 9): the outlet is closed, so the server
+  // refuses the gateway order. Its sentence is the honest thing to show.
+  "STORE_CLOSED",
 ]);
 
 function orderFailureMessage(error: { code: string; message: string }): string {

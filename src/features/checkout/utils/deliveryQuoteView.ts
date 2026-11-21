@@ -12,7 +12,7 @@
  * selectable whenever delivery is unavailable.
  */
 import type { PricingFulfillment } from "@/shared/pricing/pricingEngine";
-import { STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
+import { STORE_NOT_LINKED, STORE_CLOSED } from "@/features/payments/utils/paymentFailure";
 import { STORE_NOT_LINKED_MESSAGE } from "@/features/checkout/services/deliveryQuoteService";
 import {
   isCheckoutFeesUsable,
@@ -24,6 +24,13 @@ export const GETTING_ORDER_PRICE = "Getting your order price";
 export const DELIVERY_UNAVAILABLE_COPY = "Delivery isn't available to this address";
 export const DELIVERY_ADDRESS_REQUIRED_COPY = "Add a delivery address to see the delivery fee";
 export const FEES_UNAVAILABLE_COPY = "We couldn't load your order price. Please try again.";
+/**
+ * F2 (staging 2026-11-21, Test 9): the outlet is closed right now. Fixed copy —
+ * the server's own sentence is what the customer reads, and this is the
+ * fallback when the screen only has the code.
+ */
+export const STORE_CLOSED_COPY =
+  "This outlet is closed right now, so online orders can't be placed. Please try again during opening hours.";
 
 export interface DeliveryQuoteView {
   status: "idle" | "loading" | "ready" | "unserviceable" | "error";
@@ -53,8 +60,18 @@ export interface DeliveryQuoteView {
    * the same sentence ("This outlet isn't taking online orders yet.").
    */
   storeNotLinked?: boolean;
+  /**
+   * F2: true when the server refused because the outlet is CLOSED right now.
+   * No retry and no takeaway escape: the shop has to reopen first.
+   */
+  storeClosed?: boolean;
   /** Takeaway must remain reachable whenever delivery cannot be quoted. */
   takeawaySelectable: boolean;
+}
+
+/** F2: the view's "this outlet is closed" flag, for screens that branch on it. */
+export function isClosedStoreView(view: DeliveryQuoteView): boolean {
+  return view.storeClosed === true;
 }
 
 export function deliveryQuoteView(input: {
@@ -67,6 +84,9 @@ export function deliveryQuoteView(input: {
   const isDelivery = input.fulfillment === "delivery";
   const state = input.state;
   const storeNotLinked = state.status === "error" && state.code === STORE_NOT_LINKED;
+  // F2: the outlet is closed. Same "no retry" shape as an unlinked outlet, but
+  // it also closes the takeaway escape — a closed kitchen cooks nothing.
+  const storeClosed = state.status === "error" && state.code === STORE_CLOSED;
 
   if (!isDelivery) {
     // CUS-18: non-delivery needs no courier, so a packaging quote that has not
@@ -97,16 +117,19 @@ export function deliveryQuoteView(input: {
         ? packagingPending
           ? GETTING_ORDER_PRICE
           : null
-        : storeNotLinked
-          ? STORE_NOT_LINKED_MESSAGE
-          : FEES_UNAVAILABLE_COPY,
-      canRetry: quoteFailed && !storeNotLinked,
+        : storeClosed
+          ? STORE_CLOSED_COPY
+          : storeNotLinked
+            ? STORE_NOT_LINKED_MESSAGE
+            : FEES_UNAVAILABLE_COPY,
+      canRetry: quoteFailed && !storeNotLinked && !storeClosed,
       ...(storeNotLinked ? { storeNotLinked } : {}),
+      ...(storeClosed ? { storeClosed } : {}),
       takeawaySelectable: false,
     };
   }
 
-  const takeawaySelectable = true;
+  const takeawaySelectable = !storeClosed;
 
   if (!input.hasAddress) {
     return {
@@ -168,10 +191,15 @@ export function deliveryQuoteView(input: {
       packagingFee: null,
       deliveryQuoteId: null,
       expiresAt: null,
-      message: storeNotLinked ? STORE_NOT_LINKED_MESSAGE : DELIVERY_UNAVAILABLE_COPY,
-      canRetry: !storeNotLinked,
+      message: storeClosed
+        ? STORE_CLOSED_COPY
+        : storeNotLinked
+          ? STORE_NOT_LINKED_MESSAGE
+          : DELIVERY_UNAVAILABLE_COPY,
+      canRetry: !storeNotLinked && !storeClosed,
       storeNotLinked,
-      takeawaySelectable: storeNotLinked ? false : takeawaySelectable,
+      ...(storeClosed ? { storeClosed } : {}),
+      takeawaySelectable: storeNotLinked || storeClosed ? false : takeawaySelectable,
     };
   }
 

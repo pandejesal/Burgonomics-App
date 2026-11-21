@@ -110,6 +110,9 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "ITEM_UNAVAILABLE",
   "ITEM_PRICE_UNVERIFIED",
   "MIN_ORDER",
+  // F2 (staging 2026-11-21, Test 9): the outlet is closed. The server's own
+  // sentence is what the customer must read, not a generic failure.
+  "STORE_CLOSED",
 ]);
 
 /**

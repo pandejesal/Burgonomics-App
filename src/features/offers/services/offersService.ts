@@ -280,6 +280,17 @@ export const offersService = {
       storeId: input.storeId,
     });
     if (!quoted.success) return quoted;
+    // F1 (staging 2026-11-21, Test 8): never attach a coupon that saves nothing.
+    // The server now refuses such a code outright, but a stored quote from an
+    // older build could still say "valid" with ₹0 off — showing "You saved ₹0"
+    // and charging full price is exactly the lie this finding is about.
+    if (!(quoted.data.discount > 0)) {
+      return fail(
+        "COUPON_NO_DISCOUNT",
+        "This coupon doesn't take anything off this order, so it can't be applied.",
+        false,
+      );
+    }
     return ok({
       offerId: quoted.data.code,
       code: quoted.data.code,

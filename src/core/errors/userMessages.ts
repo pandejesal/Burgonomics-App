@@ -57,6 +57,14 @@ const CODE_MESSAGES: Record<string, string> = {
   // the server refuses to mint a gateway order (HTTP 409). Static refusal, not
   // a transient failure: never tell the customer to retry.
   STORE_NOT_LINKED: "This outlet isn't taking online orders yet.",
+  // F2 (staging 2026-11-21, Test 9): staff closed the outlet. The server refuses
+  // every new online customer order (fees, gateway order, cash order) with this
+  // 409. Static refusal — the shop has to reopen, so never invite a retry.
+  STORE_CLOSED:
+    "This outlet is closed right now, so online orders can't be placed. Please try again during opening hours.",
+  // F1 (staging 2026-11-21, Test 8): the coupon would take nothing off the bill.
+  // The server refuses it instead of answering "Coupon applied." with ₹0.
+  COUPON_NO_DISCOUNT: "This coupon doesn't take anything off this order, so it can't be applied.",
   // payments
   GATEWAY_ERROR: "The payment couldn't be started. Please try again.",
   VERIFY_GATEWAY_ERROR: "We couldn't verify your payment. Please try again.",

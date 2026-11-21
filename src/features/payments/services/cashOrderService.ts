@@ -130,6 +130,9 @@ const TERMINAL_REFUSALS = new Set([
   "ITEM_PRICE_UNVERIFIED",
   "PRODUCT_UNSUPPORTED",
   "STORE_NOT_LINKED",
+  // F2 (staging 2026-11-21, Test 9): the outlet is closed. The server refuses
+  // the cash order, and a retry cannot fix a closed shop.
+  "STORE_CLOSED",
   "DELIVERY_QUOTE_REQUIRED",
   "DELIVERY_QUOTE_EXPIRED",
   "DELIVERY_QUOTE_UNSUPPORTED",
