@@ -1,4 +1,65 @@
-# Normalize line endings across Windows/macOS/Linux checkouts.
-# Text files are stored with LF; working copies use the platform default.
+# Line endings — fix wave 2026-11-20, package `line-endings`.
+#
+# This Windows machine checks out with core.autocrlf=true, and git config must
+# never be changed, so the policy lives in this file instead: text files are
+# stored with LF in the repository AND written to the working tree with LF on
+# every machine (Windows, macOS, Linux). Gates that compare exact bytes depend
+# on this — full-repo lint, LEGAL-FACTS-NEEDED.md byte-identity
+# (tests/legal-pages.test.ts) and the *.gradle rewrite checks.
+#
+# `text=auto` still normalises every other text file to LF in the repository;
+# the explicit `eol=lf` lines below remove the platform-default checkout so
+# `core.autocrlf=true` cannot put CRLF into source, config, docs or rules.
+
 * text=auto
+
+# Source
+*.ts  text eol=lf
+*.tsx text eol=lf
+*.js  text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+
+# Config and data
+*.json   text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.gradle text eol=lf
+
+# Docs and markup
+*.md   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+
+# Security rules
+*.rules text eol=lf
+
+# Attribute files
+.gitattributes text eol=lf
+
+# Binaries are never converted: images, fonts, keystores, jar/aar, apk/aab.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.bmp   binary
+*.avif  binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.eot   binary
+*.keystore binary
+*.jks   binary
+*.p12   binary
+*.pfx   binary
+*.jar   binary
+*.aar   binary
+*.apk   binary
+*.aab   binary
+
+# TanStack Router regenerates this file; it must stay LF so the generator's
+# output is byte-stable (tests/generated-route-eol.test.ts pins it).
 src/routeTree.gen.ts text eol=lf
