@@ -8,7 +8,6 @@ import { RecaptchaHost } from "@/features/auth/components/RecaptchaHost";
 import { sanitizePhone, validateOtp, validatePhone } from "@/features/auth/utils/validators";
 import { HapticService } from "@/core/services/haptics";
 import { toUserMessage } from "@/core/errors/userMessages";
-import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 
 interface QuickAuthSheetProps {
   isOpen: boolean;
@@ -88,16 +87,10 @@ export function QuickAuthSheet({ isOpen, onClose, onSuccess }: QuickAuthSheetPro
     setBusy(false);
 
     if (res.ok) {
-      // Loop 65/120: no local signup mint. The old code credited 50 phantom
-      // points per device with zero server backing (clearing storage
-      // re-minted them); the server ledger is the sole minter. Refresh from
-      // truth instead — new customers correctly see zero.
-      try {
-        const uid = useAuthStore.getState().user?.id ?? null;
-        void useLoyaltyStore.getState().refreshFromServer(uid);
-      } catch {
-        // balance refresh is best-effort here; checkout re-syncs anyway
-      }
+      // Loyalty is retired (owner decision 2026-11-20: "Loyalty no: hide coins,
+      // tiers and points everywhere"). This path used to pull a coin balance
+      // from the server after verification; nothing renders or spends it any
+      // more, so there is no balance to refresh. Sign-in itself is unaffected.
       toast.success("Verified successfully!");
       onSuccess();
       onClose();

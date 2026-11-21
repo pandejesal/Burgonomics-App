@@ -331,8 +331,11 @@ describe("auth races: in-flight ownership and epoch fencing", () => {
     // The background seams fired for the restored identity exactly once across
     // the two coalesced boots — the comment claims "one", so assert it.
     expect(profileRefresh).toHaveBeenCalledTimes(1);
-    expect(loyaltyRefresh).toHaveBeenCalledTimes(1);
-    expect(loyaltyRefresh).toHaveBeenCalledWith(USER_A.id);
+    // CHANGED FOR THE LOYALTY RETIREMENT (owner decision 2026-11-20): no coin
+    // balance is read on restore any more. Zero times is the new "one", and the
+    // spy stays installed so this reads as a deliberate assertion, not an
+    // accidental pass.
+    expect(loyaltyRefresh).not.toHaveBeenCalled();
     expect(deviceLink).toHaveBeenCalledTimes(1);
     expect(deviceLink).toHaveBeenCalledWith(USER_A.id);
   });

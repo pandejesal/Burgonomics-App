@@ -14,7 +14,6 @@ import {
   configureAuthUidSource,
   purgeScopedLocalCaches,
 } from "@/features/auth/utils/scopedPersistence";
-import { useLoyaltyStore } from "@/features/loyalty/state/loyaltyStore";
 import { fail } from "@/core/network/http";
 
 export type AuthStatus =
@@ -293,20 +292,15 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 /**
- * F11: the loyalty balance is a server-truth CACHE. Every restore/verify path
- * that adopts a session refreshes it beside device-token linking, otherwise the
- * wallet renders yesterday's (or zero) balance for the whole session.
+ * F11 — RETIRED (owner decision 2026-11-20: "Loyalty no: hide coins, tiers and
+ * points everywhere").
+ *
+ * This used to refresh the server-truth coin balance on every restore/verify
+ * path so the wallet did not render a stale number. The wallet, redemption and
+ * the order-confirmation credit are all gone, so the refresh had no consumer
+ * and only produced a background read of a retired feature. Removed rather
+ * than left firing: a balance nothing shows is not worth a request.
  */
-function refreshLoyaltyInBackground(uid: string): void {
-  void useLoyaltyStore
-    .getState()
-    .refreshFromServer(uid)
-    .catch((e: unknown) =>
-      logger.warn("auth.loyalty_refresh_failed", {
-        message: e instanceof Error ? e.message : String(e),
-      }),
-    );
-}
 
 /**
  * Push-token linking, off the critical path. A failure is REPORTED by
@@ -405,7 +399,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }),
           );
           linkDeviceTokenInBackground(user.id);
-          refreshLoyaltyInBackground(user.id);
           set({
             status: "authenticated",
             user,
@@ -434,7 +427,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           // Same linking as fresh login — otherwise refreshed sessions silently
           // stop receiving order status pushes.
           linkDeviceTokenInBackground(user.id);
-          refreshLoyaltyInBackground(user.id);
           set({
             status: "authenticated",
             user,
@@ -600,7 +592,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }),
       );
       linkDeviceTokenInBackground(res.data.user.id);
-      refreshLoyaltyInBackground(res.data.user.id);
       set({
         status: "authenticated",
         user: res.data.user,

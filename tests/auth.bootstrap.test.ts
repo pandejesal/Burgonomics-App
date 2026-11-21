@@ -162,7 +162,12 @@ describe("authStore.bootstrap Firebase trust gate (real store)", () => {
     // The background seams really fire for THIS identity — the interception is
     // not vacuous, and none of them is treated as an acceptance signal.
     expect(profileRefresh).toHaveBeenCalled();
-    expect(loyaltyRefresh).toHaveBeenCalledWith(USER.id);
     expect(deviceLink).toHaveBeenCalledWith(USER.id);
+    // CHANGED FOR THE LOYALTY RETIREMENT (owner decision 2026-11-20): the
+    // coin-balance refresh used to be part of adopting a session. Nothing
+    // renders or spends that balance any more, so the restore path must NOT
+    // read it. The spy stays installed to prove the read is gone, not to be
+    // dropped along with the assertion.
+    expect(loyaltyRefresh).not.toHaveBeenCalled();
   });
 });
