@@ -398,8 +398,38 @@ function orderFromFirestore(id: string | undefined, data: Record<string, any>): 
     (typeof data.orderId === "string" ? data.orderId : undefined) ??
     "";
   const placedAt = asIso(data.placedAt) ?? asIso(data.createdAt);
+
+  // F8 — legacy server-created cash docs carry the backend money names. These
+  // are READ-TIME aliases only: no write, no migration, no invented money. A
+  // canonical doc (online path or the fixed cash writer) passes through as-is.
+  const rawTotals = data.totals;
+  const totals =
+    rawTotals && typeof rawTotals === "object"
+      ? {
+          ...rawTotals,
+          ...(rawTotals.subtotal === undefined && rawTotals.foodSubtotal !== undefined
+            ? { subtotal: rawTotals.foodSubtotal }
+            : {}),
+          ...(rawTotals.taxes === undefined && rawTotals.gst !== undefined
+            ? { taxes: rawTotals.gst }
+            : {}),
+          ...(rawTotals.packingFee === undefined && rawTotals.packagingFee !== undefined
+            ? { packingFee: rawTotals.packagingFee }
+            : {}),
+        }
+      : rawTotals;
+  const items = Array.isArray(data.items)
+    ? data.items.map((item: any) =>
+        item && typeof item === "object" && item.unitPrice === undefined && item.price !== undefined
+          ? { ...item, unitPrice: item.price }
+          : item,
+      )
+    : data.items;
+
   return {
     ...orderData,
+    ...(rawTotals !== undefined ? { totals } : {}),
+    ...(data.items !== undefined ? { items } : {}),
     id: resolvedId,
     ...(placedAt ? { placedAt } : {}),
   } as Order;
