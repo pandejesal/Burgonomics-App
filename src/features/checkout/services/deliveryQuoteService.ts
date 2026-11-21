@@ -16,7 +16,7 @@ import { fail, ok, type ApiResult } from "@/core/network/http";
 import { httpClient } from "@/core/network/httpClient";
 import { defaultFunctionsBase } from "@/core/config/functionsBase";
 import { logger } from "@/core/logging/logger";
-import { STORE_NOT_LINKED } from "@/features/payments/utils/paymentFailure";
+import { STORE_NOT_LINKED, STORE_CLOSED } from "@/features/payments/utils/paymentFailure";
 import type {
   CashOnDeliveryQuote,
   CheckoutFeesContext,
@@ -38,6 +38,23 @@ export function checkoutFeesUrl(): string {
 
 /** Same honest sentence the payment screen uses for an unlinked outlet. */
 export const STORE_NOT_LINKED_MESSAGE = "This outlet isn't taking online orders yet.";
+
+/**
+ * F2 (staging 2026-11-21, Test 9): the outlet is closed right now. Used only
+ * when the response carried the code but no usable sentence — the server's own
+ * copy wins whenever it is present.
+ */
+export const STORE_CLOSED_MESSAGE =
+  "This outlet is closed right now, so online orders can't be placed. Please try again during opening hours.";
+
+/** The server's own closed-outlet sentence, or the fixed fallback. */
+function closedMessage(err: unknown): string {
+  const bodyMessage = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+  if (typeof bodyMessage === "string" && bodyMessage.trim()) return bodyMessage.trim();
+  const own = (err as { message?: unknown })?.message;
+  if (typeof own === "string" && own.trim() && /closed/i.test(own)) return own.trim();
+  return STORE_CLOSED_MESSAGE;
+}
 
 export interface CheckoutFeesRequest {
   storeId?: string;
@@ -290,6 +307,13 @@ export async function requestCheckoutFees(
     if (code === STORE_NOT_LINKED || (status === 409 && !code)) {
       logger.warn("checkout.fees_store_not_linked", { orderType: ctx.orderType });
       return fail(STORE_NOT_LINKED, STORE_NOT_LINKED_MESSAGE, false);
+    }
+    // F2 (staging 2026-11-21, Test 9): staff closed the outlet, so the server
+    // refuses the quote. Static (the shop must reopen), so no retry affordance
+    // and the customer reads the server's own sentence.
+    if (code === STORE_CLOSED) {
+      logger.warn("checkout.fees_store_closed", { orderType: ctx.orderType });
+      return fail(STORE_CLOSED, closedMessage(err), false);
     }
     // Never surface provider/transport text: the UI has fixed, honest copy.
     logger.warn("checkout.fees_request_failed", {

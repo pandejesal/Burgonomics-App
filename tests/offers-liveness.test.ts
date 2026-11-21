@@ -92,8 +92,11 @@ describe("offersService liveness", () => {
   });
 
   it("never reports a discount the server did not send", async () => {
-    // A 200 that claims validity but carries no discount: the client shows 0,
-    // it does not compute one from the code or the cart.
+    // A 200 that claims validity but carries no discount used to be attached
+    // with `discount: 0`, which the cart then showed as "You saved ₹0" while
+    // the customer paid full price (staging 2026-11-21, F1). The client still
+    // never computes a discount of its own; it now refuses the ₹0 quote
+    // outright instead of celebrating it.
     fetchMock.mockResolvedValue(
       jsonResponse(200, {
         valid: true,
@@ -106,7 +109,10 @@ describe("offersService liveness", () => {
       }),
     );
     const res = await offersService.apply({ code: "ODD", lines: LINES });
-    if (!res.success) throw new Error(res.error.code);
-    expect(res.data.discount).toBe(0);
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.code).toBe("COUPON_NO_DISCOUNT");
+      expect(res.error.retryable).toBe(false);
+    }
   });
 });

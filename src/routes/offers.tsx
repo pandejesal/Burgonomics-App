@@ -119,6 +119,9 @@ const CURATED_PROMO_CODES = new Set([
   "COUPON_INACTIVE",
   "COUPON_EXPIRED",
   "MIN_ORDER_NOT_MET",
+  // F1 (staging 2026-11-21, Test 8): the coupon would take nothing off. The
+  // server's own sentence must reach the customer instead of a generic error.
+  "COUPON_NO_DISCOUNT",
   "OFFER_INELIGIBLE",
   "OFFER_NOT_FOUND",
   "OFFER_ERROR",
