@@ -138,6 +138,8 @@ export interface Order {
   items: CartLine[];
   totals: CartTotals;
   promo?: AppliedPromo | null;
+  /** Coupon code stamped on the order document by the server (online and cash). */
+  couponCode?: string | null;
   /** Delivery-partner tip (₹) and redeemed loyalty points, as placed. */
   tipAmount?: number;
   loyaltyPointsRedeemed?: number;

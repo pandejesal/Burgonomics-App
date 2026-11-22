@@ -58,23 +58,36 @@ export function InvoiceDownloadButton({
       )
       .join("");
 
+    const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
     const grandTotal = order.totals?.grandTotal || 0;
     // Document class: this is an ORDER RECEIPT, never a GST tax invoice.
     // "Paid" is a claim about money — only the payment state may make it.
     const isPaid = order.payment?.status === "paid";
-    // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
+    const itemDiscount = order.totals?.itemDiscount || 0;
+    const promoDiscount = order.totals?.promoDiscount || order.promo?.discount || 0;
+    // The server stamps `couponCode`; legacy docs may only carry `promo.code`.
+    const couponCode = order.couponCode || order.promo?.code || "";
+    const packing = order.totals?.packingFee || 0;
+    const delivery = order.totals?.deliveryFee || 0;
+    // Legacy docs without a stored subtotal still need a row whose arithmetic
+    // reconciles: invert the pricing engine's grand-total formula.
+    const subtotal =
+      typeof order.totals?.subtotal === "number"
+        ? order.totals.subtotal
+        : round2(grandTotal + itemDiscount + promoDiscount - packing - delivery);
+    // The delivery tip is charged on top of `grandTotal` (pricing engine and
+    // orderPayableAmount both use grandTotal + tip), so the printed total must
+    // include it — otherwise the lines never add up on a tipped order.
+    const tip =
+      typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount)
+        ? Math.max(0, order.tipAmount)
+        : 0;
+    const billTotal = round2(grandTotal + tip);
     // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
     // component backs OUT of the food value, never 5% on top. R1: the inclusive
     // share is `netFood * 0.05 / 1.05` and fees are outside the GST base.
-    const netFood = Math.max(
-      0,
-      (order.totals?.subtotal ?? grandTotal) -
-        (order.totals?.itemDiscount ?? 0) -
-        (order.totals?.promoDiscount ?? 0),
-    );
+    const netFood = round2(Math.max(0, subtotal - itemDiscount - promoDiscount));
     const taxes = order.totals?.taxes ?? includedGst(netFood);
-    const packing = order.totals?.packingFee || 0;
-    const delivery = order.totals?.deliveryFee || 0;
 
     const invoiceContent = `
       <!DOCTYPE html>
@@ -91,6 +104,7 @@ export function InvoiceDownloadButton({
           .totals { margin-left: auto; width: 260px; font-size: 12px; }
           .totals-row { display: flex; justify-content: space-between; padding: 4px 0; }
           .grand-total { border-top: 2px solid #111; font-size: 14px; font-weight: 900; color: #0E4825; padding-top: 6px; margin-top: 4px; }
+          .tax-note { font-size: 10px; color: #666; text-align: right; margin-top: 4px; }
           .footer { margin-top: 24px; border-top: 1px dashed #ccc; padding-top: 12px; font-size: 10px; color: #666; text-align: center; }
           @media print { .no-print { display: none; } body { padding: 0; } }
         </style>
@@ -140,9 +154,21 @@ export function InvoiceDownloadButton({
 
         <div class="totals">
           <div class="totals-row">
-            <span>Incl. GST (5%):</span>
-            <span>${formatINR(taxes)}</span>
+            <span>Subtotal:</span>
+            <span>${formatINR(subtotal)}</span>
           </div>
+          ${
+            itemDiscount > 0
+              ? `<div class="totals-row"><span>Item discount:</span><span>-${formatINR(itemDiscount)}</span></div>`
+              : ""
+          }
+          ${
+            promoDiscount > 0
+              ? `<div class="totals-row"><span>Coupon discount${
+                  couponCode ? ` (${esc(couponCode)})` : ""
+                }:</span><span>-${formatINR(promoDiscount)}</span></div>`
+              : ""
+          }
           ${
             packing > 0
               ? `<div class="totals-row"><span>Packaging Fee:</span><span>${formatINR(packing)}</span></div>`
@@ -153,10 +179,20 @@ export function InvoiceDownloadButton({
               ? `<div class="totals-row"><span>Delivery Fee:</span><span>${formatINR(delivery)}</span></div>`
               : ""
           }
+          ${
+            tip > 0
+              ? `<div class="totals-row"><span>Delivery Tip:</span><span>${formatINR(tip)}</span></div>`
+              : ""
+          }
+          <div class="totals-row">
+            <span>Incl. GST (5%):</span>
+            <span>${formatINR(taxes)}</span>
+          </div>
           <div class="totals-row grand-total">
             <span>${isPaid ? "Total Amount Paid" : "Order Total"}:</span>
-            <span>${formatINR(grandTotal)}</span>
+            <span>${formatINR(billTotal)}</span>
           </div>
+          <div class="tax-note">GST is already included in item prices and is not added again.</div>
         </div>
 
         <div class="footer">
