@@ -408,15 +408,18 @@ export class PaymentRepository {
     // A gateway order already minted for this exact checkout is reused as-is:
     // exactly ONE Razorpay order per attempt, on the server's own amount, and
     // no second order write or network round-trip.
-    if (!opts?.resumeOrderId && recorded?.gatewayOrder && !quoteChangedAfterGateway) {
+    // A DISCOUNTED cached gateway order is never handed back locally: only the
+    // server can verify its slot in a transaction, so the retry goes through
+    // createPaymentOrder. Non-discounted orders keep the one-call cache.
+    if (!opts?.resumeOrderId && recorded?.gatewayOrder && !quoteChangedAfterGateway && !(((recorded.gatewayOrder as unknown as {pricing?:{discount?:number}}).pricing?.discount ?? 0) > 0)) {
       usePaymentStore.getState().setInternalOrderId(recorded.internalOrderId);
-      usePaymentStore
-        .getState()
-        .setGatewayOrderId(
-          recorded.gatewayOrder.razorpayOrderId ?? recorded.gatewayOrder.orderId ?? null,
-        );
+      usePaymentStore.getState().setGatewayOrderId(
+        recorded.gatewayOrder.razorpayOrderId ?? recorded.gatewayOrder.orderId ?? null,
+      );
       return ok(recorded.gatewayOrder);
     }
+    // Keep the document and idempotency key, but reauthorize a discounted
+    // gateway order server-side on every retry (coupon slot and storefront).
 
     // The checkout token would normally come from the cart-prepare step
     // and be signed by the backend. Mock: request one.

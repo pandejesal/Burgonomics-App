@@ -35,6 +35,8 @@ export interface CashOrderRequest {
   orderType: "delivery" | "takeaway" | "dinein";
   items: CashOrderLine[];
   expectedTotalPaise: number;
+  attemptId?: string;
+  addressId?: string;
   deliveryQuoteId?: string;
   couponCode?: string;
   tipAmount?: number;
@@ -96,12 +98,20 @@ const defaultTransport: CashOrderTransport = {
   post: (url, body, init) => httpClient.post(url, body, init),
 };
 
-function readRefusal(err: unknown): { code: string; message: string; status: number } {
+function readRefusal(err: unknown): {
+  code: string;
+  message: string;
+  status: number;
+  details?: Record<string, unknown>;
+} {
   const e = err as {
     code?: unknown;
     message?: unknown;
     status?: unknown;
-    response?: { status?: unknown; data?: { code?: unknown; error?: unknown } };
+    response?: {
+      status?: unknown;
+      data?: { code?: unknown; error?: unknown; totals?: unknown };
+    };
   };
   const bodyCode = e?.response?.data?.code;
   const code =
@@ -118,7 +128,16 @@ function readRefusal(err: unknown): { code: string; message: string; status: num
         ? e.message
         : "";
   const status = Number(e?.response?.status ?? e?.status ?? 0) || 0;
-  return { code, message, status };
+  // M5: PRICE_CHANGED carries the SERVER's authoritative breakdown. Carry it
+  // through so the screen can show the exact total for reconfirmation instead
+  // of discarding it as a terminal message.
+  const totals = e?.response?.data?.totals;
+  return {
+    code,
+    message,
+    status,
+    ...(totals && typeof totals === "object" ? { details: { totals } } : {}),
+  };
 }
 
 /** Codes that a retry can never fix — the customer must change something. */
@@ -157,11 +176,15 @@ export async function createCashOrderOnServer(
     const raw = (res.data ?? {}) as Record<string, unknown>;
     const orderId = typeof raw.orderId === "string" ? raw.orderId : "";
     const cashDuePaise = raw.cashDuePaise;
+    // M5: a fully-discounted order legitimately has cashDuePaise === 0. The
+    // server accepts it with no collection due; only a NEGATIVE or non-integer
+    // amount is an invalid response. Rejecting zero here used to orphan a real
+    // written order that the kitchen had already received.
     if (
       !orderId ||
       typeof cashDuePaise !== "number" ||
       !Number.isSafeInteger(cashDuePaise) ||
-      cashDuePaise <= 0
+      cashDuePaise < 0
     ) {
       logger.warn("cash_order.invalid_response", { orderId });
       return fail(
@@ -185,10 +208,15 @@ export async function createCashOrderOnServer(
       },
     });
   } catch (err) {
-    const { code, message, status } = readRefusal(err);
+    const { code, message, status, details } = readRefusal(err);
     logger.warn("cash_order.create_failed", { code, status });
     if (code && TERMINAL_REFUSALS.has(code)) {
-      return fail(code, message || "Cash on delivery is not available for this order.", false);
+      return fail(
+        code,
+        message || "Cash on delivery is not available for this order.",
+        false,
+        details,
+      );
     }
     // Unknown transport failure: the server is idempotent on `orderId`, so a
     // retry is safe and cannot create a second order.

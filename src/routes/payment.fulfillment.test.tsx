@@ -262,6 +262,7 @@ vi.mock("@/features/orders", () => ({
   orderRepository: {
     createFromCurrentContext: fixture.createFromCurrentContext,
     createCashOrder: fixture.createCashOrder,
+    pendingCashOrderId: () => null,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
   },

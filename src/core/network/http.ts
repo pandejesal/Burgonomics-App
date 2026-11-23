@@ -6,7 +6,13 @@
 export type ApiSuccess<T> = { success: true; data: T; meta?: Record<string, unknown> };
 export type ApiFailure = {
   success: false;
-  error: { code: string; message: string; retryable?: boolean };
+  error: {
+    code: string;
+    message: string;
+    retryable?: boolean;
+    /** Server-issued structured data a screen must act on (e.g. PRICE_CHANGED totals). */
+    details?: Record<string, unknown>;
+  };
 };
 export type ApiResult<T> = ApiSuccess<T> | ApiFailure;
 
@@ -16,9 +22,14 @@ export const ok = <T>(data: T, meta?: Record<string, unknown>): ApiSuccess<T> =>
   meta,
 });
 
-export const fail = (code: string, message: string, retryable = false): ApiFailure => ({
+export const fail = (
+  code: string,
+  message: string,
+  retryable = false,
+  details?: Record<string, unknown>,
+): ApiFailure => ({
   success: false,
-  error: { code, message, retryable },
+  error: { code, message, retryable, ...(details ? { details } : {}) },
 });
 
 export const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));

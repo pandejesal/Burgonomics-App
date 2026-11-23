@@ -158,6 +158,10 @@ export interface Order {
   whatsappOptIn?: boolean;
 
   payment: OrderPaymentInfo;
+  /** Server-only payment lane marker: "cash" or "razorpay" (read-only to the app). */
+  paymentChannel?: "cash" | "razorpay";
+  /** For a cash order, the exact paise the rider/counter must collect (M5). */
+  cashDuePaise?: number;
 
   /** Read-only server lifecycle signals. Handover plaintext never belongs in an Order. */
   deliveryOtpConsumedAt?: unknown;

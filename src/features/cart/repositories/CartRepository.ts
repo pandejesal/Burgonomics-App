@@ -26,6 +26,7 @@ import type {
   Fulfillment,
 } from "@/features/cart/models";
 import { calculateTotals } from "@/features/cart/services/cartService";
+import { couponSelectionsForLine } from "@/features/cart/utils/couponSelections";
 import { offerRepository } from "@/features/offers/repositories/OfferRepository";
 import { selectObservedOffline, useAppConfig } from "@/core/state/appConfigStore";
 import { asPricingFulfillment, resolvePricingConfig } from "@/shared/pricing/pricingEngine";
@@ -231,6 +232,7 @@ export class CartRepository {
           productId: String(line.productId),
           quantity: line.quantity,
           price: line.unitPrice,
+          ...couponSelectionsForLine(line),
         })),
       });
       if (!res.success) return res;
@@ -333,6 +335,7 @@ export class CartRepository {
           productId: String(line.productId),
           quantity: line.quantity,
           price: line.unitPrice,
+          ...couponSelectionsForLine(line),
         })),
       });
       if (!recheck.success) {

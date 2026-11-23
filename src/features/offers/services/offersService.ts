@@ -30,7 +30,9 @@ export interface CouponLine {
   productId: string;
   quantity: number;
   price?: number;
+  /** Priced selections (option ids), so the server prices the same basket (M9). */
   customizations?: unknown[];
+  modifiers?: unknown[];
 }
 
 export interface ApplyOfferInput {
@@ -202,6 +204,10 @@ export const offersService = {
           productId: line.productId,
           quantity: line.quantity,
           ...(typeof line.price === "number" ? { price: line.price } : {}),
+          // M9: send the priced selections, not just the base product, so the
+          // quote uses the same server validator as cash and online checkout.
+          ...(line.customizations?.length ? { customizations: line.customizations } : {}),
+          ...(line.modifiers?.length ? { modifiers: line.modifiers } : {}),
         })),
         ...(input.storeId ? { storeId: input.storeId } : {}),
         ...(input.branchId ? { branchId: input.branchId } : {}),

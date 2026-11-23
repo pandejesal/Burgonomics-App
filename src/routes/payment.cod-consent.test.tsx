@@ -117,17 +117,20 @@ vi.mock("@/shared/components/common/ConfirmDialog", () => ({
     description,
     confirmLabel,
     onConfirm,
+    onOpenChange,
   }: {
     open: boolean;
     title: string;
     description?: string;
     confirmLabel?: string;
     onConfirm: () => void;
+    onOpenChange: (open: boolean) => void;
   }) =>
     open ? (
       <div data-testid="reprice-dialog">
         <h2>{title}</h2>
         <p>{description}</p>
+        <button onClick={() => onOpenChange(false)}>Cancel</button>
         <button type="button" onClick={onConfirm}>
           {confirmLabel ?? "Confirm"}
         </button>
@@ -264,6 +267,7 @@ vi.mock("@/features/addresses", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
+    pendingCashOrderId: () => null,
     createFromCurrentContext: fixture.createFromCurrentContext,
     createCashOrder: fixture.createCashOrder,
     finalizePaidOrder: vi.fn(),
@@ -381,6 +385,38 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     await act(async () => {});
 
     expect(container.querySelector("[data-testid='reprice-dialog']")).toBeNull();
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("declines the server reprice, then explicitly confirms zero paise", async () => {
+    fixture.calculateTotals.mockResolvedValue(totals(199));
+    const refusal = {
+      success: false,
+      error: { code: "PRICE_CHANGED", details: { attemptId:"cash_a", totals: { split: { totalAmountPaise: 0 } } } },
+    };
+    fixture.createCashOrder
+      .mockResolvedValueOnce(refusal)
+      .mockResolvedValueOnce(refusal)
+      .mockResolvedValue({ success: true, data: { id: "free", cashDuePaise: 0 } });
+    await mountCashPayment();
+    const click = async (label: string) => act(async () => buttonWithText(label)!.click());
+    await click("Place COD Order");
+    await click("Cancel");
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    await click("Place COD Order");
+    expect(fixture.createCashOrder).toHaveBeenNthCalledWith(2, {});
+    await click("Continue");
+    expect(fixture.createCashOrder).toHaveBeenNthCalledWith(3, { attemptId:"cash_a",acceptedTotalPaise: 0 });
+    expect(fixture.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { orderId: "free" } }),
+    );
+  });
+  it("submits a fee-free cash bill when it starts at zero", async () => {
+    fixture.calculateTotals.mockResolvedValue(totals(0));
+    await mountCashPayment();
+    const pay = buttonWithText("Place COD Order")!;
+    expect(pay.disabled).toBe(false);
+    await act(async () => pay.click());
     expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
   });
 });
