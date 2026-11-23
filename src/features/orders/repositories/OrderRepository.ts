@@ -124,6 +124,23 @@ export class OrderRepository {
     return res;
   }
 
+  /**
+   * M8 r2 — owner-scoped fresh read for the downloaded receipt.
+   *
+   * The plain `getOrder` serves the session cache first, so a cash collection
+   * stamped after an earlier read would never reach a receipt printed from
+   * that cached order. This re-reads the server doc under the current uid and
+   * returns null on any failure (read error, auth change, not found, not
+   * owner). The caller MUST withhold every payment claim on null — a cached
+   * copy is not proof of the current payment state.
+   */
+  async getOrderForReceipt(order: Order): Promise<Order | null> {
+    const res = await this.service.refreshOrderStrict(order.id);
+    if (!res.success || !res.data) return null;
+    useOrdersStore.getState().upsert(res.data);
+    return res.data;
+  }
+
   // -- Create ----------------------------------------------------------
 
   /**

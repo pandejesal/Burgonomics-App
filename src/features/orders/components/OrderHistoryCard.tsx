@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
 import { InvoiceDownloadButton } from "./InvoiceDownloadButton";
+import { orderRepository } from "../repositories/OrderRepository";
 import { ReorderDialogs } from "./ReorderDialogs";
 import { useReorderItems } from "../hooks/useReorderItems";
 import { displayOrderStatus, orderPaymentState } from "../utils/paymentState";
@@ -245,7 +246,10 @@ export function OrderHistoryCard({ order }: OrderHistoryCardProps) {
           </button>
         )}
 
-        <InvoiceDownloadButton order={order} />
+        <InvoiceDownloadButton
+          order={order}
+          refreshBeforePrint={(current) => orderRepository.getOrderForReceipt(current)}
+        />
       </div>
 
       {/* Reorder review: unavailable items, price changes, outlet replacement.

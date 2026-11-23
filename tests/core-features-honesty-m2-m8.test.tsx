@@ -244,12 +244,16 @@ describe("M3 — invoice invents payment mode / store address / paid status", ()
     expect(html).toContain("Payment Mode:</strong> COD"); // the real method
   });
 
-  it("M3: the total is labelled from the real payment state", async () => {
+  it("M3/M8 r2: a display-only paid flag cannot claim money was paid", async () => {
     const { html } = await generateInvoice(
       makeOrder({ payment: { method: "online", label: "UPI", status: "paid" } }),
       "button",
     );
-    expect(html).toContain("Total Amount Paid");
+    // A client-writable `paid` flag with no server capture proof is not a
+    // payment claim. The bill is shown as an order total instead.
+    expect(html).not.toContain("Total Amount Paid");
+    expect(html).not.toContain("Amount Collected");
+    expect(html).toContain("Order Total");
     expect(html).toContain("Payment Mode:</strong> ONLINE");
   });
 });

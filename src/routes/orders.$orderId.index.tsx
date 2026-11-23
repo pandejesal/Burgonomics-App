@@ -398,7 +398,11 @@ function OrderDetailsPage() {
             </AppButton>
             {/* Real client-side GST invoice (same generator as order history) —
                 the old tile was permanently disabled with a hover-only title. */}
-            <InvoiceDownloadButton order={order} className="w-full justify-center py-3" />
+            <InvoiceDownloadButton
+              order={order}
+              className="w-full justify-center py-3"
+              refreshBeforePrint={(current) => orderRepository.getOrderForReceipt(current)}
+            />
           </div>
         </div>
 
