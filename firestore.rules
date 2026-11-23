@@ -110,6 +110,16 @@ service cloud.firestore {
       );
     }
 
+    // A1: owner-only money documents are not readable by branch_staff.
+    function ownsBranchAsOwner(branchId) {
+      return isBrandOwner() || (
+        hasRole(['branch_owner']) && (
+          (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) && getAdminDoc().data.branchId == branchId) ||
+          (request.auth.token != null && branchId in request.auth.token.branchIds)
+        )
+      );
+    }
+
     // Loop 12: delivery handover needs OTP proof — POST
     // /orders/verifyDeliveryOtp flips to DELIVERED server-side (lockout +
     // timing-safe compare). A direct client status write to DELIVERED on a
@@ -191,7 +201,7 @@ service cloud.firestore {
         'routeTransferStatus', 'routeTransferNeedsManualSettlement',
         'routeTransferRetryCount', 'routeTransferClaimedAt',
         'routeTransferRetryAt', 'routeTransferError', 'routeTransferTerminalRefusal',
-        'paymentChannel', 'monthlyFeeHold',
+        'paymentChannel', 'monthlyFeeHold', 'settlementEffectiveAtMs', 'settlementCaptureUnresolved', 'settlementProcessedRefunds',
         'petpoojaAcceptedNoId', 'petpoojaAcceptedNoIdAt', 'petpoojaAcceptedNoIdAck',
         'petpoojaAcceptedNoIdSource', 'petpoojaAcceptedUnrecorded', 'petpoojaAcceptedAck',
         'petpoojaStatus', 'petpoojaSyncStatus', 'petpoojaRetryCount',
@@ -226,7 +236,11 @@ service cloud.firestore {
         'routeTransferStatus', 'routeTransferNeedsManualSettlement',
         'routeTransferRetryCount', 'routeTransferClaimedAt',
         'routeTransferRetryAt', 'routeTransferError', 'routeTransferTerminalRefusal',
-        'paymentChannel', 'monthlyFeeHold',
+        'paymentChannel', 'monthlyFeeHold', 'settlementEffectiveAtMs', 'settlementCaptureUnresolved', 'settlementProcessedRefunds',
+        // A2: the cash receipt and its request binding are server-issued proof
+        // of a real cash sale; staff must not plant or edit them (they used to
+        // be writable, which let a forged receipt impersonate legacy cash).
+        'cashReceipt', 'cashRequestHash', 'couponIntentId',
         // Courier COD money and readiness are server-written. Branch staff
         // must not rewrite the cash due or forge a courier-collection flag.
         'cashDuePaise', 'cashOnDelivery',
@@ -271,6 +285,16 @@ service cloud.firestore {
         // diff().affectedKeys() reports leaf paths, so naming only `payment`
         // does NOT cover `payment.capturedAmountPaise` (nested or literal).
         'cashCollectedPaise', 'payment.capturedAmountPaise', 'receiptEvidence',
+        // r2 P1: the POS-cancel queue (lease, attempts, outcome and reason) is
+        // server-only. A client must not plant a 'cancelled' outcome to silence
+        // a live kitchen ticket, nor clear a lease to double-send a cancel.
+        'petpoojaCancelStatus', 'petpoojaCancelReason', 'petpoojaCancelReasonClass',
+        'petpoojaCancelRequestedBy', 'petpoojaCancelRequestedAtMs', 'petpoojaCancelRequestedAt',
+        'petpoojaCancelNextRetryAtMs', 'petpoojaCancelClaimedAt', 'petpoojaCancelAttemptCount',
+        'petpoojaCancelCompletedAt', 'petpoojaCancelAckMessage', 'petpoojaCancelPosOrderId',
+        'petpoojaCancelSkippedReason', 'lastPetpoojaCancelError', 'kotCancelFailed',
+        // The POS binding is the identity the cancel queue fences against.
+        'petpoojaOrderId',
       ];
     }
 
@@ -549,7 +573,7 @@ service cloud.firestore {
           'razorpayAccountId', 'petpooja', 'petpoojaStoreId', 'servicedRadiusKm',
           // F9: money config is brand-only. A branch may not move its own
           // monthly fee or packaging price.
-          'monthlyFee', 'packaging', 'packagingFee', 'royaltyPercentage', 'brandRoyaltyPercent'
+          'monthlyFee', 'settlementFee', 'packaging', 'packagingFee', 'royaltyPercentage', 'brandRoyaltyPercent'
         ])
       );
       allow delete: if isBrandOwner();
@@ -574,6 +598,10 @@ service cloud.firestore {
         isBranchOwner() && ownsBranch(request.resource.data.branchId) &&
         !request.resource.data.keys().hasAny([
           'costPrice', 'compareAtPrice', 'discountPercentage', 'petpoojaItemId',
+          // r3 P2: the outbound stock-push version and lease are server-owned.
+          // A client must not fabricate a version to force a stale vendor send,
+          // nor plant a claim to block a legitimate toggle.
+          'stockVersion', 'stockPushClaim',
           // F9: priced selections and catalog packing data moved into the
           // rules: `customizations` now sets what customers pay, so it gets the
           // same protection as `price`.
@@ -590,7 +618,9 @@ service cloud.firestore {
           // POS delisting state is decided by the Petpooja sync, never by a
           // client: without these a partner could clear the marker while the
           // SKU is still absent from the POS.
-          'delistedFromPos', 'delistedAt'
+          'delistedFromPos', 'delistedAt',
+          // r3 P2: version and lease fence the vendor stock POST and its ACK.
+          'stockVersion', 'stockPushClaim'
         ])
       );
       allow delete: if isBrandOwner();
@@ -1343,7 +1373,7 @@ service cloud.firestore {
     // through the authenticated API), so this stays read-only and denies every
     // other identity by default.
     match /branch_settlements/{docId} {
-      allow read: if isBrandOwner() || ownsBranch(resource.data.branchId);
+      allow read: if isBrandOwner() || ownsBranchAsOwner(resource.data.branchId);
       allow write: if false;
     }
 
