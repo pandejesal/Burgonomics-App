@@ -1,20 +1,28 @@
 import React, { useState } from "react";
 import { Download, FileText, CheckCircle2, Printer } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
-import { includedGst } from "@/shared/pricing/pricingEngine";
 import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
+import { resolveReceiptMoney } from "../utils/receiptMoney";
 import type { Order } from "../models";
 
 interface InvoiceDownloadButtonProps {
   order: Order;
   className?: string;
   variant?: "button" | "icon";
+  /**
+   * Owner-scoped fresh read, supplied by every production mount. A cash
+   * collection can land after the order was cached; the receipt must reflect
+   * it. When the read fails or does not return the order, ALL payment claims
+   * are withheld rather than guessed from the cached copy.
+   */
+  refreshBeforePrint?: (order: Order) => Promise<Order | null>;
 }
 
 export function InvoiceDownloadButton({
   order,
   className = "",
   variant = "button",
+  refreshBeforePrint,
 }: InvoiceDownloadButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -27,67 +35,84 @@ export function InvoiceDownloadButton({
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
-  const handleDownloadInvoice = () => {
+  const handleDownloadInvoice = async () => {
     setIsGenerating(true);
 
+    // Open synchronously, inside the user gesture: a popup opened after an
+    // awaited network read is routinely blocked by browsers.
     const invoiceWindow = window.open("", "_blank");
     if (!invoiceWindow) {
       setIsGenerating(false);
       return;
     }
 
-    const shortOrder = order.shortCode || order.id.slice(-6).toUpperCase();
-    const dateFormatted = new Date(order.placedAt || Date.now()).toLocaleString("en-IN", {
+    let currentOrder = order;
+    let refreshFailed = false;
+    if (refreshBeforePrint) {
+      try {
+        const fresh = await refreshBeforePrint(order);
+        if (fresh) currentOrder = fresh;
+        else refreshFailed = true;
+      } catch {
+        refreshFailed = true;
+      }
+    }
+
+    const shortOrder = currentOrder.shortCode || currentOrder.id.slice(-6).toUpperCase();
+    const dateFormatted = new Date(currentOrder.placedAt || Date.now()).toLocaleString("en-IN", {
       dateStyle: "medium",
       timeStyle: "short",
     });
 
+    // M8: money comes from integer paise stamped by the server and a matching
+    // pricing breakdown — never a stale cart total or an uncollected tip.
+    let money = resolveReceiptMoney(currentOrder);
+    if (refreshFailed && money.source !== "cancelled") {
+      // A failed fresh read cannot prove the current payment state. Withhold
+      // every money claim, including "due", instead of printing cache fiction.
+      // Cancellation is terminal and carries no claim, so it is kept as-is.
+      money = {
+        source: "unverified",
+        totalLabel: "Payment status unconfirmed",
+        total: null,
+        rows: [],
+        itemPrices: [],
+      };
+    }
+
     // Guarded: a corrupt/partial order doc without items must render an
     // empty table, never throw (?.map guards map, but .join on undefined
     // throws and leaves isGenerating stuck with a blank tab).
-    const itemsHtml = (order.items ?? [])
-      .map(
-        (item) => `
+    // Repricing can leave unit prices stale: only print the Rate/Amount
+    // columns when they still reconcile to the server's food subtotal.
+    const itemsHtml = (currentOrder.items ?? [])
+      .map((item, index) => {
+        const price = money.itemPrices[index];
+        return `
         <tr>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5;">${esc(item.name)}</td>
           <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: center;">${item.quantity}</td>
-          <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right;">${formatINR(item.unitPrice || 0)}</td>
-          <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right; font-weight: bold;">${formatINR((item.unitPrice || 0) * (item.quantity || 1))}</td>
+          ${
+            price
+              ? `<td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right;">${formatINR(price.unitPaise / 100)}</td>
+                 <td style="padding: 8px 4px; border-bottom: 1px solid #e5e5e5; text-align: right; font-weight: bold;">${formatINR(price.linePaise / 100)}</td>`
+              : ""
+          }
         </tr>
-      `,
-      )
+      `;
+      })
       .join("");
 
-    const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-    const grandTotal = order.totals?.grandTotal || 0;
-    // Document class: this is an ORDER RECEIPT, never a GST tax invoice.
-    // "Paid" is a claim about money — only the payment state may make it.
-    const isPaid = order.payment?.status === "paid";
-    const itemDiscount = order.totals?.itemDiscount || 0;
-    const promoDiscount = order.totals?.promoDiscount || order.promo?.discount || 0;
-    // The server stamps `couponCode`; legacy docs may only carry `promo.code`.
-    const couponCode = order.couponCode || order.promo?.code || "";
-    const packing = order.totals?.packingFee || 0;
-    const delivery = order.totals?.deliveryFee || 0;
-    // Legacy docs without a stored subtotal still need a row whose arithmetic
-    // reconciles: invert the pricing engine's grand-total formula.
-    const subtotal =
-      typeof order.totals?.subtotal === "number"
-        ? order.totals.subtotal
-        : round2(grandTotal + itemDiscount + promoDiscount - packing - delivery);
-    // The delivery tip is charged on top of `grandTotal` (pricing engine and
-    // orderPayableAmount both use grandTotal + tip), so the printed total must
-    // include it — otherwise the lines never add up on a tipped order.
-    const tip =
-      typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount)
-        ? Math.max(0, order.tipAmount)
-        : 0;
-    const billTotal = round2(grandTotal + tip);
-    // Loop 42/120: GST here is 5% *inclusive* in Indian F&B pricing — the tax
-    // component backs OUT of the food value, never 5% on top. R1: the inclusive
-    // share is `netFood * 0.05 / 1.05` and fees are outside the GST base.
-    const netFood = round2(Math.max(0, subtotal - itemDiscount - promoDiscount));
-    const taxes = order.totals?.taxes ?? includedGst(netFood);
+    const rowsHtml = money.rows
+      .map(
+        (row) => `
+          <div class="totals-row">
+            <span>${esc(row.label)}</span>
+            <span>${formatINR(row.amount)}</span>
+          </div>
+        `,
+      )
+      .join("");
 
     const invoiceContent = `
       <!DOCTYPE html>
@@ -128,13 +153,13 @@ export function InvoiceDownloadButton({
           <div>
             <strong>Invoice & Order:</strong> #${esc(shortOrder)}<br>
             <strong>Date & Time:</strong> ${esc(dateFormatted)}<br>
-            <strong>Fulfillment:</strong> ${esc(order.fulfillment).toUpperCase()}<br>
-            <strong>Payment Mode:</strong> ${order.payment?.method ? esc(order.payment.method.toUpperCase()) : "—"}
+            <strong>Fulfillment:</strong> ${esc(currentOrder.fulfillment).toUpperCase()}<br>
+            <strong>Payment Mode:</strong> ${currentOrder.payment?.method ? esc(currentOrder.payment.method.toUpperCase()) : "—"}
           </div>
           <div>
-            <strong>Store Outlet:</strong> ${esc(order.store?.name || "Burgonomics Outlet")}<br>
-            <strong>Address:</strong> ${order.store?.address ? esc(order.store.address) : "—"}<br>
-            <strong>Phone:</strong> ${order.store?.phone ? esc(order.store.phone) : "—"}
+            <strong>Store Outlet:</strong> ${esc(currentOrder.store?.name || "Burgonomics Outlet")}<br>
+            <strong>Address:</strong> ${currentOrder.store?.address ? esc(currentOrder.store.address) : "—"}<br>
+            <strong>Phone:</strong> ${currentOrder.store?.phone ? esc(currentOrder.store.phone) : "—"}
           </div>
         </div>
 
@@ -143,8 +168,8 @@ export function InvoiceDownloadButton({
             <tr>
               <th>Item Description</th>
               <th style="text-align: center;">Qty</th>
-              <th style="text-align: right;">Rate</th>
-              <th style="text-align: right;">Amount</th>
+              ${money.itemPrices.length > 0 ? '<th style="text-align: right;">Rate</th>' : ""}
+              ${money.itemPrices.length > 0 ? '<th style="text-align: right;">Amount</th>' : ""}
             </tr>
           </thead>
           <tbody>
@@ -153,44 +178,10 @@ export function InvoiceDownloadButton({
         </table>
 
         <div class="totals">
-          <div class="totals-row">
-            <span>Subtotal:</span>
-            <span>${formatINR(subtotal)}</span>
-          </div>
-          ${
-            itemDiscount > 0
-              ? `<div class="totals-row"><span>Item discount:</span><span>-${formatINR(itemDiscount)}</span></div>`
-              : ""
-          }
-          ${
-            promoDiscount > 0
-              ? `<div class="totals-row"><span>Coupon discount${
-                  couponCode ? ` (${esc(couponCode)})` : ""
-                }:</span><span>-${formatINR(promoDiscount)}</span></div>`
-              : ""
-          }
-          ${
-            packing > 0
-              ? `<div class="totals-row"><span>Packaging Fee:</span><span>${formatINR(packing)}</span></div>`
-              : ""
-          }
-          ${
-            delivery > 0
-              ? `<div class="totals-row"><span>Delivery Fee:</span><span>${formatINR(delivery)}</span></div>`
-              : ""
-          }
-          ${
-            tip > 0
-              ? `<div class="totals-row"><span>Delivery Tip:</span><span>${formatINR(tip)}</span></div>`
-              : ""
-          }
-          <div class="totals-row">
-            <span>Incl. GST (5%):</span>
-            <span>${formatINR(taxes)}</span>
-          </div>
+          ${rowsHtml}
           <div class="totals-row grand-total">
-            <span>${isPaid ? "Total Amount Paid" : "Order Total"}:</span>
-            <span>${formatINR(billTotal)}</span>
+            <span>${esc(money.totalLabel)}:</span>
+            <span>${money.total === null ? "—" : formatINR(money.total)}</span>
           </div>
           <div class="tax-note">GST is already included in item prices and is not added again.</div>
         </div>

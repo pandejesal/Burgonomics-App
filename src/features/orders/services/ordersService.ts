@@ -986,6 +986,11 @@ export const ordersService = {
       estimatedAt: asIso(data.estimatedAt) ?? undefined,
       completedAt: asIso(data.completedAt) ?? undefined,
       payment: {
+        // M8 r2: keep the SERVER's payment evidence (notably the nested
+        // `capturedAmountPaise`, `razorpayPaymentId` and `verifiedAt`) so the
+        // downloaded receipt can prove what was actually captured. Only the
+        // display-only fields below are derived; every server field survives.
+        ...(paymentBlock && typeof paymentBlock === "object" ? paymentBlock : {}),
         method:
           typeof paymentBlock?.method === "string" &&
           ["online", "cash", "upi", "card", "netbanking", "wallet", "cod"].includes(
@@ -1252,6 +1257,71 @@ export const ordersService = {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  },
+
+  /**
+   * M8 r2 — fail-closed, owner-scoped fresh read for the receipt.
+   *
+   * `getOrder` serves the memory map first, so a cash collection that landed
+   * after an earlier read is invisible to a receipt printed from that cached
+   * order. `refreshOrder` is best-effort and swallows errors, which is unsafe
+   * for a document that makes a payment claim. This variant re-reads the doc,
+   * keeps the per-account scope guard, and FAILS CLOSED (no order returned)
+   * on read error, auth change, missing owner or missing document. Callers
+   * must withhold every payment claim when this does not succeed.
+   */
+  async refreshOrderStrict(id: string): Promise<ApiResult<Order | null>> {
+    const cleanId = typeof id === "string" ? id.trim() : "";
+    if (!cleanId) return fail("MISSING_CONTEXT", "An order id is required.", false);
+
+    const { auth } = await import("@/core/config/firebase");
+    if (typeof auth.authStateReady === "function") {
+      await auth.authStateReady().catch(() => undefined);
+    }
+    syncCacheScope(auth.currentUser);
+    const startedUid = auth.currentUser?.uid ?? null;
+    if (!startedUid) {
+      return fail("MISSING_AUTH", "Please sign in to view this receipt.", false);
+    }
+
+    let data: Record<string, any>;
+    try {
+      const { db } = await import("@/core/config/firebase");
+      // M8 r3: getDoc can serve the LOCAL CACHE when offline, which would let
+      // a stale cached collection/capture decide a payment claim. A receipt
+      // refresh must come from the server or fail closed.
+      const { doc, getDocFromServer } = await import("firebase/firestore");
+      const snap = await getDocFromServer(doc(db, "orders", cleanId));
+      if (!snap.exists()) return ok(null);
+      // A snapshot with pending local writes is not server truth: it can carry
+      // optimistic money the server has not committed. Fail closed.
+      if ((snap as any)?.metadata?.hasPendingWrites === true) {
+        return fail(
+          "ORDER_READ_NOT_SERVER",
+          "This order still has unsaved changes. Please retry.",
+          true,
+        );
+      }
+      data = snap.data() as Record<string, any>;
+    } catch (err) {
+      const { logger } = await import("@/core/logging/logger");
+      logger.warn("ordersService.receipt_refresh_failed", {
+        id: cleanId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return fail("ORDER_READ_FAILED", "We couldn't refresh this order. Please try again.", true);
+    }
+
+    if ((auth.currentUser?.uid ?? null) !== startedUid) {
+      syncCacheScope(auth.currentUser);
+      return fail("AUTH_CHANGED", "Your session changed. Please check your orders.", true);
+    }
+    if (!isOrderVisibleTo(data, startedUid)) return ok(null);
+
+    const order = orderFromFirestore(cleanId, data);
+    orders.set(cleanId, order);
+    seedProgression(cleanId, order, data);
+    return ok(order);
   },
 
   async getTracking(id: string): Promise<ApiResult<OrderTrackingSnapshot | null>> {
