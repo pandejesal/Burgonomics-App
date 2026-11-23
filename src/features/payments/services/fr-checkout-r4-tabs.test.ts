@@ -13,8 +13,12 @@ function makeTab() {
   return {
     store,
     get: (k: string) => store.get(k) ?? null,
-    set: (k: string, v: string) => { store.set(k, v); },
-    del: (k: string) => { store.delete(k); },
+    set: (k: string, v: string) => {
+      store.set(k, v);
+    },
+    del: (k: string) => {
+      store.delete(k);
+    },
   };
 }
 

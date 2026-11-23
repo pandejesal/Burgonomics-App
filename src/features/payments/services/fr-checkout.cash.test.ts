@@ -85,7 +85,9 @@ describe("M4 pending cash request", () => {
 
   it("retains an ambiguous attempt beyond the old TTL and clears after resolution", () => {
     savePendingCashOrder("attempt_r2", request.orderId, request);
-    expect(readPendingCashOrder(Date.now() + PENDING_CASH_ORDER_TTL_MS + 1)?.orderId).toBe(request.orderId);
+    expect(readPendingCashOrder(Date.now() + PENDING_CASH_ORDER_TTL_MS + 1)?.orderId).toBe(
+      request.orderId,
+    );
     savePendingCashOrder("attempt_r2", request.orderId, request);
     clearPendingCashOrder();
     expect(readPendingCashOrder()).toBeNull();

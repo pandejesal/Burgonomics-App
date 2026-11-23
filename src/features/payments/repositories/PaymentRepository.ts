@@ -411,11 +411,21 @@ export class PaymentRepository {
     // A DISCOUNTED cached gateway order is never handed back locally: only the
     // server can verify its slot in a transaction, so the retry goes through
     // createPaymentOrder. Non-discounted orders keep the one-call cache.
-    if (!opts?.resumeOrderId && recorded?.gatewayOrder && !quoteChangedAfterGateway && !(((recorded.gatewayOrder as unknown as {pricing?:{discount?:number}}).pricing?.discount ?? 0) > 0)) {
+    if (
+      !opts?.resumeOrderId &&
+      recorded?.gatewayOrder &&
+      !quoteChangedAfterGateway &&
+      !(
+        ((recorded.gatewayOrder as unknown as { pricing?: { discount?: number } }).pricing
+          ?.discount ?? 0) > 0
+      )
+    ) {
       usePaymentStore.getState().setInternalOrderId(recorded.internalOrderId);
-      usePaymentStore.getState().setGatewayOrderId(
-        recorded.gatewayOrder.razorpayOrderId ?? recorded.gatewayOrder.orderId ?? null,
-      );
+      usePaymentStore
+        .getState()
+        .setGatewayOrderId(
+          recorded.gatewayOrder.razorpayOrderId ?? recorded.gatewayOrder.orderId ?? null,
+        );
       return ok(recorded.gatewayOrder);
     }
     // Keep the document and idempotency key, but reauthorize a discounted

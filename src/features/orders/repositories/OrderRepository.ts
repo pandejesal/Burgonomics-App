@@ -115,10 +115,16 @@ export class OrderRepository {
   }
 
   async getOrder(id: string): Promise<ApiResult<Order | null>> {
-    const pending = typeof window === 'undefined' ? null : readPendingCashOrder();
+    const pending = typeof window === "undefined" ? null : readPendingCashOrder();
     const res = await this.service.getOrder(id);
     if (res.success && res.data) {
-      if (pending?.confirmed && pending.orderId === id && res.data.id === id && ownsAttempt(pending)) clearPendingCashOrder();
+      if (
+        pending?.confirmed &&
+        pending.orderId === id &&
+        res.data.id === id &&
+        ownsAttempt(pending)
+      )
+        clearPendingCashOrder();
       useOrdersStore.getState().upsert(res.data);
     }
     return res;
@@ -164,10 +170,11 @@ export class OrderRepository {
     } = {},
   ): Promise<ApiResult<Order>> {
     const uid = currentScopedUid();
-    if (!uid) return fail('UNAUTHENTICATED','Sign in to place a cash order.');
+    if (!uid) return fail("UNAUTHENTICATED", "Sign in to place a cash order.");
     try {
       const prior = readPendingCashOrder();
-      if (opts.attemptId && (!prior || prior.attemptId !== opts.attemptId || prior.uid !== uid)) return fail('ATTEMPT_CHANGED','Please review your current checkout.');
+      if (opts.attemptId && (!prior || prior.attemptId !== opts.attemptId || prior.uid !== uid))
+        return fail("ATTEMPT_CHANGED", "Please review your current checkout.");
       if (prior) {
         if (opts.attemptId && opts.acceptedTotalPaise !== undefined) {
           updatePendingCashOrderAcceptedTotal(opts.acceptedTotalPaise);
@@ -175,7 +182,9 @@ export class OrderRepository {
         }
         return this.submitCashAttempt(prior);
       }
-    } catch { return fail('CASH_STORAGE_UNAVAILABLE','Your saved checkout could not be read.',true); }
+    } catch {
+      return fail("CASH_STORAGE_UNAVAILABLE", "Your saved checkout could not be read.", true);
+    }
     const cart = useCartStore.getState();
     const sel = useStoreSelection.getState();
     const address = selectSelectedAddress(useAddressStore.getState());
@@ -210,55 +219,68 @@ export class OrderRepository {
         : undefined;
     const orderId = opts.orderId ?? `ord_${Date.now()}_${generateSecureId(6)}`;
     const request: CashOrderRequest = {
-          orderId,
-          storeId: sel.activeStore.id,
-          ...(sel.activeStore.partnerBranchId ? { branchId: sel.activeStore.partnerBranchId } : {}),
-          orderType: sel.fulfillment,
-          items: cart.lines.map((line) => ({
-            productId: line.productId,
-            quantity: line.quantity,
-            ...(Array.isArray(line.customizations) && line.customizations.length > 0
-              ? { customizations: line.customizations as unknown as Array<Record<string, unknown>> }
-              : {}),
-            ...(Array.isArray(line.modifiers) && line.modifiers.length > 0
-              ? { modifiers: line.modifiers as unknown as Array<Record<string, unknown>> }
-              : {}),
-            ...(line.notes ? { notes: line.notes } : {}),
-          })),
-          // The bill the customer is looking at. The server refuses a different
-          // number (PRICE_CHANGED) instead of silently moving it. After an explicit
-          // reconfirmation we send the SERVER's total back (M5).
-          expectedTotalPaise:
-            opts.acceptedTotalPaise ?? Math.round(totalsRes.data.grandTotal * 100),
-          ...(deliveryQuoteId ? { deliveryQuoteId } : {}),
-          ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
-          ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
-          ...(sel.fulfillment === "dinein" && checkout.tableNumber
-            ? { tableNumber: checkout.tableNumber }
-            : {}),
-        };
+      orderId,
+      storeId: sel.activeStore.id,
+      ...(sel.activeStore.partnerBranchId ? { branchId: sel.activeStore.partnerBranchId } : {}),
+      orderType: sel.fulfillment,
+      items: cart.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        ...(Array.isArray(line.customizations) && line.customizations.length > 0
+          ? { customizations: line.customizations as unknown as Array<Record<string, unknown>> }
+          : {}),
+        ...(Array.isArray(line.modifiers) && line.modifiers.length > 0
+          ? { modifiers: line.modifiers as unknown as Array<Record<string, unknown>> }
+          : {}),
+        ...(line.notes ? { notes: line.notes } : {}),
+      })),
+      // The bill the customer is looking at. The server refuses a different
+      // number (PRICE_CHANGED) instead of silently moving it. After an explicit
+      // reconfirmation we send the SERVER's total back (M5).
+      expectedTotalPaise: opts.acceptedTotalPaise ?? Math.round(totalsRes.data.grandTotal * 100),
+      ...(deliveryQuoteId ? { deliveryQuoteId } : {}),
+      ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
+      ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
+      ...(sel.fulfillment === "dinein" && checkout.tableNumber
+        ? { tableNumber: checkout.tableNumber }
+        : {}),
+    };
 
     // Persist BEFORE the first send. A terminal refusal proves no order was
     // written, so its pending record is cleared; an ambiguous transport failure
     // keeps it so the next Retry replays the exact same request.
     let saved: PendingCashOrder;
-    if (isDelivery && address) request.addressId=address.id;
-    try { saved = await claimPendingCashOrder(uid,generateSecureId(22),request); }
-    catch { return fail('CASH_STORAGE_UNAVAILABLE','Cannot safely save this checkout. Please retry.',true); }
+    if (isDelivery && address) request.addressId = address.id;
+    try {
+      saved = await claimPendingCashOrder(uid, generateSecureId(22), request);
+    } catch {
+      return fail(
+        "CASH_STORAGE_UNAVAILABLE",
+        "Cannot safely save this checkout. Please retry.",
+        true,
+      );
+    }
     return this.submitCashAttempt(saved);
   }
 
   private async submitCashAttempt(saved: PendingCashOrder): Promise<ApiResult<Order>> {
-    const changed = () => fail('ATTEMPT_CHANGED','This checkout is no longer active.');
+    const changed = () => fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
     if (!ownsAttempt(saved)) return changed();
-    if (saved.confirmed) return this.hydrateCashOrder(saved.orderId,saved);
-    const created = await createCashOrderOnServer({...saved.request,attemptId:saved.attemptId});
+    if (saved.confirmed) return this.hydrateCashOrder(saved.orderId, saved);
+    const created = await createCashOrderOnServer({ ...saved.request, attemptId: saved.attemptId });
     if (!ownsAttempt(saved)) return changed();
     if (!created.success) {
       // A PRICE_CHANGED is a verified no-write, but the customer must reconfirm
       // the SERVER's total — keep the same account-bound id for that retry.
-      if (created.error.code === 'PRICE_CHANGED') return {...created,error:{...created.error,details:{...created.error.details,attemptId:saved.attemptId}}};
-      if (created.error.retryable === false && created.error.code !== 'IDEMPOTENCY_CONFLICT') {
+      if (created.error.code === "PRICE_CHANGED")
+        return {
+          ...created,
+          error: {
+            ...created.error,
+            details: { ...created.error.details, attemptId: saved.attemptId },
+          },
+        };
+      if (created.error.retryable === false && created.error.code !== "IDEMPOTENCY_CONFLICT") {
         clearPendingCashOrder();
       }
       return created;
@@ -266,8 +288,8 @@ export class OrderRepository {
 
     // Success is recorded durably: any later retry only hydrates this id and
     // never POSTs again, even if the read-back failed here (M4).
-    markPendingCashOrderConfirmed(saved.orderId,created.data.orderId);
-    return this.hydrateCashOrder(created.data.orderId,saved);
+    markPendingCashOrderConfirmed(saved.orderId, created.data.orderId);
+    return this.hydrateCashOrder(created.data.orderId, saved);
   }
 
   /**
@@ -280,9 +302,13 @@ export class OrderRepository {
   }
 
   /** Read a cash order's server document back into the UI (M4 retry path). */
-  private async hydrateCashOrder(orderId: string,saved?:PendingCashOrder): Promise<ApiResult<Order>> {
+  private async hydrateCashOrder(
+    orderId: string,
+    saved?: PendingCashOrder,
+  ): Promise<ApiResult<Order>> {
     const hydrated = await this.service.getOrder(orderId);
-    if (saved && !ownsAttempt(saved)) return fail('ATTEMPT_CHANGED','This checkout is no longer active.');
+    if (saved && !ownsAttempt(saved))
+      return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
     if (hydrated.success && hydrated.data?.id === orderId) {
       const order = hydrated.data;
       useOrdersStore.getState().upsert(order);

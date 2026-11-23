@@ -1,4 +1,4 @@
-import {readPendingCashOrder} from "@/features/payments/services/pendingCashOrder";
+import { readPendingCashOrder } from "@/features/payments/services/pendingCashOrder";
 import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import {
@@ -243,7 +243,7 @@ function PaymentPage() {
   const [repricePrompt, setRepricePrompt] = React.useState<{
     displayed: number;
     authoritative: number;
-    cash?: {attemptId:string;paise:number};
+    cash?: { attemptId: string; paise: number };
   } | null>(null);
   // CUS-11: the accepted server total is what the To Pay bar must show while
   // Razorpay is open (display only; the gateway already has this amount).
@@ -573,57 +573,57 @@ function PaymentPage() {
     }
   };
 
-  const finishCash = async (opts:{attemptId?:string;acceptedTotalPaise?:number}) => {
+  const finishCash = async (opts: { attemptId?: string; acceptedTotalPaise?: number }) => {
     const created = await orderRepository.createCashOrder(opts);
-        if (!created.success) {
-          // M5: PRICE_CHANGED carries the SERVER's authoritative breakdown.
-          // Show that exact total for explicit reconfirmation; set the accepted
-          // paise ONLY when the customer confirms, never when we show the prompt.
-          const authoritativePaise = cashPriceChangedPaise(created.error);
-          if (authoritativePaise !== null && typeof created.error.details?.attemptId === "string") {
-            // Show the server number in the dialog; do NOT overwrite the cart
-            // total here, or the next tap re-raises the LOCAL reprice prompt
-            // instead of replaying the order with the server's paise.
-            setStatus("idle");
-            payInFlight.current = false;
-            quoteRepricePrompt.current = true;
-            setRepricePrompt({
-              cash: {attemptId:created.error.details.attemptId, paise:authoritativePaise},
-              displayed: totals?.grandTotal ?? 0,
-              authoritative: authoritativePaise / 100,
-            });
-            return;
-          }
-          setStatus("failed");
-          const message = orderFailureMessage(created.error);
-          setFailure({
-            code: created.error.code,
-            message,
-            retryable: created.error.retryable !== false,
-          });
-          toast.error("Couldn't place order", { description: message });
-          return;
-        }
-
-        const reconUid = useAuthStore.getState().user?.id ?? null;
-        clearPaymentReconciliation(reconUid);
-        usePaymentStore.getState().clearReconciliation();
-        setStatus("success");
-        // M5: a 100%-discounted order is valid with zero collection due. Say so
-        // plainly rather than showing a ₹0 "amount to pay" as if it failed.
-        if (isZeroCashDue(created.data.cashDuePaise)) {
-          toast.success("No payment to collect", {
-            description: "Your coupon covered the full bill — nothing is due at collection.",
-          });
-        }
-        AudioService.playSuccess();
-        void HapticService.notification("success");
-        void cartRepository.clear();
-        void navigate({
-          to: "/order-confirmation/$orderId",
-          params: { orderId: created.data.id },
-          replace: true,
+    if (!created.success) {
+      // M5: PRICE_CHANGED carries the SERVER's authoritative breakdown.
+      // Show that exact total for explicit reconfirmation; set the accepted
+      // paise ONLY when the customer confirms, never when we show the prompt.
+      const authoritativePaise = cashPriceChangedPaise(created.error);
+      if (authoritativePaise !== null && typeof created.error.details?.attemptId === "string") {
+        // Show the server number in the dialog; do NOT overwrite the cart
+        // total here, or the next tap re-raises the LOCAL reprice prompt
+        // instead of replaying the order with the server's paise.
+        setStatus("idle");
+        payInFlight.current = false;
+        quoteRepricePrompt.current = true;
+        setRepricePrompt({
+          cash: { attemptId: created.error.details.attemptId, paise: authoritativePaise },
+          displayed: totals?.grandTotal ?? 0,
+          authoritative: authoritativePaise / 100,
         });
+        return;
+      }
+      setStatus("failed");
+      const message = orderFailureMessage(created.error);
+      setFailure({
+        code: created.error.code,
+        message,
+        retryable: created.error.retryable !== false,
+      });
+      toast.error("Couldn't place order", { description: message });
+      return;
+    }
+
+    const reconUid = useAuthStore.getState().user?.id ?? null;
+    clearPaymentReconciliation(reconUid);
+    usePaymentStore.getState().clearReconciliation();
+    setStatus("success");
+    // M5: a 100%-discounted order is valid with zero collection due. Say so
+    // plainly rather than showing a ₹0 "amount to pay" as if it failed.
+    if (isZeroCashDue(created.data.cashDuePaise)) {
+      toast.success("No payment to collect", {
+        description: "Your coupon covered the full bill — nothing is due at collection.",
+      });
+    }
+    AudioService.playSuccess();
+    void HapticService.notification("success");
+    void cartRepository.clear();
+    void navigate({
+      to: "/order-confirmation/$orderId",
+      params: { orderId: created.data.id },
+      replace: true,
+    });
   };
 
   const startPayment = async () => {
@@ -634,8 +634,12 @@ function PaymentPage() {
     // id from a lost response or failed receipt read is the only proof of which
     // order was written; navigate to its receipt and never POST again.
     if (!resume && readPendingCashOrder()) {
-      payInFlight.current=true;
-      try {await finishCash({});} finally {payInFlight.current=false;}
+      payInFlight.current = true;
+      try {
+        await finishCash({});
+      } finally {
+        payInFlight.current = false;
+      }
       return;
     }
     if (method === "cash" && !resume) {
@@ -1196,11 +1200,12 @@ function PaymentPage() {
               onClick={() => void startPayment()}
               loading={busy && !payBlocked}
               disabled={
-                !readPendingCashOrder() && (!fulfillmentSupported ||
-                payBlockedByZeroTotal(grandTotal, method) ||
-                !isOnline ||
-                payBlocked ||
-                !quoteView.payEnabled)
+                !readPendingCashOrder() &&
+                (!fulfillmentSupported ||
+                  payBlockedByZeroTotal(grandTotal, method) ||
+                  !isOnline ||
+                  payBlocked ||
+                  !quoteView.payEnabled)
               }
               title={
                 !fulfillmentSupported
@@ -1671,12 +1676,23 @@ function PaymentPage() {
         onConfirm={() => {
           if (!repricePrompt) return;
           if (repricePrompt.cash) {
-            const {attemptId,paise}=repricePrompt.cash;
+            const { attemptId, paise } = repricePrompt.cash;
             setRepricePrompt(null);
-            quoteRepricePrompt.current=false;
-            payInFlight.current=true;
+            quoteRepricePrompt.current = false;
+            payInFlight.current = true;
             setStatus("waiting");
-            void finishCash({attemptId,acceptedTotalPaise:paise}).catch(()=>{setStatus("failed");setFailure({code:"ORDER_SYNC_PENDING",message:"Retry loading your order.",retryable:true})}).finally(()=>{payInFlight.current=false});
+            void finishCash({ attemptId, acceptedTotalPaise: paise })
+              .catch(() => {
+                setStatus("failed");
+                setFailure({
+                  code: "ORDER_SYNC_PENDING",
+                  message: "Retry loading your order.",
+                  retryable: true,
+                });
+              })
+              .finally(() => {
+                payInFlight.current = false;
+              });
             return;
           }
           const serverOrder = pendingGatewayOrder.current;

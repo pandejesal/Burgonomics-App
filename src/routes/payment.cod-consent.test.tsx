@@ -392,7 +392,10 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     fixture.calculateTotals.mockResolvedValue(totals(199));
     const refusal = {
       success: false,
-      error: { code: "PRICE_CHANGED", details: { attemptId:"cash_a", totals: { split: { totalAmountPaise: 0 } } } },
+      error: {
+        code: "PRICE_CHANGED",
+        details: { attemptId: "cash_a", totals: { split: { totalAmountPaise: 0 } } },
+      },
     };
     fixture.createCashOrder
       .mockResolvedValueOnce(refusal)
@@ -406,7 +409,10 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     await click("Place COD Order");
     expect(fixture.createCashOrder).toHaveBeenNthCalledWith(2, {});
     await click("Continue");
-    expect(fixture.createCashOrder).toHaveBeenNthCalledWith(3, { attemptId:"cash_a",acceptedTotalPaise: 0 });
+    expect(fixture.createCashOrder).toHaveBeenNthCalledWith(3, {
+      attemptId: "cash_a",
+      acceptedTotalPaise: 0,
+    });
     expect(fixture.navigate).toHaveBeenCalledWith(
       expect.objectContaining({ params: { orderId: "free" } }),
     );

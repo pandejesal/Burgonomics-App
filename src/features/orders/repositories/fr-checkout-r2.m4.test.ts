@@ -64,7 +64,10 @@ function setUid(next: string) {
 
 beforeEach(() => {
   localStorage.clear();
-  Object.defineProperty(navigator,'locks',{configurable:true,value:{request:async (_key:string,claim:()=>unknown)=>claim()}});
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: async (_key: string, claim: () => unknown) => claim() },
+  });
   cash.createCashOrderOnServer.mockReset();
   service.getOrder.mockReset();
   cartRepo.calculateTotals.mockReset();
@@ -116,7 +119,7 @@ describe("M4 â€” the account-bound ID survives repeated read failures and r
   it("two failed receipt reads still retry only the ORIGINAL id, never a new POST", async () => {
     service.getOrder.mockResolvedValueOnce(fail("OFFLINE", "offline", true));
     service.getOrder.mockResolvedValueOnce(fail("OFFLINE", "offline", true));
-    service.getOrder.mockImplementation(async (id:string)=>ok(order(id)));
+    service.getOrder.mockImplementation(async (id: string) => ok(order(id)));
     const repo = new OrderRepository(service as never);
     await repo.createCashOrder();
     const id = cash.createCashOrderOnServer.mock.calls[0][0].orderId;
@@ -146,12 +149,16 @@ describe("M4 â€” the account-bound ID survives repeated read failures and r
 
 describe("M4 privacy â€” minimal replay payload and scoped purge", () => {
   it("refuses to POST when the durable attempt cannot be written", async () => {
-    const denied=vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw new Error("quota")});
+    const denied = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
     try {
-      const result=await new OrderRepository(service as never).createCashOrder();
+      const result = await new OrderRepository(service as never).createCashOrder();
       expect(result.success).toBe(false);
       expect(cash.createCashOrderOnServer).not.toHaveBeenCalled();
-    } finally { denied.mockRestore(); }
+    } finally {
+      denied.mockRestore();
+    }
   });
 
   it("stores only fields required for replay, never contact details or notes", () => {

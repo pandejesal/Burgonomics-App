@@ -52,7 +52,6 @@ export interface PendingCashOrder {
   updatedAtMs: number;
 }
 
-
 function storageKey(uid = currentScopedUid()): string {
   return scopedStorageKey(PENDING_CASH_ORDER_BASE_KEY, uid);
 }
@@ -85,7 +84,11 @@ export function minimalReplayRequest(request: CashOrderRequest): ReplayableCashR
       productId: item.productId,
       quantity: item.quantity,
       ...(item.customizations?.length
-        ? { customizations: item.customizations.map((c: any) => ({ id: selectionId(c.id ?? c.optionId) })) }
+        ? {
+            customizations: item.customizations.map((c: any) => ({
+              id: selectionId(c.id ?? c.optionId),
+            })),
+          }
         : {}),
       ...(item.modifiers?.length
         ? { modifiers: item.modifiers.map((m: any) => ({ id: selectionId(m.id ?? m.optionId) })) }
@@ -129,7 +132,7 @@ export function readPendingCashOrder(nowMs: number = Date.now()): PendingCashOrd
 export function savePendingCashOrder(
   attemptId: string,
   orderId: string,
-  request: CashOrderRequest
+  request: CashOrderRequest,
 ): PendingCashOrder {
   const now = Date.now();
   const record: PendingCashOrder = {
@@ -150,23 +153,29 @@ export function savePendingCashOrder(
  * the PINNED uid and attemptId: a late callback or a tab on another account
  * never mutates this record. Returns the record actually stored.
  */
-export async function claimPendingCashOrder(uid: string, attemptId: string, request: CashOrderRequest): Promise<PendingCashOrder> {
+export async function claimPendingCashOrder(
+  uid: string,
+  attemptId: string,
+  request: CashOrderRequest,
+): Promise<PendingCashOrder> {
   return navigator.locks.request(storageKey(uid), () => {
     if (uid !== currentScopedUid()) throw new Error("Cash checkout account changed");
     return readPendingCashOrder() ?? savePendingCashOrder(attemptId, request.orderId, request);
   });
 }
 
-export function ownsAttempt(record:PendingCashOrder): boolean {
+export function ownsAttempt(record: PendingCashOrder): boolean {
   if (!record.uid || currentScopedUid() !== record.uid) return false;
   return readPendingCashOrder()?.attemptId === record.attemptId;
 }
 
 /** Mark the recorded order as server-confirmed: future retries only hydrate. */
-export function markPendingCashOrderConfirmed(orderId: string, receiptId=orderId): void {
+export function markPendingCashOrderConfirmed(orderId: string, receiptId = orderId): void {
   const record = readPendingCashOrder();
   if (!record || record.orderId !== orderId) return;
-  writeRaw(JSON.stringify({ ...record, orderId:receiptId, confirmed: true, updatedAtMs: Date.now() }));
+  writeRaw(
+    JSON.stringify({ ...record, orderId: receiptId, confirmed: true, updatedAtMs: Date.now() }),
+  );
 }
 
 /** A server total the customer reconfirmed updates the replay body, not the id. */
