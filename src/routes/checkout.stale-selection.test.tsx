@@ -205,7 +205,7 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: fixture.createOrder,
+    createOnlineDraft: fixture.createOrder,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(async () => ({ success: true })),
   },

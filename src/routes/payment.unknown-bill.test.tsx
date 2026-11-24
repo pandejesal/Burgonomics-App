@@ -58,6 +58,7 @@ const fixture = vi.hoisted(() => {
     cartState,
     checkoutState,
     calculateTotals: vi.fn(),
+    createCashOrder: vi.fn(),
     navigate: vi.fn(),
     toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
   };
@@ -240,7 +241,8 @@ vi.mock("@/features/addresses", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: vi.fn(),
+    createOnlineDraft: vi.fn(),
+    createCashOrder: fixture.createCashOrder,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
   },
@@ -445,15 +447,42 @@ describe("payment route — unknown bill must not be payable (synthetic scenario
     expect(createPaymentOrder).toHaveBeenCalledTimes(1);
   });
 
-  it("[synthetic] computed ZERO payable stays disabled (regression lock: zero-pay semantics on KNOWN totals only)", async () => {
+  it("[synthetic] computed ZERO payable uses the server zero-due path, never the gateway", async () => {
     fixture.checkoutState.tipAmount = 0;
     fixture.calculateTotals.mockResolvedValue(totals(0));
+    fixture.createCashOrder.mockResolvedValue({
+      success: true,
+      data: { id: "ord_zero_payment", orderId: "ord_zero_payment", cashDuePaise: 0 },
+    });
 
     await mountPayment();
 
-    const pay = buttonWithText("Pay Online");
-    expect(pay!.disabled).toBe(true);
+    const pay = buttonWithText("Place Zero-Due Order");
+    expect(pay!.disabled).toBe(false);
+    await act(async () => pay!.click());
+    await act(async () => {});
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.createCashOrder).toHaveBeenCalledWith({ zeroDueOnly: true });
     expect(validateForPayment).not.toHaveBeenCalled();
+    expect(createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.navigate).toHaveBeenCalledWith({
+      to: "/order-confirmation/$orderId",
+      params: { orderId: "ord_zero_payment" },
+      replace: true,
+    });
+  });
+
+  it("returns a repriced zero-due checkout without offering a cash reconfirmation", async () => {
+    fixture.checkoutState.tipAmount = 0;
+    fixture.calculateTotals.mockResolvedValue(totals(0));
+    fixture.createCashOrder.mockResolvedValue({
+      success: false,
+      error: { code: "PRICE_CHANGED", details: { attemptId: "zero", totals: { grandTotal: 95 } } },
+    });
+    await mountPayment();
+    await act(async () => buttonWithText("Place Zero-Due Order")!.click());
+    expect(fixture.navigate).toHaveBeenCalledWith({ to: "/checkout" });
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
     expect(createPaymentOrder).not.toHaveBeenCalled();
   });
 });

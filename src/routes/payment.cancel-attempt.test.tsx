@@ -251,7 +251,7 @@ vi.mock("@/features/addresses", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: vi.fn(),
+    createOnlineDraft: vi.fn(),
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
   },

@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // R24 — paid-order finalization (read-only server truth).
 //
-// After backend verify confirms the pending `orders/{id}` doc, the old
-// post-payment path re-ran `createFromCurrentContext` → `createOrder` → a
-// FULL `setDoc` over the SAME confirmed id. On an existing doc that is an
+// After backend verify confirms the pending `orders/{id}` doc, the retired
+// post-payment path re-ran a client creator and issued a FULL `setDoc` over the
+// SAME confirmed id. On an existing doc that is an
 // UPDATE: firestore.rules lets a customer change only
 // `status/completedAt/updatedAt` (cancel) or `whatsappOptIn/updatedAt`,
 // so the write is denied on a captured payment — and wherever a rule
@@ -148,16 +148,21 @@ function snapOf(data: Record<string, unknown> | null) {
   };
 }
 
-/** Create-order input with a caller-chosen id (pending, unpaid). */
-function pendingOrderInput(id: string) {
+/** Server-created pending draft in customer-readable Firestore shape. */
+function pendingServerDoc(id: string, overrides: Record<string, unknown> = {}) {
   return {
-    confirmedOrderId: id,
+    id,
+    userId: currentUid(),
+    customerId: currentUid(),
+    status: { ...PLACED_STATUS },
     store: { id: "branch_01", name: "Test Outlet" },
     fulfillment: "delivery",
     items: [{ productId: "p1", name: "Burger", quantity: 1, unitPrice: 250 }],
     totals: { grandTotal: 250 },
     payment: { method: "online", label: "Pay Online", status: "pending" },
-  } as any;
+    placedAt: new Date().toISOString(),
+    ...overrides,
+  };
 }
 
 const currentUid = () => authState.currentUser?.uid ?? "";
@@ -435,14 +440,21 @@ describe("B. honest failures — never a false order, never a minted id", () => 
 // -- C. cache can never prove payment ---------------------------------
 
 describe("C. cache can never prove payment", () => {
+  async function seedCache(doc: Record<string, unknown>) {
+    mockGetDocs.mockResolvedValueOnce({
+      forEach: (cb: (entry: { data: () => unknown }) => void) => cb({ data: () => doc }),
+    });
+    const listed = await ordersService.listOrders();
+    expect(listed.success).toBe(true);
+  }
+
   it("a stale client-paid cache entry is not paid proof when the server read fails", async () => {
     // Seed the session cache with an order whose paid flag is CLIENT-written
     // (the old post-verify path's shape).
-    const seeded = await ordersService.createOrder({
-      ...pendingOrderInput("ord_stale_paid"),
+    await seedCache({
+      ...pendingServerDoc("ord_stale_paid"),
       payment: { method: "online", label: "Pay Online", status: "paid" },
     });
-    expect(seeded.success).toBe(true);
     const writesSoFar = mockSetDoc.mock.calls.length;
 
     // The server read — the ONLY paid proof — fails.
@@ -456,11 +468,11 @@ describe("C. cache can never prove payment", () => {
   });
 
   it("a fresh server read wins over a stale unpaid cache entry", async () => {
-    // Pending (unpaid) order created pre-gateway — cached as unpaid.
-    const seeded = await ordersService.createOrder(pendingOrderInput("ord_flip"));
-    expect(seeded.success).toBe(true);
-    if (!seeded.success) return;
-    expect(seeded.data.payment.status).toBe("pending");
+    // Pending (unpaid) server draft — cached as unpaid.
+    await seedCache(pendingServerDoc("ord_flip"));
+    const cachedPending = await ordersService.getOrder("ord_flip");
+    expect(cachedPending.success).toBe(true);
+    if (cachedPending.success) expect(cachedPending.data?.payment.status).toBe("pending");
 
     // Server says: paid + confirmed (finishVerifiedPayment landed).
     const readsBeforeFinalize = mockGetDoc.mock.calls.length;

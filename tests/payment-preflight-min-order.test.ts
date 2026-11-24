@@ -8,7 +8,7 @@ const validateCart = vi.hoisted(() =>
 const prepareCheckout = vi.hoisted(() =>
   vi.fn(async () => ({ success: true as const, data: { checkoutToken: "tok_min_order" } })),
 );
-const createFromCurrentContext = vi.hoisted(() => vi.fn());
+const createOnlineDraft = vi.hoisted(() => vi.fn());
 const createGatewayOrder = vi.hoisted(() => vi.fn());
 const setInternalOrderId = vi.hoisted(() => vi.fn());
 
@@ -53,7 +53,7 @@ vi.mock("../src/features/checkout/state/checkoutStore", () => ({
 }));
 
 vi.mock("../src/features/orders/repositories/OrderRepository", () => ({
-  orderRepository: { createFromCurrentContext },
+  orderRepository: { createOnlineDraft },
 }));
 
 vi.mock("../src/features/payments/services/paymentsService", () => ({
@@ -79,7 +79,7 @@ beforeEach(() => {
   calculateTotals.mockReset();
   validateCart.mockClear();
   prepareCheckout.mockClear();
-  createFromCurrentContext.mockReset();
+  createOnlineDraft.mockReset();
   createGatewayOrder.mockReset();
   setInternalOrderId.mockClear();
   storeState.activeStore.pricing = {};
@@ -137,7 +137,7 @@ describe("PaymentRepository.validateForPayment — resolved minimum order", () =
 describe("PaymentRepository.createPaymentOrder — shared order-boundary refusal", () => {
   it("propagates a minimum-order refusal from the shared boundary without opening the gateway", async () => {
     calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 100, grandTotal: 130 } });
-    createFromCurrentContext.mockResolvedValue(
+    createOnlineDraft.mockResolvedValue(
       fail("MIN_ORDER", "Add items worth ₹49 more to meet the ₹149 minimum order.", true),
     );
 
@@ -147,7 +147,7 @@ describe("PaymentRepository.createPaymentOrder — shared order-boundary refusal
     if (res.success) return;
     expect(res.error.code).toBe("MIN_ORDER");
     expect(res.error.retryable).toBe(true);
-    expect(createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(createGatewayOrder).not.toHaveBeenCalled();
     expect(setInternalOrderId).not.toHaveBeenCalled();
   });
@@ -155,7 +155,7 @@ describe("PaymentRepository.createPaymentOrder — shared order-boundary refusal
   it("does not gate takeaway and reaches the gateway", async () => {
     storeState.fulfillment = "takeaway";
     calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 10, grandTotal: 40 } });
-    createFromCurrentContext.mockResolvedValue({
+    createOnlineDraft.mockResolvedValue({
       success: true,
       data: { id: "ord_min_order_takeaway" },
     });
@@ -167,7 +167,7 @@ describe("PaymentRepository.createPaymentOrder — shared order-boundary refusal
     const res = await new PaymentRepository().createPaymentOrder();
 
     expect(res.success).toBe(true);
-    expect(createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(createGatewayOrder).toHaveBeenCalledTimes(1);
   });
 });

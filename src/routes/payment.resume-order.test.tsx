@@ -29,7 +29,7 @@ const fixture = vi.hoisted(() => ({
   getOrder: vi.fn(),
   navigate: vi.fn(),
   calculateTotals: vi.fn(),
-  createFromCurrentContext: vi.fn(),
+  createOnlineDraft: vi.fn(),
   finalizePaidOrder: vi.fn(),
   createOrder: vi.fn(),
   verify: vi.fn(),
@@ -217,7 +217,7 @@ vi.mock("@/features/checkout", async () => {
 vi.mock("@/features/orders/repositories/OrderRepository", () => ({
   orderRepository: {
     getOrder: fixture.getOrder,
-    createFromCurrentContext: fixture.createFromCurrentContext,
+    createOnlineDraft: fixture.createOnlineDraft,
     finalizePaidOrder: fixture.finalizePaidOrder,
     markPaymentFailed: vi.fn(async () => ({ success: true })),
     cancelOrder: vi.fn(),
@@ -407,7 +407,7 @@ describe("CUS-16 — an unpaid order is paid from the ORDER, with an empty cart"
     expect(sent.storeId).toBe("demo");
     expect(sent.orderType).toBe("takeaway");
     // …and no second order was written.
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
 
     // The SDK was initialised on the server's amount for that same order.
     expect(fixture.sdkInit).toHaveBeenCalledTimes(1);
@@ -450,7 +450,7 @@ describe("CUS-16 — an unpaid order is paid from the ORDER, with an empty cart"
         params: { orderId: fixture.orderId },
       }),
     );
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
   });
 
   it("an already-paid order says so and offers no payment", async () => {

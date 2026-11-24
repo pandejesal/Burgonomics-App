@@ -309,36 +309,6 @@ export interface OrderListResult {
   hasMore: boolean;
 }
 
-export interface CreateOrderInput {
-  store: OrderStoreSnapshot;
-  fulfillment: Fulfillment;
-  items: CartLine[];
-  totals: CartTotals;
-  promo?: AppliedPromo | null;
-  /** Delivery-partner tip (₹) chosen on the cart screen. */
-  tipAmount?: number;
-  /** Loyalty points redeemed (1 pt = ₹1, server re-caps at 20%). */
-  loyaltyPointsRedeemed?: number;
-  address?: OrderAddressSnapshot;
-  /** Delivery address pass-through for downstream (partner/dispatch) systems. */
-  deliveryAddress?: OrderAddressSnapshot;
-  notes?: string;
-  fulfillmentInstructions?: string;
-  tableNumber?: string;
-  /**
-   * R8: the server courier quote this delivery order was priced from, written
-   * at create for cash and online alike so partner/dispatch/verification read
-   * the same quote the customer paid. Delivery only — never written as
-   * undefined, and never on takeaway/dine-in.
-   */
-  deliveryQuoteId?: string;
-  /** WhatsApp order-alert opt-in at placement time (defaults true). */
-  whatsappOptIn?: boolean;
-  payment: OrderPaymentInfo;
-  /** Backend confirmed order id (from payment verification). */
-  confirmedOrderId?: string;
-}
-
 /** Mapping helper — build a snapshot from an existing Store model. */
 export function toStoreSnapshot(store: Store): OrderStoreSnapshot {
   return {

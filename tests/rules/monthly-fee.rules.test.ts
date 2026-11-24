@@ -158,10 +158,10 @@ describe("Canonical union rules — monthly fee, markers, catalog and customer c
     await assertSucceeds(updateDoc(doc(db, "orders", "ord_seed_1"), { whatsappOptIn: false }));
   });
 
-  it("CUS-06: a real delivery create with deliveryQuoteId succeeds", async (context) => {
+  it("CUS-06: client delivery create is denied; the server quote lane owns order birth", async (context) => {
     if (!emulatorAvailable) return context.skip();
     const db = testEnv!.authenticatedContext("cust_100").firestore();
-    await assertSucceeds(setDoc(doc(db, "orders", "ord_real_delivery"), customerDeliveryOrder()));
+    await assertFails(setDoc(doc(db, "orders", "ord_real_delivery"), customerDeliveryOrder()));
   });
 
   it("21: branch ledger is tenant-scoped, server-write-only", async (context) => {
@@ -221,7 +221,7 @@ describe("Canonical union rules — monthly fee, markers, catalog and customer c
   });
 });
 
-/** Mirrors the persisted ordersService.createOrder payload (delivery, quote). */
+/** Server-created delivery order fixture (delivery, quote). */
 function customerDeliveryOrder(): Record<string, unknown> {
   return {
     id: "ord_real_delivery",

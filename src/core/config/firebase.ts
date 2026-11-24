@@ -79,15 +79,9 @@ const auth = Capacitor.isNativePlatform()
     })
   : getAuth(app);
 /**
- * CUS-06: orders carry optional leaves that are legitimately `undefined`
- * (notes, fulfillmentInstructions, tableNumber, payment.transactionId,
- * payment.paidAt, branchCoordinates — see ordersService.createOrder). With
- * plain `getFirestore()` the SDK validates the write locally and throws
- * `invalid-argument` "Unsupported field value: undefined" BEFORE any request,
- * so every checkout surfaced PERSIST_FAILED and Razorpay never opened.
- * `ignoreUndefinedProperties` drops those keys instead. Exported so the
- * regression test (src/features/orders/order-persist-firestore.test.ts) builds
- * a real Firestore instance with the identical settings.
+ * CUS-06: order reads/updates still carry optional leaves. Keep the SDK's
+ * undefined-key compatibility for those paths; order creation itself is now
+ * server-only and never relies on a client Firestore write.
  */
 export const firestoreSettings: FirestoreSettings = { ignoreUndefinedProperties: true };
 

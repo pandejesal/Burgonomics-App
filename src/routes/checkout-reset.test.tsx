@@ -186,7 +186,8 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: fixture.createOrder,
+    createOnlineDraft: fixture.createOrder,
+    createCashOrder: fixture.createOrder,
     finalizePaidOrder: fixture.finalizePaidOrder,
     markPaymentFailed: vi.fn(async () => ({ success: true })),
   },
@@ -316,7 +317,10 @@ async function placeOrder() {
 describe("checkout selections reset after every successful order path", () => {
   it("clears tip, redeemed points and notes after a cash order", async () => {
     usePaymentStore.getState().setMethod("cash");
-    fixture.createOrder.mockResolvedValue({ success: true, data: { id: "ord_cash_reset" } });
+    fixture.createOrder.mockResolvedValue({
+      success: true,
+      data: { id: "ord_cash_reset", orderId: "ord_cash_reset", cashDuePaise: 50000 },
+    });
     seedSelections();
 
     await mount();
@@ -326,10 +330,13 @@ describe("checkout selections reset after every successful order path", () => {
     expectSelectionsCleared();
   });
 
-  it("clears them after a zero-payable free order and records a pending, unpaid marker", async () => {
+  it("clears them after a zero-payable order uses the server zero-due cash path", async () => {
     usePaymentStore.getState().setMethod("online");
     fixture.cart.calculateTotals.mockResolvedValue(totals(500, 0));
-    fixture.createOrder.mockResolvedValue({ success: true, data: { id: "ord_free_reset" } });
+    fixture.createOrder.mockResolvedValue({
+      success: true,
+      data: { id: "ord_free_reset", orderId: "ord_free_reset", cashDuePaise: 0 },
+    });
     seedSelections();
     // A persisted tip is payable even when the food is fully discounted.
     useCheckoutStore.getState().setTipAmount(0);
@@ -337,9 +344,7 @@ describe("checkout selections reset after every successful order path", () => {
     await mount();
     await placeOrder();
 
-    expect(fixture.createOrder).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentMethod: "online", paymentStatus: "pending" }),
-    );
+    expect(fixture.createOrder).toHaveBeenCalledWith({ zeroDueOnly: true });
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
     expectSelectionsCleared();
   });

@@ -1,131 +1,119 @@
-/**
- * CHECKOUT_CONTEXT_CHANGED must clear the payment ATTEMPT so the next tap
- * creates a fresh order.
- *
- * `PaymentRepository.createPaymentOrder` mints a pending `orders/{id}` before
- * the gateway opens and remembers that id in the payment store; retries pass
- * it back as `confirmedOrderId`. When `ordersService` refuses the retry
- * because the checkout context changed, keeping the id would make every
- * subsequent tap retry the SAME stale order (and keep failing). The order
- * repository therefore drops the internal order id + gateway binding on that
- * specific failure — and only on that failure.
- */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-/* ── cart / store / address / checkout context (faked) ─────────────────── */
-vi.mock("../src/features/cart/repositories/CartRepository", () => ({
-  cartRepository: {
-    calculateTotals: vi.fn(async () => ({
-      success: true as const,
-      data: {
-        subtotal: 250,
-        itemDiscount: 0,
-        promoDiscount: 0,
-        taxes: 0,
-        cgst: 0,
-        sgst: 0,
-        gstRate: 0.05,
-        deliveryFee: 0,
-        packingFee: 0,
-        grandTotal: 250,
-        currency: "INR" as const,
-      },
-    })),
-  },
+/** @vitest-environment jsdom */
+/** A changed basket must not silently abandon an existing server draft. */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const h = vi.hoisted(() => ({
+  calculateTotals: vi.fn(),
+  createDraft: vi.fn(),
+  retireDraft: vi.fn(),
 }));
+vi.mock("../src/features/cart/repositories/CartRepository", () => ({
+  cartRepository: { calculateTotals: h.calculateTotals },
+}));
+vi.mock("../src/features/payments/services/onlineDraftService", () => ({
+  createOnlineDraftOnServer: h.createDraft,
+  retireOnlineDraftOnServer: h.retireDraft,
+}));
+vi.mock("../src/features/auth/utils/scopedPersistence", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/features/auth/utils/scopedPersistence")>()),
+  currentScopedUid: () => "cust_retry",
+}));
+const cartState = { lines: [{ productId: "p1", quantity: 1 }], promo: null };
 vi.mock("../src/features/cart/state/cartStore", () => ({
-  useCartStore: {
-    getState: () => ({ lines: [], storeId: "store-A", promo: null }),
-  },
+  useCartStore: { getState: () => cartState },
 }));
 vi.mock("../src/features/stores/state/storeStore", () => ({
   useStoreSelection: {
     getState: () => ({
-      activeStore: { id: "store-A", name: "Surat Vesu", pricing: null },
-      fulfillment: "delivery",
+      activeStore: { id: "store-A", name: "Outlet", pricing: {} },
+      fulfillment: "takeaway",
     }),
   },
 }));
 vi.mock("../src/features/addresses", () => ({
-  useAddressStore: { getState: () => ({ items: [], selectedId: null }) },
-  selectSelectedAddress: () => null,
+  useAddressStore: { getState: () => ({}) },
+  selectSelectedAddress: () => undefined,
 }));
 vi.mock("../src/features/checkout/state/checkoutStore", () => ({
   useCheckoutStore: {
     getState: () => ({
       orderNotes: "",
-      deliveryInstructions: "",
       pickupInstructions: "",
+      deliveryInstructions: "",
       diningNotes: "",
       tipAmount: 0,
-      loyaltyPointsToRedeem: 0,
       tableNumber: "",
+      checkoutFees: { status: "idle" },
     }),
   },
 }));
-vi.mock("../src/features/orders/state/ordersStore", () => ({
-  useOrdersStore: {
-    getState: () => ({ upsert: vi.fn(), setActiveOrderId: vi.fn() }),
-  },
-  selectAllOrders: () => [],
+vi.mock("../src/features/payments/state/paymentStore", () => ({
+  usePaymentStore: { getState: () => ({}) },
 }));
-vi.mock("../src/core/logging/logger", () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+vi.mock("../src/features/orders/services/ordersService", () => ({ ordersService: {} }));
 
 import { OrderRepository } from "../src/features/orders/repositories/OrderRepository";
-import { usePaymentStore } from "../src/features/payments/state/paymentStore";
-
-const contextChanged = {
-  success: false as const,
-  error: {
-    code: "CHECKOUT_CONTEXT_CHANGED",
-    message:
-      "Your order details changed since the last attempt, so the earlier order was not reused. Please review your details and place the order again.",
-    retryable: true,
-  },
-};
-
-const persistFailed = {
-  success: false as const,
-  error: {
-    code: "PERSIST_FAILED",
-    message: "We couldn't save your order.",
-    retryable: true,
-  },
-};
+import { readPendingOnlineDraft } from "../src/features/payments/services/pendingOnlineDraft";
 
 beforeEach(() => {
-  usePaymentStore.getState().reset();
+  localStorage.clear();
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: async (_key: string, callback: () => unknown) => callback() },
+  });
+  cartState.lines = [{ productId: "p1", quantity: 1 }];
+  h.calculateTotals
+    .mockReset()
+    .mockResolvedValue({ success: true, data: { subtotal: 100, grandTotal: 100 } });
+  h.retireDraft.mockReset().mockResolvedValue({ success: true, data: undefined });
+  h.createDraft
+    .mockReset()
+    .mockImplementation(async (request: { orderId: string; attemptId: string }) => ({
+      success: true,
+      data: {
+        orderId: request.orderId,
+        id: request.orderId,
+        attemptId: request.attemptId,
+        replayed: false,
+        amountPaise: 10000,
+        totals: {},
+        status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+      },
+    }));
 });
 
-describe("createFromCurrentContext — stale payment attempt", () => {
-  it("clears internalOrderId + gatewayOrderId when the checkout context changed", async () => {
-    const service = { createOrder: vi.fn(async () => contextChanged) };
-    const repo = new OrderRepository(service as never);
-
-    usePaymentStore.getState().setInternalOrderId("ord_stale");
-    usePaymentStore.getState().setGatewayOrderId("order_rzp_stale");
-
-    const res = await repo.createFromCurrentContext({ paymentMethod: "online" });
-
-    expect(res.success).toBe(false);
-    // The next tap must mint a fresh order, not retry the stale binding.
-    expect(usePaymentStore.getState().internalOrderId).toBeNull();
-    expect(usePaymentStore.getState().gatewayOrderId).toBeNull();
+describe("server draft retry identity", () => {
+  it("keeps the original attempt if a changed basket cannot safely retire it", async () => {
+    const repo = new OrderRepository();
+    expect((await repo.createOnlineDraft()).success).toBe(true);
+    const original = readPendingOnlineDraft();
+    h.retireDraft.mockResolvedValueOnce({
+      success: false,
+      error: { code: "DRAFT_PAYMENT_IN_PROGRESS" },
+    });
+    cartState.lines = [{ productId: "p1", quantity: 2 }];
+    const changed = await repo.createOnlineDraft();
+    expect(changed.success).toBe(false);
+    if (!changed.success) expect(changed.error.code).toBe("DRAFT_PAYMENT_IN_PROGRESS");
+    expect(h.retireDraft).toHaveBeenCalledWith(original?.orderId, original?.attemptId);
+    expect(h.createDraft).toHaveBeenCalledTimes(1);
+    expect(readPendingOnlineDraft()?.orderId).toBe(original?.orderId);
+    expect(readPendingOnlineDraft()?.attemptId).toBe(original?.attemptId);
   });
 
-  it("keeps the attempt id on an unrelated retryable failure (same order is still the right one)", async () => {
-    const service = { createOrder: vi.fn(async () => persistFailed) };
-    const repo = new OrderRepository(service as never);
-
-    usePaymentStore.getState().setInternalOrderId("ord_pending");
-    usePaymentStore.getState().setGatewayOrderId("order_rzp_pending");
-
-    const res = await repo.createFromCurrentContext({ paymentMethod: "online" });
-
-    expect(res.success).toBe(false);
-    expect(usePaymentStore.getState().internalOrderId).toBe("ord_pending");
-    expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_pending");
+  it("replaces a changed basket only after the original attempt was retired", async () => {
+    const repo = new OrderRepository();
+    expect((await repo.createOnlineDraft()).success).toBe(true);
+    const original = readPendingOnlineDraft();
+    cartState.lines = [{ productId: "p1", quantity: 2 }];
+    expect((await repo.createOnlineDraft()).success).toBe(true);
+    const replacement = readPendingOnlineDraft();
+    expect(h.retireDraft).toHaveBeenCalledWith(original?.orderId, original?.attemptId);
+    expect(h.createDraft).toHaveBeenCalledTimes(2);
+    expect(h.retireDraft.mock.invocationCallOrder[0]).toBeLessThan(
+      h.createDraft.mock.invocationCallOrder[1],
+    );
+    expect(replacement?.orderId).not.toBe(original?.orderId);
+    expect(replacement?.attemptId).not.toBe(original?.attemptId);
+    expect(replacement?.request.items).toEqual([{ productId: "p1", quantity: 2 }]);
   });
 });

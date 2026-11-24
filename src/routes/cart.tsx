@@ -450,8 +450,7 @@ function CartPage() {
             selectedTip={tipAmount}
             onSelectTip={(tip) => {
               setTipAmount(tip);
-              // Persist so the order record + gateway carry the tip
-              // (createFromCurrentContext reads checkout.tipAmount).
+              // Persist so the server cash/online draft carries the tip.
               useCheckoutStore.getState().setTipAmount(tip);
             }}
           />

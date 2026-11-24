@@ -20,28 +20,26 @@ import { doc, getDoc, setDoc, updateDoc, deleteField } from "firebase/firestore"
  * the shipped rules had already removed that privilege from branch staff.
  *
  * Writer inventory (source-verified before enforcement):
- *  - Customer app ordersService.ts: createOrder -> setDoc CREATE (with items),
- *    setWhatsappOptIn -> merge {whatsappOptIn, updatedAt}; cancelOrder ->
+ *  - Customer app order creation -> POST /orders/createCashOrder or
+ *    /orders/createOnlineDraft (Admin SDK server write); setWhatsappOptIn ->
+ *    merge {whatsappOptIn, updatedAt}; cancelOrder ->
  *    POST /orders/customerCancel (F24: the client no longer writes the order
  *    document at all); markPaymentFailed/finalizePaidOrder are zero-write
  *    server-truth readers.
  *  - Partner useOrders.ts updateOrderStatus -> HTTP POST /orders/bumpStatus
  *    (no direct client write); adminOrdersService.ts is read-only.
- *  - Partner walk-in counter lane -> one-time CREATE with items via
- *    createOrderDocIfAbsent (ManualOrderCreateModal.tsx).
+ *  - Partner walk-in counter lane -> POST /orders/createWalkIn (Admin SDK
+ *    server write; ManualOrderCreateModal.tsx).
  *
  * Contract asserted here:
  *  1. NO client role — brand_owner, developer, regional_manager, branch_owner
  *     (own AND foreign), branch_staff, support, customer (owner), anonymous,
- *     claims-only staff, unrecognized role aliases — may change a protected
- *     field of an existing order, including nested/dotted patches and
- *     FieldValue.delete removals under protected maps.
- *  2. The explicitly safe scoped updates survive: operator status bumps,
- *     customer whatsapp opt-in, takeaway completion for operators (delivery
- *     DELIVERED stays server-OTP-only for everyone). Customer cancellation is
- *     no longer a client write at all — POST /orders/customerCancel owns it (F24).
- *  3. Legitimate initial CREATE with items (customer checkout and walk-in)
- *     stays allowed; POS state stays server-stamped at birth too.
+ *     claims-only staff, unrecognized role aliases — may CREATE an order or
+ *     change a protected field of an existing order, including nested/dotted
+ *     patches and FieldValue.delete removals under protected maps.
+ *  2. The explicitly safe scoped updates survive: customer whatsapp opt-in.
+ *     Status moves and cancellation are server endpoints, never client writes.
+ *  3. Every initial CREATE is denied to clients; server routes own order birth.
  *  4. The server lane keeps full control (Admin SDK / withSecurityRulesDisabled).
  */
 
@@ -542,12 +540,12 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
   // expectation). No case was weakened: the assertion is the stricter one.
 
   // -------------------------------------------------------------------------
-  // 3. CREATE-WITH-ITEMS CONTRACT (not blanket-denied)
+  // 3. ORDER BIRTH IS SERVER-ONLY (all client roles denied)
   // -------------------------------------------------------------------------
 
-  it("dec01-create: customer checkout create-with-items still succeeds", async () => {
+  it("dec01-create: customer checkout order birth is denied to the client", async () => {
     const custDb = databaseFor({ label: "customer", uid: "cust_creator" });
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(custDb, "orders", "ord_rules_create_cust"), {
         customerId: "cust_creator",
         userId: "cust_creator",
@@ -600,18 +598,9 @@ describe("Firestore Security Rules — DEC-01 order server-only fields (all clie
   );
 
   // -------------------------------------------------------------------------
-  // 3b. REVIEWER RED 2026-10-27 — forgery AT BIRTH (both create lanes)
-  //
-  // The old create rule was a key DENYLIST; every lease/claim family
-  // discovered after it was written (refund claim/ledger, dispatch lease
-  // pointers, POS push leases, route-transfer lease) was absent from it, so
-  // a client could plant them at birth. Literal dotted keys
-  // ("payment.razorpayPaymentId" as a single top-level field) also sailed
-  // through: 'payment' itself stayed absent, so the payment map allowlist
-  // never ran, while the backend's readRecordedPaymentField treats the
-  // legacy dotted literal as authoritative. The fixed rule is an ALLOWLIST
-  // over exactly the keys the two writer audits plant — everything else,
-  // dotted or not, is rejected.
+  // 3b. FORGERY AT BIRTH remains denied on every client lane. Order creation is
+  // now blanket-denied, so these probes also guard against a future regression
+  // that reopens a client create arm without restoring the full field policy.
   // -------------------------------------------------------------------------
 
   const EXPLOIT_CREATE_KEYS: Array<{ field: string; value: unknown }> = [

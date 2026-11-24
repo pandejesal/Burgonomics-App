@@ -42,7 +42,6 @@ import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAccepta
 import {
   cashPriceChangedPaise,
   isZeroCashDue,
-  payBlockedByZeroTotal,
 } from "@/features/payments/services/cashCheckoutDecision";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
@@ -573,9 +572,21 @@ function PaymentPage() {
     }
   };
 
-  const finishCash = async (opts: { attemptId?: string; acceptedTotalPaise?: number }) => {
+  const finishCash = async (opts: {
+    attemptId?: string;
+    acceptedTotalPaise?: number;
+    zeroDueOnly?: true;
+  }) => {
     const created = await orderRepository.createCashOrder(opts);
     if (!created.success) {
+      if (opts.zeroDueOnly && created.error.code === "PRICE_CHANGED") {
+        toast.error("This order is no longer free", {
+          description: "Review your updated bill before placing it.",
+        });
+        setStatus("idle");
+        void navigate({ to: "/checkout" });
+        return;
+      }
       // M5: PRICE_CHANGED carries the SERVER's authoritative breakdown.
       // Show that exact total for explicit reconfirmation; set the accepted
       // paise ONLY when the customer confirms, never when we show the prompt.
@@ -605,6 +616,15 @@ function PaymentPage() {
       return;
     }
 
+    if (opts.zeroDueOnly && created.data.cashDuePaise !== 0) {
+      setStatus("failed");
+      setFailure({
+        code: "RECEIPT_UNAVAILABLE",
+        message: "We couldn't confirm the zero-due order. Check your orders before trying again.",
+        retryable: false,
+      });
+      return;
+    }
     const reconUid = useAuthStore.getState().user?.id ?? null;
     clearPaymentReconciliation(reconUid);
     usePaymentStore.getState().clearReconciliation();
@@ -633,10 +653,11 @@ function PaymentPage() {
     // M4 r2: recover BEFORE any preflight/quote/totals check. A confirmed cash
     // id from a lost response or failed receipt read is the only proof of which
     // order was written; navigate to its receipt and never POST again.
-    if (!resume && readPendingCashOrder()) {
+    const savedCash = !resume ? readPendingCashOrder() : null;
+    if (savedCash) {
       payInFlight.current = true;
       try {
-        await finishCash({});
+        await finishCash(savedCash.request.zeroDueOnly ? { zeroDueOnly: true } : {});
       } finally {
         payInFlight.current = false;
       }
@@ -756,6 +777,13 @@ function PaymentPage() {
       }
       pendingGatewayOrder.current = null;
       await openGatewayForOrder(heldOrder);
+      return;
+    }
+
+    // A known zero-due online bill uses the same server-validated zero-due
+    // creator as cash checkout. Never open Razorpay or mint an unpaid draft.
+    if (!resume && totals !== null && !totalsFailed && displayedBillTotal === 0) {
+      await finishCash({ zeroDueOnly: true });
       return;
     }
 
@@ -1202,7 +1230,9 @@ function PaymentPage() {
               disabled={
                 !readPendingCashOrder() &&
                 (!fulfillmentSupported ||
-                  payBlockedByZeroTotal(grandTotal, method) ||
+                  totals === null ||
+                  totalsFailed ||
+                  grandTotal < 0 ||
                   !isOnline ||
                   payBlocked ||
                   !quoteView.payEnabled)
@@ -1227,7 +1257,9 @@ function PaymentPage() {
                               : undefined
               }
               iconLeft={
-                (method === "online" || resume) && !payBlocked ? (
+                (method === "online" || resume) &&
+                !payBlocked &&
+                (totals === null || totalsFailed || finalPayable !== 0) ? (
                   <Lock className="h-4 w-4" />
                 ) : undefined
               }
@@ -1252,11 +1284,13 @@ function PaymentPage() {
                         ? resume
                           ? "Retry payment"
                           : "Retry checkout"
-                        : method === "online" || resume
-                          ? "Pay Online"
-                          : isDelivery
-                            ? "Place COD Order"
-                            : "Place Order"}
+                        : !resume && totals !== null && !totalsFailed && finalPayable === 0
+                          ? "Place Zero-Due Order"
+                          : method === "online" || resume
+                            ? "Pay Online"
+                            : isDelivery
+                              ? "Place COD Order"
+                              : "Place Order"}
             </AppButton>
           </div>
         </div>
