@@ -90,6 +90,7 @@ function factory(): RecaptchaFactory {
     // The binding layer expects a RecaptchaVerifier-shaped object.
     return {
       render: record.render,
+      verify: vi.fn(async () => "verified-token"),
       clear: () => parameters.callback(),
     } as unknown as ReturnType<RecaptchaFactory>;
   };
@@ -177,6 +178,7 @@ describe("login route — reCAPTCHA host is the element the service binds", () =
     expect(bound[0].connectedAtConstruction).toBe(true);
     expect(bound[0].element).toBe(host);
     expect(bound[0].render).toHaveBeenCalled();
+    expect(host!.dataset.recaptchaSize).toBe("invisible");
     expect(sdk.sendSms).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState().status).toBe("otp_sent");
     expect(useAuthStore.getState().challenge?.otpToken).toBe("+919876543210");

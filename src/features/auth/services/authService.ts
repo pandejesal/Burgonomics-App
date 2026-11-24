@@ -74,6 +74,16 @@ const normalizePhoneE164 = (phone: string): string => {
   return `+91${cleaned.replace(/^0+/, "")}`;
 };
 
+function resetLegacyVerifier(verifier: RecaptchaVerifier): void {
+  if (recaptchaVerifier !== verifier) return;
+  try {
+    verifier.clear();
+  } catch {
+    // The next request constructs a fresh verifier.
+  }
+  recaptchaVerifier = null;
+}
+
 export const authService = {
   /**
    * Initializes real RecaptchaVerifier bound to the specified container.
@@ -95,16 +105,23 @@ export const authService = {
         }
         recaptchaVerifier = null;
       }
-      recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-        size: "normal",
+      while (element.firstChild) element.removeChild(element.firstChild);
+      const verifier = new RecaptchaVerifier(auth, containerId, {
+        size: "invisible",
         callback: () => {
-          // reCAPTCHA solved
+          // Firebase resolved the invisible verification token.
         },
         "expired-callback": () => {
           console.warn("[Auth] reCAPTCHA expired, will re-render on next request.");
+          resetLegacyVerifier(verifier);
+        },
+        "error-callback": () => {
+          console.warn("[Auth] reCAPTCHA failed, will re-render on next request.");
+          resetLegacyVerifier(verifier);
         },
       });
-      window.recaptchaVerifier = recaptchaVerifier;
+      recaptchaVerifier = verifier;
+      window.recaptchaVerifier = verifier;
     } catch (err) {
       console.error("[Auth] Failed to initialize RecaptchaVerifier:", err);
     }
@@ -196,20 +213,21 @@ export const authService = {
           }),
         ]);
       } catch (renderError: any) {
+        if (isFlowMounted(flow)) dirtyFlow(flow);
+        else resetLegacyVerifier(verifier);
         if (renderError?.message === RENDER_SENTINEL) {
-          if (isFlowMounted(flow)) dirtyFlow(flow);
           authService.cancelChallenge();
-          return fail("RECAPTCHA_RENDER_FAILED", authCopy("RECAPTCHA_RENDER_FAILED"));
         }
-        // Container might already have the widget rendered.
+        return fail("RECAPTCHA_RENDER_FAILED", authCopy("RECAPTCHA_RENDER_FAILED"));
       } finally {
         if (renderTimer) clearTimeout(renderTimer);
       }
 
-      // Race the SDK call against a hard deadline. An unsolved or off-screen
-      // reCAPTCHA widget causes signInWithPhoneNumber to hang forever: no
-      // request is ever sent and the button spins with no error. The timer is
-      // always cleared so a fast success cannot leave a rejection behind.
+      // Firebase executes the invisible verifier.verify() challenge inside
+      // signInWithPhoneNumber, so it starts only after Continue. No visible
+      // checkbox, test number or App Check bypass is involved. Race the whole
+      // SDK call against the existing deadline so a blocked WebView cannot spin
+      // forever; the timer is cleared on every outcome.
       const sdkPromise = signInWithPhoneNumber(auth, formattedPhone, verifier);
       let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<never>((_resolve, reject) => {
@@ -244,8 +262,8 @@ export const authService = {
             recaptchaVerifier = null;
             authService.initRecaptcha("recaptcha-container");
           }
-          // An unsolved widget means no code was dispatched, so "tick the box"
-          // is the truthful instruction. A solved one is genuinely unknown.
+          // An unsolved invisible check means no code was dispatched. A solved
+          // check whose provider request hangs has a genuinely unknown outcome.
           const deadlineCode = wasSolved ? "AUTH_LAST_ATTEMPT_UNKNOWN" : "AUTH_CAPTCHA_TIMEOUT";
           return fail(deadlineCode, authCopy(deadlineCode));
         }

@@ -1,7 +1,6 @@
 /**
- * Tests that the login route renders the reCAPTCHA host ABOVE the Continue
- * button in DOM order, and that the host wrapper has a non-zero reserved
- * min-height class (min-h-[78px]).
+ * Tests that the login route renders its connected invisible reCAPTCHA host
+ * before Continue without reserving visible-widget space.
  *
  * @vitest-environment jsdom
  */
@@ -69,7 +68,7 @@ let container: HTMLDivElement;
 let root: Root;
 let originalClientWidth: PropertyDescriptor | undefined;
 
-describe("login route — reCAPTCHA host position and reserved height", () => {
+describe("login route — connected invisible reCAPTCHA host", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     __resetAuthBindingsForTests();
@@ -78,6 +77,7 @@ describe("login route — reCAPTCHA host position and reserved height", () => {
         ({
           clear: vi.fn(),
           render: vi.fn().mockResolvedValue(0),
+          verify: vi.fn(async () => "verified-token"),
         }) as unknown as RecaptchaVerifier,
     );
     useAuthStore.setState({
@@ -112,7 +112,7 @@ describe("login route — reCAPTCHA host position and reserved height", () => {
     }
   });
 
-  it("renders reCAPTCHA host ABOVE the Continue button in DOM order", async () => {
+  it("renders an invisible host ABOVE Continue without visible-widget copy", async () => {
     await act(async () => root.render(<LoginScreen />));
     await act(async () => {});
 
@@ -121,15 +121,15 @@ describe("login route — reCAPTCHA host position and reserved height", () => {
 
     expect(host, "reCAPTCHA host must exist").not.toBeNull();
     expect(submitBtn, "Continue button must exist").not.toBeNull();
+    expect(host!.dataset.recaptchaSize).toBe("invisible");
+    expect(container.textContent).not.toContain("I'm not a robot");
 
-    // DOM position: host must come before the submit button
     const position = host!.compareDocumentPosition(submitBtn!);
-    // Node.DOCUMENT_POSITION_FOLLOWING = 4
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("reCAPTCHA host wrapper has min-h-[78px] reserved height", () => {
+  it("does not reserve normal or compact widget height", () => {
     const source = readFileSync(join(__dirname, "components", "PhoneLoginForm.tsx"), "utf8");
-    expect(source).toContain("min-h-[78px]");
+    expect(source).not.toContain("min-h-[78px]");
   });
 });

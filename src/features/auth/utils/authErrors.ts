@@ -74,7 +74,7 @@ const COPY: Record<string, string> = {
   AUTH_APP_NOT_AUTHORIZED:
     "This app build isn't authorised to sign in. Please update the app or contact support.",
   AUTH_CAPTCHA_TIMEOUT:
-    "We didn't get the security check in time. Please tick the box above and try again.",
+    "We didn't get the security check in time. Please tap Continue again to retry.",
 };
 
 const FIREBASE_CODE_MAP: Record<string, string> = {

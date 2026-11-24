@@ -24,7 +24,12 @@ describe("auth flow ownership at the UI seams", () => {
   beforeEach(() => {
     __resetAuthBindingsForTests();
     __setRecaptchaFactoryForTests(
-      () => ({ clear: vi.fn(), render: vi.fn() }) as unknown as RecaptchaVerifier,
+      () =>
+        ({
+          clear: vi.fn(),
+          render: vi.fn(async () => 0),
+          verify: vi.fn(async () => "verified-token"),
+        }) as unknown as RecaptchaVerifier,
     );
   });
 
@@ -38,34 +43,30 @@ describe("auth flow ownership at the UI seams", () => {
     vi.restoreAllMocks();
   });
 
-  async function renderHost(width: number, flow: "login" | "checkout" = "login") {
+  async function renderHost(flow: "login" | "checkout" = "login") {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
     roots.push({ root, container });
-    const measure = () => width;
     await act(async () => {
-      root.render(<RecaptchaHost flow={flow} measure={measure} />);
+      root.render(<RecaptchaHost flow={flow} />);
       await Promise.resolve();
     });
     return container;
   }
 
-  it.each([
-    [277, "compact"],
-    [304, "normal"],
-    [348, "normal"],
-  ] as const)("maps host width %s to %s", async (width, size) => {
-    const container = await renderHost(width);
+  it("uses an invisible host without showing a visible widget", async () => {
+    const container = await renderHost();
     const host = container.querySelector<HTMLElement>('[data-recaptcha-flow="login"]');
     expect(host).not.toBeNull();
-    expect(host!.dataset.recaptchaSize).toBe(size);
+    expect(host!.dataset.recaptchaSize).toBe("invisible");
     expect(host!.id.startsWith("recaptcha-host_")).toBe(true);
+    expect(container.textContent).not.toContain("I'm not a robot");
   });
 
   it("renders a unique host per mounted flow and never a global id", async () => {
-    const login = await renderHost(320, "login");
-    const checkout = await renderHost(320, "checkout");
+    const login = await renderHost("login");
+    const checkout = await renderHost("checkout");
     const ids = [
       ...login.querySelectorAll<HTMLElement>("[data-recaptcha-flow]"),
       ...checkout.querySelectorAll<HTMLElement>("[data-recaptcha-flow]"),

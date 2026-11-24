@@ -31,6 +31,7 @@ function fakeVerifier() {
   return {
     clear: vi.fn(),
     render: vi.fn().mockResolvedValue(0),
+    verify: vi.fn().mockResolvedValue("verified-token"),
   } as unknown as RecaptchaVerifier;
 }
 
@@ -46,7 +47,7 @@ describe("requestOtp authored error messages", () => {
     __setRecaptchaFactoryForTests(() => fakeVerifier());
     element = document.createElement("div");
     document.body.append(element);
-    bindHost("login", "test-host", element, () => 320);
+    bindHost("login", "test-host", element);
   });
 
   afterEach(() => {
@@ -109,7 +110,7 @@ describe("verifyOtp authored error messages", () => {
     __setRecaptchaFactoryForTests(() => fakeVerifier());
     element = document.createElement("div");
     document.body.append(element);
-    bindHost("login", "test-host-verify", element, () => 320);
+    bindHost("login", "test-host-verify", element);
   });
 
   afterEach(() => {

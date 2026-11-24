@@ -43,15 +43,19 @@ const confirmation = (label: string) =>
   ({ label, confirm: vi.fn() }) as unknown as ConfirmationResult;
 
 function fakeVerifier() {
-  return { clear: vi.fn(), render: vi.fn() } as unknown as RecaptchaVerifier;
+  return {
+    clear: vi.fn(),
+    render: vi.fn(),
+    verify: vi.fn(async () => "verified-token"),
+  } as unknown as RecaptchaVerifier;
 }
 
 let loginElement: HTMLDivElement;
 let checkoutElement: HTMLDivElement;
 
 function bindFlows() {
-  bindHost("login", "host_login", loginElement, () => 320);
-  bindHost("checkout", "host_checkout", checkoutElement, () => 320);
+  bindHost("login", "host_login", loginElement);
+  bindHost("checkout", "host_checkout", checkoutElement);
 }
 
 function makeController(overrides: Partial<AuthAttemptDeps> = {}) {

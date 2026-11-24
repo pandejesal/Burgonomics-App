@@ -33,11 +33,16 @@ describe("auth redaction: provider detail never reaches a sink or caller", () =>
   beforeEach(() => {
     __resetAuthBindingsForTests();
     __setRecaptchaFactoryForTests(
-      () => ({ clear: vi.fn(), render: vi.fn() }) as unknown as RecaptchaVerifier,
+      () =>
+        ({
+          clear: vi.fn(),
+          render: vi.fn(),
+          verify: vi.fn(async () => "verified-token"),
+        }) as unknown as RecaptchaVerifier,
     );
     element = document.createElement("div");
     document.body.append(element);
-    bindHost("login", "host_redaction", element, () => 320);
+    bindHost("login", "host_redaction", element);
     events.length = 0;
     logger.addSink(sink);
     consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);

@@ -48,6 +48,7 @@ vi.mock("firebase/auth", () => ({
   signOut: sdk.auth.signOut,
   RecaptchaVerifier: class {
     render = async () => undefined;
+    verify = async () => "verified-token";
     clear = () => undefined;
     constructor(_auth: unknown, _id: string, _opts: unknown) {}
   },

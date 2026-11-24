@@ -128,7 +128,7 @@ const AUTHORED_AUTH_COPY = new Set<string>([
   "Sign-in isn't set up for this web address. Please use the Burgonomics app or contact support.", // AUTH_DOMAIN_NOT_AUTHORIZED
   "Phone sign-in is switched off right now. Please try again later.", // AUTH_PHONE_SIGNIN_DISABLED
   "This app build isn't authorised to sign in. Please update the app or contact support.", // AUTH_APP_NOT_AUTHORIZED
-  "We didn't get the security check in time. Please tick the box above and try again.", // AUTH_CAPTCHA_TIMEOUT
+  "We didn't get the security check in time. Please tap Continue again to retry.", // AUTH_CAPTCHA_TIMEOUT
   "Failed to send the SMS verification code. Please try again.", // AUTH_OTP_REQUEST_FAILED
   "Verification failed. Please check the code and try again.", // AUTH_OTP_VERIFY_FAILED
   "Please check the mobile number and try again.", // AUTH_INVALID_PHONE

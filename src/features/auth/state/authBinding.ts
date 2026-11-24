@@ -7,7 +7,7 @@ import {
   type HostFailure,
 } from "@/features/auth/utils/authErrors";
 
-export type RecaptchaSize = "normal" | "compact";
+export type RecaptchaSize = "invisible";
 
 export interface BindSuccess {
   ok: true;
@@ -33,10 +33,9 @@ interface BindingEntry {
   size: RecaptchaSize;
   state: BindingState;
   /**
-   * True once the SDK reported that the challenge was solved. Used only to pick
-   * honest copy when a request times out: an unsolved widget means no SMS was
-   * ever dispatched, so "tick the box" is actionable; a solved one means the
-   * outcome is genuinely unknown.
+   * True once the SDK returned an invisible verification token. A solved check
+   * whose SMS request times out has an unknown outcome; an unsolved one did not
+   * dispatch an SMS.
    */
   solved: boolean;
 }
@@ -45,9 +44,10 @@ export type RecaptchaFactory = (
   auth: Auth,
   element: HTMLElement,
   parameters: {
-    size: RecaptchaSize;
+    size: "invisible";
     callback: () => void;
     "expired-callback": () => void;
+    "error-callback": () => void;
   },
 ) => RecaptchaVerifier;
 
@@ -76,33 +76,38 @@ function emptyHost(element: HTMLElement): void {
   while (element.firstChild) element.removeChild(element.firstChild);
 }
 
-function construct(
-  flow: AuthFlowId,
-  hostId: string,
-  element: HTMLElement,
-  size: RecaptchaSize,
-): BindingResultInternal {
+function construct(flow: AuthFlowId, hostId: string, element: HTMLElement): BindingResultInternal {
+  let verifier: RecaptchaVerifier;
+  const markDirty = () => {
+    const current = bindings.get(flow);
+    if (current && current.hostId === hostId && current.verifier === verifier) {
+      current.state = "dirty";
+      current.solved = false;
+    }
+  };
   try {
-    const verifier: RecaptchaVerifier = factory(firebaseAuth, element, {
-      size,
+    verifier = factory(firebaseAuth, element, {
+      size: "invisible",
       callback: () => {
-        // Solved. Only the entry that owns this exact verifier may flip.
+        // Only the entry that owns this exact verifier may record the token.
         const current = bindings.get(flow);
         if (current && current.hostId === hostId && current.verifier === verifier) {
           current.solved = true;
         }
       },
-      "expired-callback": () => {
-        const current = bindings.get(flow);
-        if (current && current.hostId === hostId && current.verifier === verifier) {
-          current.state = "dirty";
-          current.solved = false;
-        }
-      },
+      "expired-callback": markDirty,
+      "error-callback": markDirty,
     });
-    const entry: BindingEntry = { hostId, element, verifier, size, state: "ready", solved: false };
+    const entry: BindingEntry = {
+      hostId,
+      element,
+      verifier,
+      size: "invisible",
+      state: "ready",
+      solved: false,
+    };
     bindings.set(flow, entry);
-    return { ok: true, size };
+    return { ok: true, size: "invisible" };
   } catch (error) {
     const code = firebaseAuthCode(error) ?? "unknown";
     logger.warn("auth.recaptcha_render_failed", { code });
@@ -121,7 +126,8 @@ export function bindHost(
   flow: AuthFlowId,
   hostId: string,
   element: HTMLElement,
-  measure: () => number = () => element.clientWidth,
+  /** @deprecated Invisible verification does not depend on layout width. */
+  _measure?: () => number,
 ): BindResult {
   const existing = bindings.get(flow);
   if (existing) {
@@ -130,19 +136,7 @@ export function bindHost(
       : { ok: false, code: "HOST_CONFLICT" };
   }
 
-  const width = (() => {
-    try {
-      return measure();
-    } catch {
-      return 0;
-    }
-  })();
-  if (!Number.isFinite(width) || width <= 0) {
-    return { ok: false, code: "RECAPTCHA_CONTAINER_NOT_READY" };
-  }
-
-  const size: RecaptchaSize = width >= 304 ? "normal" : "compact";
-  return construct(flow, hostId, element, size);
+  return construct(flow, hostId, element);
 }
 
 export function releaseHost(flow: AuthFlowId, hostId: string): void {
@@ -156,8 +150,8 @@ export function releaseHost(flow: AuthFlowId, hostId: string): void {
 }
 
 /**
- * Returns a usable verifier, re-arming a dirty host on the SAME element.
- * A solved-but-expired widget is the only re-arm path; it is never a loop.
+ * Returns a usable verifier, re-arming a dirty host on the SAME element after
+ * expiry, provider error or a failed attempt. It is never an automatic loop.
  */
 export function acquireForFlow(flow: AuthFlowId): AcquireResult {
   const existing = bindings.get(flow);
@@ -171,7 +165,7 @@ export function acquireForFlow(flow: AuthFlowId): AcquireResult {
   safeClear(previous);
   if (existing.element.childNodes.length !== 0) emptyHost(existing.element);
 
-  const rebuilt = construct(flow, existing.hostId, existing.element, existing.size);
+  const rebuilt = construct(flow, existing.hostId, existing.element);
   if (!rebuilt.ok) return rebuilt;
   const current = bindings.get(flow);
   if (!current || !current.verifier) return { ok: false, code: "RECAPTCHA_RENDER_FAILED" };
@@ -198,18 +192,20 @@ export function isFlowMounted(flow: AuthFlowId): boolean {
 }
 
 /**
- * Renders the reCAPTCHA widget for a bound flow so the visible "I'm not a
- * robot" checkbox appears before the customer taps Continue. Idempotent per
- * RecaptchaVerifier instance (the SDK documents this). Never throws: catches
- * all errors and returns "unavailable".
+ * Prepares the invisible widget without executing its challenge. The Firebase
+ * SDK executes it during signInWithPhoneNumber when Continue calls verify().
+ * Idempotent per verifier; a failed render is retried on the next Continue.
  */
 export async function renderFlow(flow: AuthFlowId): Promise<"ok" | "unavailable"> {
   const entry = bindings.get(flow);
   if (!entry || !entry.verifier) return "unavailable";
+  const verifier = entry.verifier;
   try {
-    await entry.verifier.render();
+    await verifier.render();
     return "ok";
   } catch {
+    const current = bindings.get(flow);
+    if (current?.verifier === verifier) dirtyFlow(flow);
     return "unavailable";
   }
 }
