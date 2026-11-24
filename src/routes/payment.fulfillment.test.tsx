@@ -64,7 +64,7 @@ const fixture = vi.hoisted(() => {
     calculateTotals: vi.fn(),
     validateForPayment: vi.fn(),
     createPaymentOrder: vi.fn(),
-    createFromCurrentContext: vi.fn(),
+    createOnlineDraft: vi.fn(),
     // Owner decision 2026-11-20: cash orders are created by the SERVER.
     createCashOrder: vi.fn(),
     verifyPayment: vi.fn(),
@@ -260,7 +260,7 @@ vi.mock("@/features/addresses", () => {
 });
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: fixture.createFromCurrentContext,
+    createOnlineDraft: fixture.createOnlineDraft,
     createCashOrder: fixture.createCashOrder,
     pendingCashOrderId: () => null,
     finalizePaidOrder: vi.fn(),
@@ -306,7 +306,7 @@ beforeEach(() => {
   fixture.calculateTotals.mockReset();
   fixture.validateForPayment.mockReset();
   fixture.createPaymentOrder.mockReset();
-  fixture.createFromCurrentContext.mockReset();
+  fixture.createOnlineDraft.mockReset();
   fixture.createCashOrder.mockReset();
   fixture.openCheckout.mockReset();
   fixture.initialize.mockReset();
@@ -329,7 +329,7 @@ beforeEach(() => {
       keyId: "rzp_test_key",
     },
   });
-  fixture.createFromCurrentContext.mockResolvedValue({
+  fixture.createOnlineDraft.mockResolvedValue({
     success: true,
     data: { id: "ord_fulfill_cash" },
   });
@@ -372,7 +372,7 @@ async function mountPayment() {
 function expectNoPaymentStarted() {
   expect(fixture.validateForPayment).not.toHaveBeenCalled();
   expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
-  expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+  expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
   expect(fixture.initialize).not.toHaveBeenCalled();
   expect(fixture.openCheckout).not.toHaveBeenCalled();
 }
@@ -526,7 +526,7 @@ describe("payment route — valid supported modes still work", () => {
     // Owner decision 2026-11-20: the SERVER creates the cash order (it prices
     // every line and stamps the cash marker); the app no longer writes it.
     expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
   });
 
   it.each(["takeaway", "dinein"] as const)(
@@ -543,7 +543,7 @@ describe("payment route — valid supported modes still work", () => {
       await act(async () => {});
 
       expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
-      expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+      expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
     },
   );
 });

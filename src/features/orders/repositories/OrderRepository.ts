@@ -30,6 +30,21 @@ import {
   readPendingCashOrder,
   updatePendingCashOrderAcceptedTotal,
 } from "@/features/payments/services/pendingCashOrder";
+import {
+  createOnlineDraftOnServer,
+  type OnlineDraftReceipt,
+  type OnlineDraftRequest,
+} from "@/features/payments/services/onlineDraftService";
+import {
+  claimPendingOnlineDraft,
+  minimalOnlineDraftRequest,
+  sameOnlineDraftContext,
+  ownsOnlineDraftAttempt,
+  type PendingOnlineDraft,
+  clearPendingOnlineDraft,
+  pendingOnlineDraftId,
+  readPendingOnlineDraft,
+} from "@/features/payments/services/pendingOnlineDraft";
 import { generateSecureId } from "@/shared/utils/cryptoUtils";
 import { buildTrackUrl } from "@/features/orders/utils/trackUrl";
 import { useOrdersStore, selectAllOrders } from "@/features/orders/state/ordersStore";
@@ -40,18 +55,12 @@ import { selectSelectedAddress, useAddressStore } from "@/features/addresses";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { currentScopedUid } from "@/features/auth/utils/scopedPersistence";
-import type { PaymentMethod } from "@/features/payments/models";
 import type {
-  CreateOrderInput,
   Order,
-  OrderAddressSnapshot,
   OrderListQuery,
   OrderListResult,
-  OrderPaymentInfo,
   OrderTrackingSnapshot,
-  PaymentDisplayStatus,
 } from "@/features/orders/models";
-import { toStoreSnapshot } from "@/features/orders/models";
 import { checkMinimumOrder, minOrderShortfallMessage } from "@/shared/pricing/pricingEngine";
 
 // -- Tracking subscription contract ----------------------------------
@@ -71,17 +80,18 @@ interface SubscribeOptions {
   onError?: TrackingErrorListener;
 }
 
-const paymentMethodLabel: Record<PaymentMethod, string> = {
-  online: "Paid Online",
-  cash: "Cash",
-  upi: "UPI",
-  card: "Card",
-  netbanking: "Net Banking",
-  wallet: "Wallet",
-};
-
 export class OrderRepository {
   readonly name = "OrderRepository";
+  private cashNotes?: {
+    attemptId: string;
+    uid: string;
+    fields: Pick<CashOrderRequest, "notes" | "fulfillmentInstructions">;
+  };
+  private onlineNotes?: {
+    attemptId: string;
+    uid: string;
+    fields: Pick<OnlineDraftRequest, "notes" | "fulfillmentInstructions">;
+  };
 
   constructor(private readonly service = ordersService) {}
 
@@ -241,10 +251,17 @@ export class OrderRepository {
       ...(deliveryQuoteId ? { deliveryQuoteId } : {}),
       ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
       ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
+      ...(checkout.orderNotes ? { notes: checkout.orderNotes } : {}),
       ...(sel.fulfillment === "dinein" && checkout.tableNumber
         ? { tableNumber: checkout.tableNumber }
         : {}),
     };
+    const instructions = isDelivery
+      ? checkout.deliveryInstructions
+      : sel.fulfillment === "takeaway"
+        ? checkout.pickupInstructions
+        : checkout.diningNotes;
+    if (instructions) request.fulfillmentInstructions = instructions;
 
     // Persist BEFORE the first send. A terminal refusal proves no order was
     // written, so its pending record is cleared; an ambiguous transport failure
@@ -252,7 +269,22 @@ export class OrderRepository {
     let saved: PendingCashOrder;
     if (isDelivery && address) request.addressId = address.id;
     try {
-      saved = await claimPendingCashOrder(uid, generateSecureId(22), request);
+      const attemptId = generateSecureId(22);
+      saved = await claimPendingCashOrder(uid, attemptId, request);
+      // Keep free text out of the durable replay record. In this tab, reuse
+      // the original draft through a retry or explicit price confirmation.
+      if (saved.attemptId === attemptId) {
+        this.cashNotes = {
+          attemptId,
+          uid,
+          fields: {
+            ...(request.notes ? { notes: request.notes } : {}),
+            ...(request.fulfillmentInstructions
+              ? { fulfillmentInstructions: request.fulfillmentInstructions }
+              : {}),
+          },
+        };
+      }
     } catch {
       return fail(
         "CASH_STORAGE_UNAVAILABLE",
@@ -267,7 +299,13 @@ export class OrderRepository {
     const changed = () => fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
     if (!ownsAttempt(saved)) return changed();
     if (saved.confirmed) return this.hydrateCashOrder(saved.orderId, saved);
-    const created = await createCashOrderOnServer({ ...saved.request, attemptId: saved.attemptId });
+    const draft = this.cashNotes;
+    const hasDraft = draft?.attemptId === saved.attemptId && draft.uid === saved.uid;
+    const created = await createCashOrderOnServer({
+      ...saved.request,
+      ...(hasDraft ? draft.fields : {}),
+      attemptId: saved.attemptId,
+    });
     if (!ownsAttempt(saved)) return changed();
     if (!created.success) {
       // A PRICE_CHANGED is a verified no-write, but the customer must reconfirm
@@ -282,12 +320,14 @@ export class OrderRepository {
         };
       if (created.error.retryable === false && created.error.code !== "IDEMPOTENCY_CONFLICT") {
         clearPendingCashOrder();
+        if (hasDraft && this.cashNotes === draft) this.cashNotes = undefined;
       }
       return created;
     }
 
     // Success is recorded durably: any later retry only hydrates this id and
     // never POSTs again, even if the read-back failed here (M4).
+    if (hasDraft && this.cashNotes === draft) this.cashNotes = undefined;
     markPendingCashOrderConfirmed(saved.orderId, created.data.orderId);
     return this.hydrateCashOrder(created.data.orderId, saved);
   }
@@ -323,17 +363,20 @@ export class OrderRepository {
     );
   }
 
-  /**
-   * Compose an order from the current cart / store / address / payment
-   * context. Used by the payment screen after a successful verification.
-   */
-  async createFromCurrentContext(opts: {
-    confirmedOrderId?: string;
-    paymentMethod: PaymentMethod;
-    transactionId?: string;
-    paymentStatus?: PaymentDisplayStatus;
-    paymentLabel?: string;
-  }): Promise<ApiResult<Order>> {
+  /** Create the payable order draft on the server; never write Firestore here. */
+  async createOnlineDraft(opts: { orderId?: string } = {}): Promise<ApiResult<OnlineDraftReceipt>> {
+    const uid = currentScopedUid();
+    if (!uid) return fail("UNAUTHENTICATED", "Sign in to place an online order.");
+    let prior: PendingOnlineDraft | null;
+    try {
+      prior = readPendingOnlineDraft();
+    } catch {
+      return fail(
+        "ONLINE_DRAFT_STORAGE_UNAVAILABLE",
+        "Your saved checkout could not be read.",
+        true,
+      );
+    }
     const cart = useCartStore.getState();
     const sel = useStoreSelection.getState();
     const address = selectSelectedAddress(useAddressStore.getState());
@@ -341,116 +384,128 @@ export class OrderRepository {
     const totalsRes = await cartRepository.calculateTotals();
     if (!totalsRes.success) return totalsRes;
     if (!sel.activeStore || !sel.fulfillment) {
-      return {
-        success: false,
-        error: {
-          code: "MISSING_CONTEXT",
-          message: "Store and fulfillment method are required.",
-        },
-      };
+      return fail("MISSING_CONTEXT", "Store and fulfillment method are required.");
     }
-
     const minCheck = checkMinimumOrder(
       totalsRes.data.subtotal,
       sel.fulfillment,
       sel.activeStore.pricing?.minOrderAmount,
     );
-    if (!minCheck.met) {
-      return fail("MIN_ORDER", minOrderShortfallMessage(minCheck), true);
-    }
+    if (!minCheck.met) return fail("MIN_ORDER", minOrderShortfallMessage(minCheck), true);
+    if (sel.fulfillment === "delivery" && !address)
+      return fail("ADDRESS_REQUIRED", "Select a delivery address.");
+    if (sel.fulfillment === "dinein" && !checkout.tableNumber.trim())
+      return fail("TABLE_REQUIRED", "Enter a table number.");
 
-    const fulfillmentInstructions =
+    const attemptId = generateSecureId(22);
+    const request: OnlineDraftRequest = {
+      orderId: opts.orderId ?? `ord_${Date.now()}_${generateSecureId(6)}`,
+      attemptId,
+      storeId: sel.activeStore.id,
+      ...(sel.activeStore.partnerBranchId ? { branchId: sel.activeStore.partnerBranchId } : {}),
+      orderType: sel.fulfillment,
+      items: cart.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        ...(Array.isArray(line.customizations) && line.customizations.length
+          ? { customizations: line.customizations as unknown as Array<Record<string, unknown>> }
+          : {}),
+        ...(Array.isArray(line.modifiers) && line.modifiers.length
+          ? { modifiers: line.modifiers as unknown as Array<Record<string, unknown>> }
+          : {}),
+        ...(line.notes ? { notes: line.notes } : {}),
+      })),
+      ...(sel.fulfillment === "delivery" &&
+      checkout.checkoutFees.status === "ready" &&
+      checkout.checkoutFees.deliveryQuoteId
+        ? { deliveryQuoteId: checkout.checkoutFees.deliveryQuoteId }
+        : {}),
+      ...(sel.fulfillment === "delivery" && address ? { addressId: address.id } : {}),
+      ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
+      ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
+      ...(checkout.orderNotes ? { notes: checkout.orderNotes } : {}),
+      ...(sel.fulfillment === "dinein" && checkout.tableNumber
+        ? { tableNumber: checkout.tableNumber }
+        : {}),
+    };
+    const instructions =
       sel.fulfillment === "delivery"
         ? checkout.deliveryInstructions
         : sel.fulfillment === "takeaway"
           ? checkout.pickupInstructions
           : checkout.diningNotes;
+    if (instructions) request.fulfillmentInstructions = instructions;
 
-    const addressSnapshot: OrderAddressSnapshot | undefined =
-      sel.fulfillment === "delivery" && address
-        ? {
-            label: address.label === "other" ? (address.customLabel ?? "Address") : address.label,
-            contactName: address.contactName ?? "",
-            contactPhone: address.contactPhone ?? "",
-            line1: address.line1,
-            line2: address.line2,
-            landmark: address.landmark,
-            city: address.city,
-            state: address.state ?? "",
-            pincode: address.pincode,
-            lat: address.lat,
-            lng: address.lng,
-          }
-        : undefined;
-
-    const isCash = opts.paymentMethod === "cash";
-    // A payment-pending order (created BEFORE Razorpay opens, per
-    // PAYMENTS_CONTRACT_SPEC §3) is not paid — it must not carry a paidAt
-    // timestamp or a "Paid Online" label.
-    const displayStatus: PaymentDisplayStatus =
-      opts.paymentStatus ?? (isCash ? "CASH_PENDING" : "paid");
-    const payment: OrderPaymentInfo = {
-      method: isCash ? "cod" : opts.paymentMethod,
-      label: opts.paymentLabel ?? paymentMethodLabel[opts.paymentMethod] ?? "Payment",
-      status: displayStatus,
-      transactionId: opts.transactionId,
-      paidAt: displayStatus === "paid" ? new Date().toISOString() : undefined,
-    };
-
-    const input: CreateOrderInput = {
-      store: toStoreSnapshot(sel.activeStore),
-      fulfillment: sel.fulfillment,
-      items: cart.lines,
-      totals: totalsRes.data,
-      promo: cart.promo,
-      tipAmount: checkout.tipAmount,
-      // D31–D33: redemption withdrew from the customer app. Even if a legacy
-      // persisted choice is still in storage (or the screen is deep-linked
-      // without the cart), the order payload carries zero points.
-      loyaltyPointsRedeemed: 0,
-      address: addressSnapshot,
-      deliveryAddress: addressSnapshot,
-      notes: checkout.orderNotes,
-      fulfillmentInstructions,
-      tableNumber: sel.fulfillment === "dinein" ? checkout.tableNumber : undefined,
-      // R8: cash delivery never calls createPaymentOrder, so the order doc is
-      // the only place the courier quote is recorded. Delivery-only: a stale
-      // quote id on a takeaway/dine-in order would be meaningless (and the
-      // service refuses to write one off-delivery anyway).
-      deliveryQuoteId:
-        sel.fulfillment === "delivery" && checkout.checkoutFees?.status === "ready"
-          ? (checkout.checkoutFees.deliveryQuoteId ?? undefined)
-          : undefined,
-      payment,
-      confirmedOrderId: opts.confirmedOrderId,
-    };
-
-    const res = await this.service.createOrder(input);
-    if (res.success) {
-      useOrdersStore.getState().upsert(res.data);
-      useOrdersStore.getState().setActiveOrderId(res.data.id);
-    } else if (res.error.code === "CHECKOUT_CONTEXT_CHANGED") {
-      // The pending order `PaymentRepository.createPaymentOrder` minted
-      // describes a DIFFERENT checkout than the one the customer is now
-      // placing (address / notes / basket / totals changed). Retrying it can
-      // never succeed and would keep echoing the stale context, so drop the
-      // attempt: the next tap mints a fresh order. Only this code clears the
-      // binding — a plain PERSIST_FAILED retry must keep reusing the same id.
-      const payments = usePaymentStore.getState();
-      payments.setInternalOrderId(null);
-      payments.setGatewayOrderId(null);
+    let saved: PendingOnlineDraft;
+    try {
+      if (prior && !sameOnlineDraftContext(prior.request, minimalOnlineDraftRequest(request))) {
+        return fail(
+          "CHECKOUT_CONTEXT_CHANGED",
+          "Your checkout changed. Review the current cart before retrying.",
+          false,
+        );
+      }
+      saved = await claimPendingOnlineDraft(uid, attemptId, request);
+      if (saved.attemptId === attemptId) {
+        this.onlineNotes = {
+          attemptId,
+          uid,
+          fields: {
+            ...(request.notes ? { notes: request.notes } : {}),
+            ...(request.fulfillmentInstructions
+              ? { fulfillmentInstructions: request.fulfillmentInstructions }
+              : {}),
+          },
+        };
+      }
+    } catch {
+      return fail(
+        "ONLINE_DRAFT_STORAGE_UNAVAILABLE",
+        "Cannot safely save this checkout. Please retry.",
+        true,
+      );
     }
-    return res;
+    return this.submitOnlineDraft(saved);
+  }
+
+  private async submitOnlineDraft(
+    saved: PendingOnlineDraft,
+  ): Promise<ApiResult<OnlineDraftReceipt>> {
+    if (!ownsOnlineDraftAttempt(saved))
+      return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
+    const draft = this.onlineNotes;
+    const hasDraft = draft?.attemptId === saved.attemptId && draft.uid === saved.uid;
+    const created = await createOnlineDraftOnServer({
+      ...saved.request,
+      ...(hasDraft ? draft.fields : {}),
+      attemptId: saved.attemptId,
+    });
+    if (!ownsOnlineDraftAttempt(saved))
+      return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
+    // The pending draft remains durable until the gateway intent is safely
+    // bound/reconciled; a second tab must reuse this same order and attempt.
+    return created;
+  }
+
+  pendingOnlineOrderId(): string | null {
+    try {
+      return pendingOnlineDraftId();
+    } catch {
+      return null;
+    }
+  }
+  clearPendingOnlineOrder(): void {
+    clearPendingOnlineDraft();
+    this.onlineNotes = undefined;
   }
 
   /**
    * R24 — paid-order finalization (read-only, server truth).
    *
    * After backend verify confirms the pending `orders/{id}` doc, callers
-   * must land HERE — not back in `createFromCurrentContext`, whose full
-   * `setDoc` on the same confirmed id is an UPDATE that `firestore.rules`
-   * denies for customers (and, where a rule allowed it, would overwrite
-   * server-owned payment/status/totals with client-minted values).
+   * must land HERE. The retired client create path could overwrite
+   * server-owned payment/status/totals on the confirmed id; this path only
+   * reads server truth.
    *
    * Delegates to `ordersService.finalizePaidOrder`, which reads the doc
    * fresh from the server and validates owner binding + server-paid state

@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Store } from "@/features/stores/models/Store";
 
 const mocks = vi.hoisted(() => ({
-  createFromCurrentContext: vi.fn(),
+  createOnlineDraft: vi.fn(),
   markPaymentFailed: vi.fn(),
   createOrder: vi.fn(),
   calculateTotals: vi.fn(),
@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/features/orders/repositories/OrderRepository", () => ({
   orderRepository: {
-    createFromCurrentContext: mocks.createFromCurrentContext,
+    createOnlineDraft: mocks.createOnlineDraft,
     markPaymentFailed: mocks.markPaymentFailed,
   },
 }));
@@ -81,7 +81,7 @@ beforeEach(() => {
     success: true,
     data: { checkoutToken: "chk_token_quote" },
   });
-  mocks.createFromCurrentContext.mockResolvedValue({ success: true, data: { id: "ord_quote_1" } });
+  mocks.createOnlineDraft.mockResolvedValue({ success: true, data: { id: "ord_quote_1" } });
   mocks.markPaymentFailed.mockResolvedValue({ success: true, data: null });
   mocks.createOrder.mockResolvedValue({ success: true, data: gatewayOrder(372) });
 
@@ -175,7 +175,7 @@ describe("R8 payment create is bound to the live delivery quote", () => {
     const retry = await repo.createPaymentOrder({ deliveryQuoteId: "q_new" });
 
     expect(retry.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(mocks.createOrder).toHaveBeenCalledTimes(2);
     expect(mocks.createOrder.mock.calls[1][0].deliveryQuoteId).toBe("q_new");
     expect(mocks.createOrder.mock.calls[1][0].orderId).toBe("ord_quote_1");
@@ -210,7 +210,7 @@ describe("R8 payment create is bound to the live delivery quote", () => {
         expiresAt: Date.now() + 60_000,
       },
     });
-    mocks.createFromCurrentContext.mockResolvedValueOnce({
+    mocks.createOnlineDraft.mockResolvedValueOnce({
       success: true,
       data: { id: "ord_quote_2" },
     });
@@ -230,9 +230,9 @@ describe("R8 payment create is bound to the live delivery quote", () => {
 
     expect(second.success).toBe(true);
     // A second pending document, and the stale id is NOT adopted.
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
-    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
-      confirmedOrderId: undefined,
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2);
+    expect(mocks.createOnlineDraft.mock.calls[1][0]).toMatchObject({
+      orderId: undefined,
     });
     // The create carries the NEW quote, the NEW document and a NEW key — the
     // old key would resolve to the old intent server-side.
@@ -276,7 +276,7 @@ describe("R8 payment create is bound to the live delivery quote", () => {
         expiresAt: Date.now() + 60_000,
       },
     });
-    mocks.createFromCurrentContext.mockResolvedValueOnce({
+    mocks.createOnlineDraft.mockResolvedValueOnce({
       success: true,
       data: { id: "ord_quote_2" },
     });
@@ -288,7 +288,7 @@ describe("R8 payment create is bound to the live delivery quote", () => {
 
     const second = await repo.createPaymentOrder();
     expect(second.success).toBe(false);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2);
     const failedKey = (mocks.createOrder.mock.calls[1][0] as { idempotencyKey: string })
       .idempotencyKey;
     expect(failedKey).not.toBe(firstKey);
@@ -310,7 +310,7 @@ describe("R8 payment create is bound to the live delivery quote", () => {
     const retry = await repo.createPaymentOrder();
 
     expect(retry.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2); // same doc
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2); // same doc
     expect(mocks.createOrder).toHaveBeenCalledTimes(3);
     const retrySent = mocks.createOrder.mock.calls[2][0] as {
       orderId: string;

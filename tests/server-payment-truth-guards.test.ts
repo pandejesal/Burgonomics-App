@@ -329,10 +329,13 @@ describe("A. markPaymentFailed refuses paid-path server truth (no write, no cach
 
 describe("B. markPaymentFailed rehydrates server-failed only; pending is an honest refusal", () => {
   it("fresh server failed rehydrates the cached pending order with ZERO writes", async () => {
-    const seeded = await ordersService.createOrder(pendingOrderInput("ord_c02_fail"));
+    const pending = pendingServerDoc("ord_c02_fail", currentUid());
+    mockGetDocs.mockResolvedValueOnce({
+      forEach: (cb: (doc: { data: () => unknown }) => void) => cb({ data: () => pending }),
+    });
+    const seeded = await ordersService.listOrders();
     expect(seeded.success).toBe(true);
-    const writesSoFar = mockSetDoc.mock.calls.length;
-    expect(writesSoFar).toBe(1); // the pre-gateway pending create only
+    expect(mockSetDoc).not.toHaveBeenCalled();
 
     mockGetDoc.mockResolvedValueOnce(snapOf(failedServerDoc("ord_c02_fail", currentUid())));
     const res = await ordersService.markPaymentFailed("ord_c02_fail");
@@ -340,8 +343,8 @@ describe("B. markPaymentFailed rehydrates server-failed only; pending is an hone
     if (!res.success) return;
     expect(res.data.payment.status).toBe("failed");
     expect(res.data.payment.paidAt).toBeUndefined();
-    // No additional write of any kind — the observation is read-only.
-    expect(mockSetDoc.mock.calls.length).toBe(writesSoFar);
+    // No write of any kind — the observation is read-only.
+    expect(mockSetDoc).not.toHaveBeenCalled();
     expect(mockUpdateDoc).not.toHaveBeenCalled();
   });
 

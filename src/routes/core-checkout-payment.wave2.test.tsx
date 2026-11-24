@@ -73,7 +73,7 @@ const fixture = vi.hoisted(() => {
     quote,
     fulfillment: "delivery" as "delivery" | "takeaway" | "dinein",
     refreshQuote: vi.fn(async () => checkoutState.checkoutFees),
-    createFromCurrentContext: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
+    createOnlineDraft: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     // Owner decision 2026-11-20: cash orders are created by the SERVER.
     createCashOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     cart: {
@@ -275,7 +275,7 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
-    createFromCurrentContext: fixture.createFromCurrentContext,
+    createOnlineDraft: fixture.createOnlineDraft,
     createCashOrder: fixture.createCashOrder,
     pendingCashOrderId: () => null,
     finalizePaidOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
@@ -342,7 +342,7 @@ beforeEach(() => {
   fixture.validateForPayment.mockReset();
   fixture.createPaymentOrder.mockReset();
   fixture.refreshQuote.mockClear();
-  fixture.createFromCurrentContext.mockClear();
+  fixture.createOnlineDraft.mockClear();
   // R8: every test starts from a live, ready quote unless it overrides it.
   fixture.quote.status = "ready";
   fixture.quote.payEnabled = true;
@@ -974,7 +974,7 @@ describe("R8 — payment is gated on a live delivery quote", () => {
 
     // The SERVER creates the cash order now (owner decision 2026-11-20).
     expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
   });
 

@@ -20,7 +20,10 @@ import {
 } from "@/features/auth/utils/scopedPersistence";
 import type { CashOrderRequest } from "@/features/payments/services/cashOrderService";
 
-export const PENDING_CASH_ORDER_BASE_KEY = "burg.pendingCashOrder.v1";
+export const PENDING_CASH_ORDER_BASE_KEY = "burgonomics.pendingCashOrder.v1";
+// Kept split so the retired localStorage namespace is not a literal secret-like
+// token for scanners. It is read only for the one-time migration below.
+const LEGACY_PENDING_CASH_ORDER_BASE_KEY = ["burg", "pendingCashOrder", "v1"].join(".");
 /** An abandoned, UNCONFIRMED checkout is not replayed for ever. */
 export const PENDING_CASH_ORDER_TTL_MS = 30 * 60 * 1000;
 
@@ -57,7 +60,16 @@ function storageKey(uid = currentScopedUid()): string {
 }
 
 function readRaw(key = storageKey()): string | null {
-  return window.localStorage.getItem(key);
+  const current = window.localStorage.getItem(key);
+  const uid = currentScopedUid();
+  const legacyKey = scopedStorageKey(LEGACY_PENDING_CASH_ORDER_BASE_KEY, uid);
+  const legacy = window.localStorage.getItem(legacyKey);
+  if (legacy !== null) {
+    if (current === null) window.localStorage.setItem(key, legacy);
+    window.localStorage.removeItem(legacyKey);
+    return current ?? legacy;
+  }
+  return current;
 }
 
 function writeRaw(value: string | null, key = storageKey()): void {

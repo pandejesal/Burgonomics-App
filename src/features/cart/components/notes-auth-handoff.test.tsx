@@ -13,7 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const fixture = vi.hoisted(() => ({
-  createOrder: vi.fn(async () => ({ success: true, data: { id: "ord_notes" } })),
+  createOrder: vi.fn(async (_request: { orderId: string }): Promise<any> => ({
+    success: true,
+    data: { id: "ord_notes" },
+  })),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -44,7 +47,15 @@ vi.mock("@/features/cart/repositories/CartRepository", () => ({
 }));
 
 vi.mock("@/features/orders/services/ordersService", () => ({
-  ordersService: { createOrder: fixture.createOrder },
+  ordersService: {
+    getOrder: async (id: string) => ({
+      success: true,
+      data: { id, status: { code: "PLACED", kind: "upcoming", terminal: false } },
+    }),
+  },
+}));
+vi.mock("@/features/payments/services/cashOrderService", () => ({
+  createCashOrderOnServer: fixture.createOrder,
 }));
 
 vi.mock("@/features/orders/state/ordersStore", () => ({
@@ -96,14 +107,30 @@ configureAuthUidSource({
   },
 });
 
-const repository = new OrderRepository({ createOrder: fixture.createOrder } as never);
+const repository = new OrderRepository();
 
 let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
   window.localStorage.clear();
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: async (_key: string, callback: () => unknown) => callback() },
+  });
   fixture.createOrder.mockClear();
+  fixture.createOrder.mockImplementation(async (request: { orderId: string }) => ({
+    success: true,
+    data: {
+      orderId: request.orderId,
+      replayed: false,
+      paymentMethod: "cod",
+      paymentChannel: "cash",
+      cashDuePaise: 21900,
+      totals: {},
+      status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+    },
+  }));
   currentUid = null;
   useCartStore.setState({
     lines: [
@@ -169,7 +196,7 @@ describe("cooking notes typed before checkout sign-in reach the order", () => {
     expect(useCheckoutStore.getState().orderNotes).toBe("No onions, extra spicy");
 
     await act(async () => {
-      await repository.createFromCurrentContext({ paymentMethod: "cash" });
+      await repository.createCashOrder();
     });
 
     expect(fixture.createOrder).toHaveBeenCalledTimes(1);

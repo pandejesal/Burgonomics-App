@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({
-  createFromCurrentContext: vi.fn(),
+  createOnlineDraft: vi.fn(),
   createOrder: vi.fn(),
   setInternalOrderId: vi.fn(),
 }));
@@ -99,7 +99,7 @@ vi.mock("@/features/checkout/state/checkoutStore", () => ({
 }));
 
 vi.mock("@/features/orders/repositories/OrderRepository", () => ({
-  orderRepository: { createFromCurrentContext: fixture.createFromCurrentContext },
+  orderRepository: { createOnlineDraft: fixture.createOnlineDraft },
 }));
 
 vi.mock("@/features/payments/state/paymentStore", () => ({
@@ -140,7 +140,7 @@ describe("resuming an unpaid order", () => {
     });
 
     expect(res.success).toBe(true);
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
     expect(fixture.createOrder).toHaveBeenCalledTimes(1);
     expect(fixture.createOrder.mock.calls[0][0]).toMatchObject({
       orderId: "ord_1793523404362_PKKeDF",
@@ -149,7 +149,7 @@ describe("resuming an unpaid order", () => {
   });
 
   it("still creates the pending order when no resume id is given", async () => {
-    fixture.createFromCurrentContext.mockResolvedValue({
+    fixture.createOnlineDraft.mockResolvedValue({
       success: true,
       data: { id: "ord_new" },
     });
@@ -157,7 +157,7 @@ describe("resuming an unpaid order", () => {
 
     await repository.createPaymentOrder({});
 
-    expect(fixture.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(fixture.createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(fixture.createOrder.mock.calls[0][0]).toMatchObject({ orderId: "ord_new" });
   });
 

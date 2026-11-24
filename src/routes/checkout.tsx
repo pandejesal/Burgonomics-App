@@ -82,7 +82,10 @@ import {
   clearPaymentReconciliation,
   hydratePaymentReconciliation,
 } from "@/features/payments/state/paymentStore";
-import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
+import { orderRepository } from "@/features/orders";
+import { cashPriceChangedPaise } from "@/features/payments/services/cashCheckoutDecision";
+import { readPendingCashOrder } from "@/features/payments/services/pendingCashOrder";
+import { readPendingOnlineDraft } from "@/features/payments/services/pendingOnlineDraft";
 import { QuickAuthSheet } from "@/features/checkout/components/QuickAuthSheet";
 
 /**
@@ -113,6 +116,9 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   // F2 (staging 2026-11-21, Test 9): the outlet is closed. The server's own
   // sentence is what the customer must read, not a generic failure.
   "STORE_CLOSED",
+  "COD_UNAVAILABLE",
+  "COD_LIMIT_EXCEEDED",
+  "ORDER_SYNC_PENDING",
 ]);
 
 /**
@@ -270,6 +276,7 @@ export function CheckoutPage() {
   const [repricePrompt, setRepricePrompt] = React.useState<{
     displayed: number;
     authoritative: number;
+    cash?: { attemptId: string; acceptedTotalPaise: number };
   } | null>(null);
   // The server total already accepted, so re-entry does not loop on the same
   // difference (the divergence is structural, not a one-off).
@@ -290,7 +297,9 @@ export function CheckoutPage() {
   // `handlePlaceOrder` so the deferred execution sees fresh auth/guest state
   // instead of the render-scope closure captured when the sheet succeeded.
   const authRetryTimer = React.useRef<number | null>(null);
-  const handlePlaceOrderRef = React.useRef<() => Promise<void>>(async () => {});
+  const handlePlaceOrderRef = React.useRef<
+    (cash?: { attemptId: string; acceptedTotalPaise: number }) => Promise<void>
+  >(async () => {});
   React.useEffect(() => {
     handlePlaceOrderRef.current = handlePlaceOrder;
   });
@@ -475,7 +484,7 @@ export function CheckoutPage() {
 
   // Hoisted so the ref-sync effect also runs safely on the initial skeleton
   // render, which returns before the checkout body is initialized.
-  async function handlePlaceOrder() {
+  async function handlePlaceOrder(cash?: { attemptId: string; acceptedTotalPaise: number }) {
     setValidationError(null);
     setOrderingUnavailable(false);
 
@@ -546,6 +555,23 @@ export function CheckoutPage() {
     if (!isAuthenticated) {
       void HapticService.selection();
       setAuthSheetOpen(true);
+      return;
+    }
+
+    // A lost response may already have created an order. Never switch tender
+    // or start a parallel checkout while the other server attempt is unresolved.
+    try {
+      const cashPending = !!readPendingCashOrder();
+      const onlinePending = !!readPendingOnlineDraft();
+      if (
+        (paymentMethod === "cash" && onlinePending) ||
+        (paymentMethod !== "cash" && (cashPending || cash))
+      ) {
+        setValidationError("Finish your previous checkout before changing payment method.");
+        return;
+      }
+    } catch {
+      setValidationError("We couldn't check your previous checkout. Please try again.");
       return;
     }
 
@@ -654,22 +680,21 @@ export function CheckoutPage() {
     // 2. Cash on Delivery / Pay at Counter Flow
     if (paymentMethod === "cash") {
       try {
-        const orderStatus: PaymentDisplayStatus = isDelivery ? "CASH_PENDING" : "PAY_AT_STORE";
-        const paymentLabel = isDelivery
-          ? "Cash on Delivery"
-          : isTakeaway
-            ? "Pay at Pickup Counter"
-            : "Pay at Dine-In Counter";
+        // Only the cash creation endpoint can price this order and set the
+        // server-owned cash channel required by the kitchen admission gate.
+        const created = await orderRepository.createCashOrder(cash);
 
-        const created = await orderRepository.createFromCurrentContext({
-          paymentMethod: "cash",
-          paymentStatus: orderStatus,
-          paymentLabel,
-        });
-
-        setBusy(false);
-        placeOrderInFlight.current = false;
         if (!created.success) {
+          const paise = cashPriceChangedPaise(created.error);
+          const attemptId = created.error.details?.attemptId;
+          if (paise !== null && typeof attemptId === "string") {
+            setRepricePrompt({
+              displayed: totals?.grandTotal ?? 0,
+              authoritative: paise / 100,
+              cash: { attemptId, acceptedTotalPaise: paise },
+            });
+            return;
+          }
           const message = orderFailureMessage(created.error);
           setValidationError(message);
           toast.error("Could not place order", { description: message });
@@ -688,53 +713,54 @@ export function CheckoutPage() {
           replace: true,
         });
       } catch (err) {
-        setBusy(false);
-        placeOrderInFlight.current = false;
         // Raw exception text never reaches the red alert box (P1-8).
         console.error("[checkout] cash order exception:", err);
         const msg = "We couldn't place your order. Please try again.";
         setValidationError(msg);
         toast.error("Could not place order", { description: msg });
+      } finally {
+        setBusy(false);
+        placeOrderInFlight.current = false;
       }
       return;
     }
 
-    // 3. Online Razorpay Flow
-    // Free-order branch (cash already returned above): promo + loyalty
-    // covering the full bill must NOT touch the gateway (Razorpay rejects
-    // ₹0; payment.tsx blocks it too).
+    // 3. Online Razorpay Flow. A zero-due bill uses the existing server cash
+    // creator: it validates the coupon and writes a real zero-due order. It
+    // must NOT mint an unpaid online draft or claim payment success.
     if (finalPayable <= 0) {
       try {
-        const free = await orderRepository.createFromCurrentContext({
-          paymentMethod: "online",
-          paymentStatus: "pending",
-          paymentLabel: "No payment due",
-        });
-        setBusy(false);
-        placeOrderInFlight.current = false;
-        if (!free.success) {
-          const message = orderFailureMessage(free.error);
+        const zeroDue = await orderRepository.createCashOrder();
+        if (!zeroDue.success) {
+          const message = orderFailureMessage(zeroDue.error);
           setValidationError(message);
           toast.error("Could not place order", { description: message });
           return;
         }
+        if (zeroDue.data.cashDuePaise !== 0) {
+          setValidationError(
+            "The final total changed. Please review your bill before placing the order.",
+          );
+          return;
+        }
+        toast.success("No payment due", { description: "Your discount covered the full bill." });
         AudioService.playSuccess();
         void HapticService.notification("success");
         void cartRepository.clear();
         useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
         void navigate({
           to: "/orders/$orderId/track",
-          params: { orderId: free.data.id },
+          params: { orderId: zeroDue.data.id },
           replace: true,
         });
       } catch (err) {
-        setBusy(false);
-        placeOrderInFlight.current = false;
-        // Raw exception text never reaches the red alert box (P1-8).
-        console.error("[checkout] free order exception:", err);
+        console.error("[checkout] zero-due order exception:", err);
         const msg = "We couldn't place your order. Please try again.";
         setValidationError(msg);
         toast.error("Could not place order", { description: msg });
+      } finally {
+        setBusy(false);
+        placeOrderInFlight.current = false;
       }
       return;
     }
@@ -1080,7 +1106,7 @@ export function CheckoutPage() {
             </div>
             <button
               type="button"
-              onClick={handlePlaceOrder}
+              onClick={() => void handlePlaceOrder()}
               disabled={
                 busy ||
                 !isOnline ||
@@ -1666,6 +1692,11 @@ export function CheckoutPage() {
         cancelLabel="Cancel"
         onConfirm={() => {
           if (!repricePrompt) return;
+          if (repricePrompt.cash) {
+            setRepricePrompt(null);
+            void handlePlaceOrderRef.current(repricePrompt.cash);
+            return;
+          }
           acceptedServerAmount.current = repricePrompt.authoritative;
           setAcceptedServerTotal(repricePrompt.authoritative);
           setRepricePrompt(null);

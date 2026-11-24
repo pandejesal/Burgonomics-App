@@ -1,11 +1,10 @@
 /**
  * OrdersService — order transport for the orders module (hybrid).
  *
- * Every function returns the same `ApiResult<T>` envelope. Bodies are NOT
- * mock-only: createOrder persists to Firestore `orders` (with the
- * partner-query mirrors userId/customerId/createdAt/branchId), listOrders/
- * getOrder live-read the same collection. Do NOT "finish the migration" by
- * ripping out the Firestore sync — the partner app reads these docs directly.
+ * Every function returns the same `ApiResult<T>` envelope. Order creation is
+ * server-only (`OrderRepository.createCashOrder` / `createOnlineDraft`); this
+ * service live-reads Firestore `orders` and observes server-owned payment and
+ * cancellation truth. It never creates or mints an order document.
  *
  * F24: cancelOrder is now SERVER-FIRST (POST /orders/customerCancel). A direct
  * client status write skipped the server-owned cancellation obligations
@@ -18,8 +17,8 @@
  * after staff accept/bump for COD).
  *
  * Backend map (live):
- *   Firestore `orders` (write + read)     → createOrder / listOrders /
- *                                            getOrder
+ *   Firestore `orders` (read-only)       → listOrders / getOrder /
+ *                                            finalizePaidOrder
  *   POST /orders/customerCancel (server)  → cancelOrder (F24: ownership +
  *                                            cancellable window re-checked in
  *                                            the status transaction; rider-
@@ -40,9 +39,7 @@
  * changing the repository interface (see `OrderRepository.subscribe`).
  */
 import { delay, fail, ok, type ApiResult } from "@/core/network/http";
-import { generateSecureId } from "@/shared/utils/cryptoUtils";
 import type {
-  CreateOrderInput,
   Order,
   OrderListQuery,
   OrderListResult,
@@ -200,19 +197,9 @@ const progression = new Map<string, Partial<Record<OrderStatusCode, string>>>();
  */
 const historyFetchedFor = new Set<string>();
 
-/**
- * The last order whose Firestore write FAILED, keyed by checkout fingerprint.
- * A persistence failure is surfaced as `PERSIST_FAILED` (never `ok`), so the
- * customer retries the SAME checkout — the retry must re-create the SAME
- * `orders/{id}` document instead of minting a second one for one payment.
- * Cleared on the first successful persist AND on account change — the
- * retry-id must never be reused by a different customer (see syncCacheScope).
- */
-let failedPersist: { fingerprint: string; id: string } | null = null;
-
 // -- Auth-scoped session cache ---------------------------------------
 //
-// `orders`, `progression`, `historyFetchedFor` and `failedPersist` are a
+// `orders`, `progression` and `historyFetchedFor` are a
 // PER-ACCOUNT session cache. Serving them across an account change (logout
 // + login, or a stale auth restore without a page reload) would leak one
 // customer's orders, timeline clock and retry id into another's screens.
@@ -243,61 +230,7 @@ function syncCacheScope(user: { uid: string } | null | undefined): void {
   orders.clear();
   progression.clear();
   historyFetchedFor.clear();
-  failedPersist = null;
   cacheScope = key;
-}
-
-/**
- * Canonical identity of one checkout — used to reuse the order id on retry.
- *
- * A retry may only reuse `input.confirmedOrderId` when the checkout it
- * describes is UNCHANGED. The old signature covered store/fulfillment/method/
- * total/notes/lines; a customer who went back and edited the address,
- * instructions, tip, loyalty redemption or promo got a "success" for context
- * that was never written (Firestore kept the previous doc). Every field that
- * materially changes the created order is therefore part of the fingerprint.
- */
-function checkoutFingerprint(input: CreateOrderInput): string {
-  const address = input.deliveryAddress ?? input.address ?? null;
-  const addressKey = address
-    ? [
-        address.label,
-        address.contactName,
-        address.contactPhone,
-        address.line1,
-        address.line2 ?? null,
-        address.landmark ?? null,
-        address.city,
-        address.state,
-        address.pincode,
-        address.lat ?? null,
-        address.lng ?? null,
-      ]
-    : null;
-  return JSON.stringify([
-    input.store?.id ?? null,
-    input.fulfillment ?? null,
-    input.payment?.method ?? null,
-    input.totals?.grandTotal ?? null,
-    input.totals?.subtotal ?? null,
-    input.totals?.promoDiscount ?? null,
-    input.totals?.deliveryFee ?? null,
-    input.totals?.packingFee ?? null,
-    input.promo?.code ?? null,
-    input.tipAmount ?? 0,
-    input.loyaltyPointsRedeemed ?? 0,
-    input.notes ?? null,
-    input.fulfillmentInstructions ?? null,
-    input.tableNumber ?? null,
-    addressKey,
-    (input.items ?? []).map((l) => [
-      l.productId,
-      l.quantity,
-      l.unitPrice,
-      (l.modifiers ?? []).map((m) => [m.groupId, m.optionId]),
-      l.notes ?? null,
-    ]),
-  ]);
 }
 
 /**
@@ -460,218 +393,6 @@ function seedProgression(id: string, order: Order, server?: Record<string, unkno
 // -- Public service ---------------------------------------------------
 
 export const ordersService = {
-  async createOrder(input: CreateOrderInput): Promise<ApiResult<Order>> {
-    // Fail-closed for guests: a memory-only order is invisible to Partner
-    // (no Firestore doc, no KOT). Checkout/payment screens force login via
-    // the auth sheet; this is the backstop for stale sessions and direct
-    // calls. Guest checkout is NOT supported (product decision 2026-09-23).
-    const { auth: gateAuth } = await import("@/core/config/firebase");
-    if (!gateAuth.currentUser) {
-      return {
-        success: false,
-        error: {
-          code: "MISSING_AUTH",
-          message: "Please sign in to place your order.",
-          retryable: false,
-        },
-      };
-    }
-    // Pin the placing account (R03): the doc's ownership fields, the cache
-    // writes and the failed-persist retry id all belong to THIS uid — not
-    // to whichever account is current when a later await resumes.
-    const uid = gateAuth.currentUser.uid;
-    syncCacheScope(gateAuth.currentUser);
-    const fingerprint = checkoutFingerprint(input);
-    // Reuse the id of a checkout whose Firestore write already failed, so a
-    // retry re-creates the SAME document instead of a duplicate order.
-    const retryOfFailedPersist =
-      failedPersist && failedPersist.fingerprint === fingerprint ? failedPersist : null;
-    const reusedOrderId = input.confirmedOrderId ?? retryOfFailedPersist?.id;
-    const id = reusedOrderId ?? `ord_${Date.now()}_${generateSecureId(6)}`;
-    const nowIso = new Date().toISOString();
-    const status = resolveStatus("PLACED");
-    const etaMinutes =
-      input.fulfillment === "delivery" ? input.store.etaMinutes : input.store.pickupEtaMinutes;
-    const estimatedAt =
-      typeof etaMinutes === "number" && Number.isFinite(etaMinutes) && etaMinutes > 0
-        ? new Date(Date.now() + etaMinutes * 60_000).toISOString()
-        : undefined;
-    const order: Order = {
-      id,
-      shortCode: shortCode(id),
-      status,
-      fulfillment: input.fulfillment,
-      store: input.store,
-      address: input.address,
-      deliveryAddress: input.deliveryAddress ?? input.address,
-      items: input.items,
-      totals: input.totals,
-      promo: input.promo ?? null,
-      tipAmount: input.tipAmount ?? 0,
-      loyaltyPointsRedeemed: input.loyaltyPointsRedeemed ?? 0,
-      notes: input.notes,
-      fulfillmentInstructions: input.fulfillmentInstructions,
-      tableNumber: input.tableNumber,
-      // R8: persist the server courier quote on delivery orders only. Cash
-      // orders never reach createPaymentOrder, so without this the only store
-      // of the quoted fee would be `totals`; the quote id binds the order to
-      // the server record (R7 verification reads that stored fee). Key omitted
-      // entirely when there is no quote — never written as undefined.
-      ...(input.fulfillment === "delivery" &&
-      typeof input.deliveryQuoteId === "string" &&
-      input.deliveryQuoteId.length > 0
-        ? { deliveryQuoteId: input.deliveryQuoteId }
-        : {}),
-      whatsappOptIn: input.whatsappOptIn ?? true,
-      payment: input.payment,
-      petpoojaStatus: "Pending",
-      placedAt: nowIso,
-      ...(estimatedAt ? { estimatedAt } : {}),
-    };
-
-    // NO client-side Petpooja push. POST /petpooja/pushOrder is staff-only
-    // (requireRole brand_owner/developer/branch_owner/branch_staff), so every
-    // customer call was a 403 that the old code hid in a localStorage outbox
-    // while the order claimed to be on its way to the POS. The KOT is owned
-    // server-side: the order-update trigger pushes a COD order after staff
-    // accept/bump it, and payment capture/verify pushes an online one. The
-    // in-memory order keeps the honest "Pending" set above; the field is
-    // server/webhook-owned and is stripped before the Firestore write below
-    // (firestore.rules denies petpoojaStatus at create).
-
-    // Firestore write: a failure here is FATAL for this attempt — the order
-    // exists nowhere Partner/KDS/POS can see it, so returning ok() told the
-    // customer "order placed" (and cleared their cart) for an order that was
-    // never sent. It must surface as PERSIST_FAILED instead.
-    let persistError: string | null = null;
-    try {
-      const { auth, db } = await import("@/core/config/firebase");
-      const { doc, getDoc, setDoc } = await import("firebase/firestore");
-      const user = auth.currentUser;
-      if (!user) {
-        persistError = "Your session ended before the order could be saved.";
-      } else if (user.uid !== uid) {
-        // The account changed between the gate and the write: minting the
-        // doc under the NEW uid would attribute one customer's order (and
-        // its payment context) to another. Skip the write entirely — the
-        // AUTH_CHANGED failure below surfaces it (no doc was written, so
-        // the retry creates no duplicate).
-        persistError = "Your session changed before the order could be saved.";
-      } else {
-        // petpoojaStatus is server/webhook-owned (firestore.rules denies it at
-        // create); the in-memory order keeps it for the confirmation screen.
-        const orderDoc = { ...order };
-        delete orderDoc.petpoojaStatus;
-        const orderRef = doc(db, "orders", id);
-        const payload = {
-          ...orderDoc,
-          deliveryAddress: input.deliveryAddress ?? input.address,
-          // firestore.rules requires BOTH ownership fields to equal the
-          // caller's uid — customerId alone is no longer sufficient.
-          userId: uid,
-          // Query-compatible mirrors for the Partner app (additive only —
-          // customer readers ignore unknown fields):
-          // - Partner useCustomer queries where('customerId','==',…)
-          // - Partner lists/analytics order/filter by 'createdAt'
-          customerId: uid,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          // Partner branch scoping + server KOT restID resolution read this.
-          // Set by ops as stores/{id}.partnerBranchId when outlets are linked.
-          branchId: input.store.partnerBranchId ?? null,
-          branchCoordinates:
-            typeof input.store.lat === "number" && typeof input.store.lng === "number"
-              ? { lat: input.store.lat, lng: input.store.lng }
-              : undefined,
-          // Client-written (rules allow it): the canonical checkout identity
-          // this doc was created for. A retry reuses the doc only when this
-          // still matches — see the `reusedOrderId` branch below.
-          checkoutFingerprint: fingerprint,
-        };
-        if (reusedOrderId) {
-          // Payment retry or a lost-ack retry: the id may already exist (the
-          // pending order created before the gateway opened, or a write whose
-          // ack was lost). setDoc over it is an UPDATE the customer rules deny
-          // — verify the existing doc belongs to THIS checkout, then skip.
-          const existing = await getDoc(orderRef);
-          if (existing && typeof existing.exists === "function" && existing.exists()) {
-            const data = existing.data();
-            if (data.customerId !== uid || data.userId !== uid) {
-              return fail("NOT_OWNER", "This order belongs to a different account.", false);
-            }
-            // Ownership alone is not reuse-eligibility. A retry after the
-            // customer changed the address / notes / basket must NOT report
-            // success for a context that was never persisted: Firestore still
-            // holds the old doc, so the kitchen would receive the old order
-            // while the screen confirmed the new one. Same-context retries
-            // keep the skip (the write is rule-denied); anything else fails
-            // retryably AND drops the failed-persist retry id so the next tap
-            // mints a fresh order instead of retrying this stale one.
-            const storedFingerprint =
-              typeof data.checkoutFingerprint === "string" ? data.checkoutFingerprint : null;
-            if (storedFingerprint !== fingerprint) {
-              failedPersist = null;
-              return fail(
-                "CHECKOUT_CONTEXT_CHANGED",
-                "Your order details changed since the last attempt, so the earlier order was not reused. Please review your details and place the order again.",
-                true,
-              );
-            }
-          } else {
-            await setDoc(orderRef, payload);
-          }
-        } else {
-          await setDoc(orderRef, payload);
-        }
-      }
-    } catch (err) {
-      persistError = err instanceof Error ? err.message : String(err);
-      const { logger } = await import("@/core/logging/logger");
-      logger.warn("ordersService.firestore_sync_failed", {
-        id,
-        message: persistError,
-      });
-    }
-
-    // The record stays in memory on failure: the retry must find the same
-    // order (same id) and the customer keeps their context — but only while
-    // the placing account is still signed in. An order that outlives its
-    // session must never sit in the next account's cache (R03).
-    const { auth: scopeAuth } = await import("@/core/config/firebase");
-    const scopeStillOurs = (scopeAuth.currentUser?.uid ?? null) === uid;
-    if (scopeStillOurs) {
-      orders.set(id, order);
-      progression.set(id, { PLACED: nowIso });
-    }
-
-    // Auth changed by the time the post-write yield resolved (R19
-    // F-R19-3): never hand ok() to the new session — its repository would
-    // upsert this order into the wrong account's UI store. Answers the same
-    // way as the sibling mutations (setWhatsappOptIn / markPaymentFailed /
-    // cancelOrder), whether or not the Firestore write landed under the
-    // original uid.
-    if (!scopeStillOurs) {
-      return fail(
-        "AUTH_CHANGED",
-        "Your session changed before the order could be confirmed. " +
-          "Please check your order history before trying again.",
-        true,
-      );
-    }
-
-    if (persistError) {
-      failedPersist = { fingerprint, id };
-      return fail(
-        "PERSIST_FAILED",
-        "We couldn't save your order, so the kitchen never received it. " +
-          "Please try again — no duplicate order will be created.",
-        true,
-      );
-    }
-    failedPersist = null;
-    return ok(order);
-  },
-
   /**
    * R24 — paid-order finalization from SERVER TRUTH (read-only).
    *

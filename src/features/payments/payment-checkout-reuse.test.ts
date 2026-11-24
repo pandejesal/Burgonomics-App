@@ -2,14 +2,8 @@
 /**
  * CUS-09 — "already persisted" at the repository boundary.
  *
- * `firestore.rules` allow CREATE on `orders/{id}` only; a client update is
- * denied. `ordersService.createOrder` therefore cannot be re-run for a
- * checkout whose document was already written — the second `setDoc` fails with
- * "Missing or insufficient permissions", surfaces as PERSIST_FAILED, and the
- * customer never reaches Razorpay (live run 3: reprice acceptance; run 2: a
- * gateway 500 followed by a retry).
- *
- * The repository now records the checkout it created and reuses it: one
+ * Order birth is server-only. The repository records the server draft and
+ * gateway intent it already created and reuses them: one
  * `orders/{id}` document and one Razorpay order per attempt. A genuine
  * first-attempt persist failure still returns PERSIST_FAILED and records
  * nothing, so a real retry is still allowed.
@@ -18,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Store } from "@/features/stores/models/Store";
 
 const mocks = vi.hoisted(() => ({
-  createFromCurrentContext: vi.fn(),
+  createOnlineDraft: vi.fn(),
   markPaymentFailed: vi.fn(),
   createOrder: vi.fn(),
   calculateTotals: vi.fn(),
@@ -27,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/features/orders/repositories/OrderRepository", () => ({
   orderRepository: {
-    createFromCurrentContext: mocks.createFromCurrentContext,
+    createOnlineDraft: mocks.createOnlineDraft,
     markPaymentFailed: mocks.markPaymentFailed,
   },
 }));
@@ -85,7 +79,7 @@ beforeEach(() => {
     success: true,
     data: { checkoutToken: "chk_token_1" },
   });
-  mocks.createFromCurrentContext.mockResolvedValue({
+  mocks.createOnlineDraft.mockResolvedValue({
     success: true,
     data: { id: "ord_created_1" },
   });
@@ -126,7 +120,7 @@ describe("CUS-09 — one orders/{id} and one Razorpay order per checkout", () =>
 
     const first = await repo.createPaymentOrder();
     expect(first.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(mocks.createOrder).toHaveBeenCalledTimes(1);
     if (first.success) expect(first.data.amount).toBe(26);
 
@@ -135,7 +129,7 @@ describe("CUS-09 — one orders/{id} and one Razorpay order per checkout", () =>
     const second = await repo.createPaymentOrder();
 
     expect(second.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(mocks.createOrder).toHaveBeenCalledTimes(1);
     if (second.success) {
       expect(second.data.orderId).toBe("order_rzp_1");
@@ -156,19 +150,19 @@ describe("CUS-09 — one orders/{id} and one Razorpay order per checkout", () =>
 
     const first = await repo.createPaymentOrder();
     expect(first.success).toBe(false);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
 
     const retry = await repo.createPaymentOrder();
 
     expect(retry.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1); // no rewrite
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1); // no rewrite
     expect(mocks.createOrder).toHaveBeenCalledTimes(2); // gateway retried
     // The gateway order is bound to the order document that already exists.
     expect(mocks.createOrder.mock.calls[1][0]).toMatchObject({ orderId: "ord_created_1" });
   });
 
   it("a genuine first-attempt persist failure still surfaces PERSIST_FAILED and records nothing", async () => {
-    mocks.createFromCurrentContext.mockResolvedValueOnce({
+    mocks.createOnlineDraft.mockResolvedValueOnce({
       success: false,
       error: {
         code: "PERSIST_FAILED",
@@ -188,7 +182,7 @@ describe("CUS-09 — one orders/{id} and one Razorpay order per checkout", () =>
     // Nothing was recorded, so the retry is a genuine create — not a silent ok.
     const retry = await repo.createPaymentOrder();
     expect(retry.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2);
     expect(mocks.createOrder).toHaveBeenCalledTimes(1);
   });
 });
@@ -244,9 +238,9 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
   // history only, so an unconsumed `...Once` from a PREVIOUS case would leak
   // into the next one; reset the two mocks to their defaults here.
   beforeEach(() => {
-    mocks.createFromCurrentContext.mockReset();
+    mocks.createOnlineDraft.mockReset();
     mocks.createOrder.mockReset();
-    mocks.createFromCurrentContext.mockResolvedValue({
+    mocks.createOnlineDraft.mockResolvedValue({
       success: true,
       data: { id: "ord_created_1" },
     });
@@ -261,13 +255,13 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
 
     const delivery = await repo.createPaymentOrder();
     expect(delivery.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(mocks.createOrder.mock.calls[0][0]).toMatchObject({ orderId: "ord_created_1" });
     expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
     expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_1");
 
     // The customer switches to takeaway on the same basket.
-    mocks.createFromCurrentContext.mockResolvedValueOnce({
+    mocks.createOnlineDraft.mockResolvedValueOnce({
       success: true,
       data: { id: "ord_created_2" },
     });
@@ -278,10 +272,10 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
 
     expect(takeaway.success).toBe(true);
     // A new document is written — the delivery doc still carries the old mode.
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2);
     // ...and the stale id is NOT adopted as its confirmed order.
-    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
-      confirmedOrderId: undefined,
+    expect(mocks.createOnlineDraft.mock.calls[1][0]).toMatchObject({
+      orderId: undefined,
     });
     expect(mocks.createOrder).toHaveBeenCalledTimes(2);
     expect(mocks.createOrder.mock.calls[1][0]).toMatchObject({
@@ -306,7 +300,7 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
     expect(first.success).toBe(true);
     expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
 
-    mocks.createFromCurrentContext.mockResolvedValueOnce({
+    mocks.createOnlineDraft.mockResolvedValueOnce({
       success: true,
       data: { id: "ord_created_3" },
     });
@@ -317,9 +311,9 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
     const moved = await repo.createPaymentOrder();
 
     expect(moved.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
-    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
-      confirmedOrderId: undefined,
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2);
+    expect(mocks.createOnlineDraft.mock.calls[1][0]).toMatchObject({
+      orderId: undefined,
     });
     expect(mocks.createOrder).toHaveBeenCalledTimes(2);
     expect(mocks.createOrder.mock.calls[1][0]).toMatchObject({ orderId: "ord_created_3" });
@@ -337,7 +331,7 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
     expect(first.success).toBe(true);
     expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
 
-    mocks.createFromCurrentContext.mockResolvedValueOnce({
+    mocks.createOnlineDraft.mockResolvedValueOnce({
       success: true,
       data: { id: "ord_created_4" },
     });
@@ -351,9 +345,9 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
     const changed = await repo.createPaymentOrder();
 
     expect(changed.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(2);
-    expect(mocks.createFromCurrentContext.mock.calls[1][0]).toMatchObject({
-      confirmedOrderId: undefined,
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2);
+    expect(mocks.createOnlineDraft.mock.calls[1][0]).toMatchObject({
+      orderId: undefined,
     });
     expect(mocks.createOrder).toHaveBeenCalledTimes(2);
     expect(mocks.createOrder.mock.calls[1][0]).toMatchObject({ orderId: "ord_created_4" });
@@ -371,13 +365,13 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
 
     const first = await repo.createPaymentOrder();
     expect(first.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
 
     seedDeliveryAddress(deliveryAddress({ id: "addr_other", line1: "2 Other Road", lat: 21.2 }));
     const again = await repo.createPaymentOrder();
 
     expect(again.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(mocks.createOrder).toHaveBeenCalledTimes(1);
     expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
     expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_1");
@@ -392,7 +386,7 @@ describe("D1 — changed mode/drop pin never reuses the previous checkout", () =
     const again = await repo.createPaymentOrder();
 
     expect(again.success).toBe(true);
-    expect(mocks.createFromCurrentContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
     expect(mocks.createOrder).toHaveBeenCalledTimes(1);
     expect(usePaymentStore.getState().internalOrderId).toBe("ord_created_1");
     expect(usePaymentStore.getState().gatewayOrderId).toBe("order_rzp_1");

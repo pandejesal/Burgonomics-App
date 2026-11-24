@@ -47,7 +47,7 @@ const fixture = vi.hoisted(() => {
     cartState,
     checkoutState,
     calculateTotals: vi.fn(),
-    createFromCurrentContext: vi.fn(),
+    createOnlineDraft: vi.fn(),
     // Owner decision 2026-11-20: cash orders are created by the SERVER.
     createCashOrder: vi.fn(),
     navigate: vi.fn(),
@@ -268,7 +268,7 @@ vi.mock("@/features/addresses", () => ({
 vi.mock("@/features/orders", () => ({
   orderRepository: {
     pendingCashOrderId: () => null,
-    createFromCurrentContext: fixture.createFromCurrentContext,
+    createOnlineDraft: fixture.createOnlineDraft,
     createCashOrder: fixture.createCashOrder,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
@@ -313,8 +313,8 @@ let root: Root;
 beforeEach(() => {
   vi.clearAllMocks();
   fixture.calculateTotals.mockReset();
-  fixture.createFromCurrentContext.mockReset();
-  fixture.createFromCurrentContext.mockResolvedValue({ success: true, data: { id: "ord_cod" } });
+  fixture.createOnlineDraft.mockReset();
+  fixture.createOnlineDraft.mockResolvedValue({ success: true, data: { id: "ord_cod" } });
   fixture.createCashOrder.mockReset();
   fixture.createCashOrder.mockResolvedValue({ success: true, data: { id: "ord_cod" } });
   validateForPayment.mockResolvedValue({ success: true, data: { valid: true, issues: [] } });
@@ -374,7 +374,7 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     await act(async () => {});
 
     expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
-    expect(fixture.createFromCurrentContext).not.toHaveBeenCalled();
+    expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
   });
 
   it("creates the COD order immediately when the refreshed total is unchanged (positive control)", async () => {
@@ -420,7 +420,7 @@ describe("COD — refreshed total needs explicit acceptance", () => {
   it("submits a fee-free cash bill when it starts at zero", async () => {
     fixture.calculateTotals.mockResolvedValue(totals(0));
     await mountCashPayment();
-    const pay = buttonWithText("Place COD Order")!;
+    const pay = buttonWithText("Place Zero-Due Order")!;
     expect(pay.disabled).toBe(false);
     await act(async () => pay.click());
     expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);

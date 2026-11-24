@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const fixture = vi.hoisted(() => {
-  const lines = [{ lineId: "l1", name: "Test Burger", quantity: 1, unitPrice: 249 }];
+  const lines = [
+    { lineId: "l1", productId: "burger_1", name: "Test Burger", quantity: 1, unitPrice: 249 },
+  ];
   const cartState = { lines, promo: null, priceLockExpiresAt: null };
   return {
     lines,
@@ -15,11 +17,18 @@ const fixture = vi.hoisted(() => {
     cart: {
       calculateTotals: vi.fn(),
       validateCart: vi.fn(),
+      prepareCheckout: vi.fn(async () => ({
+        success: true,
+        data: { checkoutToken: "checkout_token_ui" },
+      })),
       clear: vi.fn(async () => ({ success: true })),
     },
     createOrder: vi.fn(),
+    postCash: vi.fn(),
     finalizePaidOrder: vi.fn(),
     createPaymentOrder: vi.fn(),
+    gatewayCreate: vi.fn(),
+    paymentRepository: {} as any,
     verifyPayment: vi.fn(),
     initializeRazorpay: vi.fn(async () => {}),
     openCheckout: vi.fn(),
@@ -141,8 +150,11 @@ vi.mock("@/features/addresses", () => {
     lng: 72.77,
   };
   return {
-    useAddressStore: (select: (s: unknown) => unknown) =>
-      select({ items: [address], selectedId: address.id, select: vi.fn() }),
+    useAddressStore: Object.assign(
+      (select: (s: unknown) => unknown) =>
+        select({ items: [address], selectedId: address.id, select: vi.fn() }),
+      { getState: () => ({ items: [address], selectedId: address.id }) },
+    ),
     selectAddresses: () => [address],
     selectSelectedAddress: () => address,
   };
@@ -153,25 +165,51 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
     { getState: () => ({ balance: 0, refreshFromServer: vi.fn(async () => {}) }) },
   ),
 }));
-vi.mock("@/features/orders", () => ({
-  orderRepository: {
-    createFromCurrentContext: fixture.createOrder,
-    finalizePaidOrder: fixture.finalizePaidOrder,
-    markPaymentFailed: vi.fn(async () => ({ success: true })),
+vi.mock("@/features/cart/repositories/CartRepository", () => ({ cartRepository: fixture.cart }));
+vi.mock("@/features/cart/state/cartStore", () => ({
+  useCartStore: { getState: () => fixture.cartState },
+}));
+vi.mock("@/core/network/httpClient", () => ({ httpClient: { post: fixture.postCash } }));
+vi.mock("@/features/auth/utils/scopedPersistence", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/auth/utils/scopedPersistence")>()),
+  currentScopedUid: () => "cust_fulfill",
+}));
+vi.mock("@/features/orders/services/ordersService", () => ({
+  ordersService: {
+    getOrder: async (id: string) => ({
+      success: true,
+      data: {
+        id,
+        status: { code: "PLACED", kind: "upcoming", terminal: false },
+        ...(id === "ord_zero_due" ? { cashDuePaise: 0 } : {}),
+      },
+    }),
   },
 }));
+vi.mock("@/features/orders", async () => {
+  const { OrderRepository } = await import("@/features/orders/repositories/OrderRepository");
+  return {
+    orderRepository: Object.assign(new OrderRepository(), {
+      createOnlineDraft: fixture.createOrder,
+      finalizePaidOrder: fixture.finalizePaidOrder,
+      markPaymentFailed: vi.fn(async () => ({ success: true })),
+    }),
+  };
+});
 vi.mock("@/features/payments", async () => {
   const { usePaymentStore } = await vi.importActual<
     typeof import("@/features/payments/state/paymentStore")
   >("@/features/payments/state/paymentStore");
+  const paymentRepository = {
+    createPaymentOrder: fixture.createPaymentOrder,
+    verifyPayment: fixture.verifyPayment,
+    validateForPayment: vi.fn(async () => ({ success: true, data: { valid: true, issues: [] } })),
+    cancelPayment: vi.fn(async () => ({ success: true })),
+  };
+  fixture.paymentRepository = paymentRepository;
   return {
     usePaymentStore,
-    paymentRepository: {
-      createPaymentOrder: fixture.createPaymentOrder,
-      verifyPayment: fixture.verifyPayment,
-      validateForPayment: vi.fn(async () => ({ success: true, data: { valid: true, issues: [] } })),
-      cancelPayment: vi.fn(async () => ({ success: true })),
-    },
+    paymentRepository,
     razorpayAdapter: {
       initialize: fixture.initializeRazorpay,
       openCheckout: fixture.openCheckout,
@@ -190,6 +228,7 @@ vi.mock("@/features/checkout/services/checkoutQuote", () => ({
 }));
 import { useCheckoutStore } from "@/features/checkout";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
+import { PaymentRepository } from "@/features/payments/repositories/PaymentRepository";
 import { Route as CheckoutRoute } from "./checkout";
 
 const CheckoutPage = (CheckoutRoute as unknown as { options: { component: React.ComponentType } })
@@ -267,8 +306,47 @@ beforeEach(() => {
   fixture.cart.calculateTotals.mockReset();
   fixture.cart.validateCart.mockReset();
   fixture.createOrder.mockReset();
+  fixture.postCash.mockReset();
+  fixture.postCash.mockImplementation(
+    async (url: string, request: { orderId: string; attemptId?: string }) => ({
+      data: url.endsWith("/orders/createOnlineDraft")
+        ? {
+            orderId: request.orderId,
+            attemptId: request.attemptId,
+            replayed: false,
+            amountPaise: 50000,
+            totals: {},
+            status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+          }
+        : {
+            orderId: request.orderId,
+            paymentMethod: "cod",
+            paymentChannel: "cash",
+            cashDuePaise: 50000,
+            totals: {},
+            status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+          },
+    }),
+  );
+  localStorage.clear();
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: async (_key: string, callback: () => unknown) => callback() },
+  });
   fixture.finalizePaidOrder.mockReset();
   fixture.createPaymentOrder.mockReset();
+  fixture.paymentRepository.createPaymentOrder = fixture.createPaymentOrder;
+  fixture.gatewayCreate.mockReset().mockResolvedValue({
+    success: true,
+    data: {
+      id: "rzp_ui_order",
+      orderId: "rzp_ui_order",
+      amount: 109,
+      currency: "INR",
+      receipt: "rcpt_ui",
+      keyId: "rzp_test_ui",
+    },
+  });
   fixture.verifyPayment.mockReset();
   fixture.openCheckout.mockReset();
   fixture.initializeRazorpay.mockReset();
@@ -435,6 +513,7 @@ describe("checkout — null fulfillment is an honest, blocking state", () => {
 describe("checkout — normal modes keep their order behaviour", () => {
   it("still places a takeaway cash order after an explicit selection", async () => {
     usePaymentStore.getState().setMethod("cash");
+    fixture.cart.calculateTotals.mockResolvedValue(totals(109, 109));
     seedSelection("takeaway", store);
     await mount();
 
@@ -444,9 +523,135 @@ describe("checkout — normal modes keep their order behaviour", () => {
     await act(async () => {});
 
     expect(fixture.cart.validateCart).toHaveBeenCalledTimes(1);
-    expect(fixture.createOrder).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentMethod: "cash", paymentStatus: "PAY_AT_STORE" }),
+    expect(fixture.postCash).toHaveBeenCalledTimes(1);
+    const [url, body] = fixture.postCash.mock.calls[0];
+    expect(url).toMatch(/\/orders\/createCashOrder$/);
+    expect(body).toEqual({
+      orderId: expect.stringMatching(/^ord_/),
+      attemptId: expect.any(String),
+      orderType: "takeaway",
+      storeId: store.id,
+      items: [{ productId: "burger_1", quantity: 1 }],
+      expectedTotalPaise: 10900,
+    });
+    expect(fixture.createOrder).not.toHaveBeenCalled();
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.navigate).toHaveBeenCalledWith({
+      to: "/orders/$orderId/track",
+      params: { orderId: (body as { orderId: string }).orderId },
+      replace: true,
+    });
+  });
+
+  it("reuses the cash attempt and original notes only after explicit price confirmation", async () => {
+    usePaymentStore.getState().setMethod("cash");
+    useCheckoutStore.getState().setOrderNotes("No onions");
+    useCheckoutStore.getState().setPickupInstructions("Counter B");
+    seedSelection("takeaway", store);
+    fixture.postCash.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { code: "PRICE_CHANGED", totals: { split: { totalAmountPaise: 51000 } } },
+      },
+    });
+    await mount();
+    await act(async () => payButton().click());
+
+    expect(fixture.postCash).toHaveBeenCalledTimes(1);
+    const first = fixture.postCash.mock.calls[0][1];
+    expect(first).toMatchObject({
+      expectedTotalPaise: 50000,
+      notes: "No onions",
+      fulfillmentInstructions: "Counter B",
+    });
+    const pendingKey = Object.keys(localStorage).find((k) => k.includes("pendingCashOrder"));
+    expect(pendingKey).toBeDefined();
+    expect(localStorage.getItem(pendingKey!)).not.toMatch(/No onions|Counter B/);
+    expect(fixture.cart.clear).not.toHaveBeenCalled();
+    const dialog = document.querySelector('[role="alertdialog"], [role="dialog"]');
+    expect(dialog?.textContent).toContain("510");
+    const proceed = Array.from(dialog?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent === "Continue",
     );
+    expect(proceed).toBeDefined();
+    await act(async () => proceed?.click());
+
+    expect(fixture.postCash).toHaveBeenCalledTimes(2);
+    expect(fixture.postCash.mock.calls[1][1]).toEqual({ ...first, expectedTotalPaise: 51000 });
+    expect(fixture.cart.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the real online UI checkout through the server draft and payment handler", async () => {
+    usePaymentStore.getState().setMethod("upi");
+    fixture.cart.calculateTotals.mockResolvedValue(totals(109, 109));
+    fixture.postCash.mockImplementation(
+      async (url: string, request: { orderId: string; attemptId?: string }) => ({
+        data: {
+          orderId: request.orderId,
+          attemptId: request.attemptId,
+          replayed: false,
+          amountPaise: 10900,
+          totals: {},
+          status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+        },
+      }),
+    );
+    const realPayments = new PaymentRepository({ createOrder: fixture.gatewayCreate } as never);
+    fixture.paymentRepository.createPaymentOrder =
+      realPayments.createPaymentOrder.bind(realPayments);
+    seedSelection("takeaway", store);
+    await mount();
+    await act(async () => payButton().click());
+
+    expect(fixture.postCash).toHaveBeenCalledTimes(1);
+    const [url, body] = fixture.postCash.mock.calls[0];
+    expect(url).toMatch(/\/orders\/createOnlineDraft$/);
+    expect(body).toMatchObject({
+      orderType: "takeaway",
+      storeId: store.id,
+      items: [{ productId: "burger_1", quantity: 1 }],
+    });
+    expect(body).not.toHaveProperty("total");
+    expect(body).not.toHaveProperty("pricing");
+    expect(body).not.toHaveProperty("payment");
+    expect(fixture.gatewayCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: body.orderId, amount: 109 }),
+    );
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes a zero-due online bill through the server zero-due cash path", async () => {
+    usePaymentStore.getState().setMethod("upi");
+    fixture.cart.calculateTotals.mockResolvedValue(totals(0, 0));
+    fixture.postCash.mockResolvedValue({
+      data: {
+        orderId: "ord_zero_due",
+        paymentMethod: "cod",
+        paymentChannel: "cash",
+        cashDuePaise: 0,
+        totals: {},
+        status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+      },
+    });
+    seedSelection("takeaway", store);
+    await mount();
+    await act(async () => payButton().click());
+
+    expect(fixture.postCash).toHaveBeenCalledTimes(1);
+    expect(fixture.postCash.mock.calls[0][0]).toMatch(/\/orders\/createCashOrder$/);
+    expect(fixture.postCash.mock.calls[0][1]).toMatchObject({
+      orderType: "takeaway",
+      expectedTotalPaise: 0,
+    });
+    expect(fixture.gatewayCreate).not.toHaveBeenCalled();
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.toast.error).not.toHaveBeenCalled();
+    expect(fixture.navigate).toHaveBeenCalledWith({
+      to: "/orders/$orderId/track",
+      params: { orderId: "ord_zero_due" },
+      replace: true,
+    });
   });
 
   it("still places a delivery cash order with a selected address", async () => {
@@ -459,9 +664,16 @@ describe("checkout — normal modes keep their order behaviour", () => {
     await act(async () => payButton().click());
     await act(async () => {});
 
-    expect(fixture.createOrder).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentMethod: "cash", paymentStatus: "CASH_PENDING" }),
+    expect(fixture.postCash).toHaveBeenCalledWith(
+      expect.stringMatching(/\/orders\/createCashOrder$/),
+      expect.objectContaining({
+        orderType: "delivery",
+        addressId: "addr_fulfill",
+        deliveryQuoteId: "q_test",
+      }),
+      expect.anything(),
     );
+    expect(fixture.createOrder).not.toHaveBeenCalled();
   });
 });
 

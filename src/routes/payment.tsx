@@ -1,4 +1,5 @@
 import { readPendingCashOrder } from "@/features/payments/services/pendingCashOrder";
+import { readPendingOnlineDraft } from "@/features/payments/services/pendingOnlineDraft";
 import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import {
@@ -42,7 +43,6 @@ import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAccepta
 import {
   cashPriceChangedPaise,
   isZeroCashDue,
-  payBlockedByZeroTotal,
 } from "@/features/payments/services/cashCheckoutDecision";
 import { toast } from "@/shared/components/feedback/AppToaster";
 import { HapticService } from "@/core/services/haptics";
@@ -759,6 +759,13 @@ function PaymentPage() {
       return;
     }
 
+    // A known zero-due online bill uses the same server-validated zero-due
+    // creator as cash checkout. Never open Razorpay or mint an unpaid draft.
+    if (!resume && totals !== null && !totalsFailed && displayedBillTotal === 0) {
+      await finishCash({});
+      return;
+    }
+
     // 1. Validate common checkout requirements
     // CUS-16: a resumed order is NOT validated against the cart — the cart is
     // empty, and the document already cleared every one of these gates when it
@@ -802,6 +809,18 @@ function PaymentPage() {
     // A resumed order already chose online payment and sits unpaid on the
     // server; switching it to cash here would mint a second order.
     if (method === "cash" && !resume) {
+      try {
+        if (readPendingOnlineDraft()) {
+          payInFlight.current = false;
+          setStatus("idle");
+          setPreflightIssue("Finish your previous online checkout before switching to cash.");
+          return;
+        }
+      } catch {
+        payInFlight.current = false;
+        setPreflightIssue("We couldn't check your previous checkout. Please try again.");
+        return;
+      }
       setStatus("waiting");
 
       try {
@@ -1202,7 +1221,9 @@ function PaymentPage() {
               disabled={
                 !readPendingCashOrder() &&
                 (!fulfillmentSupported ||
-                  payBlockedByZeroTotal(grandTotal, method) ||
+                  totals === null ||
+                  totalsFailed ||
+                  grandTotal < 0 ||
                   !isOnline ||
                   payBlocked ||
                   !quoteView.payEnabled)
@@ -1227,7 +1248,9 @@ function PaymentPage() {
                               : undefined
               }
               iconLeft={
-                (method === "online" || resume) && !payBlocked ? (
+                (method === "online" || resume) &&
+                !payBlocked &&
+                (totals === null || totalsFailed || finalPayable !== 0) ? (
                   <Lock className="h-4 w-4" />
                 ) : undefined
               }
@@ -1252,11 +1275,13 @@ function PaymentPage() {
                         ? resume
                           ? "Retry payment"
                           : "Retry checkout"
-                        : method === "online" || resume
-                          ? "Pay Online"
-                          : isDelivery
-                            ? "Place COD Order"
-                            : "Place Order"}
+                        : !resume && totals !== null && !totalsFailed && finalPayable === 0
+                          ? "Place Zero-Due Order"
+                          : method === "online" || resume
+                            ? "Pay Online"
+                            : isDelivery
+                              ? "Place COD Order"
+                              : "Place Order"}
             </AppButton>
           </div>
         </div>

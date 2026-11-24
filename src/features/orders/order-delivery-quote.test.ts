@@ -1,22 +1,47 @@
 /** @vitest-environment jsdom */
-/**
- * R8 — the courier quote reaches the order document.
- *
- * A cash delivery order never calls `createPaymentOrder`, so nothing else would
- * record which server quote the fee came from. `createFromCurrentContext` reads
- * the ready quote from the checkout store and passes it to
- * `ordersService.createOrder` for delivery only; takeaway/dine-in stay clean.
- */
+/** R8: cash and online server-create payloads carry the delivery quote reference. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ok } from "@/core/network/http";
+
+const h = vi.hoisted(() => ({ cashCreate: vi.fn(), onlineCreate: vi.fn() }));
+vi.mock("@/features/payments/services/cashOrderService", () => ({
+  createCashOrderOnServer: h.cashCreate,
+}));
+vi.mock("@/features/payments/services/onlineDraftService", () => ({
+  createOnlineDraftOnServer: h.onlineCreate,
+}));
+vi.mock("@/features/orders/services/ordersService", () => ({
+  ordersService: {
+    getOrder: async (id: string) => ({
+      success: true,
+      data: { id, status: { code: "PLACED", kind: "upcoming", terminal: false } },
+    }),
+  },
+}));
+vi.mock("@/features/auth/utils/scopedPersistence", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/auth/utils/scopedPersistence")>()),
+  currentScopedUid: () => "usr_quote",
+}));
+vi.mock("@/features/addresses", () => ({
+  useAddressStore: Object.assign(
+    (select: (state: unknown) => unknown) => select({ selectedId: "addr_1" }),
+    { getState: () => ({ selectedId: "addr_1" }) },
+  ),
+  selectSelectedAddress: () => ({
+    id: "addr_1",
+    label: "home",
+    line1: "1 Main",
+    city: "Surat",
+    lat: 21.2,
+    lng: 72.8,
+  }),
+}));
+
 import { orderRepository } from "@/features/orders/repositories/OrderRepository";
-import { ordersService } from "@/features/orders/services/ordersService";
 import { cartRepository } from "@/features/cart/repositories/CartRepository";
 import { useCartStore } from "@/features/cart/state/cartStore";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
-import { useAuthStore } from "@/features/auth/state/authStore";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
-import type { CreateOrderInput, Order } from "@/features/orders/models";
 import type { Store } from "@/features/stores/models/Store";
 import type { CheckoutFeesState } from "@/features/checkout/state/checkoutFeesTypes";
 
@@ -33,7 +58,6 @@ const STORE = {
   partnerBranchId: "br_1",
   pricing: { minOrderAmount: 0 },
 } as unknown as Store;
-
 const READY_QUOTE: CheckoutFeesState = {
   status: "ready",
   orderType: "delivery",
@@ -43,19 +67,38 @@ const READY_QUOTE: CheckoutFeesState = {
   provider: "borzo",
   expiresAt: Date.now() + 60_000,
 };
-
-let createOrder: ReturnType<typeof vi.spyOn>;
-
-const ORDER_STUB = {
-  id: "ord_quote_1",
-  status: { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false },
-  fulfillment: "delivery",
-  payment: { method: "cod", label: "Cash on Delivery", status: "CASH_PENDING" },
-  totals: { subtotal: 300, taxes: 14.29, deliveryFee: 57, grandTotal: 372 },
-} as unknown as Order;
+const status = { code: "PLACED", label: "Order placed", kind: "upcoming", terminal: false };
 
 beforeEach(() => {
-  createOrder = vi.spyOn(ordersService, "createOrder").mockResolvedValue(ok(ORDER_STUB));
+  localStorage.clear();
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: { request: async (_key: string, callback: () => unknown) => callback() },
+  });
+  h.cashCreate.mockReset().mockImplementation(async (request: { orderId: string }) =>
+    ok({
+      orderId: request.orderId,
+      replayed: false,
+      paymentMethod: "cod",
+      paymentChannel: "cash",
+      cashDuePaise: 37200,
+      totals: {},
+      status,
+    }),
+  );
+  h.onlineCreate
+    .mockReset()
+    .mockImplementation(async (request: { orderId: string; attemptId: string }) =>
+      ok({
+        orderId: request.orderId,
+        id: request.orderId,
+        attemptId: request.attemptId,
+        replayed: false,
+        amountPaise: 37200,
+        totals: {},
+        status,
+      }),
+    );
   vi.spyOn(cartRepository, "calculateTotals").mockResolvedValue(
     ok({
       subtotal: 300,
@@ -71,7 +114,6 @@ beforeEach(() => {
       currency: "INR",
     }),
   );
-
   useCartStore.setState({
     lines: [
       {
@@ -91,53 +133,40 @@ beforeEach(() => {
     status: "ready",
   });
   useStoreSelection.setState({ activeStore: STORE, fulfillment: "delivery" });
-  useAuthStore.setState({
-    status: "authenticated",
-    user: { id: "usr_quote", phone: "+910000000000", name: "Test" },
-    accessToken: "access",
-    refreshToken: "refresh",
-  });
-  useCheckoutStore.setState({
-    orderNotes: "",
-    tipAmount: 0,
-    loyaltyPointsToRedeem: 0,
-    checkoutFees: READY_QUOTE,
-  });
+  useCheckoutStore.getState().reset();
+  useCheckoutStore.setState({ checkoutFees: READY_QUOTE });
 });
+afterEach(() => vi.restoreAllMocks());
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-function lastInput(): CreateOrderInput {
-  return (createOrder.mock.calls.at(-1) as unknown[])[0] as CreateOrderInput;
-}
-
-describe("R8 — delivery quote on the order create payload", () => {
-  it("cash delivery writes the quote id and the quoted fee", async () => {
-    const res = await orderRepository.createFromCurrentContext({
-      paymentMethod: "cash",
-      paymentStatus: "CASH_PENDING",
-      paymentLabel: "Cash on Delivery",
+describe("R8 — delivery quote on server order-create payloads", () => {
+  it("cash delivery sends the quote and saved address references, never client money", async () => {
+    const result = await orderRepository.createCashOrder();
+    expect(result.success).toBe(true);
+    const body = h.cashCreate.mock.calls[0][0];
+    expect(body).toMatchObject({
+      orderType: "delivery",
+      deliveryQuoteId: "q_cash_1",
+      addressId: "addr_1",
     });
-    expect(res.success).toBe(true);
-
-    const input = lastInput();
-    expect(input.fulfillment).toBe("delivery");
-    expect(input.deliveryQuoteId).toBe("q_cash_1");
-    // What the customer is charged for delivery, stored on the order.
-    expect(input.totals.deliveryFee).toBe(57);
-    expect(input.totals.grandTotal).toBe(372);
+    expect(body).not.toHaveProperty("total");
+    expect(body).not.toHaveProperty("pricing");
   });
 
-  it("takeaway never carries a delivery quote id", async () => {
+  it("online draft sends the same quote/address references", async () => {
+    const result = await orderRepository.createOnlineDraft();
+    expect(result.success).toBe(true);
+    expect(h.onlineCreate.mock.calls[0][0]).toMatchObject({
+      orderType: "delivery",
+      deliveryQuoteId: "q_cash_1",
+      addressId: "addr_1",
+    });
+  });
+
+  it("takeaway never carries a delivery quote or address", async () => {
     useStoreSelection.setState({ fulfillment: "takeaway" });
-    await orderRepository.createFromCurrentContext({
-      paymentMethod: "cash",
-      paymentStatus: "PAY_AT_STORE",
-      paymentLabel: "Pay at Pickup Counter",
-    });
-
-    expect(lastInput().deliveryQuoteId).toBeUndefined();
+    await orderRepository.createCashOrder();
+    await orderRepository.clearPendingOnlineOrder();
+    expect(h.cashCreate.mock.calls[0][0]).not.toHaveProperty("deliveryQuoteId");
+    expect(h.cashCreate.mock.calls[0][0]).not.toHaveProperty("addressId");
   });
 });

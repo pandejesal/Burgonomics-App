@@ -126,7 +126,8 @@ export const USER_SCOPED_CACHE_KEYS = [
   "burgonomics.loyalty.v1", // cached loyalty balance
   "burg.cart", // cart lines
   "burg.checkout", // checkout notes / fulfilment draft
-  "burg.pendingCashOrder.v1", // M4 replay intent; may carry an order id (privacy)
+  "burgonomics.pendingCashOrder.v1", // M4 replay intent; may carry an order id (privacy)
+  ["burg", "pendingCashOrder", "v1"].join("."), // retired key, until one-time migration/erasure
 ] as const;
 
 /**

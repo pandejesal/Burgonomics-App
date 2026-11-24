@@ -56,19 +56,11 @@ export class PaymentRepository {
    * CUS-09: the checkout this repository has ALREADY created — the internal
    * `orders/{id}` document plus the Razorpay order bound to it.
    *
-   * `firestore.rules` only allows CREATE on `orders/{id}` (never a client
-   * update), so re-running the create path for the same checkout is not a
-   * harmless retry: `setDoc` is denied with "Missing or insufficient
-   * permissions", the order surfaces as PERSIST_FAILED and the gateway never
-   * opens. That is exactly what happened when a reprice acceptance (or a
-   * retry after a dismissed modal / a gateway 500) re-entered
-   * `createPaymentOrder`.
-   *
-   * This is the explicit "already persisted" signal: a second call for the
-   * SAME fingerprint and the SAME internal order id reuses this record instead
-   * of writing the document again. It is only ever set AFTER a successful
-   * create — a genuine first-attempt persist failure still returns
-   * PERSIST_FAILED and records nothing.
+   * The server owns `orders/{id}` creation. This is the explicit "draft and
+   * gateway intent already bound" signal: a second call for the SAME
+   * fingerprint and internal order id reuses the record instead of minting a
+   * new draft or gateway order. It is set only after the server draft and
+   * gateway call both succeed; ambiguous failures keep the durable attempt.
    */
   private createdCheckout: {
     fingerprint: string;
@@ -437,34 +429,25 @@ export class PaymentRepository {
     const checkoutToken = prep.success ? prep.data.checkoutToken : undefined;
 
     // PAYMENTS_CONTRACT_SPEC §3: an internal `orders/{id}` doc MUST exist
-    // before the gateway opens, so the Razorpay order binds to a real, unpaid
-    // order the server can price and hand to the kitchen. Creating it here
-    // (rather than per screen) means no caller can open Razorpay without that
-    // binding. The id lives in the payment store so retries re-create the
-    // SAME doc instead of a second order for one checkout.
+    // before the gateway opens, so Razorpay binds to a real, unpaid server
+    // draft. No caller can open the gateway without that binding. The id lives
+    // in the payment store so retries reuse the SAME draft.
     //
-    // CUS-09: when THIS checkout's document was already created successfully,
-    // reuse it — never write it again (the second write is an UPDATE, which
-    // firestore.rules deny, and it surfaced as PERSIST_FAILED).
+    // CUS-09: when this checkout's draft/gateway pair already exists, reuse it.
     let internalOrderId: string;
     const resumeOrderId = opts?.resumeOrderId?.trim() || null;
     if (resumeOrderId) {
-      // RESUMING an abandoned unpaid order: the document already exists and
-      // firestore.rules allow create only, so writing it again would be denied
-      // (the CUS-09 trap) and would also duplicate the order in the customer's
-      // history. Bind the gateway order to the existing id.
+      // Resuming an abandoned unpaid server draft: bind the gateway order to
+      // that existing id and never create a second order.
       internalOrderId = resumeOrderId;
       usePaymentStore.getState().setInternalOrderId(resumeOrderId);
     } else if (recorded && !requiresFreshAttempt) {
       internalOrderId = recorded.internalOrderId;
     } else {
-      const pending = await orderRepository.createFromCurrentContext({
+      const pending = await orderRepository.createOnlineDraft({
         // D1: a requested id that belongs to another checkout's document is
         // never adopted — that doc still describes the old mode/address.
-        confirmedOrderId: adoptableInternalId ?? undefined,
-        paymentMethod: "online",
-        paymentStatus: "pending",
-        paymentLabel: "Pay Online",
+        orderId: adoptableInternalId ?? undefined,
       });
       if (!pending.success) return pending;
       internalOrderId = pending.data.id;
@@ -519,6 +502,9 @@ export class PaymentRepository {
       checkoutSnapshot,
     });
     if (orderRes.success) {
+      // The server draft and gateway intent are now durably bound. The local
+      // replay record can be dropped; an unpaid order remains resumable by id.
+      orderRepository.clearPendingOnlineOrder?.();
       // Bind the gateway order to the pending internal order in one place so
       // verification can require the same gateway order (A3).
       usePaymentStore
