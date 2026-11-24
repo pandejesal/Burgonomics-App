@@ -155,10 +155,24 @@ describe("OrderDetailsPage — hook order (P1-1)", () => {
     };
   }
 
-  it("renders loaded order data without a hook-order crash", async () => {
+  it("renders a current store snapshot unchanged", async () => {
     const { container, unmount } = await mount();
     expect(container.textContent).toContain("Burgonomics CG Road");
+    expect(container.textContent).toContain("Ahmedabad");
+    expect(container.textContent).not.toContain("Restaurant details unavailable");
+    await unmount();
+  });
+
+  it("renders a legacy order with no store snapshot instead of crashing", async () => {
+    vi.mocked(orderRepository.getOrder).mockResolvedValue({
+      success: true,
+      data: buildOrder({ store: undefined }),
+    } as any);
+    const { container, unmount } = await mount();
+    expect(container.textContent).toContain("BG-HOOK1");
     expect(container.textContent).toContain("Smashed Burger");
+    expect(container.textContent).toContain("Restaurant details unavailable");
+    expect(container.textContent).not.toContain("undefined");
     await unmount();
   });
 

@@ -105,12 +105,20 @@ export function FulfillmentPanel({ order, etaMinutes }: Props) {
         </div>
       )}
       <Section icon={<Utensils className="h-4 w-4" aria-hidden />} title="Restaurant">
-        <Text variant="titleMedium">{order.store.name}</Text>
-        <Text variant="caption" tone="secondary">
-          {order.store.address}
-        </Text>
+        {order.store ? (
+          <>
+            <Text variant="titleMedium">{order.store.name}</Text>
+            <Text variant="caption" tone="secondary">
+              {order.store.address}
+            </Text>
+          </>
+        ) : (
+          <Text variant="bodyMedium" tone="secondary">
+            Restaurant details unavailable
+          </Text>
+        )}
       </Section>
-      <StoreContact order={order} address />
+      {order.store && <StoreContact order={order} address />}
       <Section icon={<Package className="h-4 w-4" aria-hidden />} title="Dining instructions">
         <Text variant="bodyMedium" tone="secondary">
           {order.fulfillmentInstructions?.trim() ||
@@ -130,10 +138,18 @@ function StoreContact({ order, address }: { order: Order; address?: boolean }) {
   const storePhone = useStorePhone(order);
   return (
     <Section icon={<MapPin className="h-4 w-4" aria-hidden />} title="Store contact">
-      <Text variant="titleMedium">{order.store.name}</Text>
-      {address && (
-        <Text variant="caption" tone="secondary">
-          {order.store.address}
+      {order.store ? (
+        <>
+          <Text variant="titleMedium">{order.store.name}</Text>
+          {address && (
+            <Text variant="caption" tone="secondary">
+              {order.store.address}
+            </Text>
+          )}
+        </>
+      ) : (
+        <Text variant="bodyMedium" tone="secondary">
+          Restaurant details unavailable
         </Text>
       )}
       {storePhone && (
