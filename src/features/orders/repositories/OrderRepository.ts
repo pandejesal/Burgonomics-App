@@ -81,17 +81,20 @@ interface SubscribeOptions {
   onError?: TrackingErrorListener;
 }
 
+/** Keep the validated, minimal line identity; overlay only transient text. */
+function withCookingNotes<T>(items: T[], lineNotes: ReadonlyArray<string | undefined>) {
+  return items.map((item, index) => {
+    const notes = lineNotes[index];
+    return notes ? { ...item, notes } : item;
+  });
+}
+
 export class OrderRepository {
   readonly name = "OrderRepository";
   private cashNotes?: {
     attemptId: string;
     uid: string;
     fields: Pick<CashOrderRequest, "notes" | "fulfillmentInstructions">;
-  };
-  private onlineNotes?: {
-    attemptId: string;
-    uid: string;
-    fields: Pick<OnlineDraftRequest, "notes" | "fulfillmentInstructions">;
     lineNotes: Array<string | undefined>;
   };
 
@@ -291,6 +294,7 @@ export class OrderRepository {
         this.cashNotes = {
           attemptId,
           uid,
+          lineNotes: request.items.map((item) => item.notes),
           fields: {
             ...(request.notes ? { notes: request.notes } : {}),
             ...(request.fulfillmentInstructions
@@ -322,6 +326,7 @@ export class OrderRepository {
       ...saved.request,
       ...(saved.request.zeroDueOnly ? { expectedTotalPaise: 0 } : {}),
       ...(hasDraft ? draft.fields : {}),
+      items: withCookingNotes(saved.request.items, hasDraft ? draft.lineNotes : []),
       attemptId: saved.attemptId,
     });
     if (!ownsAttempt(saved)) return changed();
@@ -484,19 +489,6 @@ export class OrderRepository {
           true,
         );
       }
-      if (saved.attemptId === attemptId) {
-        this.onlineNotes = {
-          attemptId,
-          uid,
-          lineNotes: request.items.map((item) => item.notes),
-          fields: {
-            ...(request.notes ? { notes: request.notes } : {}),
-            ...(request.fulfillmentInstructions
-              ? { fulfillmentInstructions: request.fulfillmentInstructions }
-              : {}),
-          },
-        };
-      }
     } catch {
       return fail(
         "ONLINE_DRAFT_STORAGE_UNAVAILABLE",
@@ -504,27 +496,28 @@ export class OrderRepository {
         true,
       );
     }
-    return this.submitOnlineDraft(saved);
+    // The verified current basket also supplies free text for an inherited
+    // claim: its first POST may not have reached the server. Bind these notes
+    // to this submission, not to repository lifetime or durable storage.
+    return this.submitOnlineDraft(saved, request);
   }
 
   private async submitOnlineDraft(
     saved: PendingOnlineDraft,
+    verified: OnlineDraftRequest,
   ): Promise<ApiResult<OnlineDraftReceipt>> {
     if (!ownsOnlineDraftAttempt(saved))
       return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
-    const draft = this.onlineNotes;
-    const hasDraft = draft?.attemptId === saved.attemptId && draft.uid === saved.uid;
     const created = await createOnlineDraftOnServer({
       ...saved.request,
-      ...(hasDraft ? draft.fields : {}),
-      ...(hasDraft
-        ? {
-            items: saved.request.items.map((item, index) => {
-              const notes = draft.lineNotes[index];
-              return notes ? { ...item, notes } : item;
-            }),
-          }
+      ...(verified.notes ? { notes: verified.notes } : {}),
+      ...(verified.fulfillmentInstructions
+        ? { fulfillmentInstructions: verified.fulfillmentInstructions }
         : {}),
+      items: withCookingNotes(
+        saved.request.items,
+        verified.items.map((item) => item.notes),
+      ),
       attemptId: saved.attemptId,
     });
     if (!ownsOnlineDraftAttempt(saved))
@@ -560,7 +553,6 @@ export class OrderRepository {
   clearPendingOnlineOrder(orderId?: string): void {
     if (orderId && readPendingOnlineDraft()?.orderId !== orderId) return;
     clearPendingOnlineDraft();
-    this.onlineNotes = undefined;
   }
 
   /**

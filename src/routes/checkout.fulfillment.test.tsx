@@ -238,6 +238,7 @@ import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { PaymentRepository } from "@/features/payments/repositories/PaymentRepository";
 import { OrderRepository } from "@/features/orders/repositories/OrderRepository";
 import { readPendingOnlineDraft } from "@/features/payments/services/pendingOnlineDraft";
+import { PENDING_CASH_ORDER_BASE_KEY } from "@/features/payments/services/pendingCashOrder";
 import { Route as CheckoutRoute } from "./checkout";
 
 const CheckoutPage = (CheckoutRoute as unknown as { options: { component: React.ComponentType } })
@@ -275,6 +276,16 @@ const totals = (subtotal: number, grandTotal: number) => ({
     grandTotal,
   },
 });
+
+// Optional hermetic bridge to the Backend handler/KOT tests. Only these
+// synthetic request bodies are written; never export headers or live data.
+async function exportCookingNoteRequest(name: string, url: string, body: unknown) {
+  const directory = process.env.C9_COOKING_NOTE_FIXTURES;
+  if (!directory) return;
+  const { writeFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  await writeFile(join(directory, `${name}.json`), JSON.stringify({ url, body }));
+}
 
 let container: HTMLDivElement;
 let root: Root;
@@ -695,20 +706,60 @@ describe("checkout — normal modes keep their order behaviour", () => {
     }
   });
 
-  it("sends cooking notes on first online POST, not in the recovered identity", async () => {
+  it("sends cooking notes after an online POST fails before writing and a new repository retries", async () => {
     seedSelection("takeaway", store);
     fixture.lines[0].notes = "Toast both sides";
+    // Simulate transport failing before it reaches the handler. The claim
+    // exists, but this retry is the first request that can create the draft.
+    fixture.postCash.mockRejectedValueOnce(new Error("disconnected before send"));
     const first = await new OrderRepository().createOnlineDraft();
-    expect(first.success).toBe(true);
+    expect(first.success).toBe(false);
     expect(fixture.postCash.mock.calls[0][1].items[0]).toMatchObject({ notes: "Toast both sides" });
     expect(JSON.stringify(readPendingOnlineDraft())).not.toContain("Toast both sides");
     const second = await new OrderRepository().createOnlineDraft();
     expect(second.success).toBe(true);
-    expect(fixture.postCash.mock.calls[1][1].orderId).toBe(
-      fixture.postCash.mock.calls[0][1].orderId,
-    );
-    expect(fixture.postCash.mock.calls[1][1].items[0]).not.toHaveProperty("notes");
+    const [url, body] = fixture.postCash.mock.calls[1];
+    expect(body).toMatchObject({
+      orderId: fixture.postCash.mock.calls[0][1].orderId,
+      attemptId: fixture.postCash.mock.calls[0][1].attemptId,
+    });
+    await exportCookingNoteRequest("online-retry", url, body);
+    expect(body.items[0]).toMatchObject({ notes: "Toast both sides" });
+    expect(JSON.stringify(readPendingOnlineDraft())).not.toContain("Toast both sides");
   });
+
+  it.each([false, true])(
+    "sends cooking notes on the cash transport (zeroDueOnly: %s) without saving them in the attempt",
+    async (zeroDueOnly) => {
+      seedSelection("takeaway", store);
+      fixture.lines[0].notes = "Toast both sides";
+      fixture.cart.calculateTotals.mockResolvedValue(totals(109, zeroDueOnly ? 0 : 109));
+      if (zeroDueOnly) fixture.cartState.promo = { code: "FREE" } as never;
+      // Keep the pending record available for assertions by losing the reply.
+      fixture.postCash.mockRejectedValueOnce(new Error("unknown cash outcome"));
+      try {
+        const result = await new OrderRepository().createCashOrder(
+          zeroDueOnly ? { zeroDueOnly: true } : {},
+        );
+        expect(result.success).toBe(false);
+        const [url, body] = fixture.postCash.mock.calls[0];
+        expect(url).toMatch(/\/orders\/createCashOrder$/);
+        expect(body.expectedTotalPaise).toBe(zeroDueOnly ? 0 : 10900);
+        expect(body.zeroDueOnly).toBe(zeroDueOnly || undefined);
+        const keys = Object.keys(localStorage).filter((key) =>
+          key.includes(PENDING_CASH_ORDER_BASE_KEY),
+        );
+        expect(keys).toHaveLength(1);
+        const raw = localStorage.getItem(keys[0])!;
+        expect(JSON.parse(raw).request.items).toEqual([{ productId: "burger_1", quantity: 1 }]);
+        expect(raw).not.toContain("Toast both sides");
+        await exportCookingNoteRequest(zeroDueOnly ? "zero-due" : "cash", url, body);
+        expect(body.items[0]).toMatchObject({ notes: "Toast both sides" });
+      } finally {
+        fixture.cartState.promo = null;
+      }
+    },
+  );
 
   it("still places a delivery cash order with a selected address", async () => {
     usePaymentStore.getState().setMethod("cash");
