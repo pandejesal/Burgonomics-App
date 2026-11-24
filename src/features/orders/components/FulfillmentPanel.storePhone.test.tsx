@@ -54,6 +54,40 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("FulfillmentPanel — missing legacy store snapshot", () => {
+  const legacyOrder = (fulfillment: Order["fulfillment"]) =>
+    ({
+      ...order(""),
+      fulfillment,
+      store: undefined,
+    }) as unknown as Order;
+
+  it.each(["delivery", "takeaway", "dinein"] as const)(
+    "degrades a legacy %s order without inventing restaurant details",
+    async (fulfillment) => {
+      byId.mockResolvedValue({ success: true, data: null });
+      const { host, root } = await mount(<FulfillmentPanel order={legacyOrder(fulfillment)} />);
+      expect(host.textContent).toContain("Restaurant details unavailable");
+      expect(host.textContent).not.toContain("undefined");
+      expect(
+        [...host.querySelectorAll("button")].some((b) => b.textContent?.includes("Call store")),
+      ).toBe(false);
+      await act(async () => root.unmount());
+    },
+  );
+
+  it("keeps a current restaurant snapshot unchanged", async () => {
+    byId.mockResolvedValue({ success: true, data: null });
+    const { host, root } = await mount(
+      <FulfillmentPanel order={{ ...order(""), fulfillment: "takeaway" }} />,
+    );
+    expect(host.textContent).toContain("Burgonomics Satellite");
+    expect(host.textContent).toContain("Satellite, Ahmedabad");
+    expect(host.textContent).not.toContain("Restaurant details unavailable");
+    await act(async () => root.unmount());
+  });
+});
+
 describe("order details 'Call store' survives a blank snapshot phone", () => {
   it("dials the directory number the snapshot is missing", async () => {
     byId.mockResolvedValue({ success: true, data: { phone: "+919812345678" } });

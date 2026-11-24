@@ -233,11 +233,13 @@ function OrderDetailsPage() {
                   {order.shortCode} · {formatDateTime(order.placedAt)}
                 </Text>
                 <Text variant="titleLarge" className="mt-0.5 truncate">
-                  {order.store.name}
+                  {order.store ? order.store.name : "Restaurant details unavailable"}
                 </Text>
-                <Text variant="caption" tone="secondary" className="truncate">
-                  {order.store.address}
-                </Text>
+                {order.store && (
+                  <Text variant="caption" tone="secondary" className="truncate">
+                    {order.store.address}
+                  </Text>
+                )}
               </div>
               {/* CUS-16: status is derived from the server payment state, so
                   an unpaid online order never reads as confirmed. */}
