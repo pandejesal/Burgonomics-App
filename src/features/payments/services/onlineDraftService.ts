@@ -45,8 +45,17 @@ export function createOnlineDraftUrl(): string {
   return `${defaultFunctionsBase()}${CREATE_ONLINE_DRAFT_PATH}`;
 }
 
+/**
+ * Auth headers ONLY.
+ *
+ * DELIBERATELY NO `Content-Type`: this service posts through the shared
+ * `httpClient`, which already supplies `content-type: application/json`. A
+ * capital-`C` copy here became a second key and Fetch joined the pair into
+ * `application/json, application/json`, which `express.json()` does not match —
+ * Cycle 10 staging, where the online draft was rejected before any order write.
+ */
 async function buildHeaders(): Promise<Record<string, string>> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {};
   try {
     const { auth, getAppCheckToken } = await import("@/core/config/firebase");
     const token = await auth.currentUser?.getIdToken();

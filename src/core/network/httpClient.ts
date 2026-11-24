@@ -97,10 +97,21 @@ export class HttpClient {
   async request<T>(
     input: Partial<HttpRequest> & { url: string; method: HttpRequest["method"] },
   ): Promise<HttpResponse<T>> {
+    // Header names are case-insensitive (RFC 9110 §5.1). Canonicalise BEFORE
+    // Fetch sees them: `{"content-type": "application/json"}` merged with
+    // `{"Content-Type": "application/json"}` are two distinct object keys, and
+    // Fetch joins them into the invalid value `application/json, application/json`
+    // (Cycle 10 staging: express.json() then skipped the body on every checkout
+    // lane and the route answered a field-level 400).
+    const headers = Object.fromEntries(
+      [...Object.entries(this.options.defaultHeaders), ...Object.entries(input.headers ?? {})].map(
+        ([name, value]) => [name.toLowerCase(), value],
+      ),
+    );
     let req: HttpRequest = {
       url: this.resolveUrl(input.url),
       method: input.method,
-      headers: { ...this.options.defaultHeaders, ...(input.headers ?? {}) },
+      headers,
       body: input.body,
       signal: input.signal,
       timeoutMs: input.timeoutMs ?? this.options.timeoutMs,

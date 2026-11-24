@@ -532,6 +532,82 @@ describe("checkout — null fulfillment is an honest, blocking state", () => {
 });
 
 describe("checkout — normal modes keep their order behaviour", () => {
+  /**
+   * Cycle 10 (2026-11-24): the deployed bundle's shared HttpClient merged its
+   * lowercase `content-type` default with the checkout services' capital
+   * `Content-Type`, and Fetch joined them into `application/json,
+   * application/json`. This drives the REAL screen and the REAL HttpClient —
+   * no mocked `httpClient.post` — and asserts the request that leaves the app
+   * carries exactly one JSON media type. It also writes the wire capture the
+   * backend route suite consumes when CHECKOUT_WIRE_FIXTURES is set.
+   */
+  it.each(["cash", "online", "zero"] as const)(
+    "serializes %s checkout through HttpClient with one JSON media type",
+    async (lane) => {
+      const { HttpClient } = await vi.importActual<typeof import("@/core/network/httpClient")>(
+        "@/core/network/httpClient",
+      );
+      const client = new HttpClient();
+      fixture.postCash.mockImplementation(client.post.bind(client));
+      const requests: Request[] = [];
+      const fetch = vi.fn(async (url: string, init: RequestInit) => {
+        const req = new Request(url, init);
+        requests.push(req);
+        const body = await req.clone().json();
+        return Response.json({
+          orderId: lane === "zero" ? "ord_zero_due" : body.orderId,
+          attemptId: body.attemptId,
+          paymentChannel: "cash",
+          paymentMethod: "cod",
+          amountPaise: 10900,
+          cashDuePaise: lane === "zero" ? 0 : 10900,
+          totals: {},
+          status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+        });
+      });
+      vi.stubGlobal("fetch", fetch);
+      try {
+        usePaymentStore.getState().setMethod(lane === "cash" ? "cash" : "upi");
+        fixture.cart.calculateTotals.mockResolvedValue(totals(109, lane === "zero" ? 0 : 109));
+        if (lane === "zero") fixture.cartState.promo = { code: "FREE" } as never;
+        if (lane === "online") {
+          const payments = new PaymentRepository({ createOrder: fixture.gatewayCreate } as never);
+          fixture.paymentRepository.createPaymentOrder = payments.createPaymentOrder.bind(payments);
+        }
+        seedSelection("takeaway", store);
+        await mount();
+        await act(async () => payButton().click());
+        expect(requests).toHaveLength(1);
+
+        const [request] = requests;
+        const route = lane === "online" ? "createOnlineDraft" : "createCashOrder";
+        expect(new URL(request.url).pathname.endsWith(`/orders/${route}`)).toBe(true);
+
+        const body = await request.text();
+        const contentType = request.headers.get("content-type");
+        // A joined value ("a, b") is the deployed defect: express.json() then
+        // skips the body and the route answers a field-level 400.
+        expect(contentType).toBe("application/json");
+
+        const dir = process.env.CHECKOUT_WIRE_FIXTURES;
+        if (dir) {
+          const { writeFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          await writeFile(join(dir, `${lane}.json`), JSON.stringify({ contentType, body }));
+        }
+
+        expect(JSON.parse(body)).toMatchObject({
+          orderType: "takeaway",
+          items: [{ productId: "burger_1", quantity: 1 }],
+          ...(lane === "zero" ? { zeroDueOnly: true, expectedTotalPaise: 0 } : {}),
+        });
+      } finally {
+        fixture.cartState.promo = null;
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it("still places a takeaway cash order after an explicit selection", async () => {
     usePaymentStore.getState().setMethod("cash");
     fixture.cart.calculateTotals.mockResolvedValue(totals(109, 109));

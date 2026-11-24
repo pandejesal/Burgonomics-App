@@ -68,14 +68,21 @@ export function createCashOrderUrl(): string {
   return `${defaultFunctionsBase()}${CREATE_CASH_ORDER_PATH}`;
 }
 
-/** Firebase ID token + App Check, exactly like every other authenticated route. */
+/**
+ * Firebase ID token + App Check, exactly like every other authenticated route.
+ *
+ * DELIBERATELY NO `Content-Type`: this service posts through the shared
+ * `httpClient`, which already supplies `content-type: application/json`. Adding a
+ * capital-`C` copy here produced two distinct object keys, and Fetch joined them
+ * into `application/json, application/json` — Cycle 10 staging, where
+ * `express.json()` then skipped the body and every checkout lane got a
+ * field-level 400. Auth headers stay lowercase for the same reason.
+ */
 async function buildHeaders(): Promise<Record<string, string>> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {};
   try {
     const { auth, getAppCheckToken } = await import("@/core/config/firebase");
     const idToken = (await auth.currentUser?.getIdToken()) ?? null;
-    // Lowercase: the shared httpClient interceptor injects `authorization` and
-    // a capital-A duplicate would be joined into "Bearer T1, Bearer T2".
     if (idToken) headers.authorization = `Bearer ${idToken}`;
     const appCheckToken = await getAppCheckToken();
     if (appCheckToken) headers["X-Firebase-AppCheck"] = appCheckToken;
