@@ -1,12 +1,17 @@
 /** @vitest-environment jsdom */
 /** A changed basket must not silently abandon an existing server draft. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const h = vi.hoisted(() => ({ calculateTotals: vi.fn(), createDraft: vi.fn() }));
+const h = vi.hoisted(() => ({
+  calculateTotals: vi.fn(),
+  createDraft: vi.fn(),
+  retireDraft: vi.fn(),
+}));
 vi.mock("../src/features/cart/repositories/CartRepository", () => ({
   cartRepository: { calculateTotals: h.calculateTotals },
 }));
 vi.mock("../src/features/payments/services/onlineDraftService", () => ({
   createOnlineDraftOnServer: h.createDraft,
+  retireOnlineDraftOnServer: h.retireDraft,
 }));
 vi.mock("../src/features/auth/utils/scopedPersistence", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/features/auth/utils/scopedPersistence")>()),
@@ -59,6 +64,7 @@ beforeEach(() => {
   h.calculateTotals
     .mockReset()
     .mockResolvedValue({ success: true, data: { subtotal: 100, grandTotal: 100 } });
+  h.retireDraft.mockReset().mockResolvedValue({ success: true, data: undefined });
   h.createDraft
     .mockReset()
     .mockImplementation(async (request: { orderId: string; attemptId: string }) => ({
@@ -76,16 +82,38 @@ beforeEach(() => {
 });
 
 describe("server draft retry identity", () => {
-  it("keeps the original attempt and refuses a changed basket without a second server order", async () => {
+  it("keeps the original attempt if a changed basket cannot safely retire it", async () => {
+    const repo = new OrderRepository();
+    expect((await repo.createOnlineDraft()).success).toBe(true);
+    const original = readPendingOnlineDraft();
+    h.retireDraft.mockResolvedValueOnce({
+      success: false,
+      error: { code: "DRAFT_PAYMENT_IN_PROGRESS" },
+    });
+    cartState.lines = [{ productId: "p1", quantity: 2 }];
+    const changed = await repo.createOnlineDraft();
+    expect(changed.success).toBe(false);
+    if (!changed.success) expect(changed.error.code).toBe("DRAFT_PAYMENT_IN_PROGRESS");
+    expect(h.retireDraft).toHaveBeenCalledWith(original?.orderId, original?.attemptId);
+    expect(h.createDraft).toHaveBeenCalledTimes(1);
+    expect(readPendingOnlineDraft()?.orderId).toBe(original?.orderId);
+    expect(readPendingOnlineDraft()?.attemptId).toBe(original?.attemptId);
+  });
+
+  it("replaces a changed basket only after the original attempt was retired", async () => {
     const repo = new OrderRepository();
     expect((await repo.createOnlineDraft()).success).toBe(true);
     const original = readPendingOnlineDraft();
     cartState.lines = [{ productId: "p1", quantity: 2 }];
-    const changed = await repo.createOnlineDraft();
-    expect(changed.success).toBe(false);
-    if (!changed.success) expect(changed.error.code).toBe("CHECKOUT_CONTEXT_CHANGED");
-    expect(h.createDraft).toHaveBeenCalledTimes(1);
-    expect(readPendingOnlineDraft()?.orderId).toBe(original?.orderId);
-    expect(readPendingOnlineDraft()?.attemptId).toBe(original?.attemptId);
+    expect((await repo.createOnlineDraft()).success).toBe(true);
+    const replacement = readPendingOnlineDraft();
+    expect(h.retireDraft).toHaveBeenCalledWith(original?.orderId, original?.attemptId);
+    expect(h.createDraft).toHaveBeenCalledTimes(2);
+    expect(h.retireDraft.mock.invocationCallOrder[0]).toBeLessThan(
+      h.createDraft.mock.invocationCallOrder[1],
+    );
+    expect(replacement?.orderId).not.toBe(original?.orderId);
+    expect(replacement?.attemptId).not.toBe(original?.attemptId);
+    expect(replacement?.request.items).toEqual([{ productId: "p1", quantity: 2 }]);
   });
 });

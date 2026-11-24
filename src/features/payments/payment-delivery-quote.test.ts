@@ -144,7 +144,7 @@ describe("R8 payment create is bound to the live delivery quote", () => {
     );
   });
 
-  it("re-sends the same internal order with the NEW quote after a 409", async () => {
+  it("asks the draft repository to replace the pending order before paying a renewed quote", async () => {
     mocks.createOrder.mockResolvedValueOnce({
       success: false,
       error: {
@@ -159,8 +159,8 @@ describe("R8 payment create is bound to the live delivery quote", () => {
     expect(first.success).toBe(false);
     if (!first.success) expect(first.error.code).toBe("DELIVERY_QUOTE_EXPIRED");
 
-    // The screen re-quoted; the retry must bind the new quote without writing a
-    // second order document.
+    // A quote cannot be substituted in a payment request: pay only the new
+    // draft, after the repository retires the positively unpayable original.
     useCheckoutStore.setState({
       checkoutFees: {
         status: "ready",
@@ -172,13 +172,24 @@ describe("R8 payment create is bound to the live delivery quote", () => {
         expiresAt: Date.now() + 60_000,
       },
     });
+    mocks.createOnlineDraft.mockResolvedValueOnce({
+      success: true,
+      data: { id: "ord_quote_renewed" },
+    });
     const retry = await repo.createPaymentOrder({ deliveryQuoteId: "q_new" });
 
     expect(retry.success).toBe(true);
-    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(1);
+    expect(mocks.createOnlineDraft).toHaveBeenCalledTimes(2);
+    expect(mocks.createOnlineDraft).toHaveBeenLastCalledWith({
+      orderId: undefined,
+      deliveryQuoteId: "q_new",
+    });
     expect(mocks.createOrder).toHaveBeenCalledTimes(2);
     expect(mocks.createOrder.mock.calls[1][0].deliveryQuoteId).toBe("q_new");
-    expect(mocks.createOrder.mock.calls[1][0].orderId).toBe("ord_quote_1");
+    expect(mocks.createOrder.mock.calls[1][0].orderId).toBe("ord_quote_renewed");
+    expect(mocks.createOrder.mock.calls[1][0].idempotencyKey).not.toBe(
+      mocks.createOrder.mock.calls[0][0].idempotencyKey,
+    );
   });
 
   it("binds a re-quoted fare to a NEW attempt: fresh key, fresh document, new gateway order", async () => {

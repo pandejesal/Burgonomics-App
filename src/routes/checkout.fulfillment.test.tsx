@@ -8,7 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => {
   const lines = [
-    { lineId: "l1", productId: "burger_1", name: "Test Burger", quantity: 1, unitPrice: 249 },
+    {
+      lineId: "l1",
+      productId: "burger_1",
+      name: "Test Burger",
+      quantity: 1,
+      unitPrice: 249,
+      notes: undefined as string | undefined,
+    },
   ];
   const cartState = { lines, promo: null, priceLockExpiresAt: null };
   return {
@@ -229,6 +236,8 @@ vi.mock("@/features/checkout/services/checkoutQuote", () => ({
 import { useCheckoutStore } from "@/features/checkout";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { PaymentRepository } from "@/features/payments/repositories/PaymentRepository";
+import { OrderRepository } from "@/features/orders/repositories/OrderRepository";
+import { readPendingOnlineDraft } from "@/features/payments/services/pendingOnlineDraft";
 import { Route as CheckoutRoute } from "./checkout";
 
 const CheckoutPage = (CheckoutRoute as unknown as { options: { component: React.ComponentType } })
@@ -303,6 +312,7 @@ function seedSelection(fulfillment: Fulfillment | null, activeStore: Store | nul
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fixture.lines[0].notes = undefined;
   fixture.cart.calculateTotals.mockReset();
   fixture.cart.validateCart.mockReset();
   fixture.createOrder.mockReset();
@@ -643,6 +653,7 @@ describe("checkout — normal modes keep their order behaviour", () => {
     expect(fixture.postCash.mock.calls[0][1]).toMatchObject({
       orderType: "takeaway",
       expectedTotalPaise: 0,
+      zeroDueOnly: true,
     });
     expect(fixture.gatewayCreate).not.toHaveBeenCalled();
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
@@ -652,6 +663,51 @@ describe("checkout — normal modes keep their order behaviour", () => {
       params: { orderId: "ord_zero_due" },
       replace: true,
     });
+  });
+
+  it("clears a rejected coupon only after the server fences that attempt; the corrected coupon gets a fresh draft", async () => {
+    seedSelection("takeaway", store);
+    const repo = new OrderRepository();
+    fixture.postCash.mockRejectedValueOnce({
+      response: { status: 400, data: { code: "COUPON_INACTIVE" } },
+    });
+    fixture.postCash.mockImplementationOnce(async (_url, body) => ({
+      data: { retired: true, orderId: body.orderId, attemptId: body.attemptId },
+    }));
+    expect(await repo.createOnlineDraft()).toMatchObject({
+      success: false,
+      error: { code: "COUPON_INACTIVE" },
+    });
+    const first = fixture.postCash.mock.calls[0][1];
+    expect(fixture.postCash.mock.calls[1]?.[1]).toMatchObject({
+      operation: "retire",
+      attemptId: first.attemptId,
+    });
+    expect(readPendingOnlineDraft()).toBeNull();
+    const previous = fixture.cartState.promo;
+    fixture.cartState.promo = { code: "CORRECTED" } as never;
+    try {
+      expect(await repo.createOnlineDraft()).toMatchObject({ success: true });
+      expect(fixture.postCash.mock.calls[2][1]).toMatchObject({ couponCode: "CORRECTED" });
+      expect(fixture.postCash.mock.calls[2][1].orderId).not.toBe(first.orderId);
+    } finally {
+      fixture.cartState.promo = previous;
+    }
+  });
+
+  it("sends cooking notes on first online POST, not in the recovered identity", async () => {
+    seedSelection("takeaway", store);
+    fixture.lines[0].notes = "Toast both sides";
+    const first = await new OrderRepository().createOnlineDraft();
+    expect(first.success).toBe(true);
+    expect(fixture.postCash.mock.calls[0][1].items[0]).toMatchObject({ notes: "Toast both sides" });
+    expect(JSON.stringify(readPendingOnlineDraft())).not.toContain("Toast both sides");
+    const second = await new OrderRepository().createOnlineDraft();
+    expect(second.success).toBe(true);
+    expect(fixture.postCash.mock.calls[1][1].orderId).toBe(
+      fixture.postCash.mock.calls[0][1].orderId,
+    );
+    expect(fixture.postCash.mock.calls[1][1].items[0]).not.toHaveProperty("notes");
   });
 
   it("still places a delivery cash order with a selected address", async () => {

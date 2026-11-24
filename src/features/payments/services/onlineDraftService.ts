@@ -36,6 +36,7 @@ export interface OnlineDraftReceipt {
   attemptId: string;
   replayed: boolean;
   amountPaise: number;
+  estimatedAt?: string;
   totals: Record<string, unknown>;
   status: { code: string; label: string; kind: string; terminal: boolean };
 }
@@ -99,6 +100,7 @@ export async function createOnlineDraftOnServer(
       attemptId: String(raw.attemptId ?? request.attemptId),
       replayed: raw.replayed === true,
       amountPaise: raw.amountPaise,
+      ...(typeof raw.estimatedAt === "string" ? { estimatedAt: raw.estimatedAt } : {}),
       totals: (raw.totals as Record<string, unknown>) ?? {},
       status: (raw.status as OnlineDraftReceipt["status"]) ?? {
         code: "PLACED",
@@ -123,6 +125,43 @@ export async function createOnlineDraftOnServer(
       "COUPON_INVALID",
       "COUPON_EXHAUSTED",
     ].includes(code);
-    return fail(code, message, retryable);
+    const status = Number(error?.response?.status);
+    const refused =
+      [400, 409, 422].includes(status) &&
+      !["IDEMPOTENCY_CONFLICT", "ORDER_DRAFT_INVALID"].includes(code);
+    return fail(code, message, retryable, refused ? { draftRefused: true } : undefined);
   }
+}
+
+export async function retireOnlineDraftOnServer(
+  orderId: string,
+  attemptId: string,
+): Promise<ApiResult<void>> {
+  try {
+    const { data } = await defaultTransport.post(
+      createOnlineDraftUrl(),
+      { operation: "retire", orderId, attemptId },
+      { headers: await buildHeaders() },
+    );
+    const receipt = data as { retired?: unknown; orderId?: unknown; attemptId?: unknown } | null;
+    if (
+      receipt?.retired === true &&
+      receipt.orderId === orderId &&
+      receipt.attemptId === attemptId
+    ) {
+      return ok(undefined);
+    }
+  } catch (error: any) {
+    if (error?.response?.data?.code === "DRAFT_PAYMENT_IN_PROGRESS") {
+      return fail(
+        "DRAFT_PAYMENT_IN_PROGRESS",
+        "Finish your previous online payment before changing checkout.",
+      );
+    }
+  }
+  return fail(
+    "DRAFT_RETIRE_UNCONFIRMED",
+    "We couldn't resolve your previous checkout. Retry it before starting another.",
+    true,
+  );
 }

@@ -85,7 +85,6 @@ import {
 import { orderRepository } from "@/features/orders";
 import { cashPriceChangedPaise } from "@/features/payments/services/cashCheckoutDecision";
 import { readPendingCashOrder } from "@/features/payments/services/pendingCashOrder";
-import { readPendingOnlineDraft } from "@/features/payments/services/pendingOnlineDraft";
 import { QuickAuthSheet } from "@/features/checkout/components/QuickAuthSheet";
 
 /**
@@ -560,13 +559,11 @@ export function CheckoutPage() {
 
     // A lost response may already have created an order. Never switch tender
     // or start a parallel checkout while the other server attempt is unresolved.
+    let recoveringZeroDue: boolean;
     try {
-      const cashPending = !!readPendingCashOrder();
-      const onlinePending = !!readPendingOnlineDraft();
-      if (
-        (paymentMethod === "cash" && onlinePending) ||
-        (paymentMethod !== "cash" && (cashPending || cash))
-      ) {
+      const cashPending = readPendingCashOrder();
+      recoveringZeroDue = cashPending?.request.zeroDueOnly === true;
+      if (paymentMethod !== "cash" && ((cashPending && !cashPending.request.zeroDueOnly) || cash)) {
         setValidationError("Finish your previous checkout before changing payment method.");
         return;
       }
@@ -678,7 +675,7 @@ export function CheckoutPage() {
     // cleared only after success, only while it is still the exact draft
     // (`notesDraftMark`) captured above.
     // 2. Cash on Delivery / Pay at Counter Flow
-    if (paymentMethod === "cash") {
+    if (paymentMethod === "cash" && !recoveringZeroDue) {
       try {
         // Only the cash creation endpoint can price this order and set the
         // server-owned cash channel required by the kitchen admission gate.
@@ -728,11 +725,14 @@ export function CheckoutPage() {
     // 3. Online Razorpay Flow. A zero-due bill uses the existing server cash
     // creator: it validates the coupon and writes a real zero-due order. It
     // must NOT mint an unpaid online draft or claim payment success.
-    if (finalPayable <= 0) {
+    if (recoveringZeroDue || finalPayable <= 0) {
       try {
-        const zeroDue = await orderRepository.createCashOrder();
+        const zeroDue = await orderRepository.createCashOrder({ zeroDueOnly: true });
         if (!zeroDue.success) {
-          const message = orderFailureMessage(zeroDue.error);
+          const message =
+            zeroDue.error.code === "PRICE_CHANGED"
+              ? "This order is no longer free. Review your updated bill before placing it."
+              : orderFailureMessage(zeroDue.error);
           setValidationError(message);
           toast.error("Could not place order", { description: message });
           return;

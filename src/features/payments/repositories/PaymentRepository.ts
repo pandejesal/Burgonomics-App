@@ -371,16 +371,15 @@ export class PaymentRepository {
     // *then* quote), so re-sending the old key after a re-quote would hand back
     // the OLD gateway order and amount — that is, relabel a stale payable order
     // as the new fare. Never that.
-    const quoteChangedAfterGateway =
-      !!recorded?.gatewayOrder && recorded.deliveryQuoteId !== (deliveryQuoteId ?? null);
+    const quoteChanged = !!recorded && recorded.deliveryQuoteId !== (deliveryQuoteId ?? null);
     // A re-quote AFTER a live gateway order therefore needs a NEW idempotent
     // attempt: a fresh key (the old key still resolves to the old intent) bound
     // to a fresh pending document (the old one describes the previous fare and
     // cannot be rewritten — firestore.rules allow create only). The previous
     // document and gateway order are left untouched for the server to expire.
-    // A 409 BEFORE any gateway attempt is unaffected: `recorded.gatewayOrder`
-    // is null there, so the same document AND key are retried idempotently.
-    const requiresFreshAttempt = !opts?.resumeOrderId && quoteChangedAfterGateway;
+    // A pending server draft also owns its original quote. Before replacing
+    // it, the repository must obtain server proof that it can be retired.
+    const requiresFreshAttempt = !opts?.resumeOrderId && quoteChanged;
 
     // D1: the requested id may belong to the document of a DIFFERENT checkout
     // (mode switched delivery→takeaway, the drop pin moved, the basket
@@ -406,7 +405,7 @@ export class PaymentRepository {
     if (
       !opts?.resumeOrderId &&
       recorded?.gatewayOrder &&
-      !quoteChangedAfterGateway &&
+      !quoteChanged &&
       !(
         ((recorded.gatewayOrder as unknown as { pricing?: { discount?: number } }).pricing
           ?.discount ?? 0) > 0
@@ -448,6 +447,7 @@ export class PaymentRepository {
         // D1: a requested id that belongs to another checkout's document is
         // never adopted — that doc still describes the old mode/address.
         orderId: adoptableInternalId ?? undefined,
+        deliveryQuoteId,
       });
       if (!pending.success) return pending;
       internalOrderId = pending.data.id;
@@ -504,7 +504,7 @@ export class PaymentRepository {
     if (orderRes.success) {
       // The server draft and gateway intent are now durably bound. The local
       // replay record can be dropped; an unpaid order remains resumable by id.
-      orderRepository.clearPendingOnlineOrder?.();
+      orderRepository.clearPendingOnlineOrder?.(internalOrderId);
       // Bind the gateway order to the pending internal order in one place so
       // verification can require the same gateway order (A3).
       usePaymentStore

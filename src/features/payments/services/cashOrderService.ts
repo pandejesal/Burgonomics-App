@@ -35,6 +35,7 @@ export interface CashOrderRequest {
   orderType: "delivery" | "takeaway" | "dinein";
   items: CashOrderLine[];
   expectedTotalPaise: number;
+  zeroDueOnly?: true;
   attemptId?: string;
   addressId?: string;
   deliveryQuoteId?: string;

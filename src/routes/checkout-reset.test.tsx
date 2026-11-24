@@ -344,7 +344,7 @@ describe("checkout selections reset after every successful order path", () => {
     await mount();
     await placeOrder();
 
-    expect(fixture.createOrder).toHaveBeenCalledWith();
+    expect(fixture.createOrder).toHaveBeenCalledWith({ zeroDueOnly: true });
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
     expectSelectionsCleared();
   });

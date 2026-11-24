@@ -462,6 +462,7 @@ describe("payment route — unknown bill must not be payable (synthetic scenario
     await act(async () => pay!.click());
     await act(async () => {});
     expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.createCashOrder).toHaveBeenCalledWith({ zeroDueOnly: true });
     expect(validateForPayment).not.toHaveBeenCalled();
     expect(createPaymentOrder).not.toHaveBeenCalled();
     expect(fixture.navigate).toHaveBeenCalledWith({
@@ -469,5 +470,19 @@ describe("payment route — unknown bill must not be payable (synthetic scenario
       params: { orderId: "ord_zero_payment" },
       replace: true,
     });
+  });
+
+  it("returns a repriced zero-due checkout without offering a cash reconfirmation", async () => {
+    fixture.checkoutState.tipAmount = 0;
+    fixture.calculateTotals.mockResolvedValue(totals(0));
+    fixture.createCashOrder.mockResolvedValue({
+      success: false,
+      error: { code: "PRICE_CHANGED", details: { attemptId: "zero", totals: { grandTotal: 95 } } },
+    });
+    await mountPayment();
+    await act(async () => buttonWithText("Place Zero-Due Order")!.click());
+    expect(fixture.navigate).toHaveBeenCalledWith({ to: "/checkout" });
+    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    expect(createPaymentOrder).not.toHaveBeenCalled();
   });
 });

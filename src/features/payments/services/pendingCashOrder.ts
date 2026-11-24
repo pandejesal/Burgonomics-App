@@ -35,6 +35,7 @@ export interface ReplayableCashRequest {
   orderType: CashOrderRequest["orderType"];
   items: CashOrderRequest["items"];
   expectedTotalPaise: number;
+  zeroDueOnly?: true;
   deliveryQuoteId?: string;
   addressId?: string;
   tableNumber?: string;
@@ -107,6 +108,7 @@ export function minimalReplayRequest(request: CashOrderRequest): ReplayableCashR
         : {}),
     })),
     expectedTotalPaise: request.expectedTotalPaise,
+    ...(request.zeroDueOnly ? { zeroDueOnly: true } : {}),
     ...(request.deliveryQuoteId ? { deliveryQuoteId: request.deliveryQuoteId } : {}),
     // Fulfilment references only (id / table id), never the full address.
     ...(request.addressId ? { addressId: request.addressId } : {}),
@@ -193,7 +195,7 @@ export function markPendingCashOrderConfirmed(orderId: string, receiptId = order
 /** A server total the customer reconfirmed updates the replay body, not the id. */
 export function updatePendingCashOrderAcceptedTotal(paise: number): void {
   const record = readPendingCashOrder();
-  if (!record) return;
+  if (!record || record.request.zeroDueOnly) return;
   writeRaw(
     JSON.stringify({
       ...record,

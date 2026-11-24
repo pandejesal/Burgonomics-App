@@ -1,5 +1,4 @@
 import { readPendingCashOrder } from "@/features/payments/services/pendingCashOrder";
-import { readPendingOnlineDraft } from "@/features/payments/services/pendingOnlineDraft";
 import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import {
@@ -573,9 +572,21 @@ function PaymentPage() {
     }
   };
 
-  const finishCash = async (opts: { attemptId?: string; acceptedTotalPaise?: number }) => {
+  const finishCash = async (opts: {
+    attemptId?: string;
+    acceptedTotalPaise?: number;
+    zeroDueOnly?: true;
+  }) => {
     const created = await orderRepository.createCashOrder(opts);
     if (!created.success) {
+      if (opts.zeroDueOnly && created.error.code === "PRICE_CHANGED") {
+        toast.error("This order is no longer free", {
+          description: "Review your updated bill before placing it.",
+        });
+        setStatus("idle");
+        void navigate({ to: "/checkout" });
+        return;
+      }
       // M5: PRICE_CHANGED carries the SERVER's authoritative breakdown.
       // Show that exact total for explicit reconfirmation; set the accepted
       // paise ONLY when the customer confirms, never when we show the prompt.
@@ -605,6 +616,15 @@ function PaymentPage() {
       return;
     }
 
+    if (opts.zeroDueOnly && created.data.cashDuePaise !== 0) {
+      setStatus("failed");
+      setFailure({
+        code: "RECEIPT_UNAVAILABLE",
+        message: "We couldn't confirm the zero-due order. Check your orders before trying again.",
+        retryable: false,
+      });
+      return;
+    }
     const reconUid = useAuthStore.getState().user?.id ?? null;
     clearPaymentReconciliation(reconUid);
     usePaymentStore.getState().clearReconciliation();
@@ -633,10 +653,11 @@ function PaymentPage() {
     // M4 r2: recover BEFORE any preflight/quote/totals check. A confirmed cash
     // id from a lost response or failed receipt read is the only proof of which
     // order was written; navigate to its receipt and never POST again.
-    if (!resume && readPendingCashOrder()) {
+    const savedCash = !resume ? readPendingCashOrder() : null;
+    if (savedCash) {
       payInFlight.current = true;
       try {
-        await finishCash({});
+        await finishCash(savedCash.request.zeroDueOnly ? { zeroDueOnly: true } : {});
       } finally {
         payInFlight.current = false;
       }
@@ -762,7 +783,7 @@ function PaymentPage() {
     // A known zero-due online bill uses the same server-validated zero-due
     // creator as cash checkout. Never open Razorpay or mint an unpaid draft.
     if (!resume && totals !== null && !totalsFailed && displayedBillTotal === 0) {
-      await finishCash({});
+      await finishCash({ zeroDueOnly: true });
       return;
     }
 
@@ -809,18 +830,6 @@ function PaymentPage() {
     // A resumed order already chose online payment and sits unpaid on the
     // server; switching it to cash here would mint a second order.
     if (method === "cash" && !resume) {
-      try {
-        if (readPendingOnlineDraft()) {
-          payInFlight.current = false;
-          setStatus("idle");
-          setPreflightIssue("Finish your previous online checkout before switching to cash.");
-          return;
-        }
-      } catch {
-        payInFlight.current = false;
-        setPreflightIssue("We couldn't check your previous checkout. Please try again.");
-        return;
-      }
       setStatus("waiting");
 
       try {

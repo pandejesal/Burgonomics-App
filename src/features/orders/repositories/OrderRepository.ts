@@ -32,6 +32,7 @@ import {
 } from "@/features/payments/services/pendingCashOrder";
 import {
   createOnlineDraftOnServer,
+  retireOnlineDraftOnServer,
   type OnlineDraftReceipt,
   type OnlineDraftRequest,
 } from "@/features/payments/services/onlineDraftService";
@@ -91,6 +92,7 @@ export class OrderRepository {
     attemptId: string;
     uid: string;
     fields: Pick<OnlineDraftRequest, "notes" | "fulfillmentInstructions">;
+    lineNotes: Array<string | undefined>;
   };
 
   constructor(private readonly service = ordersService) {}
@@ -177,6 +179,7 @@ export class OrderRepository {
       /** A server total the customer reconfirmed after PRICE_CHANGED (M5). */
       acceptedTotalPaise?: number;
       attemptId?: string;
+      zeroDueOnly?: true;
     } = {},
   ): Promise<ApiResult<Order>> {
     const uid = currentScopedUid();
@@ -186,11 +189,19 @@ export class OrderRepository {
       if (opts.attemptId && (!prior || prior.attemptId !== opts.attemptId || prior.uid !== uid))
         return fail("ATTEMPT_CHANGED", "Please review your current checkout.");
       if (prior) {
-        if (opts.attemptId && opts.acceptedTotalPaise !== undefined) {
+        if (opts.zeroDueOnly && !prior.request.zeroDueOnly) {
+          return fail("ATTEMPT_CHANGED", "Finish your previous cash checkout first.");
+        }
+        if (!prior.request.zeroDueOnly && opts.attemptId && opts.acceptedTotalPaise !== undefined) {
           updatePendingCashOrderAcceptedTotal(opts.acceptedTotalPaise);
           prior.request.expectedTotalPaise = opts.acceptedTotalPaise;
         }
         return this.submitCashAttempt(prior);
+      }
+      const online = readPendingOnlineDraft();
+      if (online) {
+        const retired = await this.retireOnlineAttempt(online);
+        if (!retired.success) return retired;
       }
     } catch {
       return fail("CASH_STORAGE_UNAVAILABLE", "Your saved checkout could not be read.", true);
@@ -247,7 +258,10 @@ export class OrderRepository {
       // The bill the customer is looking at. The server refuses a different
       // number (PRICE_CHANGED) instead of silently moving it. After an explicit
       // reconfirmation we send the SERVER's total back (M5).
-      expectedTotalPaise: opts.acceptedTotalPaise ?? Math.round(totalsRes.data.grandTotal * 100),
+      expectedTotalPaise: opts.zeroDueOnly
+        ? 0
+        : (opts.acceptedTotalPaise ?? Math.round(totalsRes.data.grandTotal * 100)),
+      ...(opts.zeroDueOnly ? { zeroDueOnly: true } : {}),
       ...(deliveryQuoteId ? { deliveryQuoteId } : {}),
       ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
       ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
@@ -292,6 +306,9 @@ export class OrderRepository {
         true,
       );
     }
+    if (opts.zeroDueOnly && !saved.request.zeroDueOnly) {
+      return fail("ATTEMPT_CHANGED", "Finish your previous cash checkout first.");
+    }
     return this.submitCashAttempt(saved);
   }
 
@@ -303,11 +320,17 @@ export class OrderRepository {
     const hasDraft = draft?.attemptId === saved.attemptId && draft.uid === saved.uid;
     const created = await createCashOrderOnServer({
       ...saved.request,
+      ...(saved.request.zeroDueOnly ? { expectedTotalPaise: 0 } : {}),
       ...(hasDraft ? draft.fields : {}),
       attemptId: saved.attemptId,
     });
     if (!ownsAttempt(saved)) return changed();
     if (!created.success) {
+      if (saved.request.zeroDueOnly && created.error.code === "PRICE_CHANGED") {
+        clearPendingCashOrder();
+        if (hasDraft && this.cashNotes === draft) this.cashNotes = undefined;
+        return created; // no attempt id: never offer a cash reconfirmation
+      }
       // A PRICE_CHANGED is a verified no-write, but the customer must reconfirm
       // the SERVER's total — keep the same account-bound id for that retry.
       if (created.error.code === "PRICE_CHANGED")
@@ -323,6 +346,13 @@ export class OrderRepository {
         if (hasDraft && this.cashNotes === draft) this.cashNotes = undefined;
       }
       return created;
+    }
+
+    if (saved.request.zeroDueOnly && created.data.cashDuePaise !== 0) {
+      return fail(
+        "RECEIPT_UNAVAILABLE",
+        "We couldn't confirm the zero-due order. Check your orders before trying again.",
+      );
     }
 
     // Success is recorded durably: any later retry only hydrates this id and
@@ -364,7 +394,9 @@ export class OrderRepository {
   }
 
   /** Create the payable order draft on the server; never write Firestore here. */
-  async createOnlineDraft(opts: { orderId?: string } = {}): Promise<ApiResult<OnlineDraftReceipt>> {
+  async createOnlineDraft(
+    opts: { orderId?: string; deliveryQuoteId?: string } = {},
+  ): Promise<ApiResult<OnlineDraftReceipt>> {
     const uid = currentScopedUid();
     if (!uid) return fail("UNAUTHENTICATED", "Sign in to place an online order.");
     let prior: PendingOnlineDraft | null;
@@ -398,6 +430,11 @@ export class OrderRepository {
       return fail("TABLE_REQUIRED", "Enter a table number.");
 
     const attemptId = generateSecureId(22);
+    const quoteId =
+      opts.deliveryQuoteId ??
+      (checkout.checkoutFees.status === "ready"
+        ? checkout.checkoutFees.deliveryQuoteId
+        : undefined);
     const request: OnlineDraftRequest = {
       orderId: opts.orderId ?? `ord_${Date.now()}_${generateSecureId(6)}`,
       attemptId,
@@ -415,11 +452,7 @@ export class OrderRepository {
           : {}),
         ...(line.notes ? { notes: line.notes } : {}),
       })),
-      ...(sel.fulfillment === "delivery" &&
-      checkout.checkoutFees.status === "ready" &&
-      checkout.checkoutFees.deliveryQuoteId
-        ? { deliveryQuoteId: checkout.checkoutFees.deliveryQuoteId }
-        : {}),
+      ...(sel.fulfillment === "delivery" && quoteId ? { deliveryQuoteId: quoteId } : {}),
       ...(sel.fulfillment === "delivery" && address ? { addressId: address.id } : {}),
       ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
       ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
@@ -439,17 +472,23 @@ export class OrderRepository {
     let saved: PendingOnlineDraft;
     try {
       if (prior && !sameOnlineDraftContext(prior.request, minimalOnlineDraftRequest(request))) {
+        const retired = await this.retireOnlineAttempt(prior);
+        if (!retired.success) return retired;
+        request.orderId = `ord_${Date.now()}_${generateSecureId(6)}`;
+      }
+      saved = await claimPendingOnlineDraft(uid, attemptId, request);
+      if (!sameOnlineDraftContext(saved.request, minimalOnlineDraftRequest(request))) {
         return fail(
           "CHECKOUT_CONTEXT_CHANGED",
           "Your checkout changed. Review the current cart before retrying.",
-          false,
+          true,
         );
       }
-      saved = await claimPendingOnlineDraft(uid, attemptId, request);
       if (saved.attemptId === attemptId) {
         this.onlineNotes = {
           attemptId,
           uid,
+          lineNotes: request.items.map((item) => item.notes),
           fields: {
             ...(request.notes ? { notes: request.notes } : {}),
             ...(request.fulfillmentInstructions
@@ -478,13 +517,37 @@ export class OrderRepository {
     const created = await createOnlineDraftOnServer({
       ...saved.request,
       ...(hasDraft ? draft.fields : {}),
+      ...(hasDraft
+        ? {
+            items: saved.request.items.map((item, index) => {
+              const notes = draft.lineNotes[index];
+              return notes ? { ...item, notes } : item;
+            }),
+          }
+        : {}),
       attemptId: saved.attemptId,
     });
     if (!ownsOnlineDraftAttempt(saved))
       return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
+    if (!created.success && created.error.details?.draftRefused === true) {
+      // A HTTP refusal alone cannot rule out a concurrent tab having committed.
+      // Clear only after the server fences the attempt and any never-payable doc.
+      await this.retireOnlineAttempt(saved);
+    }
     // The pending draft remains durable until the gateway intent is safely
     // bound/reconciled; a second tab must reuse this same order and attempt.
     return created;
+  }
+
+  private async retireOnlineAttempt(saved: PendingOnlineDraft): Promise<ApiResult<void>> {
+    if (!ownsOnlineDraftAttempt(saved))
+      return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
+    const retired = await retireOnlineDraftOnServer(saved.orderId, saved.attemptId);
+    if (!retired.success) return retired;
+    if (!ownsOnlineDraftAttempt(saved))
+      return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
+    this.clearPendingOnlineOrder(saved.orderId);
+    return retired;
   }
 
   pendingOnlineOrderId(): string | null {
@@ -494,7 +557,8 @@ export class OrderRepository {
       return null;
     }
   }
-  clearPendingOnlineOrder(): void {
+  clearPendingOnlineOrder(orderId?: string): void {
+    if (orderId && readPendingOnlineDraft()?.orderId !== orderId) return;
     clearPendingOnlineDraft();
     this.onlineNotes = undefined;
   }
