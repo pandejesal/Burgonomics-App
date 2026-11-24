@@ -13,10 +13,6 @@ vi.mock("../src/features/payments/services/onlineDraftService", () => ({
   createOnlineDraftOnServer: h.createDraft,
   retireOnlineDraftOnServer: h.retireDraft,
 }));
-vi.mock("../src/features/auth/utils/scopedPersistence", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/features/auth/utils/scopedPersistence")>()),
-  currentScopedUid: () => "cust_retry",
-}));
 const cartState = { lines: [{ productId: "p1", quantity: 1 }], promo: null };
 vi.mock("../src/features/cart/state/cartStore", () => ({
   useCartStore: { getState: () => cartState },
@@ -46,16 +42,32 @@ vi.mock("../src/features/checkout/state/checkoutStore", () => ({
     }),
   },
 }));
-vi.mock("../src/features/payments/state/paymentStore", () => ({
-  usePaymentStore: { getState: () => ({}) },
-}));
 vi.mock("../src/features/orders/services/ordersService", () => ({ ordersService: {} }));
 
+import { configureAuthUidSource } from "../src/features/auth/utils/scopedPersistence";
 import { OrderRepository } from "../src/features/orders/repositories/OrderRepository";
+import { useOrdersStore } from "../src/features/orders/state/ordersStore";
 import { readPendingOnlineDraft } from "../src/features/payments/services/pendingOnlineDraft";
+import { usePaymentStore } from "../src/features/payments/state/paymentStore";
+
+let uid = "cust_retry";
+let emitAuth: (state: { user: { id: string } }) => void;
+configureAuthUidSource({
+  getUid: () => uid,
+  subscribe: (listener) => {
+    emitAuth = listener;
+    return () => undefined;
+  },
+});
+
+function switchAccount(nextUid: string) {
+  uid = nextUid;
+  emitAuth({ user: { id: uid } });
+}
 
 beforeEach(() => {
   localStorage.clear();
+  switchAccount("cust_retry");
   Object.defineProperty(navigator, "locks", {
     configurable: true,
     value: { request: async (_key: string, callback: () => unknown) => callback() },
@@ -115,5 +127,57 @@ describe("server draft retry identity", () => {
     expect(replacement?.orderId).not.toBe(original?.orderId);
     expect(replacement?.attemptId).not.toBe(original?.attemptId);
     expect(replacement?.request.items).toEqual([{ productId: "p1", quantity: 2 }]);
+  });
+
+  it("rejects A's late draft receipt after switching to B without adopting A's identity", async () => {
+    const repo = new OrderRepository();
+    const { promise: response, resolve: deliverReceipt } = Promise.withResolvers<unknown>();
+    h.createDraft.mockReturnValueOnce(response);
+    const pendingA = repo.createOnlineDraft();
+    await vi.waitFor(() => expect(h.createDraft).toHaveBeenCalledTimes(1));
+    const requestA = h.createDraft.mock.calls[0][0];
+    expect(readPendingOnlineDraft()).toMatchObject({
+      uid: "cust_retry",
+      orderId: requestA.orderId,
+      attemptId: requestA.attemptId,
+    });
+
+    switchAccount("cust_b");
+    expect(readPendingOnlineDraft()).toBeNull();
+    const paymentBefore = usePaymentStore.getState();
+    const ordersBefore = useOrdersStore.getState();
+    deliverReceipt({
+      success: true,
+      data: {
+        id: requestA.orderId,
+        orderId: requestA.orderId,
+        attemptId: requestA.attemptId,
+        replayed: false,
+        amountPaise: 10000,
+        totals: {},
+        status: { code: "PLACED", label: "Placed", kind: "upcoming", terminal: false },
+      },
+    });
+
+    expect(await pendingA).toMatchObject({ success: false, error: { code: "ATTEMPT_CHANGED" } });
+    expect(readPendingOnlineDraft()).toBeNull();
+    expect(usePaymentStore.getState()).toBe(paymentBefore);
+    expect(useOrdersStore.getState()).toBe(ordersBefore);
+
+    const freshB = await repo.createOnlineDraft();
+    expect(h.createDraft).toHaveBeenCalledTimes(2);
+    const requestB = h.createDraft.mock.calls[1][0];
+    expect(requestB.orderId).not.toBe(requestA.orderId);
+    expect(requestB.attemptId).not.toBe(requestA.attemptId);
+    expect(freshB).toMatchObject({
+      success: true,
+      data: { orderId: requestB.orderId, attemptId: requestB.attemptId },
+    });
+    expect(readPendingOnlineDraft()).toMatchObject({
+      uid: "cust_b",
+      orderId: requestB.orderId,
+      attemptId: requestB.attemptId,
+    });
+    expect(h.retireDraft).not.toHaveBeenCalled();
   });
 });

@@ -106,7 +106,9 @@ describe("account switch drops the previous account's read caches", () => {
 
   it("getOrder fails safe instead of serving A's cached order to B", async () => {
     mockGetDocs.mockResolvedValueOnce(snapshotOf([fsOrder("ord_a1", "cust_a")]));
-    await ordersService.listOrders();
+    const seeded = await ordersService.listOrders();
+    expect(seeded.success, "A's order cache must be seeded before switching accounts").toBe(true);
+    expect(seeded).toMatchObject({ data: { items: [{ id: "ord_a1" }] } });
     authState.currentUser = { uid: "cust_b" };
     mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
     const result = await ordersService.getOrder("ord_a1");
@@ -122,7 +124,11 @@ describe("account switch drops the previous account's read caches", () => {
         }),
       ]),
     );
-    await ordersService.listOrders();
+    const seeded = await ordersService.listOrders();
+    expect(seeded.success, "A's tracking cache must be seeded before switching accounts").toBe(
+      true,
+    );
+    expect(seeded).toMatchObject({ data: { items: [{ id: "ord_a1" }] } });
     authState.currentUser = { uid: "cust_b" };
     mockGetDoc.mockRejectedValue(new Error("permission-denied"));
     const result = await ordersService.getTracking("ord_a1");

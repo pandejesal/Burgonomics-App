@@ -96,14 +96,14 @@ beforeEach(() => {
   h.setActiveOrderId.mockReset();
   storeState.activeStore.pricing = {};
   storeState.fulfillment = "delivery";
-  h.createCash.mockImplementation(async (request: { orderId: string }) => ({
+  h.createCash.mockImplementation(async (request: { orderId: string; zeroDueOnly?: true }) => ({
     success: true,
     data: {
       orderId: request.orderId,
       replayed: false,
       paymentMethod: "cod",
       paymentChannel: "cash",
-      cashDuePaise: 17900,
+      cashDuePaise: request.zeroDueOnly ? 0 : 17900,
       totals: {},
       status,
     },
@@ -171,5 +171,23 @@ describe("server order creators — shared delivery minimum", () => {
     expect((await new OrderRepository().createOnlineDraft()).success).toBe(true);
     expect(h.createCash).toHaveBeenCalledTimes(1);
     expect(h.createDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a zero-due ₹99 delivery basket without a server call", async () => {
+    h.calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 99, grandTotal: 0 } });
+    const result = await new OrderRepository().createCashOrder({ zeroDueOnly: true });
+    expect(result).toMatchObject({ success: false, error: { code: "MIN_ORDER" } });
+    expect(h.createCash).not.toHaveBeenCalled();
+    expect(h.createDraft).not.toHaveBeenCalled();
+  });
+
+  it("submits one zero-only server request for a ₹149 delivery basket", async () => {
+    h.calculateTotals.mockResolvedValue({ success: true, data: { subtotal: 149, grandTotal: 0 } });
+    const result = await new OrderRepository().createCashOrder({ zeroDueOnly: true });
+    expect(result.success).toBe(true);
+    expect(h.createCash).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ orderType: "delivery", zeroDueOnly: true, expectedTotalPaise: 0 }),
+    );
+    expect(h.createDraft).not.toHaveBeenCalled();
   });
 });
