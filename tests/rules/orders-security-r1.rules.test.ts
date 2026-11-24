@@ -142,17 +142,17 @@ describe("R1 orders security", () => {
       }
     }
   });
-  it("customer COD create and own read, brand and branch reads remain available", async () => {
+  it("customer COD birth is denied; own, brand and branch reads remain available", async () => {
     const customer = db("customer");
-    await assertSucceeds(
-      setDoc(doc(customer, "orders", "cod"), {
+    await environment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "orders", "cod"), {
         customerId: "customer",
         userId: "customer",
         branchId: "a",
         status,
         payment: { method: "cod", status: "pending" },
-      }),
-    );
+      });
+    });
     await assertSucceeds(getDoc(doc(customer, "orders", "cod")));
     await assertSucceeds(getDoc(doc(db("brand"), "orders", "foreign")));
     await assertSucceeds(getDoc(doc(db("staff"), "orders", "a")));
@@ -249,7 +249,7 @@ describe("R1 orders security", () => {
     }
 
     for (const field of ["walkInReceipt", "walkInRequestHash"]) {
-      it(`customer creation still rejects ${field} injection with a valid COD control`, async () => {
+      it(`customer creation rejects ${field} injection and all plain COD birth`, async () => {
         const valid = {
           customerId: "customer",
           userId: "customer",
@@ -258,7 +258,7 @@ describe("R1 orders security", () => {
           payment: { method: "cod", status: "pending" },
         };
         const customer = db("customer");
-        await assertSucceeds(setDoc(doc(customer, "orders", "plain-cod"), valid));
+        await assertFails(setDoc(doc(customer, "orders", "plain-cod"), valid));
         await assertFails(
           setDoc(doc(customer, "orders", "injected-cod"), {
             ...valid,

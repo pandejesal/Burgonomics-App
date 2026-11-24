@@ -275,9 +275,9 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("10. [CUSTOMER-CREATE-ORDER] Customer can create pending order for self (pins the real ordersService.createOrder payload: BOTH customerId+userId, initial PLACED status meta)", async () => {
+  it("10. [CUSTOMER-CREATE-ORDER-DENY] Customer cannot create even an owned pending order; server routes own order birth", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(custDb, "orders", "order_new_1"), {
         orderId: "order_new_1",
         customerId: "cust_100",
@@ -980,14 +980,12 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
   });
 
   // =========================================================================
-  // 8. NESTED payment MAP AT ORDER CREATE — ALLOWLIST, BOTH LANES
+  // 8. ORDER BIRTH IS SERVER-ONLY; NESTED PAYMENT FORGERY REMAINS DENIED
   //
-  // The pending-status check alone let a client plant `payment.routeTransfer`
-  // (or receipt/capture bookkeeping) at birth. executeRouteSplit's fast path
-  // treats ANY stored `payment.routeTransfer` as an already-executed payout
-  // and returns "done" without POSTing the transfer, so a planted receipt
-  // suppressed the real branch settlement. Only the display fields the apps
-  // write (method/label/status/transactionId/paidAt) may be born client-side.
+  // The former client create arm allowed display payment fields but protected
+  // settlement/capture bookkeeping. Order birth is now denied to every client,
+  // so these probes also prevent a future create-arm regression from admitting
+  // route receipts, capture amounts or paid markers.
   // =========================================================================
   it("5b. [BRANCHES-SIGNEDIN-DENY] A plain signed-in customer cannot read branches (SEC-06: restIDs/payout account)", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
@@ -1035,9 +1033,9 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     }
   });
 
-  it("33c. [ORDERS-CREATE-PENDING-PAYMENT-ALLOW] Normal customer create with the pending payment shape, items, totals and branchId still succeeds", async () => {
+  it("33c. [ORDERS-CREATE-PENDING-DENY] Even a normal pending payment/items/totals shape is server-only", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(custDb, "orders", "ord_clean_pending"), {
         customerId: "cust_100",
         userId: "cust_100",
@@ -1050,7 +1048,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("33d. [ORDERS-CREATE-ZERO-PAYABLE-PENDING-ALLOW] A ₹0 coupon order creates with the pending marker, while the same order with a client paid marker is still refused", async () => {
+  it("33d. [ORDERS-CREATE-ZERO-PAYABLE-DENY] A ₹0 coupon order is also server-only; a client paid marker remains refused", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
     const base = {
       customerId: "cust_100",
@@ -1060,7 +1058,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
       items: [{ productId: "p1", name: "Burger", quantity: 1, unitPrice: 150 }],
       totals: { subtotal: 150, promoDiscount: 150, grandTotal: 0 },
     };
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(custDb, "orders", "ord_clean_free_pending"), {
         ...base,
         payment: { method: "online", label: "Free order — no payment due", status: "pending" },
@@ -1111,7 +1109,7 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     ] as const) {
       await assertFails(setDoc(doc(custDb, "orders", id), { ...base, payment }));
     }
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(custDb, "orders", "ord_pay_display_ok"), {
         ...base,
         payment: {
@@ -1199,9 +1197,9 @@ describe("Firestore Security Rules — CRM Hierarchy & RBAC", () => {
     );
   });
 
-  it("53. [ORDERS-CREATE-WITH-ITEMS] Customer create succeeds; direct walk-in fails", async () => {
+  it("53. [ORDERS-CREATE-SERVER-ONLY] Customer and direct walk-in creates are denied", async () => {
     const custDb = testEnv.authenticatedContext("cust_100").firestore();
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(custDb, "orders", "ord_create_items_cust"), {
         customerId: "cust_100",
         userId: "cust_100",
