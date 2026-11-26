@@ -84,6 +84,14 @@ export interface PushPromptVisibilityInput {
   decision: PushPromptDecision | null;
   /** The confirmed order this card would sit beside. */
   hasConfirmedOrder: boolean;
+  /**
+   * `getPushStatusSnapshot().enabled` — the build's push feature flag.
+   *
+   * A6-c11 item 6: with push disabled, "Turn on" can only fail, and recording
+   * that failure as "dismissed" burned the one-time prompt for ever. A
+   * disabled build must never show (or consume) the card.
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -91,15 +99,39 @@ export interface PushPromptVisibilityInput {
  *
  * - native only: the web flow (boot-time enable, Settings toggle) is unchanged
  *   and a push prompt there must stay an explicit Settings action;
+ * - never while the build's push flag is off (an unanswerable prompt is not a
+ *   question);
  * - only while the OS has not decided (`default` = Android 13+ `prompt`);
  * - never after an answer;
  * - and only next to a real, paid, confirmed order.
  *
  * Fails closed on anything unexpected — a wrong card is worse than no card.
+ * `enabled` defaults to false so a caller that forgets it cannot burn the
+ * prompt.
  */
 export function shouldOfferPushPrompt(input: PushPromptVisibilityInput): boolean {
   if (input.platform !== "ios" && input.platform !== "android") return false;
+  if (input.enabled !== true) return false;
   if (input.permission !== "default") return false;
   if (input.decision !== null) return false;
   return input.hasConfirmedOrder === true;
+}
+
+/**
+ * What may be RECORDED after the customer tapped "Turn on".
+ *
+ * A6-c11 item 6: only an OBSERVED `denied` is a real refusal. A thrown error, a
+ * disabled build, a dismissed system dialog left undecided (`default`) or an
+ * unsupported runtime are all "no answer yet" — recording them wrote
+ * `dismissed` permanently and the card never returned. `null` means: write
+ * nothing, and keep offering the card.
+ */
+export function decidePushPromptAnswer(result: {
+  granted: boolean;
+  /** `getPushStatusSnapshot().permission` read AFTER the attempt. */
+  permission: PushPermission;
+}): PushPromptDecision | null {
+  if (result.granted === true) return "granted";
+  if (result.permission === "denied") return "dismissed";
+  return null;
 }

@@ -53,6 +53,30 @@ const TOKEN_CLASS_KEYS: ReadonlySet<string> = new Set([
 
 const isTokenClassKey = (key: string) => TOKEN_CLASS_KEYS.has(key);
 
+/**
+ * A6/A3-c11 item 5: on WEB a credential must never be written to plaintext
+ * `localStorage`. `storageKey`-format copies survive XSS, extension content
+ * scripts and dependency compromise, and a Firebase refresh token is portable:
+ * exchanged off-app for fresh ID tokens it is durable account takeover.
+ *
+ * So the web path keeps token-class values in memory for the life of the tab
+ * and lets Firebase Auth's own IndexedDB persistence own the durable session
+ * (see `bootstrap` restoring from the live Firebase session). The native
+ * Keychain/Keystore path is unchanged.
+ */
+export function scrubLegacyWebTokens(): void {
+  if (isNative() || typeof window === "undefined") return;
+  for (const key of TOKEN_CLASS_KEYS) {
+    try {
+      // Only the persisted PLAINTEXT copy is removed. Any value this tab still
+      // holds in memory was written by this tab and is not on disk.
+      window.localStorage.removeItem(NAMESPACE + key);
+    } catch {
+      /* restricted storage: nothing written, nothing to scrub */
+    }
+  }
+}
+
 async function nativePrefGet(fullKey: string): Promise<string | null> {
   if (!isNative()) return null;
   try {
@@ -92,8 +116,14 @@ export const secureStorage = {
     if (isNative()) {
       const val = await nativePrefGet(fullKey);
       if (val !== null) return val;
+      // Native: a token-class key never falls back to plaintext WebView
+      // storage; only the (sanitised) memory copy may answer.
+      if (isTokenClassKey(key)) return memoryFallback.get(fullKey) ?? null;
     }
     if (typeof window === "undefined") return memoryFallback.get(fullKey) ?? null;
+    // Web credentials live in memory only (see `set`): never read a legacy
+    // plaintext copy back into the app.
+    if (isTokenClassKey(key)) return memoryFallback.get(fullKey) ?? null;
     try {
       return window.localStorage.getItem(fullKey);
     } catch {
@@ -126,6 +156,16 @@ export const secureStorage = {
     }
     memoryFallback.set(fullKey, value);
     if (typeof window === "undefined") return;
+    // Web: a credential stays in memory for this tab only. It never touches
+    // plaintext localStorage (A6/A3-c11 item 5).
+    if (isTokenClassKey(key)) {
+      try {
+        window.localStorage.removeItem(fullKey);
+      } catch {
+        /* restricted storage: nothing was written */
+      }
+      return;
+    }
     try {
       window.localStorage.setItem(fullKey, value);
     } catch {

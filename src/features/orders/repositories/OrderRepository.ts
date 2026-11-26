@@ -21,6 +21,7 @@ import {
   type CashOrderRequest,
 } from "@/features/payments/services/cashOrderService";
 import {
+  basketHashOf,
   claimPendingCashOrder,
   ownsAttempt,
   type PendingCashOrder,
@@ -165,6 +166,62 @@ export class OrderRepository {
   // -- Create ----------------------------------------------------------
 
   /**
+   * Basket identity of the LIVE checkout (what is being ordered, and where it
+   * goes), or null when there is no basket to bind to. Money is excluded, so
+   * an accepted server total never looks like a new basket.
+   */
+  currentBasketHash(): string | null {
+    const cart = useCartStore.getState();
+    const sel = useStoreSelection.getState();
+    const checkout = useCheckoutStore.getState();
+    const address = selectSelectedAddress(useAddressStore.getState());
+    if (!sel.activeStore || !sel.fulfillment || cart.lines.length === 0) return null;
+    return basketHashOf({
+      storeId: sel.activeStore.id,
+      ...(sel.activeStore.partnerBranchId ? { branchId: sel.activeStore.partnerBranchId } : {}),
+      orderType: sel.fulfillment,
+      items: cart.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        ...(Array.isArray(line.customizations) && line.customizations.length > 0
+          ? { customizations: line.customizations as unknown as unknown[] }
+          : {}),
+        ...(Array.isArray(line.modifiers) && line.modifiers.length > 0
+          ? { modifiers: line.modifiers as unknown as unknown[] }
+          : {}),
+      })),
+      ...(sel.fulfillment === "delivery" && address ? { addressId: address.id } : {}),
+      ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
+      ...(sel.fulfillment === "dinein" && checkout.tableNumber
+        ? { tableNumber: checkout.tableNumber }
+        : {}),
+    });
+  }
+
+  /**
+   * The durable cash attempt that still belongs to the LIVE basket, or null.
+   *
+   * Screens must use THIS (not `readPendingCashOrder`) before any preflight:
+   * an attempt older than the TTL, or one bound to a basket the customer has
+   * since replaced, is retired here instead of being replayed. `matchesBasket`
+   * tells a recovery of an EARLIER order apart from the current checkout, so
+   * the caller never clears a new cart because an old attempt succeeded.
+   */
+  pendingCashAttempt(): { record: PendingCashOrder; matchesBasket: boolean } | null {
+    try {
+      // Confirmed ids survive any TTL and any basket: they are the only proof
+      // of which order the server wrote. They are reported as NOT this basket
+      // unless the live cart still hashes to the same attempt.
+      const record = readPendingCashOrder(Date.now(), this.currentBasketHash() ?? undefined);
+      if (!record) return null;
+      const live = this.currentBasketHash();
+      return { record, matchesBasket: live !== null && record.basketHash === live };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * CASH ON DELIVERY / PAY AT STORE (owner decision 2026-11-20).
    *
    * The SERVER creates this order: `POST /orders/createCashOrder` resolves the
@@ -187,8 +244,13 @@ export class OrderRepository {
   ): Promise<ApiResult<Order>> {
     const uid = currentScopedUid();
     if (!uid) return fail("UNAUTHENTICATED", "Sign in to place a cash order.");
+    let prior: PendingCashOrder | null;
     try {
-      const prior = readPendingCashOrder();
+      // The TTL + basket gate lives in the storage layer: an attempt that is
+      // older than the TTL, or that belongs to a basket the customer has since
+      // replaced, is retired HERE — so an abandoned COD checkout can never be
+      // replayed onto a new basket (A6-c11 item 1).
+      prior = readPendingCashOrder(Date.now(), this.currentBasketHash() ?? undefined);
       if (opts.attemptId && (!prior || prior.attemptId !== opts.attemptId || prior.uid !== uid))
         return fail("ATTEMPT_CHANGED", "Please review your current checkout.");
       if (prior) {
@@ -267,11 +329,16 @@ export class OrderRepository {
       ...(opts.zeroDueOnly ? { zeroDueOnly: true } : {}),
       ...(deliveryQuoteId ? { deliveryQuoteId } : {}),
       ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
-      ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
+      // Owner decision 2026-11-25 (#1): no tip is sent. The gateway never
+      // charges one and the rider never receives one, so the payload omits it.
       ...(checkout.orderNotes ? { notes: checkout.orderNotes } : {}),
       ...(sel.fulfillment === "dinein" && checkout.tableNumber
         ? { tableNumber: checkout.tableNumber }
         : {}),
+      // Owner decision 2026-11-25 #3: WhatsApp updates are OPT-IN. An explicit
+      // boolean is sent so a server default can never opt anyone in: true only
+      // when the customer ticked the box in THIS checkout, false otherwise.
+      whatsappOptIn: checkout.whatsappOptIn === true,
     };
     const instructions = isDelivery
       ? checkout.deliveryInstructions
@@ -460,11 +527,14 @@ export class OrderRepository {
       ...(sel.fulfillment === "delivery" && quoteId ? { deliveryQuoteId: quoteId } : {}),
       ...(sel.fulfillment === "delivery" && address ? { addressId: address.id } : {}),
       ...(cart.promo?.code ? { couponCode: cart.promo.code } : {}),
-      ...(checkout.tipAmount ? { tipAmount: checkout.tipAmount } : {}),
+      // Owner decision 2026-11-25 (#1): no tip on the online draft either.
       ...(checkout.orderNotes ? { notes: checkout.orderNotes } : {}),
       ...(sel.fulfillment === "dinein" && checkout.tableNumber
         ? { tableNumber: checkout.tableNumber }
         : {}),
+      // WhatsApp consent travels with the draft: explicit boolean, true only
+      // when ticked (owner decision 2026-11-25 #3).
+      whatsappOptIn: checkout.whatsappOptIn === true,
     };
     const instructions =
       sel.fulfillment === "delivery"

@@ -263,6 +263,8 @@ vi.mock("@/features/orders", () => ({
     createOnlineDraft: fixture.createOnlineDraft,
     createCashOrder: fixture.createCashOrder,
     pendingCashOrderId: () => null,
+    // A6-c11 item 1: cash attempts are TTL/basket gated before any replay.
+    pendingCashAttempt: () => null,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
   },
@@ -323,7 +325,9 @@ beforeEach(() => {
     success: true,
     data: {
       orderId: "order_fulfill_pay",
-      amount: 525,
+      // Owner decision 2026-11-25 (#1): the persisted ₹25 tip is hidden and is
+      // part of NO billed figure, so the server total matches the visible ₹500.
+      amount: 500,
       currency: "INR",
       receipt: "rcpt_fulfill_pay",
       keyId: "rzp_test_key",

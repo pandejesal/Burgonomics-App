@@ -83,13 +83,14 @@ describe("MT-09: Tax-Inclusive Pricing Display Suite", () => {
   });
 
   describe("2. Added-on charges still reach the payable", () => {
-    it("adds packaging, delivery and tip — but never the tax again", () => {
+    it("adds packaging and delivery — but never the tax, and never a tip", () => {
       const subtotal = 400;
       const discount = 50;
       const coins = 100;
       const gst = 20;
       const packaging = 20;
       const delivery = 0; // free delivery above the ₹349 threshold
+      // Owner decision 2026-11-25 (#1): a legacy tip prop is ignored.
       const tip = 20;
 
       const html = renderToStaticMarkup(
@@ -100,13 +101,14 @@ describe("MT-09: Tax-Inclusive Pricing Display Suite", () => {
           gstAmount={gst}
           packagingFee={packaging}
           deliveryFee={delivery}
-          tipAmount={tip}
+          {...({ tipAmount: tip } as object)}
           fulfillment="delivery"
         />,
       );
 
-      // 400 - 50 - 100 + 20 + 0 + 20 = 290 (the old double-count was 310).
-      expect(toPayAmount(html)).toBe(formatINR(290));
+      // 400 - 50 - 100 + 20 + 0 = 270 (was 290 with the retired tip).
+      expect(toPayAmount(html)).toBe(formatINR(270));
+      expect(html).not.toMatch(/delivery partner tip/i);
       // Total savings banner mirrors discount + redeemed points.
       expect(html).toContain(formatINR(150));
     });

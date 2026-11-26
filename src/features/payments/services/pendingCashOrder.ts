@@ -41,6 +41,12 @@ export interface ReplayableCashRequest {
   tableNumber?: string;
   couponCode?: string;
   tipAmount?: number;
+  /**
+   * WhatsApp consent must survive a retry: a lost response followed by a replay
+   * must not silently drop (or invent) the customer's answer. Owner decision
+   * 2026-11-25 #3.
+   */
+  whatsappOptIn?: boolean;
 }
 
 export interface PendingCashOrder {
@@ -54,6 +60,64 @@ export interface PendingCashOrder {
   confirmed: boolean;
   createdAtMs: number;
   updatedAtMs: number;
+  /**
+   * Basket this attempt belongs to (items + outlet/mode, never money). An
+   * unconfirmed attempt is only replayed while the live checkout still hashes
+   * to this value; anything else is an abandoned basket and is retired.
+   */
+  basketHash?: string;
+}
+
+/** Deterministic, non-cryptographic hash of the basket identity. */
+function hashOf(value: string): string {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) + hash + value.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * Basket identity for a cash attempt: WHAT is being ordered and where it is
+ * going. Money is deliberately excluded — an accepted server total must not
+ * look like a new basket, and a price change must not orphan the attempt.
+ */
+export function basketHashOf(request: {
+  storeId?: string;
+  branchId?: string;
+  orderType: string;
+  items: ReadonlyArray<{
+    productId: string;
+    quantity: number;
+    customizations?: unknown[];
+    modifiers?: unknown[];
+  }>;
+  addressId?: string;
+  couponCode?: string;
+  tableNumber?: string;
+}): string {
+  const selectionIds = (list?: unknown[]): string[] =>
+    (list ?? [])
+      .map(
+        (entry) => (entry as { id?: unknown })?.id ?? (entry as { optionId?: unknown })?.optionId,
+      )
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return hashOf(
+    JSON.stringify([
+      request.storeId ?? null,
+      request.branchId ?? null,
+      request.orderType,
+      request.items.map((item) => [
+        item.productId,
+        item.quantity,
+        selectionIds(item.customizations),
+        selectionIds(item.modifiers),
+      ]),
+      request.addressId ?? null,
+      request.couponCode ?? null,
+      request.tableNumber ?? null,
+    ]),
+  );
 }
 
 function storageKey(uid = currentScopedUid()): string {
@@ -115,11 +179,29 @@ export function minimalReplayRequest(request: CashOrderRequest): ReplayableCashR
     ...(request.tableNumber ? { tableNumber: request.tableNumber } : {}),
     ...(request.couponCode ? { couponCode: request.couponCode } : {}),
     ...(typeof request.tipAmount === "number" ? { tipAmount: request.tipAmount } : {}),
+    // An explicit boolean only: the server counts a LITERAL true as consent and
+    // stamps the time itself; a missing key is never treated as consent.
+    ...(typeof request.whatsappOptIn === "boolean" ? { whatsappOptIn: request.whatsappOptIn } : {}),
   };
 }
 
-/** The live pending attempt for THIS account, or null. */
-export function readPendingCashOrder(nowMs: number = Date.now()): PendingCashOrder | null {
+/**
+ * The live pending attempt for THIS account, or null.
+ *
+ * A CONFIRMED record is returned regardless of age (and of `basketHash`): it is
+ * the only proof of which order the server wrote, so it must survive a failed
+ * read for ever.
+ *
+ * An UNCONFIRMED attempt is dropped (and REMOVED from storage) when either:
+ *  - it is older than {@link PENDING_CASH_ORDER_TTL_MS} — an abandoned checkout
+ *    must never be replayed onto a later basket; or
+ *  - `basketHash` is supplied and differs from the attempt's own basket — the
+ *    customer has built something else, so the old attempt is abandoned.
+ */
+export function readPendingCashOrder(
+  nowMs: number = Date.now(),
+  basketHash?: string,
+): PendingCashOrder | null {
   const raw = readRaw();
   if (!raw) return null;
   try {
@@ -135,7 +217,17 @@ export function readPendingCashOrder(nowMs: number = Date.now()): PendingCashOrd
     }
     // A CONFIRMED id must survive a failed read and any TTL: it is the only
     // proof of which order was written. Only unconfirmed attempts age out.
-    // A missing response is ambiguous regardless of age.
+    if (record.confirmed) return record;
+    const createdMs = typeof record.createdAtMs === "number" ? record.createdAtMs : 0;
+    const expired =
+      typeof nowMs === "number" && Number.isFinite(nowMs) && createdMs > 0
+        ? nowMs >= createdMs + PENDING_CASH_ORDER_TTL_MS
+        : false;
+    const basketChanged = basketHash !== undefined && record.basketHash !== basketHash;
+    if (expired || basketChanged) {
+      writeRaw(null);
+      return null;
+    }
     return record;
   } catch {
     throw new Error("Cannot recover the previous cash attempt");
@@ -157,6 +249,7 @@ export function savePendingCashOrder(
     confirmed: false,
     createdAtMs: now,
     updatedAtMs: now,
+    basketHash: basketHashOf(request),
   };
   writeRaw(JSON.stringify(record));
   return record;
@@ -166,6 +259,10 @@ export function savePendingCashOrder(
  * Claim (or re-claim) one durable attempt BEFORE the POST. Compare-and-set by
  * the PINNED uid and attemptId: a late callback or a tab on another account
  * never mutates this record. Returns the record actually stored.
+ *
+ * A stored attempt for a DIFFERENT basket is abandoned here (the TTL/basket
+ * gate in {@link readPendingCashOrder} removes it), so a fresh attempt with its
+ * own order id is created instead of replaying the old one.
  */
 export async function claimPendingCashOrder(
   uid: string,
@@ -174,7 +271,10 @@ export async function claimPendingCashOrder(
 ): Promise<PendingCashOrder> {
   return navigator.locks.request(storageKey(uid), () => {
     if (uid !== currentScopedUid()) throw new Error("Cash checkout account changed");
-    return readPendingCashOrder() ?? savePendingCashOrder(attemptId, request.orderId, request);
+    return (
+      readPendingCashOrder(Date.now(), basketHashOf(request)) ??
+      savePendingCashOrder(attemptId, request.orderId, request)
+    );
   });
 }
 

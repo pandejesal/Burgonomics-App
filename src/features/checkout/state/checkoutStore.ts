@@ -75,9 +75,20 @@ interface CheckoutState {
   pickupInstructions: string;
   diningNotes: string;
   tableNumber: string;
-  /** Delivery-partner tip (₹) chosen on the cart screen. Persisted so it
-   * reaches the order + payment payloads instead of dying in local state. */
+  /**
+   * Delivery-partner tip (₹). OWNER DECISION 2026-11-25 #1: the tip is HIDDEN
+   * at launch. The field survives only so legacy persisted state can be read;
+   * every writer is gone, every payload omits it, and no screen displays or
+   * charges it.
+   */
   tipAmount: number;
+  /**
+   * WhatsApp order-update consent (owner decision 2026-11-25 #3). OFF by
+   * default: only an explicit tick-box sets it, and the ISO timestamp records
+   * when that consent was given.
+   */
+  whatsappOptIn: boolean;
+  whatsappOptInAt: string | null;
   /**
    * Legacy loyalty redemption choice. D31–D33 withdrew redemption from the
    * customer app; the field is kept for storage-shape compatibility and is
@@ -113,6 +124,8 @@ interface CheckoutState {
   setDiningNotes: (v: string) => void;
   setTableNumber: (v: string) => void;
   setTipAmount: (v: number) => void;
+  /** Explicit, revocable WhatsApp consent. OFF unless ticked by the customer. */
+  setWhatsappOptIn: (optIn: boolean) => void;
   setLoyaltyPointsToRedeem: (v: number) => void;
   /** Starts a quote request, invalidating every in-flight one; returns its token. */
   beginFeesRequest: (key: string) => number;
@@ -151,6 +164,8 @@ const initial = {
   diningNotes: "",
   tableNumber: "",
   tipAmount: 0,
+  whatsappOptIn: false,
+  whatsappOptInAt: null,
   loyaltyPointsToRedeem: 0,
   checkoutFees: INITIAL_CHECKOUT_FEES,
   feesRequestSeq: 0,
@@ -180,6 +195,13 @@ export const useCheckoutStore = create<CheckoutState>()(
       setTableNumber: (v) => set({ tableNumber: v.slice(0, 20) }),
       setTipAmount: (v) =>
         set({ tipAmount: Number.isFinite(v) ? Math.min(10000, Math.max(0, Math.floor(v))) : 0 }),
+      setWhatsappOptIn: (optIn) =>
+        set({
+          whatsappOptIn: optIn === true,
+          // The consent stamp is written when the box is TICKED and cleared when
+          // it is unticked: consent without a time is not consent (2026-11-25 #3).
+          whatsappOptInAt: optIn === true ? new Date().toISOString() : null,
+        }),
       // D31–D33: redemption withdrew from the customer app — always zero.
       setLoyaltyPointsToRedeem: () => set({ loyaltyPointsToRedeem: 0 }),
       // Defensive: a corrupt/negative quote must never price a ₹0 delivery.
@@ -261,6 +283,10 @@ export const useCheckoutStore = create<CheckoutState>()(
           legacyOrderNotes: "",
           notesRevision: current.notesRevision + 1,
           tipAmount: 0,
+          // Consent is per order and must never be inherited by the next one:
+          // the tick-box starts OFF again (owner decision 2026-11-25 #3).
+          whatsappOptIn: false,
+          whatsappOptInAt: null,
           loyaltyPointsToRedeem: 0,
           deliveryInstructions: "",
           pickupInstructions: "",
@@ -282,7 +308,6 @@ export const useCheckoutStore = create<CheckoutState>()(
         pickupInstructions: s.pickupInstructions,
         diningNotes: s.diningNotes,
         tableNumber: s.tableNumber,
-        tipAmount: s.tipAmount,
         loyaltyPointsToRedeem: s.loyaltyPointsToRedeem,
         notesScope: s.notesScope,
       }),
@@ -297,6 +322,14 @@ export const useCheckoutStore = create<CheckoutState>()(
           // A persisted redemption choice from the withdrawn wallet feature
           // must never be revived by a reload or a deep link.
           loyaltyPointsToRedeem: 0,
+          // The tip is not persisted at all (owner decision 2026-11-25 #1): a
+          // legacy stored amount must never resurface in a bill.
+          tipAmount: 0,
+          // WhatsApp consent is deliberately NOT persisted: a reload, a new tab
+          // or a later visit starts unticked, so consent is only ever sent for a
+          // box the customer ticked in THIS checkout (2026-11-25 #3).
+          whatsappOptIn: false,
+          whatsappOptInAt: null,
           // The revision is runtime-only: it exists to fence an in-flight
           // order, and a reload starts a fresh draft timeline. Bump it so an
           // order captured before the reload cannot clear the restored draft.
@@ -338,8 +371,6 @@ const CHECKOUT_EMPTY: ScopedCheckout = {
 };
 
 const str = (v: unknown, max: number): string => (typeof v === "string" ? v.slice(0, max) : "");
-const nonNegInt = (v: unknown, max: number): number =>
-  typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(0, Math.floor(v))) : 0;
 
 function readCheckoutScope(uid: string | null): ScopedCheckout {
   return readScopedPersisted<ScopedCheckout>(
@@ -354,7 +385,8 @@ function readCheckoutScope(uid: string | null): ScopedCheckout {
         pickupInstructions: str(state.pickupInstructions, 160),
         diningNotes: str(state.diningNotes, 160),
         tableNumber: str(state.tableNumber, 20),
-        tipAmount: nonNegInt(state.tipAmount, 10000),
+        // A legacy tip is never restored (owner decision 2026-11-25 #1).
+        tipAmount: 0,
         loyaltyPointsToRedeem: 0,
       };
     },

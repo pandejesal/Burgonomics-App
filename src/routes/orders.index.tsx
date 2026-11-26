@@ -55,6 +55,9 @@ function OrderHistoryPage() {
   const [loading, setLoading] = React.useState(true);
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // A6-c11 item 4: the server read failed but cached rows are shown. This is a
+  // NOTICE, not the error state — the list above it is still usable.
+  const [refreshDegraded, setRefreshDegraded] = React.useState(false);
 
   // Debounce search input
   React.useEffect(() => {
@@ -92,11 +95,15 @@ function OrderHistoryPage() {
         setHasMore(res.data.hasMore);
         setPage(1);
         setError(null);
+        // A degraded answer is cache-served: keep the rows, say "couldn't
+        // refresh" quietly, and never blank the list.
+        setRefreshDegraded(res.data.degraded === true);
       } else {
         // Failure branch is typed raw-capable (OrderRepository) — log + map,
         // keeping the original per-path log tag for triage.
         console.error(`[orders] ${origin} failed:`, res.error);
         setError(toUserMessage(res));
+        setRefreshDegraded(false);
       }
     },
     [],
@@ -235,6 +242,24 @@ function OrderHistoryPage() {
             <div className="flex items-center gap-2.5 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm font-medium text-warning">
               <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
               <span>You're offline. Displaying cached orders.</span>
+            </div>
+          )}
+
+          {/* A6-c11 item 4: the refresh failed but these rows are real. Never
+              replace a usable list with the empty-error state. */}
+          {refreshDegraded && isOnline && (
+            <div
+              role="status"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-divider bg-bg-secondary p-3.5 text-sm font-medium text-text-secondary"
+            >
+              <span>Couldn&apos;t refresh your orders. Showing the ones already loaded.</span>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="min-h-11 shrink-0 font-semibold text-primary-text underline-offset-2 hover:underline"
+              >
+                Retry
+              </button>
             </div>
           )}
 

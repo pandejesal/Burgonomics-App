@@ -21,7 +21,6 @@ import {
   selectItemCount,
   CartItemRow,
   BillBreakdown,
-  DeliveryTipSelector,
   PromoInput,
   CookingInstructionsSection,
 } from "@/features/cart";
@@ -68,12 +67,10 @@ function CartPage() {
   const [confirmClear, setConfirmClear] = React.useState(false);
   const [checkoutBusy, setCheckoutBusy] = React.useState(false);
   const [fulfillmentOpen, setFulfillmentOpen] = React.useState(false);
-  // Seeded from the persisted checkout store (the same object the order and
-  // payment payloads read). Starting these at 0 on every mount made a
-  // cart → checkout → cart round trip drop a tip the gateway still charged,
-  // so the two screens quoted different To Pay for one basket.
-  const persistedTip = useCheckoutStore((s) => s.tipAmount);
-  const [tipAmount, setTipAmount] = React.useState(persistedTip);
+  // Owner decision 2026-11-25 (#1): the delivery tip is HIDDEN at launch, so
+  // no tip UI exists and no tip is added to any "To Pay" figure. The persisted
+  // store field is left at 0 by every writer (checkout zeroes it), and no order
+  // or payment payload carries a tip any more — see `setTipAmount` usage.
   // Kitchen-hours gate — re-checked on a 30s tick and on tab focus, so a cart
   // left open overnight locks itself at 23:00 IST.
   const kitchen = useKitchenHours();
@@ -291,10 +288,9 @@ function CartPage() {
   //
   // D31–D33: loyalty redemption withdrew from the customer app, so the cart
   // contributes zero points discount here and in the payloads.
-  const finalToPay = Math.max(
-    0,
-    subtotal - discountAmount + packagingFee + deliveryFee + tipAmount,
-  );
+  // Owner decision 2026-11-25 (#1): the delivery tip is hidden at launch and is
+  // part of NO total — "To Pay" is food + packaging + delivery only.
+  const finalToPay = Math.max(0, subtotal - discountAmount + packagingFee + deliveryFee);
 
   return (
     <AppShell
@@ -444,17 +440,8 @@ function CartPage() {
         {/* D31–D33: loyalty redemption/earned-balance UI withdrew from the
             customer app; server-held balances and ledger history are untouched. */}
 
-        {/* Delivery Partner Tip (Delivery Mode Only) */}
-        {fulfillment === "delivery" && (
-          <DeliveryTipSelector
-            selectedTip={tipAmount}
-            onSelectTip={(tip) => {
-              setTipAmount(tip);
-              // Persist so the server cash/online draft carries the tip.
-              useCheckoutStore.getState().setTipAmount(tip);
-            }}
-          />
-        )}
+        {/* Delivery Partner Tip — REMOVED (owner decision 2026-11-25 #1). The
+            tip is hidden at launch: no selector, no copy, no total. */}
 
         {/* Transparent Financial Bill Breakdown — packaging and the courier fare
             are only known at checkout (R8/P2). */}
@@ -467,7 +454,6 @@ function CartPage() {
           packagingKnown={false}
           packagingFee={packagingFee}
           gstAmount={gst}
-          tipAmount={tipAmount}
           fulfillment={fulfillment ?? undefined}
         />
       </div>

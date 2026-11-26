@@ -197,6 +197,25 @@ const progression = new Map<string, Partial<Record<OrderStatusCode, string>>>();
  */
 const historyFetchedFor = new Set<string>();
 
+/**
+ * A6-c11 item 4 — bound for the ONE order-history read.
+ *
+ * This was a fixed 1.5 s race against `setTimeout`. On the network class the
+ * app ships to (3G, cold cache, 30+ past orders) the query legitimately takes
+ * 2–4 s, so the timer won and the screen told the customer "We couldn't load
+ * your orders" while the rest of the app worked. The race is kept (an unbounded
+ * await can hang for ever) but with room for a real slow read, and a failed or
+ * timed-out read now DEGRADES to the cache that is already on screen instead of
+ * presenting a hard failure.
+ */
+export const HISTORY_READ_TIMEOUT_MS = 10_000;
+
+/** After a failed history read, do not re-hang the UI on every keystroke. */
+export const HISTORY_RETRY_COOLDOWN_MS = 30_000;
+
+/** Epoch ms before which a retry of the failed history read is pointless. */
+let historyRetryAfterMs = 0;
+
 // -- Auth-scoped session cache ---------------------------------------
 //
 // `orders`, `progression` and `historyFetchedFor` are a
@@ -230,6 +249,9 @@ function syncCacheScope(user: { uid: string } | null | undefined): void {
   orders.clear();
   progression.clear();
   historyFetchedFor.clear();
+  // A new account (or a return to an old one) gets its own attempt: the
+  // cooldown from another scope's failed read must not suppress this one.
+  historyRetryAfterMs = 0;
   cacheScope = key;
 }
 
@@ -742,6 +764,12 @@ export const ordersService = {
   async listOrders(query: OrderListQuery = {}): Promise<ApiResult<OrderListResult>> {
     // eslint-disable-next-line no-useless-assignment -- initial value is a fallback only
     let all: Order[] = [];
+    /**
+     * True when the server read failed but this account's session cache still
+     * has rows: the list is served from cache and the screen shows a
+     * non-blocking "couldn't refresh" notice instead of the error state.
+     */
+    let historyDegraded = false;
 
     try {
       const { auth, db } = await import("@/core/config/firebase");
@@ -765,14 +793,14 @@ export const ordersService = {
       // The in-memory map below is the cache — one fetch per uid per scope;
       // createOrder/cancelOrder mutate the same map, so it stays coherent.
       // (Cross-device orders appear on next reload — documented tradeoff.)
-      if (user && !historyFetchedFor.has(user.uid)) {
+      if (user && !historyFetchedFor.has(user.uid) && Date.now() >= historyRetryAfterMs) {
         const startedUid = user.uid;
         const ordersRef = collection(db, "orders");
         const q = fsQuery(ordersRef, where("userId", "==", startedUid));
         const snapshot = await Promise.race([
           getDocs(q),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Firestore timeout")), 1500),
+            setTimeout(() => reject(new Error("Firestore timeout")), HISTORY_READ_TIMEOUT_MS),
           ),
         ]);
 
@@ -811,14 +839,22 @@ export const ordersService = {
       logger.warn("ordersService.history_read_failed", {
         message: err instanceof Error ? err.message : String(err),
       });
-      // A failed read is NOT an empty history. The previous fall-through
-      // rendered "No Orders Found" for permission/timeout failures, which is
-      // the same lie the live tracking screen told.
-      return fail(
-        "ORDERS_READ_FAILED",
-        "We couldn't load your orders. Please check your connection and try again.",
-        true,
-      );
+      // A6-c11 item 4: a read that failed while this account already has orders
+      // in the session cache must NOT present as "no orders" OR as a hard
+      // failure. The cached rows stay on screen and the caller shows a
+      // non-blocking "couldn't refresh" notice. Only an EMPTY cache is a real
+      // failure (there is genuinely nothing to show).
+      if (orders.size === 0) {
+        return fail(
+          "ORDERS_READ_FAILED",
+          "We couldn't load your orders. Please check your connection and try again.",
+          true,
+        );
+      }
+      historyDegraded = true;
+      // Do not re-hang the UI on the same failing read for every keystroke or
+      // bucket switch; the cache keeps serving and settings/refresh can retry.
+      historyRetryAfterMs = Date.now() + HISTORY_RETRY_COOLDOWN_MS;
     }
 
     // Advance every order's status before returning.
@@ -883,6 +919,7 @@ export const ordersService = {
       pageSize,
       total: filtered.length,
       hasMore: start + items.length < filtered.length,
+      ...(historyDegraded ? { degraded: true as const } : {}),
     });
   },
 

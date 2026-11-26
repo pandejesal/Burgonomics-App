@@ -216,6 +216,8 @@ vi.mock("@/features/checkout", async () => {
 });
 vi.mock("@/features/orders/repositories/OrderRepository", () => ({
   orderRepository: {
+    // A6-c11 item 1: the cash attempt is TTL/basket gated before any replay.
+    pendingCashAttempt: () => null,
     getOrder: fixture.getOrder,
     createOnlineDraft: fixture.createOnlineDraft,
     finalizePaidOrder: fixture.finalizePaidOrder,

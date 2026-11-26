@@ -236,21 +236,22 @@ export interface Order {
 
 /**
  * Amount the customer still owes on this order, or null when the document
- * does not carry a readable grand total. Mirrors the checkout payable rule:
- * grand total plus tip minus redeemed loyalty points, floored at zero.
+ * does not carry a readable grand total.
+ *
+ * Owner decision 2026-11-25 (#1): the delivery tip is HIDDEN at launch and is
+ * never charged, so a legacy `tipAmount` on an old order must NOT inflate what
+ * the customer is asked to pay now.
  */
 export function orderPayableAmount(
-  order: Pick<Order, "totals" | "tipAmount" | "loyaltyPointsRedeemed">,
+  order: Pick<Order, "totals" | "loyaltyPointsRedeemed">,
 ): number | null {
   const grandTotal = order.totals?.grandTotal;
   if (typeof grandTotal !== "number" || !Number.isFinite(grandTotal)) return null;
-  const tip =
-    typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount) ? order.tipAmount : 0;
   const points =
     typeof order.loyaltyPointsRedeemed === "number" && Number.isFinite(order.loyaltyPointsRedeemed)
       ? order.loyaltyPointsRedeemed
       : 0;
-  return Math.max(0, grandTotal + tip - points);
+  return Math.max(0, grandTotal - points);
 }
 
 export interface OrderTrackingSnapshot {
@@ -307,6 +308,12 @@ export interface OrderListResult {
   pageSize: number;
   total: number;
   hasMore: boolean;
+  /**
+   * A6-c11 item 4: the server read failed, but the rows served here come from
+   * this account's session cache. The list is usable and the screen must show a
+   * NON-BLOCKING "couldn't refresh" notice, never the empty-error state.
+   */
+  degraded?: true;
 }
 
 /** Mapping helper — build a snapshot from an existing Store model. */

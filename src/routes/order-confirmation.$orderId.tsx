@@ -260,10 +260,13 @@ function OrderConfirmationPage() {
     : undefined;
 
   // Only beside a real, paid, confirmed order (the unpaid/confirming states
-  // returned above). Native + undecided OS state + no recorded answer only.
+  // returned above). Native + push enabled + undecided OS state + no recorded
+  // answer only.
+  const pushStatus = getPushStatusSnapshot();
   const showPushPrompt = shouldOfferPushPrompt({
     platform: getPlatform(),
-    permission: getPushStatusSnapshot().permission,
+    permission: pushStatus.permission,
+    enabled: pushStatus.enabled,
     decision: pushDecision,
     hasConfirmedOrder: true,
   });

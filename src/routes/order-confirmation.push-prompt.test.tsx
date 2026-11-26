@@ -223,10 +223,12 @@ describe("order-confirmation push opt-in", () => {
     await act(async () => turnOn!.click());
     await act(async () => {});
 
-    // Silent to the customer, recorded as "not granted", receipt still intact.
+    // A6-c11 item 6: a THROWN request is not a refusal, so nothing is recorded
+    // and the card stays available for a later, working attempt. The receipt
+    // below is untouched either way.
     expect(container.textContent).toContain("Track your order live");
-    expect(container.textContent).not.toContain("Get live order updates");
-    expect(localStorage.getItem(PUSH_PROMPT_DECISION_KEY)).toBe("dismissed");
+    expect(container.textContent).toContain("Get live order updates");
+    expect(localStorage.getItem(PUSH_PROMPT_DECISION_KEY)).toBeNull();
   });
 
   it("a later order does not ask again after Not now", async () => {

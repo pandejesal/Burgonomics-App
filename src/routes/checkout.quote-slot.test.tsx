@@ -167,6 +167,8 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
+    // A6-c11 item 1: the cash attempt is TTL/basket gated before any replay.
+    pendingCashAttempt: () => null,
     createOnlineDraft: vi.fn(),
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(async () => ({ success: true })),

@@ -162,13 +162,10 @@ function legacyReceiptMoney(order: Order): ReceiptMoney {
     typeof order.totals?.subtotal === "number"
       ? order.totals.subtotal
       : round2(grandTotal + itemDiscount + promoDiscount - packing - delivery);
-  const tip =
-    typeof order.tipAmount === "number" && Number.isFinite(order.tipAmount)
-      ? Math.max(0, order.tipAmount)
-      : 0;
-  // A tip was never charged by the gateway nor recorded by cash hand-over;
-  // never add it to a line the UI presents as a paid figure.
-  const claimedTip = order.payment?.status === "paid" ? 0 : tip;
+  // Owner decision 2026-11-25 (#1): the delivery tip is hidden at launch and is
+  // part of NO billed figure. A legacy order that stored one still prints only
+  // what was actually charged: the server total as recorded, no tip row and no
+  // tip added on top.
   const netFood = round2(Math.max(0, subtotal - itemDiscount - promoDiscount));
   const taxes = order.totals?.taxes ?? includedGst(netFood);
 
@@ -182,10 +179,9 @@ function legacyReceiptMoney(order: Order): ReceiptMoney {
   }
   if (packing > 0) rows.push({ label: "Packaging Fee", amount: packing });
   if (delivery > 0) rows.push({ label: "Delivery Fee", amount: delivery });
-  if (claimedTip > 0) rows.push({ label: "Delivery Tip", amount: claimedTip });
   rows.push({ label: "Incl. GST (5%)", amount: taxes, informational: true });
 
-  const total = round2(grandTotal + claimedTip);
+  const total = round2(grandTotal);
   // Item prices are only safe when the WHOLE legacy bill reconciles. A stale
   // subtotal that disagrees with the total must hide both price columns too.
   const reconciled = additiveRowPaise(rows) === toPaise(total);

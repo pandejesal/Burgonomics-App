@@ -3,6 +3,7 @@ import { Download, FileText, CheckCircle2, Printer } from "lucide-react";
 import { formatINR } from "@/core/utils/format";
 import { APP, isUnsetRegistrationValue } from "@/core/constants/app";
 import { resolveReceiptMoney } from "../utils/receiptMoney";
+import { invoicePrintButtonOnClick, invoicePrintScript } from "../utils/invoicePrint";
 import type { Order } from "../models";
 
 interface InvoiceDownloadButtonProps {
@@ -136,7 +137,7 @@ export function InvoiceDownloadButton({
       </head>
       <body>
         <div class="no-print" style="margin-bottom: 16px; text-align: right;">
-          <button onclick="window.print()" style="background: #0E4825; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer;">
+          <button onclick="${invoicePrintButtonOnClick()}" style="background: #0E4825; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer;">
             Print / Save as PDF
           </button>
         </div>
@@ -192,8 +193,9 @@ export function InvoiceDownloadButton({
         </div>
 
         <script>
+          ${invoicePrintScript()}
           setTimeout(() => {
-            window.print();
+            if (window.__bgnPrint) window.__bgnPrint();
           }, 400);
         </script>
       </body>

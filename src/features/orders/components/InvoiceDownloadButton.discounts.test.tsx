@@ -183,7 +183,7 @@ describe("F10 — downloaded receipt money lines", () => {
     expect(total.amount).toBeCloseTo(259, 2);
   });
 
-  it("COD order with a coupon: item, coupon, packing, delivery and tip add up to the total", async () => {
+  it("COD order with a coupon: item, coupon, packing and delivery add up to the total", async () => {
     const html = await captureReceipt(codCouponOrder());
     const rows = parseRows(html);
 
@@ -194,12 +194,15 @@ describe("F10 — downloaded receipt money lines", () => {
     expect(coupon.amount).toBeCloseTo(-50, 2);
     expect(rowByLabel(rows, /Packaging Fee/).amount).toBeCloseTo(10, 2);
     expect(rowByLabel(rows, /Delivery Fee/).amount).toBeCloseTo(40, 2);
-    expect(rowByLabel(rows, /Tip/).amount).toBeCloseTo(30, 2);
+    // Owner decision 2026-11-25 (#1): the delivery tip is hidden at launch and
+    // is part of NO billed figure, so a legacy `tipAmount` never prints a row
+    // and never moves the total.
+    expect(rows.some((row) => /Tip/i.test(row.label))).toBe(false);
 
     const total = rowByLabel(rows, /Order Total/);
     expect(total.label).not.toContain("Amount Paid");
     expect(additiveTotal(rows)).toBeCloseTo(total.amount, 2);
-    expect(total.amount).toBeCloseTo(510, 2);
+    expect(total.amount).toBeCloseTo(480, 2);
   });
 
   it("order without a coupon: no discount line, items and total agree", async () => {

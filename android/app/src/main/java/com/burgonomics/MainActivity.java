@@ -2,11 +2,17 @@ package com.burgonomics;
 
 import android.app.Dialog;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
+import android.print.PrintAttributes;
+import android.print.PrintManager;
 import android.view.KeyEvent;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -104,6 +110,10 @@ public class MainActivity extends BridgeActivity {
                 }
             }
         );
+        // Receipt printing (A6-c11): `window.print()` is a no-op inside a plain
+        // WebView, so the receipt page had a "Print / Save as PDF" button that
+        // did nothing. The bridge hands this popup to Android's PrintManager.
+        popup.addJavascriptInterface(new ReceiptPrinter(popup), "BurgonomicsPrint");
 
         dialog.show();
         WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
@@ -176,6 +186,51 @@ public class MainActivity extends BridgeActivity {
             return true;
         } catch (ActivityNotFoundException e) {
             return false;
+        }
+    }
+
+    /**
+     * Bridge exposed to the receipt popup as `window.BurgonomicsPrint`.
+     *
+     * `window.print()` does nothing in an Android WebView, so the receipt screen
+     * could not be printed or saved as a PDF at all. Android's PrintManager
+     * renders the SAME WebView through a PrintDocumentAdapter, which is what
+     * produces the "Save as PDF" / printer picker sheet the customer expects.
+     * The page is printed as laid out (no re-layout performed here) and the job
+     * is posted to the UI thread because it is invoked from the JS bridge thread.
+     */
+    public static class ReceiptPrinter {
+        private final WebView webView;
+
+        ReceiptPrinter(WebView webView) {
+            this.webView = webView;
+        }
+
+        /** Print job name shown in the Android print sheet and in "Save as PDF". */
+        static String jobName(String title) {
+            String trimmed = title == null ? "" : title.trim();
+            return trimmed.isEmpty() ? "Burgonomics receipt" : trimmed;
+        }
+
+        @JavascriptInterface
+        public void print() {
+            if (webView == null) return;
+            final Context context = webView.getContext();
+            final String name = jobName(webView.getTitle());
+            new Handler(Looper.getMainLooper()).post(
+                () -> {
+                    PrintManager manager =
+                        (PrintManager) context.getSystemService(Context.PRINT_SERVICE);
+                    if (manager == null) return;
+                    manager.print(
+                        name,
+                        webView.createPrintDocumentAdapter(name),
+                        new PrintAttributes.Builder()
+                            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                            .build()
+                    );
+                }
+            );
         }
     }
 }

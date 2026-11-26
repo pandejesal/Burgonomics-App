@@ -32,6 +32,7 @@ import {
   useOrderTracking,
   type Order,
 } from "@/features/orders";
+import { resolveReceiptMoney } from "@/features/orders/utils/receiptMoney";
 import {
   DeliveryStepTracker,
   LiveOrderMap,
@@ -200,6 +201,21 @@ function TrackOrderPage() {
   // Row renders only for a fee the order actually recorded — never a default.
   const packingFee = order.totals?.packingFee;
 
+  /**
+   * A6-c11 item 2: the receipt's bottom row may claim "paid" ONLY when the
+   * server's own receipt stamp backs it (`resolveReceiptMoney`). An unpaid cash
+   * order (CASH_PENDING / PAY_AT_STORE / method "cod") and an online order still
+   * inside the "confirming" window therefore read "Amount Due" / "Order Total"
+   * in neutral ink — the same words the downloadable receipt already prints, so
+   * screen and receipt cannot diverge.
+   */
+  const receiptMoney = resolveReceiptMoney(order);
+  const receiptTotal = {
+    label: receiptMoney.totalLabel,
+    amount: receiptMoney.total,
+    paid: receiptMoney.source === "capture" || receiptMoney.source === "cash_collected",
+  };
+
   return (
     <ProtectedRoute>
       <AppShell
@@ -367,13 +383,14 @@ function TrackOrderPage() {
                     </span>
                   </div>
                   <div className="flex justify-between gap-3 border-t border-divider pt-3 text-base font-semibold text-text">
-                    <span>
-                      {trackingState.paymentState === "unpaid"
-                        ? `Order total (${order.payment?.method?.toUpperCase() ?? "ONLINE"})`
-                        : `Total Paid (${order.payment?.method?.toUpperCase() ?? "PAID"})`}
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums text-success">
-                      {formatINR(order.totals?.grandTotal ?? 0)}
+                    <span>{receiptTotal.label}</span>
+                    <span
+                      data-testid="receipt-total-amount"
+                      className={`text-sm font-semibold tabular-nums ${
+                        receiptTotal.paid ? "text-success" : "text-text"
+                      }`}
+                    >
+                      {receiptTotal.amount === null ? "—" : formatINR(receiptTotal.amount)}
                     </span>
                   </div>
                 </div>

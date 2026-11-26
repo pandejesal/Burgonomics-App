@@ -76,13 +76,16 @@ describe("secureStorage native fail-closed behaviour (F4)", () => {
     expect(await secureStorage.get("pref.theme")).toBe("dark");
   });
 
-  it("keeps the web path unchanged (plaintext localStorage, no keystore)", async () => {
+  it("never lands a web token in plaintext localStorage (A3-c11 item 2)", async () => {
     (window as any).Capacitor = { isNativePlatform: () => false };
     const { secureStorage, SECURE_KEYS } = await freshStorage();
 
     await secureStorage.set(SECURE_KEYS.ACCESS_TOKEN, "web-token");
 
-    expect(window.localStorage.getItem("burg.secure.auth.accessToken")).toBe("web-token");
+    // A6/A3-c11 item 5: the WEB path is memory-only for credential keys, so a
+    // Firebase refresh/access token is never readable from localStorage.
+    expect(window.localStorage.getItem("burg.secure.auth.accessToken")).toBeNull();
+    expect(await secureStorage.get(SECURE_KEYS.ACCESS_TOKEN)).toBe("web-token");
     expect(mockNativeSet).not.toHaveBeenCalled();
   });
 

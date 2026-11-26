@@ -268,7 +268,10 @@ export class PaymentRepository {
     // persisted value, or a deep link without the cart cannot redeem points.
     void opts?.loyaltyPointsToRedeem;
     const loyaltyPointsToRedeem = 0;
-    const tipAmount = resume ? resume.tipAmount : checkout.tipAmount;
+    // Owner decision 2026-11-25 (#1): no tip is charged, so none is part of the
+    // checkout identity either. The field stays in the snapshot shape at 0 so a
+    // legacy reader cannot see a stale amount.
+    const tipAmount = 0;
 
     const checkoutSnapshot = {
       store: toStoreSnapshot(sel.activeStore),
@@ -486,7 +489,9 @@ export class PaymentRepository {
       })),
       couponCode: cart.promo?.code,
       loyaltyPointsToRedeem,
-      tipAmount,
+      // Owner decision 2026-11-25 (#1): the tip is hidden at launch. The gateway
+      // order is minted server-side without a tip, so sending one here only
+      // guaranteed a bogus "your total changed" dialog. Never sent.
       deliveryQuoteId,
       // D1: the idempotency key is derived from the checkout identity PLUS the
       // document this attempt is bound to, resolved AFTER the document exists.

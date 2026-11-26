@@ -22,7 +22,6 @@ export interface BillBreakdownProps {
   packagingKnown?: boolean;
   packagingFee?: number;
   gstAmount?: number;
-  tipAmount?: number;
   fulfillment?: Fulfillment;
   className?: string;
 }
@@ -44,7 +43,6 @@ export function BillBreakdown({
   packagingKnown = true,
   packagingFee = 0,
   gstAmount = 0,
-  tipAmount = 0,
   fulfillment = "delivery",
   className,
 }: BillBreakdownProps) {
@@ -71,9 +69,12 @@ export function BillBreakdown({
   // MT-09: menu prices are GST-INCLUSIVE (CGST 2.5% + SGST 2.5% already sit
   // inside `subtotal`), so `gstAmount` is display-only here. Adding it on top
   // of the item total double-charges the 5% GST the customer already paid.
+  //
+  // Owner decision 2026-11-25 (#1): the delivery tip is HIDDEN at launch. No
+  // tip row and no tip in "To Pay" — the gateway never charges one either.
   const toPay = Math.max(
     0,
-    subtotal - discountAmount - coinsRedeemed + actualPackagingFee + actualDeliveryFee + tipAmount,
+    subtotal - discountAmount - coinsRedeemed + actualPackagingFee + actualDeliveryFee,
   );
 
   return (
@@ -147,15 +148,6 @@ export function BillBreakdown({
               ) : (
                 <span className="type-caption font-medium">Calculated at checkout</span>
               )}
-            </span>
-          </div>
-        )}
-
-        {tipAmount > 0 && (
-          <div className="flex items-start justify-between gap-3 text-text-primary">
-            <span className="min-w-0">Delivery Partner Tip</span>
-            <span className="type-price shrink-0 whitespace-nowrap text-right">
-              {formatINR(tipAmount)}
             </span>
           </div>
         )}

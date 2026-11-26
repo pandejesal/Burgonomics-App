@@ -50,6 +50,7 @@ import {
   AddressSelector,
   FulfillmentDetailsCard,
   PaymentMethodSelector,
+  WhatsappOptInCheckbox,
   calculateHaversineKm,
 } from "@/features/checkout";
 import {
@@ -84,7 +85,6 @@ import {
 } from "@/features/payments/state/paymentStore";
 import { orderRepository } from "@/features/orders";
 import { cashPriceChangedPaise } from "@/features/payments/services/cashCheckoutDecision";
-import { readPendingCashOrder } from "@/features/payments/services/pendingCashOrder";
 import { QuickAuthSheet } from "@/features/checkout/components/QuickAuthSheet";
 
 /**
@@ -167,6 +167,10 @@ export function CheckoutPage() {
   const legacyOrderNotes = useCheckoutStore((s) => s.legacyOrderNotes);
   const tableNumber = useCheckoutStore((s) => s.tableNumber ?? "");
   const setTableNumber = useCheckoutStore((s) => s.setTableNumber ?? (() => {}));
+  // Owner decision 2026-11-25 #3: WhatsApp order updates are OPT-IN and OFF by
+  // default. Only this tick-box turns the flag on, and consent is sent only then.
+  const whatsappOptIn = useCheckoutStore((s) => s.whatsappOptIn === true);
+  const setWhatsappOptIn = useCheckoutStore((s) => s.setWhatsappOptIn ?? (() => {}));
 
   const addresses = useAddressStore(selectAddresses);
   const selectedAddress = useAddressStore(selectSelectedAddress);
@@ -323,11 +327,10 @@ export function CheckoutPage() {
   // Kitchen-hours gate: PAY must lock itself at 23:00 IST even if this screen
   // has been sitting open since noon (the hook re-checks on tick + focus).
   const kitchen = useKitchenHours();
-  // The tip chosen on the cart is still a real charge. Loyalty redemption was
-  // withdrawn (D31–D33): the checkout screen no longer offers it, the preview
-  // it shows carries zero points, and every payload pins 0 regardless of any
-  // legacy persisted value.
-  const persistedTip = useCheckoutStore((s) => s.tipAmount);
+  // Owner decision 2026-11-25 (#1): the delivery tip is HIDDEN at launch. There
+  // is no tip row and no tip in "To Pay"; every order/payment payload pins it
+  // off too (see OrderRepository/PaymentRepository). A legacy persisted value
+  // is simply ignored, never displayed and never charged.
   const [remainingLockSeconds, setRemainingLockSeconds] = React.useState<number | null>(null);
 
   // Legacy notes must be reviewed before money can move - including on a
@@ -390,10 +393,9 @@ export function CheckoutPage() {
   }, [hydrated, lines, fulfillment, promo, recompute, feesState]);
 
   const rawGrandTotal = totals?.grandTotal ?? 0;
-  // The delivery tip is a real charge: the server reprices with the same
-  // `tipAmount` this screen reads, so it must already sit inside To Pay —
-  // otherwise checkout quotes less than the gateway collects.
-  const finalPayable = Math.max(0, rawGrandTotal + persistedTip);
+  // Owner decision 2026-11-25 (#1): the delivery tip is HIDDEN at launch, so
+  // "To Pay" is the server's own total and carries no tip.
+  const finalPayable = Math.max(0, rawGrandTotal);
   // Owner decision 2026-11-20: cash on delivery is offered only where the
   // branch allows it, and only under its per-order ceiling. The quote carries
   // that answer; the create route enforces it again on the server.
@@ -561,7 +563,7 @@ export function CheckoutPage() {
     // or start a parallel checkout while the other server attempt is unresolved.
     let recoveringZeroDue: boolean;
     try {
-      const cashPending = readPendingCashOrder();
+      const cashPending = orderRepository.pendingCashAttempt()?.record ?? null;
       recoveringZeroDue = cashPending?.request.zeroDueOnly === true;
       if (paymentMethod !== "cash" && ((cashPending && !cashPending.request.zeroDueOnly) || cash)) {
         setValidationError("Finish your previous checkout before changing payment method.");
@@ -1604,15 +1606,8 @@ export function CheckoutPage() {
               </div>
             )}
 
-            {/* Delivery Partner Tip — chosen on the cart, charged by the server. */}
-            {persistedTip > 0 && (
-              <div className="flex items-start justify-between gap-3 text-text-secondary">
-                <span>Delivery Partner Tip</span>
-                <span className="type-price shrink-0 whitespace-nowrap text-right text-text-primary">
-                  {formatINR(persistedTip)}
-                </span>
-              </div>
-            )}
+            {/* Delivery Partner Tip — REMOVED (owner decision 2026-11-25 #1):
+                hidden at launch, and it is part of no total. */}
 
             {totals?.promoDiscount ? (
               <div className="flex items-start justify-between gap-3 font-medium text-success">
@@ -1654,6 +1649,9 @@ export function CheckoutPage() {
             cashDisabledReason={codAvailability.reason}
           />
         </section>
+
+        {/* 6. WhatsApp order updates — OPT-IN, OFF by default (2026-11-25 #3). */}
+        <WhatsappOptInCheckbox checked={whatsappOptIn} onChange={setWhatsappOptIn} />
       </div>
 
       {/* In-Place Frictionless Phone+OTP Authentication Sheet */}

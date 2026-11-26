@@ -268,6 +268,9 @@ vi.mock("@/features/addresses", () => ({
 vi.mock("@/features/orders", () => ({
   orderRepository: {
     pendingCashOrderId: () => null,
+    // A6-c11 item 1: the cash attempt is now basket/TTL gated; this suite's
+    // checkout has no durable attempt of its own.
+    pendingCashAttempt: () => null,
     createOnlineDraft: fixture.createOnlineDraft,
     createCashOrder: fixture.createCashOrder,
     finalizePaidOrder: vi.fn(),

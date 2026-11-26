@@ -1,4 +1,3 @@
-import { readPendingCashOrder } from "@/features/payments/services/pendingCashOrder";
 import * as React from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import {
@@ -188,7 +187,6 @@ function PaymentPage() {
   const deliveryInstructions = useCheckoutStore((s) => s.deliveryInstructions);
   const pickupInstructions = useCheckoutStore((s) => s.pickupInstructions);
   const diningNotes = useCheckoutStore((s) => s.diningNotes);
-  const tipAmount = useCheckoutStore((s) => s.tipAmount);
 
   /* ── CUS-16 resume: bill the ORDER, never the cart ─────────────────────
    * The customer reaches this screen from "Complete payment" on an unpaid
@@ -377,12 +375,11 @@ function PaymentPage() {
   // simulated (that reads as "money may or may not move").
   const isDevBuild = appConfig.env === "development";
 
-  // The bill the customer was shown includes the persisted delivery tip, and
-  // the server charges it. Comparing the gateway amount against a tip-less
-  // total raised a bogus "total has been updated" prompt on every tipped order.
-  const effectiveTipAmount = resume ? resume.tipAmount : tipAmount;
-  const displayedBillTotal =
-    totals === null ? undefined : Math.max(0, totals.grandTotal + effectiveTipAmount);
+  // Owner decision 2026-11-25 (#1): the delivery tip is HIDDEN at launch. It is
+  // not charged by the gateway, not recorded for cash, and must never appear in
+  // the amount compared against the server — so the comparison uses the server
+  // bill exactly, with no tip term on either side.
+  const displayedBillTotal = totals === null ? undefined : Math.max(0, totals.grandTotal);
 
   const loadTotals = React.useCallback(async () => {
     try {
@@ -493,7 +490,7 @@ function PaymentPage() {
         </AppShell>
       );
     }
-  } else if (lines.length === 0 && !readPendingCashOrder()) {
+  } else if (lines.length === 0 && !orderRepository.pendingCashAttempt()) {
     return (
       <AppShell title="Payment" backTo="/checkout" showTabs={false} showTopBar>
         <EmptyState
@@ -572,11 +569,14 @@ function PaymentPage() {
     }
   };
 
-  const finishCash = async (opts: {
-    attemptId?: string;
-    acceptedTotalPaise?: number;
-    zeroDueOnly?: true;
-  }) => {
+  const finishCash = async (
+    opts: {
+      attemptId?: string;
+      acceptedTotalPaise?: number;
+      zeroDueOnly?: true;
+    },
+    sideEffect: { clearCart?: boolean } = {},
+  ) => {
     const created = await orderRepository.createCashOrder(opts);
     if (!created.success) {
       if (opts.zeroDueOnly && created.error.code === "PRICE_CHANGED") {
@@ -638,7 +638,11 @@ function PaymentPage() {
     }
     AudioService.playSuccess();
     void HapticService.notification("success");
-    void cartRepository.clear();
+    // A6-c11 item 1: NEVER clear the cart because an OLD attempt succeeded.
+    // Only the checkout whose own attempt just placed this order may clear it;
+    // a recovered/confirmed attempt from another basket leaves the live cart
+    // exactly as the customer built it.
+    if (sideEffect.clearCart !== false) void cartRepository.clear();
     void navigate({
       to: "/order-confirmation/$orderId",
       params: { orderId: created.data.id },
@@ -653,11 +657,31 @@ function PaymentPage() {
     // M4 r2: recover BEFORE any preflight/quote/totals check. A confirmed cash
     // id from a lost response or failed receipt read is the only proof of which
     // order was written; navigate to its receipt and never POST again.
-    const savedCash = !resume ? readPendingCashOrder() : null;
+    //
+    // A6-c11 item 1: the attempt is only replayed while it still belongs to the
+    // LIVE basket. An EXPIRED or basket-mismatched unconfirmed attempt is
+    // retired by `pendingCashAttempt()` (it returns null), so it can never
+    // re-submit an old basket. A CONFIRMED id from another basket is shown as
+    // that order — and the NEW cart is left untouched, because placing the old
+    // order says nothing about the basket on screen.
+    const savedCash = !resume ? orderRepository.pendingCashAttempt() : null;
     if (savedCash) {
+      if (savedCash.record.confirmed && !savedCash.matchesBasket) {
+        setStatus("idle");
+        void navigate({
+          to: "/order-confirmation/$orderId",
+          params: { orderId: savedCash.record.orderId },
+          replace: true,
+        });
+        return;
+      }
       payInFlight.current = true;
       try {
-        await finishCash(savedCash.request.zeroDueOnly ? { zeroDueOnly: true } : {});
+        await finishCash(
+          savedCash.record.request.zeroDueOnly ? { zeroDueOnly: true } : {},
+          // Only the basket this attempt actually placed may be cleared.
+          { clearCart: savedCash.matchesBasket },
+        );
       } finally {
         payInFlight.current = false;
       }
@@ -1173,14 +1197,9 @@ function PaymentPage() {
       ? billingStore?.etaMinutes
       : (billingStore?.pickupEtaMinutes ?? billingStore?.etaMinutes);
   const grandTotal = acceptedServerTotal ?? totals?.grandTotal ?? 0;
-  // The gateway order is minted with the persisted tip included, so the "To
-  // Pay" figure must show it too — otherwise the customer sees a smaller
-  // number than the amount they are charged.
-  const finalPayable =
-    grandTotal +
-    (typeof effectiveTipAmount === "number" && Number.isFinite(effectiveTipAmount)
-      ? effectiveTipAmount
-      : 0);
+  // Owner decision 2026-11-25 (#1): no tip anywhere — "To Pay" is the server's
+  // (or the order document's) total, exactly.
+  const finalPayable = grandTotal;
 
   const instructions = resume
     ? (resumeOrder?.fulfillmentInstructions ?? "")
@@ -1228,7 +1247,7 @@ function PaymentPage() {
               onClick={() => void startPayment()}
               loading={busy && !payBlocked}
               disabled={
-                !readPendingCashOrder() &&
+                !orderRepository.pendingCashAttempt() &&
                 (!fulfillmentSupported ||
                   totals === null ||
                   totalsFailed ||

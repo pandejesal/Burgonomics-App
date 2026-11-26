@@ -4,7 +4,7 @@ import type { AuthSessionRef } from "@/features/auth/services/authService";
 import { isJwtExpired } from "@/features/auth/utils/validators";
 import { DEFAULT_DELIVERY_METHOD } from "@/features/auth/utils/validators";
 import type { AuthFlowId } from "@/features/auth/utils/authErrors";
-import { secureStorage, SECURE_KEYS } from "@/core/storage/secureStorage";
+import { secureStorage, SECURE_KEYS, scrubLegacyWebTokens } from "@/core/storage/secureStorage";
 import { auth as firebaseAuth } from "@/core/config/firebase";
 import { logger } from "@/core/logging/logger";
 import { useProfileStore } from "@/features/profile/state/profileStore";
@@ -52,7 +52,11 @@ interface AuthState {
   error: string | null;
 
   // Actions
-  bootstrap: (sessionProbe?: () => Promise<string | null>) => Promise<void>;
+  bootstrap: (
+    sessionProbe?: () => Promise<string | null>,
+    /** Test seam for the live-session rebuild (web token persistence). */
+    liveSessionProbe?: () => Promise<LiveFirebaseSession | null>,
+  ) => Promise<void>;
   requestOtp: (
     phone: string,
     deliveryMethod?: "whatsapp" | "sms",
@@ -87,6 +91,45 @@ export async function getFirebaseSessionUid(): Promise<string | null> {
     // authStateReady failure — fall through to the currentUser check.
   }
   return firebaseAuth.currentUser?.uid ?? null;
+}
+
+/** A session rebuilt from the LIVE Firebase user (web token-persistence seam). */
+export interface LiveFirebaseSession {
+  uid: string;
+  phone: string;
+  name?: string;
+  accessToken: string;
+  refreshToken: string;
+}
+
+/**
+ * A6/A3-c11 item 5: on WEB the app no longer writes Firebase tokens to
+ * plaintext `localStorage` — Firebase Auth's own IndexedDB persistence owns the
+ * durable session, and `bootstrap` rebuilds the in-app session from the live
+ * Firebase user. Returns null when there is no live session to rebuild from, so
+ * a stolen localStorage copy can never be turned into a session.
+ */
+export async function getFirebaseSessionUser(): Promise<LiveFirebaseSession | null> {
+  try {
+    await firebaseAuth.authStateReady();
+  } catch {
+    // authStateReady failure — fall through to the currentUser check.
+  }
+  const current = firebaseAuth.currentUser;
+  if (!current?.uid) return null;
+  try {
+    const accessToken = await current.getIdToken();
+    if (!accessToken) return null;
+    return {
+      uid: current.uid,
+      phone: current.phoneNumber ?? "",
+      ...(current.displayName ? { name: current.displayName } : {}),
+      accessToken,
+      refreshToken: current.refreshToken ?? "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -334,7 +377,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isBootstrapped: false,
   error: null,
 
-  async bootstrap(sessionProbe?: () => Promise<string | null>) {
+  async bootstrap(
+    sessionProbe?: () => Promise<string | null>,
+    liveSessionProbe?: () => Promise<LiveFirebaseSession | null>,
+  ) {
     if (get().isBootstrapped) return;
     // Root layout, the route guard and a deep link all bootstrap on first paint.
     // Without a shared owner each pass re-read storage and re-links the device
@@ -343,6 +389,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const run = (async () => {
       const startIdentityEpoch = identityEpoch;
+      // A6/A3-c11 item 5: web tokens are no longer persisted; the live Firebase
+      // session is the only way to rebuild one.
+      const liveSessionProbeFn = liveSessionProbe ?? getFirebaseSessionUser;
       /** True when a logout/login superseded this pass; never restores state. */
       const stale = (): boolean => {
         if (identityEpoch === startIdentityEpoch) return false;
@@ -350,6 +399,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return true;
       };
       try {
+        // A6/A3-c11 item 5: any plaintext web copy of a Firebase token is
+        // removed on boot before anything reads storage.
+        scrubLegacyWebTokens();
         const [accessToken, refreshToken, userJson] = await Promise.all([
           secureStorage.get(SECURE_KEYS.ACCESS_TOKEN),
           secureStorage.get(SECURE_KEYS.REFRESH_TOKEN),
@@ -357,6 +409,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ]);
 
         if (!accessToken || !refreshToken || !userJson) {
+          // A6/A3-c11 item 5: on WEB no token is persisted any more (plaintext
+          // localStorage holding a refresh token is durable account takeover),
+          // so an intact session has to be rebuilt from the LIVE Firebase user
+          // that Firebase Auth's own persistence restored. A stolen storage copy
+          // can still never be promoted: the live session is the only source.
+          const live = await liveSessionProbeFn();
+          if (live) {
+            const liveUser: AuthUser = {
+              id: live.uid,
+              phone: live.phone,
+              ...(live.name ? { name: live.name } : {}),
+            };
+            if (stale()) return;
+            await persistSession(liveUser, live.accessToken, live.refreshToken);
+            useProfileStore.getState().hydrateFromAuth(liveUser);
+            profileRepository.refresh().catch((e: unknown) =>
+              logger.warn("auth.profile_refresh_failed", {
+                message: e instanceof Error ? e.message : String(e),
+              }),
+            );
+            linkDeviceTokenInBackground(liveUser.id);
+            set({
+              status: "authenticated",
+              user: liveUser,
+              accessToken: live.accessToken,
+              refreshToken: live.refreshToken,
+              isBootstrapped: true,
+            });
+            return;
+          }
           if (stale()) return;
           set({ status: "guest", isBootstrapped: true });
           return;

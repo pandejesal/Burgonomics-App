@@ -243,6 +243,10 @@ vi.mock("@/features/orders", () => ({
   orderRepository: {
     createOnlineDraft: vi.fn(),
     createCashOrder: fixture.createCashOrder,
+    // A6-c11 item 1: the route asks the TTL/basket-gated attempt first; a
+    // missing method would throw during render.
+    pendingCashAttempt: () => null,
+    pendingCashOrderId: () => null,
     finalizePaidOrder: vi.fn(),
     markPaymentFailed: vi.fn(),
   },
@@ -289,7 +293,10 @@ beforeEach(() => {
     success: true as const,
     data: {
       orderId: "order_bill_unknown_synth",
-      amount: 219,
+      // Owner decision 2026-11-25 (#1): a persisted legacy tip is part of NO
+      // billed figure, so the server total matches the visible bill (a ₹219
+      // fixture would now raise the reprice prompt and stop the flow).
+      amount: 199,
       currency: "INR",
       receipt: "rcpt_synth",
       keyId: "rzp_test_synth",
@@ -430,16 +437,19 @@ describe("payment route — unknown bill must not be payable (synthetic scenario
     expect(buttonWithText("Retry")).toBeDefined();
   });
 
-  it("[synthetic] positive control: computed bill + persisted tip stays payable and the pay flow runs", async () => {
-    // The fix must not over-disable: a successfully computed bill (₹199 + ₹20
-    // persisted tip = ₹219) keeps the CTA enabled and the flow enterable.
+  it("[synthetic] positive control: computed bill stays payable and the pay flow runs", async () => {
+    // The fix must not over-disable: a successfully computed bill keeps the CTA
+    // enabled and the flow enterable. Owner decision 2026-11-25 (#1): the
+    // persisted ₹20 tip is hidden and is NO part of the payable, so the To Pay
+    // figure is the ₹199 the server will charge.
     fixture.calculateTotals.mockResolvedValue(totals(199));
 
     await mountPayment();
 
     const pay = buttonWithText("Pay Online");
     expect(pay!.disabled).toBe(false);
-    expect(container.textContent).toContain("219");
+    expect(container.textContent).toContain("199");
+    expect(container.textContent).not.toContain("219");
 
     await act(async () => pay!.click());
     await act(async () => {});

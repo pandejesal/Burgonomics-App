@@ -30,16 +30,15 @@ const scopedKey = (key: string): string => {
 function namespacedStorage(base: Storage): Storage {
   return {
     // Loop 36/120 privacy holds for WRITES (always scoped — never leak one
-    // device user's rows into another scope). Reads fall back to the legacy
-    // unscoped key only when the signed-in scope is EMPTY (same-device
-    // guest→login handoff, e.g. mid-checkout sign-in); a populated scope
-    // always wins, so scopes never mix.
-    getItem: (key: string) => {
-      const scoped = scopedKey(key);
-      const hit = base.getItem(scoped);
-      if (hit !== null || scoped === key) return hit;
-      return base.getItem(key);
-    },
+    // device user's rows into another scope).
+    //
+    // A6-c11 item 7: the legacy unscoped `burg.addresses` key is a GUEST key.
+    // It used to be the read fallback for ANY uid, so a signed-in account with
+    // an empty scope inherited whoever used the phone signed out — another
+    // person's contact name, phone and home location — and a legacy account's
+    // rows. Signed-in reads therefore NEVER consult it; only a guest (uid null)
+    // reads and writes the unscoped key, where `scoped === key` already.
+    getItem: (key: string) => base.getItem(scopedKey(key)),
     setItem: (key: string, value: string) => base.setItem(scopedKey(key), value),
     removeItem: (key: string) => base.removeItem(scopedKey(key)),
     clear: () => base.clear(),
@@ -156,15 +155,14 @@ interface ScopedAddresses {
   selectedId: string | null;
 }
 
-// Read a scope straight from storage (same key scheme as namespacedStorage,
-// plus the legacy-key fallback for first-login handoff).
+// Read a scope straight from storage (same key scheme as namespacedStorage).
+// A6-c11 item 7: the guest (unscoped) key is NOT a fallback for a signed-in
+// uid — inheriting it leaked a previous device user's contact details.
 function readScope(uid: string | null): ScopedAddresses {
   const empty: ScopedAddresses = { addresses: [], selectedId: null };
   if (typeof window === "undefined") return empty;
   try {
-    const raw =
-      window.localStorage.getItem(addressStorageKey("burg.addresses", uid)) ??
-      window.localStorage.getItem("burg.addresses");
+    const raw = window.localStorage.getItem(addressStorageKey("burg.addresses", uid));
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as {
       state?: { addresses?: unknown; selectedId?: unknown };

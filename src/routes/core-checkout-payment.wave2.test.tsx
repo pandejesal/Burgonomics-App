@@ -208,6 +208,9 @@ vi.mock("@/features/checkout", async () => {
     AddressSelector: () => null,
     FulfillmentDetailsCard: () => null,
     PaymentMethodSelector: () => null,
+    // Owner decision 2026-11-25 #3: the route renders this beside the payment
+    // method; the barrel mock must expose it or the render throws.
+    WhatsappOptInCheckbox: () => null,
     ReviewItemsList: () => null,
     calculateHaversineKm: () => 0,
   };
@@ -278,6 +281,8 @@ vi.mock("@/features/orders", () => ({
     createOnlineDraft: fixture.createOnlineDraft,
     createCashOrder: fixture.createCashOrder,
     pendingCashOrderId: () => null,
+    // A6-c11 item 1: cash attempts are TTL/basket gated before any replay.
+    pendingCashAttempt: () => null,
     finalizePaidOrder: vi.fn(async () => ({ success: true, data: { id: "ord_1" } })),
     markPaymentFailed: vi.fn(async () => ({ success: true })),
   },

@@ -13,8 +13,10 @@ const record = {
   attemptId: "attempt_old",
   orderId: "ord_old",
   confirmed: false,
-  createdAtMs: 1,
-  updatedAtMs: 1,
+  // A live (unexpired) attempt: the TTL gate added in A6-c11 item 1 must not be
+  // what this migration case exercises.
+  createdAtMs: Date.now(),
+  updatedAtMs: Date.now(),
   request: {
     orderId: "ord_old",
     storeId: "store_1",

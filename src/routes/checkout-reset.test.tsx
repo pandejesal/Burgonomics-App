@@ -186,6 +186,8 @@ vi.mock("@/features/loyalty/state/loyaltyStore", () => ({
 }));
 vi.mock("@/features/orders", () => ({
   orderRepository: {
+    // A6-c11 item 1: the cash attempt is TTL/basket gated before any replay.
+    pendingCashAttempt: () => null,
     createOnlineDraft: fixture.createOrder,
     createCashOrder: fixture.createOrder,
     finalizePaidOrder: fixture.finalizePaidOrder,
@@ -356,7 +358,10 @@ describe("checkout selections reset after every successful order path", () => {
       success: true,
       data: {
         orderId: "order_rzp_reset",
-        amount: 520,
+        // Owner decision 2026-11-25 (#1): the tip is part of no billed figure,
+        // so the server total equals the visible ₹500 (₹520 would now raise the
+        // reprice prompt and stop the flow before finalization).
+        amount: 500,
         currency: "INR",
         receipt: "rcpt_reset",
         keyId: "rzp_test_key",

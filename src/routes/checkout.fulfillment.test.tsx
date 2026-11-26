@@ -434,22 +434,23 @@ describe("checkout — null fulfillment is an honest, blocking state", () => {
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
   });
 
-  it("blocks the cash path with a banked tip while no mode is chosen", async () => {
+  it("blocks the cash path with a banked legacy tip while no mode is chosen", async () => {
     usePaymentStore.getState().setMethod("cash");
     useCheckoutStore.getState().setTipAmount(40);
-    useCheckoutStore.getState().setOrderNotes("Keep the tip");
+    useCheckoutStore.getState().setOrderNotes("Keep the note");
 
     await mount();
 
-    expect(container.textContent).toContain("Delivery Partner Tip");
+    // Owner decision 2026-11-25 (#1): a legacy banked tip is never SHOWN, but
+    // the block this case exists for is unchanged — no mode, no order.
+    expect(container.textContent).not.toContain("Delivery Partner Tip");
     expect(payButton().disabled).toBe(true);
     await act(async () => payButton().click());
     await act(async () => {});
 
     expect(fixture.createOrder).not.toHaveBeenCalled();
     // The persisted checkout selection is untouched by the blocked attempt.
-    expect(useCheckoutStore.getState().tipAmount).toBe(40);
-    expect(useCheckoutStore.getState().orderNotes).toBe("Keep the tip");
+    expect(useCheckoutStore.getState().orderNotes).toBe("Keep the note");
   });
 
   it("does not claim a persisted mode when the outlet is unknown", async () => {
@@ -630,6 +631,9 @@ describe("checkout — normal modes keep their order behaviour", () => {
       storeId: store.id,
       items: [{ productId: "burger_1", quantity: 1 }],
       expectedTotalPaise: 10900,
+      // Owner decision 2026-11-25 #3: consent is sent EXPLICITLY (the deployed
+      // server defaults a missing key to true), and is false when unticked.
+      whatsappOptIn: false,
     });
     expect(fixture.createOrder).not.toHaveBeenCalled();
     expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
@@ -871,7 +875,10 @@ describe("checkout — completion owns cleanup, not the receipt screen", () => {
       success: true,
       data: {
         orderId: "order_rzp_first",
-        amount: 525,
+        // Owner decision 2026-11-25 (#1): the legacy banked tip is part of NO
+        // billed figure, so the server total equals the visible ₹500 — a ₹525
+        // fixture would now (correctly) raise the reprice prompt instead.
+        amount: 500,
         currency: "INR",
         receipt: "rcpt_first",
         keyId: "rzp_test_key",
@@ -914,7 +921,7 @@ describe("checkout — completion owns cleanup, not the receipt screen", () => {
       success: true,
       data: {
         orderId: "order_rzp_second",
-        amount: 510,
+        amount: 500,
         currency: "INR",
         receipt: "rcpt_second",
         keyId: "rzp_test_key",

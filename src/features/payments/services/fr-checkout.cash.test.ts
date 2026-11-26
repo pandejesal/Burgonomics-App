@@ -83,12 +83,18 @@ describe("M4 pending cash request", () => {
     expect(readPendingCashOrder()?.confirmed).toBe(true);
   });
 
-  it("retains an ambiguous attempt beyond the old TTL and clears after resolution", () => {
+  it("retires an UNCONFIRMED attempt past the TTL, and clears after resolution", () => {
     savePendingCashOrder("attempt_r2", request.orderId, request);
-    expect(readPendingCashOrder(Date.now() + PENDING_CASH_ORDER_TTL_MS + 1)?.orderId).toBe(
-      request.orderId,
-    );
+    // A6-c11 item 1: an abandoned (unconfirmed) attempt must NOT be replayed for
+    // ever — an expired record is gone, not merely ignored.
+    expect(readPendingCashOrder(Date.now() + PENDING_CASH_ORDER_TTL_MS + 1)).toBeNull();
+    expect(readPendingCashOrder()).toBeNull();
+
+    // A CONFIRMED id still survives any TTL: it is the only proof of the write.
     savePendingCashOrder("attempt_r2", request.orderId, request);
+    markPendingCashOrderConfirmed(request.orderId);
+    expect(readPendingCashOrder(Date.now() + PENDING_CASH_ORDER_TTL_MS * 10)?.confirmed).toBe(true);
+
     clearPendingCashOrder();
     expect(readPendingCashOrder()).toBeNull();
   });

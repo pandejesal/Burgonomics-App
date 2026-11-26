@@ -93,11 +93,18 @@ describe("shouldOfferPushPrompt", () => {
     permission: "default" as const,
     decision: null,
     hasConfirmedOrder: true,
+    // A6-c11 item 6: the card is never offered (nor its one-time answer burned)
+    // while the build's push flag is off.
+    enabled: true,
   };
 
   it("shows on native while the OS has not decided", () => {
     expect(shouldOfferPushPrompt(base)).toBe(true);
     expect(shouldOfferPushPrompt({ ...base, platform: "ios" })).toBe(true);
+  });
+
+  it("is hidden while push is disabled in the build", () => {
+    expect(shouldOfferPushPrompt({ ...base, enabled: false })).toBe(false);
   });
 
   it("is hidden once granted or denied", () => {

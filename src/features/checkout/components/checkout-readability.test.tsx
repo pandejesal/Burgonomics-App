@@ -127,14 +127,16 @@ describe("checkout and cart readability", () => {
         gstAmount={6172.8}
         packagingFee={20}
         deliveryFee={40}
-        tipAmount={20}
+        {...({ tipAmount: 20 } as object)}
         fulfillment="delivery"
       />,
     );
 
     expect(html).toContain("Inclusive of all taxes (5% GST)");
     expect(html).toContain(formatINR(123456));
-    expect(html).toContain(formatINR(123436));
+    // Owner decision 2026-11-25 (#1): 123456 - 100 + 20 + 40 = 123416, the
+    // retired tip contributes nothing.
+    expect(html).toContain(formatINR(123416));
     expect(html).toMatch(/To Pay<\/span><span[^>]*class="[^"]*whitespace-nowrap[^"]*"/);
     expect(html).not.toContain("truncate");
   });

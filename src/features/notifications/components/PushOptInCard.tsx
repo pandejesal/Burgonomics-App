@@ -4,9 +4,11 @@ import { AppButton } from "@/shared/components/common/AppButton";
 import { Text } from "@/shared/components/common/Text";
 import { logger } from "@/core/logging/logger";
 import {
+  decidePushPromptAnswer,
   recordPushPromptDecision,
   type PushPromptDecision,
 } from "@/features/notifications/pushPrompt";
+import { getPushStatusSnapshot } from "@/shared/platform/pushNotifications";
 
 interface PushOptInCardProps {
   /** Prompts the OS, then registers. Resolves true when permission is granted. */
@@ -58,9 +60,15 @@ export function PushOptInCard({ onRequestPermission, onAnswered }: PushOptInCard
     } finally {
       setBusy(false);
     }
-    // Recording "dismissed" on a refused prompt is honest: the OS state is now
-    // `denied` or still undecided, and Settings is the route either way.
-    answer(granted ? "granted" : "dismissed");
+    // A6-c11 item 6: only an OBSERVED `denied` is a real refusal. A throw, a
+    // disabled build or a still-undecided OS prompt must record NOTHING —
+    // "dismissed" here was permanent and hid the card for ever.
+    const decision = decidePushPromptAnswer({
+      granted,
+      permission: getPushStatusSnapshot().permission,
+    });
+    if (!decision) return;
+    answer(decision);
   }, [answer, busy, onRequestPermission]);
 
   return (
