@@ -157,10 +157,17 @@ export function dismissOpenOverlay(win: Window, overlay: Element): boolean {
   return true;
 }
 
-/** Minimal router history surface so this module never imports TanStack. */
+/**
+ * Minimal router surface so this module never imports TanStack.
+ *
+ * `goHome` MUST come from the router (`router.navigate`), never from a raw
+ * `history.pushState({}, ...)`: that call drops the idx/key/__TSR_index fields
+ * TanStack keeps in history.state, after which BACK can no longer pop.
+ */
 export interface RouterHistoryLike {
   back: () => void;
   canGoBack?: () => boolean;
+  goHome: () => void;
 }
 
 /** Minimal `@capacitor/app` surface. */
@@ -175,7 +182,8 @@ export interface AppPluginLike {
 
 export interface BackHandlerOptions {
   app: AppPluginLike;
-  history?: RouterHistoryLike;
+  /** Router bridge; required so go-home can never bypass the router. */
+  history: RouterHistoryLike;
   win?: Window;
   /** Injected clock (tests). */
   now?: () => number;
@@ -216,18 +224,16 @@ export function createBackHandler(
         if (overlay) dismissOpenOverlay(win, overlay);
         armedAt = null;
         return action;
-      case "history-back": {
+      case "history-back":
         armedAt = null;
-        if (options.history) options.history.back();
-        else win.history.back();
+        options.history.back();
         return action;
-      }
       case "go-home":
-        // Sub-route with no history behind it (deep link / cold start):
-        // keep the app alive on Home.
+        // Sub-route with no history behind it (deep link / cold start): keep
+        // the app alive on Home through TanStack's own navigate() call so the
+        // router's history state (idx/key/__TSR_index) stays intact.
         armedAt = null;
-        win.history.pushState({}, "", "#/home");
-        win.dispatchEvent(new (win as WindowWithEvents).PopStateEvent("popstate"));
+        options.history.goHome();
         return action;
       case "arm-exit":
         armedAt = now();
@@ -247,15 +253,33 @@ export function createBackHandler(
  * Registers the handler on the Android shell. Native-only; a no-op in the
  * browser so a plain web session keeps the browser's own BACK behaviour.
  */
-export function initAndroidBackButton(options: BackHandlerOptions): void {
-  if (!isNative() || getPlatform() !== "android") return;
+export function initAndroidBackButton(options: BackHandlerOptions): () => void {
+  if (!isNative() || getPlatform() !== "android") return () => undefined;
   const handler = createBackHandler(options);
+  let handle: { remove: () => void } | null = null;
+  let disposed = false;
   try {
-    void options.app.addListener("backButton", (event) => {
-      handler(event);
-    });
+    void Promise.resolve(
+      options.app.addListener("backButton", (event) => {
+        handler(event);
+      }),
+    )
+      .then((registered) => {
+        const candidate = registered as { remove?: () => void } | null;
+        if (!candidate || typeof candidate.remove !== "function") return;
+        // The plugin handle resolves asynchronously; dispose may already have
+        // run, so remove it immediately rather than leaving a live listener.
+        if (disposed) candidate.remove();
+        else handle = candidate as { remove: () => void };
+      })
+      .catch(() => undefined);
   } catch {
     // Shell without the App plugin: the OS default BACK handling stays in
     // place, which is better than throwing inside native bootstrap.
   }
+  return () => {
+    disposed = true;
+    handle?.remove();
+    handle = null;
+  };
 }

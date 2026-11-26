@@ -19,6 +19,45 @@ import {
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 
 /**
+ * Native listeners are registered once for the whole session, so their handles
+ * must be retained and released when the React root is torn down (or the
+ * WebView fires pagehide). Dropping them leaves live listeners behind on every
+ * remount and, on Android, a back handler that outlives its router bridge.
+ */
+let detachStatusBarChrome: (() => void) | null = null;
+let disposeBackButton: (() => void) | null = null;
+const pluginListenerHandles: Array<{ remove: () => void }> = [];
+let disposed = false;
+
+function keepListener(pending: unknown): void {
+  void Promise.resolve(pending)
+    .then((handle) => {
+      const removable = handle as { remove?: () => void } | null;
+      if (!removable || typeof removable.remove !== "function") return;
+      if (disposed) removable.remove();
+      else pluginListenerHandles.push(removable as { remove: () => void });
+    })
+    .catch(() => undefined);
+}
+
+/** Root teardown: release every native listener registered by this module. */
+export function disposeNativePlatform(): void {
+  disposed = true;
+  detachStatusBarChrome?.();
+  detachStatusBarChrome = null;
+  disposeBackButton?.();
+  disposeBackButton = null;
+  for (const handle of pluginListenerHandles.splice(0)) {
+    try {
+      handle.remove();
+    } catch {
+      /* best effort: one plugin failure must not strand the other disposers */
+    }
+  }
+  window.removeEventListener("pagehide", disposeNativePlatform);
+}
+
+/**
  * Top-level route segments this app actually serves, derived from the route
  * FILES at build time rather than from a hand-kept list. TanStack file routes
  * name the first segment: `cart.tsx` → `/cart`, `menu.index.tsx` → `/menu`,
@@ -75,6 +114,8 @@ export function resolveAppUrl(rawUrl: string): string | null {
 export async function bootstrapNativePlatform(): Promise<void> {
   if (!isNative()) return;
 
+  window.addEventListener("pagehide", disposeNativePlatform, { once: true });
+
   const platform = getPlatform();
   document.documentElement.classList.add(`platform-${platform}`);
 
@@ -121,9 +162,11 @@ export async function bootstrapNativePlatform(): Promise<void> {
     // helper, so one failure cannot take the splash, keyboard or links down.
     try {
       await applyChrome(readResolvedTheme(document));
-      watchStatusBarChrome(window, (theme) => {
+      const detach = watchStatusBarChrome(window, (theme) => {
         void applyChrome(theme);
       });
+      if (disposed) detach();
+      else detachStatusBarChrome = detach;
     } catch {
       /* system bars unavailable on this shell */
     }
@@ -153,28 +196,32 @@ export async function bootstrapNativePlatform(): Promise<void> {
     // Deep links (burgonomics://path or https universal links). Allowlisted:
     // any scheme/host the OS delivers is otherwise pushed straight into the
     // router (open redirect into arbitrary in-app or external targets).
-    App.addListener("appUrlOpen", (event) => {
-      try {
-        const safe = resolveAppUrl(event.url);
-        if (safe) {
-          window.history.pushState({}, "", safe);
-          window.dispatchEvent(new PopStateEvent("popstate"));
+    keepListener(
+      App.addListener("appUrlOpen", (event) => {
+        try {
+          const safe = resolveAppUrl(event.url);
+          if (safe) {
+            window.history.pushState({}, "", safe);
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }
+        } catch {
+          /* ignore malformed deep link */
         }
-      } catch {
-        /* ignore malformed deep link */
-      }
-    });
+      }),
+    );
 
     // Lifecycle — surface via CustomEvent so features can subscribe.
-    App.addListener("appStateChange", ({ isActive }) => {
-      window.dispatchEvent(new CustomEvent("burg:appstate", { detail: { isActive } }));
-    });
+    keepListener(
+      App.addListener("appStateChange", ({ isActive }) => {
+        window.dispatchEvent(new CustomEvent("burg:appstate", { detail: { isActive } }));
+      }),
+    );
 
     // Hardware / Gesture Back Button (Android). Decision table + overlay
     // dismissal live in ./androidBackButton so they are unit-testable; the
     // router history is passed in so BACK pops it instead of guessing from
     // window.history (which the audit showed going nowhere).
-    initAndroidBackButton({
+    const dispose = initAndroidBackButton({
       app: App,
       history: historyForRouter(),
       onArmExit: () => {
@@ -183,6 +230,8 @@ export async function bootstrapNativePlatform(): Promise<void> {
         toast("Press back again to exit", { duration: 2000 });
       },
     });
+    if (disposed) dispose();
+    else disposeBackButton = dispose;
   } catch (err) {
     console.warn("[burgonomics] native bootstrap failed", err);
   }
@@ -245,5 +294,10 @@ function historyForRouter(): RouterHistoryLike {
       else window.history.back();
     },
     canGoBack: () => Boolean(routerHistory?.canGoBack?.() ?? false),
+    goHome: () => {
+      // boot.tsx registers router.navigate before bootstrap runs. Never fall
+      // back to pushState: that would erase the router's history state.
+      routerHistory?.goHome();
+    },
   };
 }

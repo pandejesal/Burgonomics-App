@@ -5,8 +5,9 @@
       STATUS_BAR_CHROME.dark in src/shared/platform/statusBarChrome.ts and
       the `surface` token (#121212) in src/styles.css: the bar sits above the
       app header,
-      so it takes the header's colour and light-content icons.
+      so it takes the header's colour and LIGHT icons.
+       statusBarDarkIcons=false == light icons, correct on #121212.
     -->
     <color name="statusBarColor">#121212</color>
-    <bool name="statusBarLightIcons">true</bool>
+    <bool name="statusBarDarkIcons">false</bool>
 </resources>

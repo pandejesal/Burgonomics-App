@@ -22,7 +22,7 @@
           is the app header's own surface (the `surface` token in src/styles.css),
           not the hero green, and flips with the system theme via values-night.
           `android:windowLightStatusBar` is the same value as
-          @bool/statusBarLightIcons (false = dark icons), so AppCompat and the
+          @bool/statusBarDarkIcons (true = dark icons on a light bar), so AppCompat and the
           targetSdk 36 window edge agree with the StatusBar plugin.
 
           Safe areas are deliberately NOT touched here: `fitsSystemWindows`
@@ -32,8 +32,8 @@
         <item name="android:windowBackground">@color/statusBarColor</item>
         <item name="android:statusBarColor">@color/statusBarColor</item>
         <item name="android:navigationBarColor">@color/statusBarColor</item>
-        <item name="android:windowLightStatusBar">@bool/statusBarLightIcons</item>
-        <item name="android:windowLightNavigationBar">@bool/statusBarLightIcons</item>
+        <item name="android:windowLightStatusBar">@bool/statusBarDarkIcons</item>
+        <item name="android:windowLightNavigationBar">@bool/statusBarDarkIcons</item>
     </style>
 
 

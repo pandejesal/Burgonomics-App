@@ -146,11 +146,13 @@ describe("initAndroidBackButton — the listener actually registered on the shel
   let registered: Listener | null;
   let exitApp: Mock<() => void>;
   let back: Mock<() => void>;
+  let goHome: Mock<() => void>;
+  let removeListener: Mock<() => void>;
 
   const app: AppPluginLike = {
     addListener: (_event, listener) => {
       registered = listener as Listener;
-      return Promise.resolve({ remove: () => undefined });
+      return Promise.resolve({ remove: () => removeListener() });
     },
     exitApp: () => exitApp(),
   };
@@ -159,6 +161,8 @@ describe("initAndroidBackButton — the listener actually registered on the shel
     registered = null;
     exitApp = vi.fn<() => void>();
     back = vi.fn<() => void>();
+    goHome = vi.fn<() => void>();
+    removeListener = vi.fn<() => void>();
     document.body.innerHTML = "";
     window.history.replaceState({}, "", "#/home");
     Object.defineProperty(window, "Capacitor", {
@@ -174,7 +178,7 @@ describe("initAndroidBackButton — the listener actually registered on the shel
       configurable: true,
       value: { getPlatform: () => "web", isNativePlatform: () => false },
     });
-    initAndroidBackButton({ app, history: { back } });
+    initAndroidBackButton({ app, history: { back, goHome } });
     expect(registered).toBeNull();
   });
 
@@ -183,12 +187,12 @@ describe("initAndroidBackButton — the listener actually registered on the shel
       configurable: true,
       value: { getPlatform: () => "ios", isNativePlatform: () => true },
     });
-    initAndroidBackButton({ app, history: { back } });
+    initAndroidBackButton({ app, history: { back, goHome } });
     expect(registered).toBeNull();
   });
 
   it("navigates back on a sub-route", () => {
-    initAndroidBackButton({ app, history: { back } });
+    initAndroidBackButton({ app, history: { back, goHome } });
     window.history.replaceState({}, "", "#/menu");
     press(true);
     expect(back).toHaveBeenCalledTimes(1);
@@ -196,7 +200,7 @@ describe("initAndroidBackButton — the listener actually registered on the shel
   });
 
   it("arms exit, then exits on the second press at an entry screen", () => {
-    initAndroidBackButton({ app, history: { back } });
+    initAndroidBackButton({ app, history: { back, goHome } });
     window.history.replaceState({}, "", "#/home");
 
     press(false);
@@ -208,7 +212,7 @@ describe("initAndroidBackButton — the listener actually registered on the shel
   });
 
   it("never exits while a sheet is open — it dismisses the sheet", () => {
-    initAndroidBackButton({ app, history: { back } });
+    initAndroidBackButton({ app, history: { back, goHome } });
     window.history.replaceState({}, "", "#/home");
     document.body.innerHTML = '<div role="dialog" data-state="open"></div>';
 
@@ -225,6 +229,44 @@ describe("initAndroidBackButton — the listener actually registered on the shel
         throw new Error("App plugin not synced");
       },
     };
-    expect(() => initAndroidBackButton({ app: throwing, history: { back } })).not.toThrow();
+    expect(() => initAndroidBackButton({ app: throwing, history: { back, goHome } })).not.toThrow();
+  });
+
+  it("goes home through the router, then pops router history on BACK", () => {
+    // r2 regression: the old handler called history.pushState({}, "", "#/home"),
+    // which wiped TanStack's idx/key/__TSR_index. A router-owned goHome writes
+    // those fields itself, so the next BACK still sees a usable router stack.
+    const goHome = vi.fn<() => void>(() => {
+      window.history.replaceState({ idx: 0, key: "home", __TSR_index: 0 }, "", "#/home");
+    });
+    const back = vi.fn<() => void>(() => {
+      window.history.replaceState({ idx: 0, key: "home", __TSR_index: 0 }, "", "#/home");
+    });
+    const canGoBack = () => ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
+    const pushState = vi.spyOn(window.history, "pushState");
+    initAndroidBackButton({ app, history: { back, canGoBack, goHome } });
+
+    // Deep link lands on a sub-route with no router history behind it.
+    window.history.replaceState({ idx: 0, key: "deep", __TSR_index: 0 }, "", "#/orders/ord_1");
+    press(false);
+    expect(goHome).toHaveBeenCalledTimes(1);
+    expect(pushState).not.toHaveBeenCalled();
+    expect(exitApp).not.toHaveBeenCalled();
+
+    // The router navigates to a sub-route and writes its own history state.
+    window.history.replaceState({ idx: 1, key: "menu", __TSR_index: 1 }, "", "#/menu");
+    press(false);
+    expect(back).toHaveBeenCalledTimes(1);
+    pushState.mockRestore();
+  });
+
+  it("removes the App listener when the root tears down", async () => {
+    const dispose = initAndroidBackButton({ app, history: { back, goHome } });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(removeListener).not.toHaveBeenCalled();
+
+    dispose();
+    expect(removeListener).toHaveBeenCalledTimes(1);
   });
 });

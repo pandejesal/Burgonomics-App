@@ -24,6 +24,11 @@ export function boot(rootEl: HTMLElement): void {
   registerRouterHistory({
     back: () => router.history.back(),
     canGoBack: () => router.history.canGoBack(),
+    // go-home must be a router navigation: a raw pushState({}, ...) drops the
+    // idx/key/__TSR_index fields, so the next BACK cannot pop router history.
+    goHome: () => {
+      void router.navigate({ to: "/home" });
+    },
   });
 
   createRoot(rootEl).render(

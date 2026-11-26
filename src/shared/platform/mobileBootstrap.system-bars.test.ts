@@ -319,4 +319,20 @@ describe("bootstrapNativePlatform — runtime system-bar styling", () => {
     const backCalls = calls.filter(([event]) => event === "backButton");
     expect(backCalls).toHaveLength(1);
   });
+
+  it("removes every retained App listener on root teardown", async () => {
+    const remove = vi.fn();
+    appModule.addListener.mockReturnValue({ remove });
+    vi.resetModules();
+    setPlatform("android");
+    const mod = await import("./mobileBootstrap");
+    await mod.bootstrapNativePlatform();
+    await settle();
+
+    expect(appModule.addListener).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+
+    mod.disposeNativePlatform();
+    expect(remove).toHaveBeenCalledTimes(appModule.addListener.mock.calls.length);
+  });
 });

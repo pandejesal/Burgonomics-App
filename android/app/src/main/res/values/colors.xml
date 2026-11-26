@@ -18,7 +18,8 @@
          statusBarColor is the app header's own surface (the `surface` token in
          src/styles.css) and must match STATUS_BAR_CHROME.light.backgroundColor
          in src/shared/platform/statusBarChrome.ts — a unit test reads this file.
-         statusBarLightIcons = false means DARK icons, correct on white. -->
+         statusBarDarkIcons = true means DARK icons on this white bar; it maps
+          straight to android:windowLightStatusBar (true = dark icons). -->
     <color name="statusBarColor">#FFFFFF</color>
-    <bool name="statusBarLightIcons">false</bool>
+    <bool name="statusBarDarkIcons">true</bool>
 </resources>

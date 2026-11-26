@@ -83,15 +83,25 @@ describe("native first frame carries the same colours", () => {
     expect(nativeColor("values/colors.xml", "statusBarColor")).toBe(
       STATUS_BAR_CHROME.light.backgroundColor.toUpperCase(),
     );
-    // false == light icons OFF == dark icons, correct on a white bar.
-    expect(nativeBool("values/colors.xml", "statusBarLightIcons")).toBe(false);
+    // true == dark icons on a light bar; mirrors runtime style "LIGHT".
+    expect(nativeBool("values/colors.xml", "statusBarDarkIcons")).toBe(true);
   });
 
   it("values-night/colors.xml declares the dark-theme status-bar colours", () => {
     expect(nativeColor("values-night/colors.xml", "statusBarColor")).toBe(
       STATUS_BAR_CHROME.dark.backgroundColor.toUpperCase(),
     );
-    expect(nativeBool("values-night/colors.xml", "statusBarLightIcons")).toBe(true);
+    // false == light icons on a dark bar; mirrors runtime style "DARK".
+    expect(nativeBool("values-night/colors.xml", "statusBarDarkIcons")).toBe(false);
+  });
+
+  it("keeps the native icon bool in step with the runtime style polarity", () => {
+    expect(nativeBool("values/colors.xml", "statusBarDarkIcons")).toBe(
+      STATUS_BAR_CHROME.light.style === "LIGHT",
+    );
+    expect(nativeBool("values-night/colors.xml", "statusBarDarkIcons")).toBe(
+      STATUS_BAR_CHROME.dark.style === "LIGHT",
+    );
   });
 
   it("styles.xml paints an opaque bar, dark icons and the header surface", () => {
@@ -102,7 +112,7 @@ describe("native first frame carries the same colours", () => {
     // Opaque status bar is what makes the icon colour visible at all.
     expect(xml).toMatch(/<item name="android:statusBarColor">@color\/statusBarColor<\/item>/);
     expect(xml).toMatch(
-      /<item name="android:windowLightStatusBar">@bool\/statusBarLightIcons<\/item>/,
+      /<item name="android:windowLightStatusBar">@bool\/statusBarDarkIcons<\/item>/,
     );
     // Never translucent: that is how the bar ended up unreadable white-on-white.
     expect(xml).not.toMatch(/windowTranslucentStatus">true/);
