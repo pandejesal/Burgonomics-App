@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { APP } from "@/core/constants/app";
 import { BrandMascot, BrandWordmark } from "@/shared/components/common/BrandMascot";
+import { splashHoldMs } from "@/shared/platform/splashHold";
 
 export const Route = createFileRoute("/splash")({
   head: () => ({
@@ -13,8 +14,6 @@ export const Route = createFileRoute("/splash")({
   component: SplashPage,
 });
 
-const SPLASH_HOLD_MS = 1500;
-
 export function SplashPage() {
   const navigate = useNavigate();
   const reduceMotion =
@@ -23,9 +22,12 @@ export function SplashPage() {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   React.useEffect(() => {
+    // Web: the branded frame is the first thing the customer sees (1500 ms).
+    // Native: the Capacitor splash already showed the brand while the bundle
+    // loaded, so this is a short hand-off instead of a second full pause.
     const t = window.setTimeout(() => {
       void navigate({ to: "/home", replace: true });
-    }, SPLASH_HOLD_MS);
+    }, splashHoldMs());
     return () => window.clearTimeout(t);
   }, [navigate]);
 

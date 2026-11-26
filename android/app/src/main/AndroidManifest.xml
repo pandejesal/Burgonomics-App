@@ -16,7 +16,19 @@
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
+            android:screenOrientation="portrait"
             android:exported="true">
+            <!--
+              Portrait lock (EMULATOR audit 2026-11-26): rotating to landscape
+              produced a blank grey frame with no UI at all. The customer app is
+              a phone-first ordering flow whose layouts are authored for one
+              column; the Razorpay popup (Dialog in MainActivity) is unaffected
+              by this, since it is not this activity.
+
+              `configChanges` still lists `orientation` so the WebView is never
+              recreated if the OS reports a rotation anyway (multi-window /
+              freeform), and safe-area insets keep flowing through SystemBars.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

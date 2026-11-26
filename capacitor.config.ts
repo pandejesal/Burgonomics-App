@@ -47,16 +47,25 @@ const config: CapacitorConfig = {
       androidSplashResourceName: "splash",
       androidScaleType: "CENTER_CROP",
       showSpinner: false,
-      splashFullScreen: true,
-      splashImmersive: true,
+      // EMULATOR audit 2026-11-26: the full-screen/immersive splash hid the
+      // system bars and the activity came back with a dead band at the top.
+      // The splash now sits under the normal bars, whose launch-theme colours
+      // (android/app/src/main/res/values/styles.xml) keep the icons visible.
+      splashFullScreen: false,
+      splashImmersive: false,
     },
     // Core SystemBars (bundled with @capacitor/core) owns the status/navigation
-    // bar on modern Android. `DARK` is not "dark icons": it means light
-    // content on a dark background, which is what the deep-green (#0E4825)
-    // header needs. Leaving this plugin unconfigured lets its DEFAULT theme
-    // style override the legacy StatusBar block below on targetSdk 36.
+    // bar on modern Android. `DEFAULT` means "follow the device appearance",
+    // which is right for the first frame: the activity's window background
+    // comes from res/values{-night}/colors.xml, so light mode gets a light bar
+    // with dark icons and dark mode a #121212 bar with light icons. The runtime
+    // chrome (src/shared/platform/statusBarChrome.ts) then re-applies the
+    // app's own resolved theme, which may differ from the device one.
+    //
+    // Pinning `DARK` here (the old value) is what produced light icons over a
+    // light surface whenever the app theme and the device theme disagreed.
     SystemBars: {
-      style: "DARK",
+      style: "DEFAULT",
       hidden: false,
       // Explicit at the plugin's own default: native inset padding plus the
       // --safe-area-inset-* CSS variables. Never `disable` — that would hand
@@ -64,10 +73,13 @@ const config: CapacitorConfig = {
       insetsHandling: "css",
     },
     StatusBar: {
-      // Legacy plugin enum, same visual meaning: "light text for dark
-      // backgrounds". The old `LIGHT` asked for dark icons on the green bar.
-      style: "DARK",
-      backgroundColor: "#0E4825",
+      // Legacy surface (Android <= 14 and iOS). `DEFAULT` follows the device
+      // appearance — a #FFFFFF bar with dark icons in light mode, #121212 with
+      // light icons in dark mode — which is exactly what the native launch
+      // theme (res/values{-night}/colors.xml) already paints on the first
+      // frame. The runtime chrome then re-applies the app's own resolved theme.
+      style: "DEFAULT",
+      backgroundColor: "#FFFFFF",
       overlaysWebView: false,
     },
     Keyboard: {

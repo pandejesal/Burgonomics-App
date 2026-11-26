@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Night-theme status bar chrome. Mirrors
+      STATUS_BAR_CHROME.dark in src/shared/platform/statusBarChrome.ts and
+      the `surface` token (#121212) in src/styles.css: the bar sits above the
+      app header,
+      so it takes the header's colour and light-content icons.
+    -->
+    <color name="statusBarColor">#121212</color>
+    <bool name="statusBarLightIcons">true</bool>
+</resources>

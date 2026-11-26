@@ -11,4 +11,14 @@
     <color name="colorPrimary">#023020</color>
     <color name="colorPrimaryDark">#012313</color>
     <color name="colorAccent">#C2410C</color>
+
+    <!-- Status bar chrome (EMULATOR audit 2026-11-26: the bar rendered as an
+         opaque band with no visible icons).
+
+         statusBarColor is the app header's own surface (the `surface` token in
+         src/styles.css) and must match STATUS_BAR_CHROME.light.backgroundColor
+         in src/shared/platform/statusBarChrome.ts — a unit test reads this file.
+         statusBarLightIcons = false means DARK icons, correct on white. -->
+    <color name="statusBarColor">#FFFFFF</color>
+    <bool name="statusBarLightIcons">false</bool>
 </resources>

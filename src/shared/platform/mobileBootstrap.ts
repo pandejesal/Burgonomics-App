@@ -7,6 +7,15 @@
  */
 import { isNative, getPlatform } from "./platform";
 import { initPushNotifications } from "./pushNotifications";
+import { toast } from "@/shared/components/feedback/AppToaster";
+import { initAndroidBackButton, type RouterHistoryLike } from "./androidBackButton";
+import {
+  applyStatusBarChrome,
+  readResolvedTheme,
+  resolveStatusBarChrome,
+  watchStatusBarChrome,
+  type ResolvedTheme,
+} from "./statusBarChrome";
 import { sanitizeRedirectUrl } from "@/features/auth/utils/routeUtils";
 
 /**
@@ -80,35 +89,54 @@ export async function bootstrapNativePlatform(): Promise<void> {
       import("@capacitor/app"),
     ]);
 
-    // System bars — core `SystemBars` (bundled with @capacitor/core) owns the
-    // bar on modern Android, where the legacy StatusBar config alone can be
-    // overridden by the unconfigured plugin default. `SystemBarsStyle.Dark`
-    // means LIGHT content on a dark background, i.e. exactly what the
-    // deep-green (#0E4825) header needs; `Light` asked for dark icons.
-    // Imported and applied in its own guard so that a shell without the
-    // plugin cannot stop the splash release, keyboard or deep-link wiring.
+    /**
+     * Status-bar chrome. It is derived from the resolved theme and matches the
+     * app header surface (`--surface`, #FFFFFF / #121212), NOT the hero green:
+     * the audit found a white-on-white bar on the customer app because the
+     * icons were pinned to "light content on dark" above a light surface.
+     *
+     * Modern Android (targetSdk 36) renders this through core `SystemBars` and
+     * ignores `StatusBar.setBackgroundColor`; the native res/values{-night}
+     * colours cover the first frame, this covers runtime changes.
+     */
+    const applyChrome = async (theme: ResolvedTheme) => {
+      const chrome = resolveStatusBarChrome(theme, false);
+      await applyStatusBarChrome(platform, chrome, {
+        setSystemBarStyle: async (style) => {
+          const core = await import("@capacitor/core");
+          await core.SystemBars.setStyle({
+            style: style === "DARK" ? core.SystemBarsStyle.Dark : core.SystemBarsStyle.Light,
+          });
+        },
+        setLegacyStyle: async (style) => {
+          await StatusBar.setStyle({ style: style === "DARK" ? Style.Dark : Style.Light });
+        },
+        setBackgroundColor: async (color) => {
+          await StatusBar.setBackgroundColor({ color });
+        },
+      });
+    };
+
+    // A shell without @capacitor/core's SystemBars throws inside the guarded
+    // helper, so one failure cannot take the splash, keyboard or links down.
     try {
-      const { SystemBars, SystemBarsStyle } = await import("@capacitor/core");
-      await SystemBars.setStyle({ style: SystemBarsStyle.Dark });
+      await applyChrome(readResolvedTheme(document));
+      watchStatusBarChrome(window, (theme) => {
+        void applyChrome(theme);
+      });
     } catch {
-      /* SystemBars not registered on this shell */
+      /* system bars unavailable on this shell */
     }
 
-    // Legacy StatusBar — same visual meaning in its own enum (`Style.Dark` is
-    // "light text for dark backgrounds"), kept for older shells and iOS.
-    try {
-      await StatusBar.setStyle({ style: Style.Dark });
-      if (getPlatform() === "android") {
-        await StatusBar.setBackgroundColor({ color: "#0E4825" });
-      }
-    } catch {
-      /* status bar not available on this device */
-    }
-
-    // Hide splash once React has mounted (mobile-entry has already rendered).
-    setTimeout(() => {
+    // Splash release: after the first PAINTED frame, not a fixed 50 ms timer.
+    // On a saturated host (EMULATOR audit: 20-23 s cold start) the timer fired
+    // before React had painted, so the splash disappeared over an empty
+    // WebView — the blank screen the audit captured. Two frames guarantee one
+    // committed paint; the splash config keeps `launchAutoHide: false`, so
+    // nothing else can take it down early.
+    afterFirstPaint(() => {
       void SplashScreen.hide({ fadeOutDuration: 250 }).catch(() => undefined);
-    }, 50);
+    });
 
     // Keyboard — let the WebView resize naturally so inputs stay visible.
     try {
@@ -142,66 +170,80 @@ export async function bootstrapNativePlatform(): Promise<void> {
       window.dispatchEvent(new CustomEvent("burg:appstate", { detail: { isActive } }));
     });
 
-    // Hardware / Gesture Back Button handling (Android Native).
-    App.addListener("backButton", ({ canGoBack }) => {
-      // 1. If an open modal dialog or sheet is present, attempt close button click or dispatch Escape to window
-      const openModal =
-        document.querySelector('[role="dialog"]') ||
-        document.querySelector('[data-state="open"]') ||
-        document.querySelector("[data-vaul-drawer]");
-      if (openModal) {
-        const closeBtn = openModal.querySelector<HTMLButtonElement>(
-          'button[aria-label="Close"], button[data-drawer-close], [data-radix-collection-item]',
-        );
-        if (closeBtn) {
-          closeBtn.click();
-          return;
-        }
-        window.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Escape",
-            code: "Escape",
-            keyCode: 27,
-            which: 27,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-        return;
-      }
-
-      // 2. Back must never kill the app from a sub-route.
-      //
-      // The old `isRoot` set included `/stores`, so pressing back on Store
-      // Selection called `App.minimizeApp()` even when the WebView still had
-      // history to pop — the app visibly "closed" from a sub-route. Only true
-      // entry screens (launch / splash / home) may minimize; every other path
-      // pops history, and a sub-route with nothing to pop (deep link / cold
-      // start) falls back to Home instead of terminating.
-      const hash = window.location.hash.replace(/^#/, "");
-      const path = hash || window.location.pathname;
-      // Drop query string / fragment so `/home?from=x` still counts as Home.
-      const pathOnly = path.split(/[?#]/)[0] || path;
-      const isEntry =
-        !pathOnly || pathOnly === "/" || pathOnly === "/splash" || pathOnly === "/home";
-
-      if (isEntry) {
-        // At an entry screen, minimize instead of abrupt termination.
-        void App.minimizeApp();
-        return;
-      }
-
-      if (canGoBack) {
-        window.history.back();
-        return;
-      }
-
-      // Sub-route with no history entry — keep the app alive on Home.
-      // (Same pushState + popstate contract used by the deep-link handler above.)
-      window.history.pushState({}, "", "/home");
-      window.dispatchEvent(new PopStateEvent("popstate"));
+    // Hardware / Gesture Back Button (Android). Decision table + overlay
+    // dismissal live in ./androidBackButton so they are unit-testable; the
+    // router history is passed in so BACK pops it instead of guessing from
+    // window.history (which the audit showed going nowhere).
+    initAndroidBackButton({
+      app: App,
+      history: historyForRouter(),
+      onArmExit: () => {
+        // Android's own convention for "press back again to exit": say so once,
+        // otherwise a first press on Home looks like nothing happened.
+        toast("Press back again to exit", { duration: 2000 });
+      },
     });
   } catch (err) {
     console.warn("[burgonomics] native bootstrap failed", err);
   }
+}
+
+/**
+ * Waits for the first PAINTED frame before running `callback`.
+ *
+ * `requestAnimationFrame` fires before paint, so two callbacks are chained: the
+ * second runs after the first committed frame. A shell without rAF (or a
+ * backgrounded WebView, where rAF is throttled) falls back to a short timer, so
+ * the splash is always released rather than stranded.
+ */
+function afterFirstPaint(callback: () => void): void {
+  // `done` makes the release exactly once even when the safety timer and the
+  // rAF chain both come due (the timer is not cleared if it already fired).
+  let done = false;
+  const runOnce = () => {
+    if (done) return;
+    done = true;
+    callback();
+  };
+
+  // A shell with rAF gets a generous safety net: the point of the wait is that
+  // a slow host must NOT release the splash over an unpainted WebView (that is
+  // exactly the blank screen the audit captured), so the timer only has to
+  // cover a backgrounded WebView where rAF is throttled indefinitely — not to
+  // race the paint. Without rAF there is nothing to wait for, so a short timer
+  // releases the splash instead of stranding it.
+  const hasAnimationFrame =
+    typeof window !== "undefined" && typeof window.requestAnimationFrame === "function";
+  const safetyMs = hasAnimationFrame ? 10000 : 400;
+  const safetyTimer = setTimeout(runOnce, safetyMs);
+  if (!hasAnimationFrame) return;
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      clearTimeout(safetyTimer);
+      runOnce();
+    });
+  });
+}
+
+/**
+ * Router history bridge. The TanStack router keeps its own stack, and
+ * `window.history.length` alone counts unrelated entries (deep-link pushes,
+ * external navigations). `registerRouterHistory()` is called from `boot.tsx`
+ * once the router exists; until it does, BACK falls back to `window.history`.
+ */
+let routerHistory: RouterHistoryLike | null = null;
+
+export function registerRouterHistory(history: RouterHistoryLike | null): void {
+  routerHistory = history;
+}
+
+function historyForRouter(): RouterHistoryLike {
+  return {
+    back: () => {
+      if (routerHistory) routerHistory.back();
+      else window.history.back();
+    },
+    canGoBack: () => Boolean(routerHistory?.canGoBack?.() ?? false),
+  };
 }

@@ -13,10 +13,41 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!--
+          Status bar chrome (EMULATOR audit 2026-11-26: the bar rendered as an
+          opaque band with no visible icons).
+
+          `android:statusBarColor` must stay OPAQUE: a translucent bar let the
+          light-theme canvas show through under light-content icons. The colour
+          is the app header's own surface (the `surface` token in src/styles.css),
+          not the hero green, and flips with the system theme via values-night.
+          `android:windowLightStatusBar` is the same value as
+          @bool/statusBarLightIcons (false = dark icons), so AppCompat and the
+          targetSdk 36 window edge agree with the StatusBar plugin.
+
+          Safe areas are deliberately NOT touched here: `fitsSystemWindows`
+          stays unset and the SystemBars plugin keeps `insetsHandling: "css"`
+          (native inset padding + injected safe-area inset CSS variables).
+        -->
+        <item name="android:windowBackground">@color/statusBarColor</item>
+        <item name="android:statusBarColor">@color/statusBarColor</item>
+        <item name="android:navigationBarColor">@color/statusBarColor</item>
+        <item name="android:windowLightStatusBar">@bool/statusBarLightIcons</item>
+        <item name="android:windowLightNavigationBar">@bool/statusBarLightIcons</item>
     </style>
 
 
+    <!--
+      Launch theme. The splash image covers the whole window, so the bar above
+      it is the brand green the splash is drawn on: no white flash and no
+      unreadable icons while the WebView boots.
+    -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/colorPrimary</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/colorPrimary</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>
