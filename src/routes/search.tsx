@@ -225,10 +225,13 @@ function SearchPage() {
     });
   }, [results, activeFilter]);
 
-  // A new query or diet filter is a new result set: derive the first page from
-  // its key rather than resetting in an effect, so a longer revealed page can
-  // never leak into the next search.
-  const pageKey = `${activeFilter}|${results.length}|${results[0]?.id ?? ""}`;
+  // A new query, kind, diet filter or result set is a new page sequence: derive
+  // the first page from the FULL identity of that set rather than resetting in
+  // an effect, so a longer revealed page can never leak into the next search.
+  // Length + first id alone were not enough: two different queries could share
+  // both and still paint every card of the second set.
+  const resultIds = results.map((item) => item.id).join("\u0000");
+  const pageKey = `${query.trim()}\u0000${kind}\u0000${activeFilter}\u0000${resultIds}`;
   const visibleCount = visiblePage.key === pageKey ? visiblePage.count : SEARCH_PAGE_SIZE;
   const visibleResults = filteredResults.slice(0, visibleCount);
 
