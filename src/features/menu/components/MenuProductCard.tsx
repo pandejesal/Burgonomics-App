@@ -124,6 +124,9 @@ export const MenuProductCard = React.memo(function MenuProductCard({
 
   const [isFlashActive, setIsFlashActive] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
+  // One card = one intent. A double tap used to fire two cart writes, two
+  // haptics and two flash rings from the same stale quantity.
+  const [addPending, setAddPending] = React.useState(false);
 
   // Reactive subscription to quantity in cart for this specific item (non-customizable)
   const quantity = useCartStore((s) => {
@@ -136,25 +139,32 @@ export const MenuProductCard = React.memo(function MenuProductCard({
   const handleQtyAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (disabled) return;
+    if (disabled || addPending) return;
+    setAddPending(true);
 
     HapticService.impact("medium");
     AudioService.playClick();
     setIsFlashActive(true);
     setTimeout(() => setIsFlashActive(false), 800);
 
-    if (customizable) {
-      onAdd?.(product);
-      return;
-    }
+    try {
+      if (customizable) {
+        onAdd?.(product);
+        return;
+      }
 
-    const line = useCartStore
-      .getState()
-      .lines.find((l) => l.productId === id && (!l.modifiers || l.modifiers.length === 0));
-    if (line) {
-      await cartRepository.updateQuantity(line.lineId, line.quantity + 1);
-    } else {
-      onAdd?.(product);
+      const line = useCartStore
+        .getState()
+        .lines.find((l) => l.productId === id && (!l.modifiers || l.modifiers.length === 0));
+      if (line) {
+        await cartRepository.updateQuantity(line.lineId, line.quantity + 1);
+      } else {
+        onAdd?.(product);
+      }
+    } finally {
+      // The customiser sheet can stay open; it has its own save guard. This
+      // card is free as soon as its own click has been handed off.
+      setAddPending(false);
     }
   };
 
@@ -361,7 +371,7 @@ export const MenuProductCard = React.memo(function MenuProductCard({
             key="add-only"
             type="button"
             onClick={handleQtyAdd}
-            disabled={disabled}
+            disabled={disabled || addPending}
             // A disabled control must not advertise an action it cannot do:
             // when sold out the name states the state instead of the verb.
             aria-label={disabled ? `${name} is sold out` : `Add ${name} to cart`}

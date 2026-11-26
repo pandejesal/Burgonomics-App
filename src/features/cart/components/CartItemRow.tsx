@@ -16,6 +16,8 @@ interface Props {
   line: CartLine;
   onQuantityChange: (qty: number) => void;
   onRemove: () => void;
+  /** The repository write for this line is unresolved; block both steppers. */
+  quantityPending?: boolean;
 }
 
 /**
@@ -31,6 +33,7 @@ export const CartItemRow = React.memo(function CartItemRow({
   line,
   onQuantityChange,
   onRemove,
+  quantityPending = false,
 }: Props) {
   const unavailable = line.availability === "unavailable";
   const unitPrice = computeLineUnitPrice(line);
@@ -148,7 +151,7 @@ export const CartItemRow = React.memo(function CartItemRow({
                 type="button"
                 aria-label="Decrease quantity"
                 onClick={handleDecrement}
-                disabled={unavailable}
+                disabled={unavailable || quantityPending}
                 className="grid h-11 w-11 place-items-center rounded-lg text-primary-text hover:bg-bg-secondary transition-colors disabled:opacity-40 active:scale-95"
               >
                 <Minus className="h-4 w-4" aria-hidden />
@@ -172,7 +175,7 @@ export const CartItemRow = React.memo(function CartItemRow({
                 type="button"
                 aria-label="Increase quantity"
                 onClick={handleIncrement}
-                disabled={unavailable}
+                disabled={unavailable || quantityPending}
                 className="grid h-11 w-11 place-items-center rounded-lg text-primary-text hover:bg-bg-secondary transition-colors disabled:opacity-40 active:scale-95"
               >
                 <Plus className="h-4 w-4" aria-hidden />

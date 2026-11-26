@@ -114,10 +114,16 @@
   --color-brand-field: var(--brand-field);
   --color-gold: var(--gold);
 
-  /* Motion */
+  /* Motion — one duration per class of movement, shared by routes and sheets.
+     The audit found 250/300/320/500ms in the same flow; these are the only
+     values now (fast = overlays/fades, route = screen slides, sheet = bottom
+     sheets and the customiser). */
   --ease-out-quad: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 200ms;
+  --duration-route: 300ms;
+  --duration-sheet: 300ms;
 
   /* Brand gradients */
   --gradient-brand: linear-gradient(135deg, #0e4825 0%, #175e33 100%);
@@ -412,6 +418,11 @@
      older-engine fallback. */
   html {
     overflow-x: hidden;
+    /* iOS Safari rubber-bands the document scroller; with the TopBar sticky and
+       the bottom nav fixed, a downward flick exposes white above the chrome
+       and detaches the floating nav. Keep the bounce on the viewport, not on
+       the shell. `body` is deliberately untouched (see the note below). */
+    overscroll-behavior-y: none;
   }
 
   @supports (overflow: clip) {
@@ -793,14 +804,18 @@
   transition:
     transform 0.4s var(--ease-out-back),
     box-shadow 0.4s var(--ease-out-back);
-  will-change: transform, box-shadow;
 
+  /* Only promote while the gesture is happening. A permanent will-change keeps
+     dozens of menu/search cards as composited layers for their whole lifetime
+     in an Android WebView. */
   &:hover {
+    will-change: transform, box-shadow;
     transform: translateY(-4px) scale(1.02);
     box-shadow: var(--shadow-medium);
   }
 
   &:active {
+    will-change: transform, box-shadow;
     transform: translateY(2px) scale(0.98);
     box-shadow: var(--shadow-low);
   }
@@ -852,12 +867,12 @@
 }
 
 .route-transition-push {
-  animation: nativeRoutePush 300ms cubic-bezier(0.32, 0.72, 0, 1) none;
+  animation: nativeRoutePush var(--duration-route) cubic-bezier(0.32, 0.72, 0, 1) none;
   will-change: transform, opacity;
 }
 
 .route-transition-pop {
-  animation: nativeRoutePop 250ms cubic-bezier(0.32, 0.72, 0, 1) none;
+  animation: nativeRoutePop var(--duration-route) cubic-bezier(0.32, 0.72, 0, 1) none;
   will-change: transform, opacity;
 }
 

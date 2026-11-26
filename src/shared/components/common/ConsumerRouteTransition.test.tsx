@@ -183,7 +183,7 @@ describe("styles.css route-transition blocks — source boundary", () => {
     for (const selector of [".route-transition-push {", ".route-transition-pop {"]) {
       const body = ruleBody(selector);
       expect(body).toMatch(
-        /animation:\s*nativeRoute(Push|Pop)\s+[\d.]+ms\s+cubic-bezier\([^)]*\)\s+none;/,
+        /animation:\s*nativeRoute(Push|Pop)\s+(?:[\d.]+ms|var\(--duration-route\))\s+cubic-bezier\([^)]*\)\s+none;/,
       );
       expect(body).not.toMatch(/\bboth\b/);
       // The compositing hint is kept for the run itself; it is the JS cleanup

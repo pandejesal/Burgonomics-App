@@ -292,7 +292,7 @@ function OffersPage() {
     >
       <div className="mx-auto max-w-[560px] space-y-4 px-4 py-4">
         {/* Sticky type filter chips */}
-        <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 -mx-4 border-b border-divider bg-surface/95 px-4 py-2 backdrop-blur-md">
+        <div className="sticky top-[var(--top-chrome-height,calc(3.5rem+env(safe-area-inset-top,0px)))] z-20 -mx-4 border-b border-divider bg-surface/95 px-4 py-2 backdrop-blur-md">
           <div
             role="tablist"
             aria-label="Filter offers by type"

@@ -7,6 +7,7 @@ import { AppShell } from "@/shared/layouts/AppShell";
 import { FailureState } from "@/shared/components/feedback/FailureState";
 import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
+import { BrandMascot } from "@/shared/components/common/BrandMascot";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
 import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
@@ -68,6 +69,11 @@ function CartPage() {
   const [confirmClear, setConfirmClear] = React.useState(false);
   const [checkoutBusy, setCheckoutBusy] = React.useState(false);
   const [fulfillmentOpen, setFulfillmentOpen] = React.useState(false);
+  // One in-flight write per line: a fast double-tap used to fire two concurrent
+  // updateQuantity calls from the same stale quantity. The ref is the guard for
+  // taps inside one commit; the state disables both steppers of that line.
+  const pendingLineIdsRef = React.useRef<Set<string>>(new Set());
+  const [pendingLineIds, setPendingLineIds] = React.useState<Set<string>>(() => new Set());
   // Seeded from the persisted checkout store (the same object the order and
   // payment payloads read). Starting these at 0 on every mount made a
   // cart → checkout → cart round trip drop a tip the gateway still charged,
@@ -190,8 +196,8 @@ function CartPage() {
       <AppShell title="Your cart" backTo="/menu" showTabs showTopBar>
         <div className="mx-auto max-w-[520px] px-4 py-12 space-y-8">
           <div className="space-y-4 text-center">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border border-primary/20 bg-primary/10 text-4xl shadow-inner">
-              📦
+            <div className="mx-auto flex h-24 w-24 items-center justify-center">
+              <BrandMascot size={88} float />
             </div>
             <div className="space-y-1">
               <h2 className="text-xl font-semibold text-text">Your burger box is empty</h2>
@@ -232,7 +238,15 @@ function CartPage() {
   }
 
   const onQuantity = async (lineId: string, next: number) => {
-    await cartRepository.updateQuantity(lineId, next);
+    if (pendingLineIdsRef.current.has(lineId)) return;
+    pendingLineIdsRef.current.add(lineId);
+    setPendingLineIds(new Set(pendingLineIdsRef.current));
+    try {
+      await cartRepository.updateQuantity(lineId, next);
+    } finally {
+      pendingLineIdsRef.current.delete(lineId);
+      setPendingLineIds(new Set(pendingLineIdsRef.current));
+    }
   };
 
   const onRemove = async (lineId: string, name: string) => {
@@ -415,6 +429,7 @@ function CartPage() {
                 key={line.lineId}
                 line={line}
                 onQuantityChange={(q) => void onQuantity(line.lineId, q)}
+                quantityPending={pendingLineIds.has(line.lineId)}
                 onRemove={() => void onRemove(line.lineId, line.name)}
               />
             ))}
