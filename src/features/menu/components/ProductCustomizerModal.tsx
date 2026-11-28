@@ -247,7 +247,7 @@ export function ProductCustomizerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-(--duration-fast)"
       onClick={onClose}
     >
       <div
@@ -257,7 +257,7 @@ export function ProductCustomizerModal({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
-        className="relative w-full max-w-[560px] max-h-[92vh] bg-surface rounded-t-3xl sm:rounded-3xl border border-divider shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 duration-300 outline-none"
+        className="relative w-full max-w-[560px] max-h-[92vh] bg-surface rounded-t-3xl sm:rounded-3xl border border-divider shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 duration-(--duration-sheet) outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -336,7 +336,7 @@ export function ProductCustomizerModal({
         </div>
 
         {/* Sticky Bottom Action Bar */}
-        <div className="p-4 sm:p-5 border-t border-divider bg-surface/95 backdrop-blur-md flex items-center justify-between gap-3 sticky bottom-0 z-10">
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:p-5 sm:pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] border-t border-divider bg-surface/95 backdrop-blur-md flex items-center justify-between gap-3 sticky bottom-0 z-10">
           {/* Quantity Stepper */}
           <div className="flex items-center bg-bg-secondary rounded-xl border border-divider p-1">
             <button

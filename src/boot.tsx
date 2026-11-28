@@ -6,6 +6,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
+import { MotionConfig } from "motion/react";
 
 import { getRouter } from "./router";
 import { bootstrapNativePlatform, registerRouterHistory } from "./shared/platform/mobileBootstrap";
@@ -34,7 +35,12 @@ export function boot(rootEl: HTMLElement): void {
   createRoot(rootEl).render(
     <StrictMode>
       <GlobalErrorBoundary>
-        <RouterProvider router={router} />
+        {/* One root setting so every motion child (cart rows, floating bar,
+            product cards, sheets) honours the OS Reduce Motion preference.
+            The CSS block only reaches CSS animations, not motion springs. */}
+        <MotionConfig reducedMotion="user">
+          <RouterProvider router={router} />
+        </MotionConfig>
       </GlobalErrorBoundary>
     </StrictMode>,
   );

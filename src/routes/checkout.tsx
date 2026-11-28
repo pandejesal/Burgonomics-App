@@ -1371,7 +1371,7 @@ export function CheckoutPage() {
       showTabs={false}
       showTopBar
       bottomSlot={
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 shadow-2xl">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-divider bg-surface/95 backdrop-blur-md p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shadow-2xl">
           <div className="mx-auto flex max-w-[520px] flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-text-secondary">

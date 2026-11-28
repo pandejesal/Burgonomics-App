@@ -37,7 +37,9 @@ describe("cart route text encoding", () => {
 
     // The real characters must still be there, exactly.
     expect(text).toContain("Your Cart " + String.fromCharCode(0x2014) + " Burgonomics");
-    expect(text).toContain(String.fromCodePoint(0x1f4e6));
+    // UX audit 2026-11-26 #21: the empty-cart emoji was replaced by the brand
+    // mascot. Pin the real character rather than the removed placeholder.
+    expect(text).toContain("<BrandMascot");
     expect(text).toContain("Recalculating" + String.fromCharCode(0x2026));
   });
 });

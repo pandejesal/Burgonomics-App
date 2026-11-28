@@ -57,7 +57,12 @@ export function useDialogA11y({ open, onClose, containerRef }: DialogA11yOptions
     const container = containerRef.current;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
+    // styles.css keeps horizontal containment AND the document scroller on
+    // `html` (body is deliberately never a scrollport, so sticky headers stay
+    // pinned). Locking only body lets the menu flick/rubber-band under the sheet.
+    document.documentElement.style.overflow = "hidden";
 
     const focusables = () => (container ? getFocusableElements(container) : []);
     const initial = focusables()[0] ?? container;
@@ -87,6 +92,7 @@ export function useDialogA11y({ open, onClose, containerRef }: DialogA11yOptions
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
       // Restore the control that opened the sheet (no Radix Trigger to do it
       // for us), but only while it is still in the document.
       if (opener && document.contains(opener)) opener.focus({ preventScroll: true });

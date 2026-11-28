@@ -27,6 +27,11 @@ interface SearchParamsSchema {
   kind?: SearchKind;
 }
 
+// A one-letter query used to paint the whole catalogue as full product cards,
+// each with a motion tree and layered images. Cap the first page; the rest is
+// revealed explicitly with the existing "Load more" pattern.
+const SEARCH_PAGE_SIZE = 30;
+
 const DIET_FILTER_TAGS = [
   { id: "all", label: "All Items" },
   { id: "jain", label: "Jain Friendly", icon: ShieldCheck },
@@ -91,6 +96,7 @@ function SearchPage() {
   // Active diet filter
   const [activeFilter, setActiveFilter] = useState<string>(searchParams.filter || "all");
   const [customizingProduct, setCustomizingProduct] = useState<Product | null>(null);
+  const [visiblePage, setVisiblePage] = useState({ key: "", count: SEARCH_PAGE_SIZE });
 
   useEffect(() => {
     useSearchStore.persist.rehydrate();
@@ -219,6 +225,16 @@ function SearchPage() {
     });
   }, [results, activeFilter]);
 
+  // A new query, kind, diet filter or result set is a new page sequence: derive
+  // the first page from the FULL identity of that set rather than resetting in
+  // an effect, so a longer revealed page can never leak into the next search.
+  // Length + first id alone were not enough: two different queries could share
+  // both and still paint every card of the second set.
+  const resultIds = results.map((item) => item.id).join("\u0000");
+  const pageKey = `${query.trim()}\u0000${kind}\u0000${activeFilter}\u0000${resultIds}`;
+  const visibleCount = visiblePage.key === pageKey ? visiblePage.count : SEARCH_PAGE_SIZE;
+  const visibleResults = filteredResults.slice(0, visibleCount);
+
   const handleAdd = async (p: Product) => {
     if (p.customizable) {
       setCustomizingProduct(p);
@@ -251,7 +267,7 @@ function SearchPage() {
         {/* Sticky Search Header & Filter Bar */}
         <form
           onSubmit={handleSubmit}
-          className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 bg-surface/95 px-4 py-3 backdrop-blur-md border-b border-divider shadow-xs"
+          className="sticky top-[var(--top-chrome-height,calc(3.5rem+env(safe-area-inset-top,0px)))] scroll-mt-[var(--top-chrome-height,calc(3.5rem+env(safe-area-inset-top,0px)))] z-20 bg-surface/95 px-4 py-3 backdrop-blur-md border-b border-divider shadow-xs"
         >
           {/* Input Box */}
           <label className="search-field flex min-h-12 items-center gap-2 rounded-2xl border border-divider bg-bg-secondary px-4 py-2 focus-within:border-primary focus-within:bg-surface transition-colors">
@@ -263,7 +279,7 @@ function SearchPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search smashed burgers, sides, drinks…"
               aria-label="Search the menu"
-              className="min-w-0 flex-1 appearance-none rounded-[inherit] bg-transparent outline-none type-body-large placeholder:text-text-placeholder scroll-mt-[calc(3.5rem+env(safe-area-inset-top,0px))]"
+              className="min-w-0 flex-1 appearance-none rounded-[inherit] bg-transparent outline-none type-body-large placeholder:text-text-placeholder scroll-mt-[var(--top-chrome-height,calc(3.5rem+env(safe-area-inset-top,0px)))]"
             />
             {query && (
               <button
@@ -491,9 +507,22 @@ function SearchPage() {
                   </span>
                 )}
               </div>
-              {filteredResults.map((p) => (
+              {visibleResults.map((p) => (
                 <MenuProductCard key={p.id} product={p} onAdd={handleAdd} searchQuery={query} />
               ))}
+              {visibleCount < filteredResults.length && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisiblePage({ key: pageKey, count: visibleCount + SEARCH_PAGE_SIZE })
+                    }
+                    className="min-h-11 rounded-full border border-divider bg-surface px-6 py-2 type-label-large font-semibold text-primary-text transition-colors hover:border-primary/40 hover:bg-bg-secondary active:scale-[0.98]"
+                  >
+                    Load more ({filteredResults.length - visibleCount} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
