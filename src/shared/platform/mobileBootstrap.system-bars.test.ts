@@ -1,22 +1,16 @@
 /** @vitest-environment jsdom */
 /**
- * Status-bar semantics on the deep-green (#0E4825) header.
+ * Status-bar semantics on Android, reworked after the EMULATOR audit
+ * (2026-11-26) found a white-on-white bar on the customer app.
  *
- * The two Capacitor surfaces use the *same* enum names for opposite reasons:
+ * The decisive change: the bar is no longer pinned to "light content on the
+ * dark green hero". It takes the colour of the *app header surface* and flips
+ * icon contrast with the resolved theme (`statusBarChrome.ts`), while the
+ * native `res/values{-night}` colours cover the first frame before JS runs.
  *
- * - `@capacitor/status-bar` `Style.Dark` == `"DARK"` == light text for dark
- *   backgrounds.
- * - `@capacitor/core` `SystemBarsStyle.Dark` == `"DARK"` == light icon/text
- *   content on a dark background; the native Android implementation maps it to
- *   `setAppearanceLightStatusBars(false)`.
- *
- * `"LIGHT"` therefore means *dark icons*, which is what made the header icons
- * unreadable on the green bar. These tests pin the value that produces light
- * content on Android shell startup (config) and at runtime (both APIs), and
- * pin that a bar-style failure cannot take the rest of the native boot down.
- *
- * Native rendering itself is not asserted here: no device, emulator or
- * screenshot is involved, and nothing below measures real contrast.
+ * Tests here pin the wiring (which plugin call gets which value, in which
+ * order) and that no bar failure can strand the splash or the deep links.
+ * Native rendering and real contrast are NOT asserted — no device is involved.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import capacitorConfig from "../../../capacitor.config";
@@ -102,8 +96,12 @@ interface AndroidShellConfig {
 const iosShell = (capacitorConfig as { ios?: IosShellConfig }).ios ?? {};
 const androidShell = (capacitorConfig as { android?: AndroidShellConfig }).android ?? {};
 
-/** Let the fire-and-forget bootstrap work (and its 50 ms splash timer) finish. */
-const settle = async (ms = 90): Promise<void> => {
+/**
+ * Let the fire-and-forget bootstrap work finish, including the first-paint
+ * splash release. jsdom has no rAF (no `pretendToBeVisual`), so the release
+ * comes from the short no-rAF timer; wait past that.
+ */
+const settle = async (ms = 600): Promise<void> => {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
 };
 
@@ -126,9 +124,13 @@ async function bootOn(platform: "android" | "ios" | "web"): Promise<void> {
   await settle();
 }
 
-describe("capacitor configuration — green header needs light system-bar content", () => {
-  it("configures SystemBars DARK (light content on the dark green bar) and keeps the bars visible", () => {
-    expect(plugins.SystemBars.style).toBe("DARK");
+describe("capacitor configuration — the bar follows the app theme, not the hero green", () => {
+  it("leaves SystemBars on DEFAULT so the device appearance picks the first frame", () => {
+    // The native window background (res/values{-night}/colors.xml) is a light
+    // #FFFFFF or dark #121212 surface, and DEFAULT asks the plugin to match its
+    // icon contrast to that appearance. Pinning DARK is what produced light
+    // icons over a light surface whenever app and device themes disagreed.
+    expect(plugins.SystemBars.style).toBe("DEFAULT");
     expect(plugins.SystemBars.hidden).toBe(false);
   });
 
@@ -141,10 +143,25 @@ describe("capacitor configuration — green header needs light system-bar conten
     expect(plugins.SystemBars.insetsHandling).not.toBe("disable");
   });
 
-  it("aligns the legacy StatusBar config with light content on the same green background", () => {
-    expect(plugins.StatusBar.style).toBe("DARK");
-    expect(plugins.StatusBar.backgroundColor).toBe("#0E4825");
+  it("aligns the legacy StatusBar config with the light header surface", () => {
+    // DEFAULT follows the device appearance, and with a #FFFFFF bar that means
+    // dark icons in light mode. No combination in the config produces light
+    // icons on this white bar; the runtime chrome corrects the rare case where
+    // the app theme and the device theme disagree.
+    expect(plugins.StatusBar.style).toBe("DEFAULT");
+    expect(plugins.StatusBar.backgroundColor).toBe("#FFFFFF");
     expect(plugins.StatusBar.overlaysWebView).toBe(false);
+  });
+
+  it("keeps the splash off fullscreen/immersive so the bars stay in place", () => {
+    // The audit's screenshots showed a dead band at the top right after the
+    // immersive splash dismissed. The splash now sits under the normal bars.
+    const splash = (capacitorConfig as { plugins: Record<string, Record<string, unknown>> }).plugins
+      .SplashScreen;
+    expect(splash.splashFullScreen).toBe(false);
+    expect(splash.splashImmersive).toBe(false);
+    // Splash until the app is ready: no fixed auto-hide timer.
+    expect(splash.launchAutoHide).toBe(false);
   });
 });
 
@@ -171,10 +188,10 @@ describe("native shell hardening — Web Inspector must be off in every build", 
 
   it("leaves every UI bar, permission and plugin surface untouched", () => {
     // The hardening must not become a vehicle for unrelated shell edits.
-    expect(plugins.SystemBars).toMatchObject({ style: "DARK", hidden: false });
+    expect(plugins.SystemBars).toMatchObject({ style: "DEFAULT", hidden: false });
     expect(plugins.StatusBar).toMatchObject({
-      style: "DARK",
-      backgroundColor: "#0E4825",
+      style: "DEFAULT",
+      backgroundColor: "#FFFFFF",
       overlaysWebView: false,
     });
     expect(plugins.Geolocation).toMatchObject({ permissions: ["location"] });
@@ -209,30 +226,52 @@ describe("bootstrapNativePlatform — runtime system-bar styling", () => {
     delete (window as { Capacitor?: unknown }).Capacitor;
   });
 
-  it("applies SystemBarsStyle.Dark on Android and keeps the green background", async () => {
+  it("applies dark icons on the light surface in the light theme (Android)", async () => {
     await bootOn("android");
 
+    // `LIGHT` on both surfaces == dark icons, which is the only readable
+    // combination above a #FFFFFF bar.
     expect(systemBarsModule.setStyle).toHaveBeenCalledTimes(1);
-    expect(systemBarsModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
-    // Never the dark-icon value.
-    expect(systemBarsModule.setStyle).not.toHaveBeenCalledWith({ style: "LIGHT" });
+    expect(systemBarsModule.setStyle).toHaveBeenCalledWith({ style: "LIGHT" });
+    expect(systemBarsModule.setStyle).not.toHaveBeenCalledWith({ style: "DARK" });
     // Both bars stay visible: styling must not hide the navigation bar.
     expect(systemBarsModule.hide).not.toHaveBeenCalled();
 
-    // Legacy shell path still gets the same (light content) meaning.
-    expect(statusBarModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
-    expect(statusBarModule.setBackgroundColor).toHaveBeenCalledWith({ color: "#0E4825" });
+    // The legacy surface gets the same meaning and the header's own colour.
+    expect(statusBarModule.setStyle).toHaveBeenCalledWith({ style: "LIGHT" });
+    expect(statusBarModule.setBackgroundColor).toHaveBeenCalledWith({ color: "#FFFFFF" });
 
     // Existing native layout marker (safe-area CSS hooks) is retained.
     expect(document.documentElement.classList.contains("platform-android")).toBe(true);
   });
 
-  it("applies SystemBarsStyle.Dark on iOS without touching the Android-only background colour", async () => {
+  it("switches to light icons and #121212 when the document is dark", async () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+    await bootOn("android");
+    document.documentElement.removeAttribute("data-theme");
+
+    expect(systemBarsModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
+    expect(statusBarModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
+    expect(statusBarModule.setBackgroundColor).toHaveBeenCalledWith({ color: "#121212" });
+  });
+
+  it("re-applies the chrome when the app theme changes at runtime", async () => {
+    await bootOn("android");
+    document.documentElement.setAttribute("data-theme", "dark");
+    window.dispatchEvent(new CustomEvent("burg:themechange", { detail: { resolved: "dark" } }));
+    await settle();
+
+    expect(systemBarsModule.setStyle).toHaveBeenLastCalledWith({ style: "DARK" });
+    expect(statusBarModule.setBackgroundColor).toHaveBeenLastCalledWith({ color: "#121212" });
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("applies light-theme chrome on iOS without the Android-only background", async () => {
     await bootOn("ios");
 
     expect(systemBarsModule.setStyle).toHaveBeenCalledTimes(1);
-    expect(systemBarsModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
-    expect(statusBarModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
+    expect(systemBarsModule.setStyle).toHaveBeenCalledWith({ style: "LIGHT" });
+    expect(statusBarModule.setStyle).toHaveBeenCalledWith({ style: "LIGHT" });
     expect(statusBarModule.setBackgroundColor).not.toHaveBeenCalled();
     expect(document.documentElement.classList.contains("platform-ios")).toBe(true);
   });
@@ -255,9 +294,9 @@ describe("bootstrapNativePlatform — runtime system-bar styling", () => {
     await expect(bootOn("android")).resolves.toBeUndefined();
 
     // The legacy surface is applied independently of the core failure.
-    expect(statusBarModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
-    expect(statusBarModule.setBackgroundColor).toHaveBeenCalledWith({ color: "#0E4825" });
-    // Splash released, keyboard + lifecycle listeners still registered.
+    expect(statusBarModule.setStyle).toHaveBeenCalledWith({ style: "LIGHT" });
+    expect(statusBarModule.setBackgroundColor).toHaveBeenCalledWith({ color: "#FFFFFF" });
+    // Splash released, keyboard + lifecycle + back-button listeners registered.
     expect(splashModule.hide).toHaveBeenCalledWith({ fadeOutDuration: 250 });
     expect(keyboardModule.addListener).toHaveBeenCalledTimes(2);
     expect(appModule.addListener.mock.calls.length).toBeGreaterThanOrEqual(3);
@@ -268,8 +307,32 @@ describe("bootstrapNativePlatform — runtime system-bar styling", () => {
 
     await expect(bootOn("android")).resolves.toBeUndefined();
 
-    expect(systemBarsModule.setStyle).toHaveBeenCalledWith({ style: "DARK" });
+    expect(systemBarsModule.setStyle).toHaveBeenCalledWith({ style: "LIGHT" });
     expect(splashModule.hide).toHaveBeenCalledWith({ fadeOutDuration: 250 });
     expect(keyboardModule.addListener).toHaveBeenCalledTimes(2);
+  });
+
+  it("registers the hardware BACK listener on the App plugin", async () => {
+    await bootOn("android");
+
+    const calls = appModule.addListener.mock.calls as unknown as Array<[string]>;
+    const backCalls = calls.filter(([event]) => event === "backButton");
+    expect(backCalls).toHaveLength(1);
+  });
+
+  it("removes every retained App listener on root teardown", async () => {
+    const remove = vi.fn();
+    appModule.addListener.mockReturnValue({ remove });
+    vi.resetModules();
+    setPlatform("android");
+    const mod = await import("./mobileBootstrap");
+    await mod.bootstrapNativePlatform();
+    await settle();
+
+    expect(appModule.addListener).toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+
+    mod.disposeNativePlatform();
+    expect(remove).toHaveBeenCalledTimes(appModule.addListener.mock.calls.length);
   });
 });

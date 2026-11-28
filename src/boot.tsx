@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 
 import { getRouter } from "./router";
-import { bootstrapNativePlatform } from "./shared/platform/mobileBootstrap";
+import { bootstrapNativePlatform, registerRouterHistory } from "./shared/platform/mobileBootstrap";
 import { initWebPush } from "./shared/platform/pushNotifications";
 import { initNotificationPrefsSync } from "./features/settings/state/notificationPrefsStore";
 import { initAppCheck } from "./core/config/firebase";
@@ -17,6 +17,19 @@ import { GlobalErrorBoundary } from "./shared/components/feedback/GlobalErrorBou
 
 export function boot(rootEl: HTMLElement): void {
   const router = getRouter();
+
+  // Hardware BACK needs the router's own history, not `window.history.length`:
+  // the router knows whether there is a previous in-app entry, and HashRouter
+  // cold starts used to report "can go back" with nothing to pop.
+  registerRouterHistory({
+    back: () => router.history.back(),
+    canGoBack: () => router.history.canGoBack(),
+    // go-home must be a router navigation: a raw pushState({}, ...) drops the
+    // idx/key/__TSR_index fields, so the next BACK cannot pop router history.
+    goHome: () => {
+      void router.navigate({ to: "/home" });
+    },
+  });
 
   createRoot(rootEl).render(
     <StrictMode>
