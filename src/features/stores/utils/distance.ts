@@ -1,5 +1,11 @@
 /** Haversine distance in kilometres between two lat/lng pairs. */
-import { parseHourMinute } from "@/core/constants/operatingHours";
+import {
+  istMinutesSinceMidnight,
+  parseHourMinute,
+} from "@/core/constants/operatingHours";
+
+/** Minutes in a day; the wrap base for an overnight close time. */
+const MINUTES_PER_DAY = 24 * 60;
 
 export function haversineKm(
   a: { lat: number; lng: number },
@@ -37,24 +43,27 @@ export function formatDistance(km?: number): string {
 }
 
 /**
- * Detects if the store closes within `warnMinutes` from now, in the store's
- * local wall clock.
+ * Detects if the store closes within `warnMinutes` from now, on the **outlet's**
+ * wall clock (Asia/Kolkata), not the device's.
  *
  * The stored value may be 24-hour (`"23:30"`) or 12-hour (`"11:30 PM"`); both
  * exist in the database, and the original split(":") implementation produced
  * `NaN` for every 12-hour value, silently reporting "not closing soon" forever
  * for 26 of the 27 documents that carry hours.
+ *
+ * `nowMinutes` is injectable so this can be tested without a timezone or a fake
+ * clock. Left at its default it reads IST, which is the same clock
+ * `resolveOutletOpenState` gates on; the previous version compared an IST close
+ * time against the device clock, so a handset east of IST fired the badge ~90
+ * minutes early and one west of it never fired at all.
  */
-export function closesSoon(closeHHmm: string, warnMinutes = 60): boolean {
+export function closesSoon(
+  closeHHmm: string,
+  warnMinutes = 60,
+  nowMinutes: number = istMinutesSinceMidnight(),
+): boolean {
   const closeMinutes = parseHourMinute(closeHHmm);
   if (closeMinutes === null) return false;
-  const now = new Date();
-  const [h, m] = [Math.floor(closeMinutes / 60), closeMinutes % 60];
-  const close = new Date(now);
-  close.setHours(h, m, 0, 0);
-  if (close.getTime() < now.getTime() - 12 * 3600 * 1000) {
-    close.setDate(close.getDate() + 1);
-  }
-  const diffMin = (close.getTime() - now.getTime()) / 60000;
-  return diffMin > 0 && diffMin <= warnMinutes;
+  const delta = (closeMinutes - nowMinutes + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  return delta > 0 && delta <= warnMinutes;
 }

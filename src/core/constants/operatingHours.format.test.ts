@@ -17,9 +17,14 @@
  * This file pins the normalisation in both directions so a future edit cannot
  * reintroduce a format-sensitive display path.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { formatStoredHour, parseHourMinute } from "./operatingHours";
+import {
+  formatStoredHour,
+  kitchenClosedMessage,
+  parseHourMinute,
+  resolveOutletOpenState,
+} from "./operatingHours";
 import { closesSoon } from "@/features/stores/utils/distance";
 
 describe("parseHourMinute accepts both stored formats", () => {
@@ -79,37 +84,83 @@ describe("formatStoredHour prints one format for the customer", () => {
   });
 });
 
-describe("closesSoon understands 12-hour values", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  /** Pins the wall clock. `closesSoon` reads `new Date()` and nothing else. */
-  function at(hour: number, minute = 0): void {
-    vi.useFakeTimers();
-    const fixed = new Date();
-    fixed.setHours(hour, minute, 0, 0);
-    vi.setSystemTime(fixed);
-  }
+describe("closesSoon understands both formats and the outlet clock", () => {
+  // `nowMinutes` is injected so this is deterministic in any timezone. The
+  // previous version mocked the device clock while the close time was IST,
+  // which is exactly the mismatch that made the badge fire at the wrong time.
+  const at = (hour: number, minute = 0) => hour * 60 + minute;
 
   it("reports a 12-hour close time inside the warning window", () => {
-    at(23, 0);
-    expect(closesSoon("11:30 PM", 60)).toBe(true);
+    expect(closesSoon("11:30 PM", 60, at(23, 0))).toBe(true);
   });
 
   it("reports a 24-hour close time inside the warning window", () => {
-    at(23, 0);
-    expect(closesSoon("23:30", 60)).toBe(true);
+    expect(closesSoon("23:30", 60, at(23, 0))).toBe(true);
   });
 
   it("agrees on both formats for a close time outside the window", () => {
-    at(12, 0);
-    expect(closesSoon("11:30 PM", 60)).toBe(false);
-    expect(closesSoon("23:30", 60)).toBe(false);
+    expect(closesSoon("11:30 PM", 60, at(12, 0))).toBe(false);
+    expect(closesSoon("23:30", 60, at(12, 0))).toBe(false);
+  });
+
+  it("wraps across midnight instead of going negative", () => {
+    // 00:20 against a 23:30 close is 50 minutes away, not -1390.
+    expect(closesSoon("11:30 PM", 60, at(0, 20))).toBe(true);
   });
 
   it("returns false rather than NaN for unparseable input", () => {
-    expect(closesSoon("later", 60)).toBe(false);
-    expect(closesSoon("", 60)).toBe(false);
+    expect(closesSoon("later", 60, at(23, 0))).toBe(false);
+    expect(closesSoon("", 60, at(23, 0))).toBe(false);
+  });
+});
+
+describe("minutesUntilClose is a real duration", () => {
+  const NOW = new Date("2026-11-28T17:00:00.000Z"); // 22:30 IST
+
+  it("counts the minutes left in a same-day window", () => {
+    const state = resolveOutletOpenState({
+      store: { isOpen: true, hours: { open: "11:00 AM", close: "11:00 PM" } },
+      now: NOW,
+    });
+    expect(state.isOpen).toBe(true);
+    // Was 1470 before the fix: the wrap formula was applied to a same-day close.
+    expect(state.minutesUntilClose).toBe(30);
+  });
+
+  it("counts the minutes left in an overnight window", () => {
+    const state = resolveOutletOpenState({
+      store: { isOpen: true, hours: { open: "06:00 PM", close: "02:00 AM" } },
+      now: NOW, // 22:30 IST
+    });
+    expect(state.isOpen).toBe(true);
+    expect(state.minutesUntilClose).toBe(210); // 22:30 -> 02:00
+  });
+});
+
+describe("unreadable configured hours never promise a reopening time", () => {
+  // 11:30 IST on a Saturday.
+  const NOW = new Date("2026-11-28T06:00:00.000Z");
+
+  it("closes the outlet, flags the schedule and stops naming a time", () => {
+    const state = resolveOutletOpenState({
+      store: { isOpen: true, hours: { open: "11:00 A.M.", close: "11:00 P.M." } },
+      now: NOW,
+    });
+    expect(state.isOpen).toBe(false);
+    expect(state.hoursInvalid).toBe(true);
+    const message = kitchenClosedMessage(state);
+    // The old copy said "Kitchen opens at 11:00 AM", which is the default
+    // window, not this outlet's schedule.
+    expect(message).not.toMatch(/opens at/i);
+    expect(message).toContain("call the outlet");
+  });
+
+  it("keeps the ordinary message when the schedule parses", () => {
+    const state = resolveOutletOpenState({
+      store: { hours: { open: "11:00 AM", close: "11:00 PM" } },
+      now: NOW,
+    });
+    expect(state.hoursInvalid).toBe(false);
+    expect(kitchenClosedMessage(state)).toMatch(/opens at 11:00 AM/i);
   });
 });

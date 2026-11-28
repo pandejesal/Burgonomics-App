@@ -55,6 +55,13 @@ export interface KitchenHoursState {
   closeLabel: string;
   /** True only for a staff/manual close, never for a schedule gap. */
   closedByStaff: boolean;
+  /**
+   * True when an outlet *has* configured hours but they cannot be parsed.
+   * The outlet is treated as closed (fail closed), and callers must not claim a
+   * reopening time: the default window shown by `openLabel` is not the outlet's
+   * schedule and must not be promised to a customer.
+   */
+  hoursInvalid: boolean;
 }
 
 /** Documents the pure resolver is allowed to consider. */
@@ -152,13 +159,21 @@ function parseConfiguredHours(doc: any, field: "hours" | "operatingHours"): Pars
   return { open, close };
 }
 
-/** Resolves the correct message for a closed outlet without inventing a time for a staff close. */
+/** Shown when an outlet has hours configured but they cannot be read. */
+export const KITCHEN_HOURS_UNKNOWN_MESSAGE =
+  "We can't confirm this outlet's opening hours right now. Please call the outlet before ordering.";
+
+/**
+ * Resolves the correct message for a closed outlet without inventing a time for
+ * a staff close, and without promising the default window when the outlet's own
+ * hours exist but are unreadable (independent review, 28 Nov 2026).
+ */
 export function kitchenClosedMessage(
-  state: Pick<KitchenHoursState, "closedByStaff" | "openLabel">,
+  state: Pick<KitchenHoursState, "closedByStaff" | "openLabel"> & { hoursInvalid?: boolean },
 ): string {
-  return state.closedByStaff
-    ? KITCHEN_CLOSED_BY_STAFF_MESSAGE
-    : `We are currently closed. Kitchen opens at ${state.openLabel}.`;
+  if (state.closedByStaff) return KITCHEN_CLOSED_BY_STAFF_MESSAGE;
+  if (state.hoursInvalid === true) return KITCHEN_HOURS_UNKNOWN_MESSAGE;
+  return `We are currently closed. Kitchen opens at ${state.openLabel}.`;
 }
 
 /**
@@ -241,8 +256,14 @@ export function resolveOutletOpenState(docs: OutletHoursDocuments = {}): Kitchen
   let minutesUntilOpen = 0;
   let minutesUntilClose = 0;
   if (isOpen) {
-    minutesUntilClose =
-      overnight && minutesNow < hours.close
+    // Same-day window: the close time is still ahead today, so it is a plain
+    // subtraction. The wrap formula is only correct for an overnight window
+    // whose close has not been passed yet. Using it unconditionally reported
+    // 1470 minutes at 22:30 on an 11:00-23:00 schedule instead of 30
+    // (independent review, 28 Nov 2026).
+    minutesUntilClose = !overnight
+      ? hours.close - minutesNow
+      : minutesNow < hours.close
         ? hours.close - minutesNow
         : MINUTES_PER_DAY - minutesNow + hours.close;
   } else if (overnight) {
@@ -265,6 +286,7 @@ export function resolveOutletOpenState(docs: OutletHoursDocuments = {}): Kitchen
     openLabel: formatHourMinute(hours.open),
     closeLabel: formatHourMinute(hours.close),
     closedByStaff,
+    hoursInvalid: malformedHours,
   };
 }
 
