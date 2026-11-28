@@ -77,7 +77,6 @@ import {
   COURIER_COD_DISABLED,
   describePaymentFailure,
   isNonRetryableOrderFailure,
-  STORE_NOT_LINKED,
 } from "@/features/payments/utils/paymentFailure";
 import { payCtaPolicy } from "@/features/payments/utils/payCtaPolicy";
 import {

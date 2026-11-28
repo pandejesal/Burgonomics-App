@@ -27,6 +27,23 @@ describe("payCtaPolicy", () => {
       reconciliationPending: true,
     });
     expect(policy.payBlocked).toBe(true);
+    // Reconciliation outranks the code: the label must stay "under review",
+    // not "Pay Online" on a disabled button.
+    expect(policy.onlineRequired).toBe(false);
+  });
+
+  it("lets reconciliation outrank the other pre-write refusals too", () => {
+    for (const code of [STORE_CLOSED, STORE_NOT_LINKED]) {
+      const policy = payCtaPolicy({
+        status: "waiting",
+        failureCode: code,
+        retryable: false,
+        reconciliationPending: true,
+      });
+      expect(policy.payBlocked).toBe(true);
+      expect(policy.outletClosed).toBe(false);
+      expect(policy.storeNotLinked).toBe(false);
+    }
   });
 
   it("blocks a closed outlet without calling it a reconciliation", () => {

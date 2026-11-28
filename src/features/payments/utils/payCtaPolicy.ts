@@ -39,15 +39,17 @@ export interface PayCtaPolicy {
 export function payCtaPolicy(input: PayCtaPolicyInput): PayCtaPolicy {
   const settled = input.status === "success";
   const code = input.failureCode ?? undefined;
-  const onlineRequired = !settled && code === COURIER_COD_DISABLED;
+  // Reconciliation outranks every code: a payment may genuinely have gone
+  // through, so the screen must say "under review" and nothing else. Without
+  // this guard the button could read "Pay Online" while disabled with a
+  // "do not pay again" tooltip - the same contradiction, one layer down.
+  const reconciled = input.reconciliationPending;
+  const onlineRequired = !settled && !reconciled && code === COURIER_COD_DISABLED;
 
   return {
-    // Reconciliation always wins: there a payment genuinely may have gone
-    // through, so nothing new may start, whatever the code.
-    payBlocked:
-      input.reconciliationPending || (!settled && input.retryable === false && !onlineRequired),
+    payBlocked: reconciled || (!settled && input.retryable === false && !onlineRequired),
     onlineRequired,
-    storeNotLinked: !settled && code === STORE_NOT_LINKED,
-    outletClosed: !settled && code === STORE_CLOSED,
+    storeNotLinked: !settled && !reconciled && code === STORE_NOT_LINKED,
+    outletClosed: !settled && !reconciled && code === STORE_CLOSED,
   };
 }
