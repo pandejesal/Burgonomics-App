@@ -11,6 +11,24 @@ import type { Store } from "@/features/stores/models/Store";
 const TICK_MS = 30_000;
 
 /**
+ * Value equality for the resolver's verdict. `resolveOutletOpenState` returns a
+ * fresh object on every call, so a refresh that published it unconditionally
+ * would re-render (and re-arm the tick) even when nothing observable changed.
+ */
+export function sameKitchenHoursState(a: KitchenHoursState, b: KitchenHoursState): boolean {
+  return (
+    a.isOpen === b.isOpen &&
+    a.minutesNow === b.minutesNow &&
+    a.minutesUntilOpen === b.minutesUntilOpen &&
+    a.minutesUntilClose === b.minutesUntilClose &&
+    a.source === b.source &&
+    a.openLabel === b.openLabel &&
+    a.closeLabel === b.closeLabel &&
+    a.closedByStaff === b.closedByStaff
+  );
+}
+
+/**
  * Projects a mapped outlet onto the resolver's document bag.
  *
  * The staff-close signal is a property of the storefront document
@@ -53,13 +71,26 @@ export function outletHoursDocuments(
  */
 export function useKitchenHours(now: Date = new Date()): KitchenHoursState {
   const store = useStoreSelection((s: any) => s.activeStore);
-  const documents = React.useMemo(() => outletHoursDocuments(store), [store]);
+  // A selector may return a new-but-equal store object (a shallow copy, a
+  // rehydrate, or a test mock). `outletHoursDocuments` projects only JSON-safe
+  // values (booleans/strings/null) and excludes the clock, so keying on the
+  // projected JSON keeps equal stores from re-running the effect or re-arming
+  // the interval, while a real hours change still refreshes the verdict.
+  const docsKey = JSON.stringify(outletHoursDocuments(store));
+  const documents = React.useMemo(
+    () => JSON.parse(docsKey) as Omit<OutletHoursDocuments, "now">,
+    [docsKey],
+  );
   const [state, setState] = React.useState<KitchenHoursState>(() =>
     resolveOutletOpenState({ ...documents, now }),
   );
 
   React.useEffect(() => {
-    const refresh = () => setState(resolveOutletOpenState(documents));
+    const refresh = () =>
+      setState((prev) => {
+        const next = resolveOutletOpenState(documents);
+        return sameKitchenHoursState(prev, next) ? prev : next;
+      });
     refresh();
 
     const interval = setInterval(refresh, TICK_MS);
