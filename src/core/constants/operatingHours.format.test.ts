@@ -104,8 +104,11 @@ describe("closesSoon understands both formats and the outlet clock", () => {
   });
 
   it("wraps across midnight instead of going negative", () => {
-    // 00:20 against a 23:30 close is 50 minutes away, not -1390.
-    expect(closesSoon("11:30 PM", 60, at(0, 20))).toBe(true);
+    // 23:40 to a 00:20 close is 40 minutes away. The old implementation
+    // subtracted the raw minutes and produced a negative number.
+    expect(closesSoon("12:20 AM", 60, at(23, 40))).toBe(true);
+    // The same close at 22:00 is two hours away, so no badge yet.
+    expect(closesSoon("12:20 AM", 60, at(22, 0))).toBe(false);
   });
 
   it("returns false rather than NaN for unparseable input", () => {

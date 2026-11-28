@@ -98,6 +98,7 @@ describe("useKitchenHours stability", () => {
       openLabel: "08:00 AM",
       closeLabel: "10:00 PM",
       closedByStaff: false,
+      hoursInvalid: false,
     };
     expect(sameKitchenHoursState(base, { ...base })).toBe(true);
 
