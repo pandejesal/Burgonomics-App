@@ -30,18 +30,21 @@ describe("owner-approved Home announcements", () => {
     }
   });
 
-  it("lists only the eight stores the owner site marks as upcoming", () => {
-    expect(approvedHomeContent.upcomingStores).toHaveLength(8);
+  it("lists only the outlets still upcoming after the owner's 26 Nov 2026 list", () => {
+    // Aditya Dave, 26 Nov 2026: Gor Dhod Road and Patan removed; Vallabh
+    // Vidhyanagar, Ghatlodiya, Mehsana and Chandra Park opened (so they are no
+    // longer "upcoming"); Joggers Park, Jamnagar added as coming soon.
     expect(approvedHomeContent.upcomingStores.map((store) => store.id)).toEqual([
-      "gor-dhod-road",
-      "vallabh-vidhyanagar",
       "hinjawadi-phase-2",
-      "patan",
-      "chandra-park",
-      "ghatlodiya",
-      "mehsana",
       "tin-batti",
+      "joggers-park",
     ]);
+    for (const removed of ["gor-dhod-road", "patan"]) {
+      expect(approvedHomeContent.upcomingStores.map((s) => s.id)).not.toContain(removed);
+    }
+    for (const opened of ["vallabh-vidhyanagar", "ghatlodiya", "mehsana", "chandra-park"]) {
+      expect(approvedHomeContent.upcomingStores.map((s) => s.id)).not.toContain(opened);
+    }
     // Already-open/new outlets from the same source are not upcoming.
     for (const open of ["Urban Chowk", "Narayanpura", "VR Mall", "CBD Mall", "New Ranip"]) {
       expect(approvedHomeContent.upcomingStores.map((s) => s.name)).not.toContain(open);

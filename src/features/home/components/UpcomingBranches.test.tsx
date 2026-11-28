@@ -68,12 +68,21 @@ function pointerEvent(type: string, pointerType: string) {
 }
 
 describe("Upcoming Branches horizontal rotation", () => {
+  // The content itself is pinned by approvedHomeContent.test.ts. Here it is the
+  // FIXTURE, so rotation/wrap/pause behaviour is exercised against whatever the
+  // owner approved rather than a copy of the old list (Hydrogen, 28 Nov 2026:
+  // the hardcoded "8" and the Gor Dhod Road / Vallabh Vidhyanagar names made a
+  // legitimate content edit look like nine behavioural regressions).
+  const stores = approvedHomeContent.upcomingStores;
+  const first = stores[0].name;
+  const second = stores[1].name;
+  const last = stores[stores.length - 1].name;
   it("keeps every approved announcement in a horizontal strip, without order/store actions", async () => {
     await mount();
     const list = host.querySelector("ul")!;
     expect(list.className).toContain("flex");
     expect(list.className).toContain("overflow-x-auto");
-    expect(list.children).toHaveLength(8);
+    expect(list.children).toHaveLength(stores.length);
     for (const store of approvedHomeContent.upcomingStores) {
       expect(list.textContent).toContain(store.name);
       expect(list.textContent).toContain(store.location);
@@ -86,18 +95,18 @@ describe("Upcoming Branches horizontal rotation", () => {
     expect(list.parentElement!.className).not.toMatch(/\bborder-(?:y|b)\b/);
     expect(list.getAttribute("aria-live")).toBe("off");
     expect(host.textContent).not.toMatch(/\b\d+\s*\/\s*\d+\b/);
-    expect(host.querySelector('[aria-label="Branch 1 of 8"]')).toBeNull();
+    expect(host.querySelector(`[aria-label="Branch 1 of ${stores.length}"]`)).toBeNull();
   });
 
   it("advances after six seconds and wraps without dropping announcements", async () => {
     await mount();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await tick(5999);
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await tick(1);
-    expect(selected()).toContain("Vallabh Vidhyanagar");
-    for (let i = 0; i < 7; i++) await tick();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(second);
+    for (let i = 0; i < stores.length - 1; i++) await tick();
+    expect(selected()).toContain(first);
   });
 
   it("keeps touch-to-pause and keyboard browsing without a visible control strip", async () => {
@@ -106,13 +115,13 @@ describe("Upcoming Branches horizontal rotation", () => {
       host.querySelector("ul")!.dispatchEvent(new Event("pointerdown", { bubbles: true })),
     );
     await tick(18000);
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await arrow("ArrowLeft");
-    expect(selected()).toContain("Tin Batti");
+    expect(selected()).toContain(last);
     await arrow("ArrowRight");
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await tick();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     expect(host.querySelector("button")).toBeNull();
   });
 
@@ -121,13 +130,13 @@ describe("Upcoming Branches horizontal rotation", () => {
     const list = host.querySelector("ul")!;
     await act(async () => list.focus());
     await tick();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await act(async () =>
       list.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })),
     );
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     await tick();
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
   });
 
   it("temporarily pauses on hover and stops persistently on a touch gesture", async () => {
@@ -138,7 +147,7 @@ describe("Upcoming Branches horizontal rotation", () => {
       section.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     await tick();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await act(async () => {
       section.dispatchEvent(
         Object.assign(pointerEvent("pointerout", "mouse"), { relatedTarget: document.body }),
@@ -148,12 +157,12 @@ describe("Upcoming Branches horizontal rotation", () => {
       );
     });
     await tick();
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     await act(async () =>
       host.querySelector("ul")!.dispatchEvent(new Event("pointerdown", { bubbles: true })),
     );
     await tick();
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -166,11 +175,11 @@ describe("Upcoming Branches horizontal rotation", () => {
       host.querySelector("ul")!.dispatchEvent(pointerEvent("pointerdown", "touch"));
     });
     await tick();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await arrow("ArrowRight");
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     await tick(18000);
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     expect(host.querySelector("button")).toBeNull();
   });
 
@@ -197,12 +206,12 @@ describe("Upcoming Branches horizontal rotation", () => {
       notify([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver),
     );
     await tick();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await act(async () =>
       notify([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver),
     );
     await tick();
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     await act(async () => root!.unmount());
     root = null;
     expect(disconnect).toHaveBeenCalledOnce();
@@ -213,22 +222,22 @@ describe("Upcoming Branches horizontal rotation", () => {
     Object.assign(motion, { matches: true });
     await mount();
     await tick(18000);
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     expect(vi.getTimerCount()).toBe(0);
     await arrow("ArrowRight");
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     await act(async () => {
       Object.assign(motion, { matches: false });
       motion.dispatchEvent(new Event("change"));
     });
     await tick();
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
     await act(async () => {
       Object.assign(motion, { matches: true });
       motion.dispatchEvent(new Event("change"));
     });
     await tick();
-    expect(selected()).toContain("Vallabh Vidhyanagar");
+    expect(selected()).toContain(second);
   });
 
   it("pauses while the page is hidden and clears its timer on unmount", async () => {
@@ -238,7 +247,7 @@ describe("Upcoming Branches horizontal rotation", () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
     await tick();
-    expect(selected()).toContain("Gor Dhod Road");
+    expect(selected()).toContain(first);
     await act(async () => root!.unmount());
     root = null;
     expect(vi.getTimerCount()).toBe(0);

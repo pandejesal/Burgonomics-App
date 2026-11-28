@@ -73,52 +73,22 @@ export const approvedHomeContent: ApprovedHomeContent = {
   ],
   upcomingStores: [
     {
-      id: "gor-dhod-road",
-      name: "Gor Dhod Road",
-      location: "Surat, Gujarat",
-      openingText: "Planned for October 2026",
-    },
-    {
-      id: "vallabh-vidhyanagar",
-      name: "Vallabh Vidhyanagar",
-      location: "Vallabh Vidhyanagar, Anand, Gujarat",
-      openingText: "Planned for October 2026",
-    },
-    {
       id: "hinjawadi-phase-2",
       name: "Hinjawadi Phase 2",
       location: "VJ Happiness Street, Hinjawadi Phase 2, Pune",
       openingText: "Planned for October 2026",
     },
     {
-      id: "patan",
-      name: "Patan",
-      location: "Patan, Gujarat",
-      openingText: "Planned for October 2026",
-    },
-    {
-      id: "chandra-park",
-      name: "Chandra Park",
-      location: "150 Feet Ring Road, Rajkot, Gujarat",
-      openingText: "Opening date to be announced",
-    },
-    {
-      id: "ghatlodiya",
-      name: "Ghatlodiya",
-      location: "Maharana Pratap Road, Chanakyapuri, Ahmedabad",
-      openingText: "Opening date to be announced",
-    },
-    {
-      id: "mehsana",
-      name: "Mehsana",
-      location: "Radhanpur Road, Mehsana, Gujarat",
-      openingText: "Opening date to be announced",
-    },
-    {
       id: "tin-batti",
       name: "Tin Batti",
       location: "Seaface Road, Daman",
       openingText: "Opening date to be announced",
+    },
+    {
+      id: "joggers-park",
+      name: "Joggers Park",
+      location: "Joggers Park, Jamnagar, Gujarat",
+      openingText: "Planned for December 2026",
     },
   ],
 };
