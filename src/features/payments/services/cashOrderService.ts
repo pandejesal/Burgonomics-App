@@ -152,6 +152,12 @@ function readRefusal(err: unknown): {
 const TERMINAL_REFUSALS = new Set([
   "COD_UNAVAILABLE",
   "COD_LIMIT_EXCEEDED",
+  // Launch policy (owner, 26 Nov 2026): a payable delivery is online-only. The
+  // server refuses delivery cash inside the create transaction, before its
+  // first write (createCashOrder.ts, assertCashOnDeliveryAllowed), so a retry
+  // can never succeed. Without this entry the app treated the refusal as
+  // "outcome unknown, retry" and kept the pending cash record alive.
+  "COURIER_COD_DISABLED",
   "PRICE_CHANGED",
   "ITEM_UNAVAILABLE",
   "ITEM_PRICE_UNVERIFIED",

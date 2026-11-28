@@ -930,6 +930,32 @@ describe("r5 A3 — serial reconfirm provenance and draft retention", () => {
     expect(readPendingCashOrder()).toBeNull();
   });
 
+  it("the launch no-cash-delivery refusal is a verified no-write and retires the record", async () => {
+    // Same path as STORE_CLOSED above. The server throws COURIER_COD_DISABLED
+    // inside the create transaction before its first write, so the pending
+    // record must be retired, not kept as a possibly-sent order.
+    savePendingCashOrder("attempt_serial3", "ord_serial3", baseRequest("ord_serial3"));
+    cash.createCashOrderOnServer.mockReset();
+    cash.createCashOrderOnServer.mockResolvedValueOnce(cashDecline(60_000) as never);
+    await new OrderRepository(service as never).createCashOrder();
+
+    cash.createCashOrderOnServer.mockResolvedValueOnce({
+      success: false,
+      error: {
+        code: "COURIER_COD_DISABLED",
+        message: "Delivery orders must be paid online.",
+        retryable: false,
+      },
+    } as never);
+    const result = await new OrderRepository(service as never).createCashOrder({
+      attemptId: "attempt_serial3",
+      acceptedTotalPaise: 60_000,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe("COURIER_COD_DISABLED");
+    expect(readPendingCashOrder()).toBeNull();
+  });
+
   it("a wrong-ID receipt keeps the in-memory draft for explicit same-ID retry", async () => {
     withDraft();
     cash.createCashOrderOnServer.mockReset();

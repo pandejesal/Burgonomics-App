@@ -82,6 +82,9 @@ import { checkMinimumOrder, minOrderShortfallMessage } from "@/shared/pricing/pr
 const VERIFIED_CASH_NO_WRITE = new Set([
   "COD_UNAVAILABLE",
   "COD_LIMIT_EXCEEDED",
+  // Same server function as the two above, same position in the transaction:
+  // thrown before the first tx.set/tx.create, so it is a proven no-write.
+  "COURIER_COD_DISABLED",
   "ITEM_UNAVAILABLE",
   "ITEM_PRICE_UNVERIFIED",
   "PRODUCT_UNSUPPORTED",

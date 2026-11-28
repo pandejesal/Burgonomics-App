@@ -62,6 +62,12 @@ const CODE_MESSAGES: Record<string, string> = {
   // 409. Static refusal — the shop has to reopen, so never invite a retry.
   STORE_CLOSED:
     "This outlet is closed right now, so online orders can't be placed. Please try again during opening hours.",
+  // Launch policy (owner, 26 Nov 2026): delivery is paid online only. The server
+  // refuses delivery cash with this 409, so never invite a retry. The payment
+  // screen maps uncurated codes through here, so without this entry the
+  // customer saw a generic "Something went wrong".
+  COURIER_COD_DISABLED:
+    "Delivery orders must be paid online. Cash is available for takeaway and dine-in only.",
   // F1 (staging 2026-11-21, Test 8): the coupon would take nothing off the bill.
   // The server refuses it instead of answering "Coupon applied." with ₹0.
   COUPON_NO_DISCOUNT: "This coupon doesn't take anything off this order, so it can't be applied.",

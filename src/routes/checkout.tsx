@@ -124,6 +124,8 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "STORE_CLOSED",
   "COD_UNAVAILABLE",
   "COD_LIMIT_EXCEEDED",
+  // Launch policy: delivery is paid online only. The server's sentence says so.
+  "COURIER_COD_DISABLED",
   "ORDER_SYNC_PENDING",
 ]);
 
