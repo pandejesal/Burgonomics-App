@@ -169,6 +169,8 @@ describe("unreadable configured hours never promise a reopening time", () => {
     expect(parseStoredHours({ open: "23:30", close: "00:30" })).toEqual({ open: 1410, close: 30 });
     expect(parseStoredHours({ open: "11:00 A.M.", close: "11:00 P.M." })).toBeNull();
     expect(parseStoredHours({ open: "", close: "11:00 PM" })).toBeNull();
+    // Equal open and close is not a window; the resolver rejects it too.
+    expect(parseStoredHours({ open: "11:00 AM", close: "11:00 AM" })).toBeNull();
     expect(parseStoredHours(null)).toBeNull();
   });
 

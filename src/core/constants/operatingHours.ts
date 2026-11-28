@@ -163,7 +163,9 @@ export function parseStoredHours(
   if (!hours || typeof hours !== "object") return null;
   const open = parseHourMinute(hours.open);
   const close = parseHourMinute(hours.close);
-  if (open === null || close === null) return null;
+  // `open === close` is not a schedule: resolveOutletOpenState rejects it, so a
+  // display that accepted it would promise a window the gate does not believe.
+  if (open === null || close === null || open === close) return null;
   return { open, close };
 }
 

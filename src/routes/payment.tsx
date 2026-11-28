@@ -74,10 +74,12 @@ import type { PaymentOrder, PaymentPreflight } from "@/features/payments/models"
 import type { ApiResult } from "@/core/network/http";
 import { ok } from "@/core/network/http";
 import {
+  COURIER_COD_DISABLED,
   describePaymentFailure,
   isNonRetryableOrderFailure,
   STORE_NOT_LINKED,
 } from "@/features/payments/utils/paymentFailure";
+import { payCtaPolicy } from "@/features/payments/utils/payCtaPolicy";
 import {
   describePaymentRecovery,
   isRecoveryReason,
@@ -1505,13 +1507,22 @@ function PaymentPage() {
       : status === "waiting" && failure && isRecoveryReason(failure.code)
         ? failure.code
         : null;
-  // No new payment may start from a money-possible state: reconciliation is
-  // pending (persisted per user) or the last failure was not retryable.
-  const payBlocked =
-    reconciliationPending || (failure != null && !failure.retryable && status !== "success");
+  // No new payment may start from a money-possible state. The decision lives in
+  // payCtaPolicy so it is unit-tested: a pre-write refusal must not borrow the
+  // reconciliation wording, and the delivery-cash refusal must not block the
+  // one action that fixes it (paying online).
+  const payCta = payCtaPolicy({
+    status,
+    failureCode: failure?.code,
+    retryable: failure?.retryable,
+    reconciliationPending,
+  });
+  const payBlocked = payCta.payBlocked;
+  const onlineRequired = payCta.onlineRequired;
   // D-01: a store that is not linked to a partner branch can never pay, so the
   // button says so instead of the reconciliation "under review" copy.
-  const storeNotLinked = status !== "success" && failure?.code === STORE_NOT_LINKED;
+  const storeNotLinked = payCta.storeNotLinked;
+  const outletClosed = payCta.outletClosed;
   const eta =
     billingFulfillment === "delivery"
       ? billingStore?.etaMinutes
@@ -1589,8 +1600,10 @@ function PaymentPage() {
                       ? (quoteView.message ?? "Getting delivery price")
                       : storeNotLinked
                         ? failure?.message
-                        : payBlocked
-                          ? "We are confirming your payment — please do not pay again"
+                        : outletClosed
+                          ? failure?.message
+                          : payBlocked
+                            ? "We are confirming your payment — please do not pay again"
                           : !isOnline
                             ? "Back online to place your order"
                             : totalsFailed
@@ -1621,9 +1634,13 @@ function PaymentPage() {
                         : "Price unavailable"
                   : storeNotLinked
                     ? "Ordering unavailable"
-                    : payBlocked
-                      ? "Payment under review"
-                      : status === "failed" || status === "cancelled"
+                    : outletClosed
+                      ? "Outlet is closed"
+                      : onlineRequired
+                        ? "Pay Online"
+                        : payBlocked
+                          ? "Payment under review"
+                          : status === "failed" || status === "cancelled"
                         ? resume
                           ? "Retry payment"
                           : "Retry checkout"
@@ -1691,7 +1708,16 @@ function PaymentPage() {
           ) : (
             <PaymentMethodList
               value={method}
-              onChange={setMethod}
+              onChange={(next) => {
+                setMethod(next);
+                // Switching to online IS the remedy for a delivery-cash refusal.
+                // Leaving the old failure in place would keep the panel saying
+                // "nothing charged" and the CTA disabled at the same time.
+                if (next === "online" && failure?.code === COURIER_COD_DISABLED) {
+                  setFailure(null);
+                  setStatus("idle");
+                }
+              }}
               disabled={busy}
               cashEligibility={codAvailability}
             />
