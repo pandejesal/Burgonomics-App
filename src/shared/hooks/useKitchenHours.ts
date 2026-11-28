@@ -24,7 +24,8 @@ export function sameKitchenHoursState(a: KitchenHoursState, b: KitchenHoursState
     a.source === b.source &&
     a.openLabel === b.openLabel &&
     a.closeLabel === b.closeLabel &&
-    a.closedByStaff === b.closedByStaff
+    a.closedByStaff === b.closedByStaff &&
+    a.hoursInvalid === b.hoursInvalid
   );
 }
 

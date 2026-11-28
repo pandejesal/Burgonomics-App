@@ -35,7 +35,10 @@ export function KitchenClosedBanner({ className, message }: KitchenClosedBannerP
       </span>
       <div className="min-w-0 flex-1">
         <p className="type-body font-semibold">{message ?? kitchenClosedMessage(state)}</p>
-        {!state.closedByStaff && (
+        {/* No reopening time for a staff close, and none when the outlet's own
+            hours are unreadable: `openLabel` is then the documented default
+            window, not this outlet's schedule, so it must not be promised. */}
+        {!state.closedByStaff && !state.hoursInvalid && (
           <p className="mt-1 type-caption">
             You can browse the full menu now — checkout opens at {state.openLabel}
             {state.minutesUntilOpen >= 60

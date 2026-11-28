@@ -111,6 +111,10 @@ describe("useKitchenHours stability", () => {
       { openLabel: "09:00 AM" },
       { closeLabel: "11:00 PM" },
       { closedByStaff: !base.closedByStaff },
+      // Added with the field itself: without it, a schedule turning unreadable
+      // while every other field stayed equal kept the old verdict, and the
+      // banner went on promising the default reopening time.
+      { hoursInvalid: !base.hoursInvalid },
     ];
     for (const change of singleFieldChanges)
       expect(sameKitchenHoursState(base, { ...base, ...change }), JSON.stringify(change)).toBe(false);

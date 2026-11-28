@@ -235,6 +235,7 @@ function Probe() {
         openLabel: state.openLabel,
         closeLabel: state.closeLabel,
         closedByStaff: state.closedByStaff,
+        hoursInvalid: state.hoursInvalid,
         minutesNow: state.minutesNow,
       })}
     </div>
@@ -610,5 +611,32 @@ describe("customer ordering gate", () => {
     });
     expect(host.textContent).toContain("closed by staff");
     expect(host.textContent).not.toContain("opens at 08:00 AM");
+  });
+
+  it("never promises a reopening time when the outlet's own hours are unreadable", async () => {
+    vi.setSystemTime(new Date("2026-11-26T05:35:00.000Z")); // 11:05 IST
+    // Configured but unparseable ("A.M." with dots). The gate fails closed and
+    // must not advertise the documented 11:00 AM default as this outlet's
+    // schedule - neither in the headline nor in the banner's second line.
+    active.store = {
+      id: "demo",
+      isOpen: true,
+      hours: { open: "11:00 A.M.", close: "11:00 P.M." },
+    };
+    await act(async () =>
+      root.render(
+        <>
+          <Probe />
+          <KitchenClosedBanner />
+        </>,
+      ),
+    );
+    expect(JSON.parse(host.querySelector('[data-testid="gate"]')!.textContent!)).toMatchObject({
+      isOpen: false,
+      closedByStaff: false,
+      hoursInvalid: true,
+    });
+    expect(host.textContent).toContain("call the outlet");
+    expect(host.textContent).not.toMatch(/opens at/i);
   });
 });
