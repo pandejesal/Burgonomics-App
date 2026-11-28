@@ -13,6 +13,8 @@ export {
   istMinutesSinceMidnight,
   resolveOutletOpenState,
   kitchenClosedMessage,
+  formatStoredHour,
+  parseHourMinute,
   resetDefaultHoursWarningForTests,
 } from "./operatingHours";
 export type { KitchenHoursState, OutletHoursDocuments, OutletHoursSource } from "./operatingHours";

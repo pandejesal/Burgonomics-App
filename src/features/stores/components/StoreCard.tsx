@@ -1,4 +1,5 @@
 import * as React from "react";
+import { formatStoredHour } from "@/core/constants/operatingHours";
 import {
   MapPin,
   Clock,
@@ -56,7 +57,7 @@ export function StoreCard({
   const label = `${store.name}${store.area ? `, ${store.area}` : ""}. ${
     store.isOpen === true
       ? store.hours
-        ? `Open now, closes at ${store.hours.close}`
+        ? `Open now, closes at ${formatStoredHour(store.hours.close)}`
         : "Open now"
       : store.isOpen === false
         ? "Closed"
@@ -344,7 +345,7 @@ export function StoreCard({
               </div>
               <p className="mt-1 text-sm font-semibold text-text-primary">
                 {store.hours
-                  ? `${store.hours.open} – ${store.hours.close}`
+                  ? `${formatStoredHour(store.hours.open)} - ${formatStoredHour(store.hours.close)}`
                   : "Opening hours unavailable"}
               </p>
               <p className="mt-0.5 text-xs text-text-secondary">

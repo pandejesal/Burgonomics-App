@@ -1,4 +1,6 @@
 /** Haversine distance in kilometres between two lat/lng pairs. */
+import { parseHourMinute } from "@/core/constants/operatingHours";
+
 export function haversineKm(
   a: { lat: number; lng: number },
   b: { lat: number; lng: number },
@@ -35,14 +37,19 @@ export function formatDistance(km?: number): string {
 }
 
 /**
- * Detects if the store closes within `warnMinutes` from now, in the
- * store's local wall clock (mock: uses the device clock — a real
- * implementation would use the store's timezone).
+ * Detects if the store closes within `warnMinutes` from now, in the store's
+ * local wall clock.
+ *
+ * The stored value may be 24-hour (`"23:30"`) or 12-hour (`"11:30 PM"`); both
+ * exist in the database, and the original split(":") implementation produced
+ * `NaN` for every 12-hour value, silently reporting "not closing soon" forever
+ * for 26 of the 27 documents that carry hours.
  */
 export function closesSoon(closeHHmm: string, warnMinutes = 60): boolean {
-  const [h, m] = closeHHmm.split(":").map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return false;
+  const closeMinutes = parseHourMinute(closeHHmm);
+  if (closeMinutes === null) return false;
   const now = new Date();
+  const [h, m] = [Math.floor(closeMinutes / 60), closeMinutes % 60];
   const close = new Date(now);
   close.setHours(h, m, 0, 0);
   if (close.getTime() < now.getTime() - 12 * 3600 * 1000) {

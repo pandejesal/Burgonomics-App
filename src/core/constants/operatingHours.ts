@@ -88,8 +88,15 @@ function logDefaultHoursOnce(reason: string): void {
 /**
  * Parses `"11:00 AM"`, `"08:00"`, `"23:30"` into minutes past midnight.
  * Returns `null` for anything else — a bad document must never crash a menu.
+ *
+ * Exported because two storefront components print a stored hours value
+ * directly to the customer, and the database legitimately contains BOTH
+ * formats (measured 28 Nov 2026: `stores/demo.hours` and all 25
+ * `branches/*.operatingHours` use 12-hour, while `stores/str_003.hours` used
+ * 24-hour). Printing the raw string therefore showed "closes at 11:00 PM" on
+ * one card and "closes at 23:30" on the next.
  */
-function parseHourMinute(value: unknown): number | null {
+export function parseHourMinute(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const match = /^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$/i.exec(value);
   if (!match) return null;
@@ -114,6 +121,20 @@ function formatHourMinute(minutes: number): string {
   const suffix = hour24 < 12 ? "AM" : "PM";
   const hour12 = hour24 % 12 || 12;
   return `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+/**
+ * Normalises any stored hours string to the 12-hour form the rest of the UI
+ * speaks (`"11:00 PM"`), or returns the input unchanged when it cannot be
+ * parsed — a display helper must never blank out a real value.
+ *
+ * Storefront cards used to interpolate the raw document string, so a shop
+ * storing 24-hour hours printed "closes at 23:30" beside a shop printing
+ * "closes at 11:00 PM". This is the one place that fixes the boundary.
+ */
+export function formatStoredHour(value: unknown): string {
+  const minutes = parseHourMinute(value);
+  return minutes === null ? (typeof value === "string" ? value : "") : formatHourMinute(minutes);
 }
 
 interface ParsedHours {

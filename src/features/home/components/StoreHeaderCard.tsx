@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, Clock, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatStoredHour } from "@/core/constants/operatingHours";
 import { AppBadge } from "@/shared/components/common/AppBadge";
 import { Text } from "@/shared/components/common/Text";
 import type { Fulfillment, Store } from "@/features/stores/models/Store";
@@ -77,7 +78,7 @@ export function StoreHeaderCard({ store, fulfillment, className }: Props) {
                       ? `${store.etaMinutes} min delivery`
                       : "Delivery time unavailable"
                   : store.hours
-                    ? `Opens at ${store.hours.open}`
+                    ? `Opens at ${formatStoredHour(store.hours.open)}`
                     : "Opening hours unavailable"}
               </span>
             </div>
