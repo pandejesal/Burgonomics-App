@@ -23,6 +23,7 @@ import {
   formatStoredHour,
   kitchenClosedMessage,
   parseHourMinute,
+  parseStoredHours,
   resolveOutletOpenState,
 } from "./operatingHours";
 import { closesSoon } from "@/features/stores/utils/distance";
@@ -156,6 +157,27 @@ describe("unreadable configured hours never promise a reopening time", () => {
     // window, not this outlet's schedule.
     expect(message).not.toMatch(/opens at/i);
     expect(message).toContain("call the outlet");
+  });
+
+  it("tells a caller whether a stored schedule can be promised at all", () => {
+    // StoreHeaderCard prints "Opens at <x>"; it must not do so from a value it
+    // cannot read, because formatStoredHour returns such a value unchanged.
+    expect(parseStoredHours({ open: "11:00 AM", close: "11:00 PM" })).toEqual({
+      open: 660,
+      close: 1380,
+    });
+    expect(parseStoredHours({ open: "23:30", close: "00:30" })).toEqual({ open: 1410, close: 30 });
+    expect(parseStoredHours({ open: "11:00 A.M.", close: "11:00 P.M." })).toBeNull();
+    expect(parseStoredHours({ open: "", close: "11:00 PM" })).toBeNull();
+    expect(parseStoredHours(null)).toBeNull();
+  });
+
+  it("reports hoursInvalid as a strict false when no source is configured", () => {
+    // `false || null || null` is null, not false. A strict check and the
+    // hook's value-equality memo both depend on this being a real boolean.
+    const none = resolveOutletOpenState({ store: { hours: null }, now: NOW });
+    expect(none.hoursInvalid).toBe(false);
+    expect(none.source).toBe("default");
   });
 
   it("keeps the ordinary message when the schedule parses", () => {

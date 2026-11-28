@@ -150,6 +150,23 @@ export function formatStoredHour(value: unknown): string {
   return minutes === null ? (typeof value === "string" ? value : "") : formatHourMinute(minutes);
 }
 
+/**
+ * Both stored hours as minutes past midnight, or `null` when either side is
+ * unreadable. Display code that is about to promise an opening time must gate
+ * on this: `formatStoredHour` deliberately returns an unparseable string
+ * unchanged (so a real value is never blanked), which means it alone cannot
+ * tell "11:00 AM" from "11:00 A.M.".
+ */
+export function parseStoredHours(
+  hours: { open: unknown; close: unknown } | null | undefined,
+): { open: number; close: number } | null {
+  if (!hours || typeof hours !== "object") return null;
+  const open = parseHourMinute(hours.open);
+  const close = parseHourMinute(hours.close);
+  if (open === null || close === null) return null;
+  return { open, close };
+}
+
 interface ParsedHours {
   open: number;
   close: number;
@@ -242,10 +259,15 @@ export function resolveOutletOpenState(docs: OutletHoursDocuments = {}): Kitchen
     hours = branchHours;
     source = "branch";
   } else {
-    const hasBadField =
+    // Boolean() is required, not cosmetic: when `adminStore` and `branch` are
+    // absent, `false || null || null` evaluates to null, and `hoursInvalid`
+    // would be null instead of false. A strict `=== false` check (and the
+    // value-equality memo) would then disagree across otherwise-equal states.
+    const hasBadField = Boolean(
       (store && store.hours != null) ||
-      (adminStore && adminStore.hours != null) ||
-      (branch && branch.operatingHours != null);
+        (adminStore && adminStore.hours != null) ||
+        (branch && branch.operatingHours != null),
+    );
     malformedHours = hasBadField;
     // The two outcomes differ, so the log says which one happened: the old
     // single message claimed the default window was in use even when the

@@ -30,6 +30,19 @@ export const STORE_CLOSED = "STORE_CLOSED";
  */
 export const COUPON_NO_DISCOUNT = "COUPON_NO_DISCOUNT";
 
+/**
+ * Launch policy (owner, 26 Nov 2026): a delivery order with money due must be
+ * paid online. The server refuses delivery cash with HTTP 409
+ * `COURIER_COD_DISABLED`, thrown inside the create transaction BEFORE any
+ * write. Nothing has been charged and no order exists.
+ *
+ * This must never fall into the `!retryable` branch below, whose copy assumes
+ * money may have moved ("Payment received — order pending" / "Do not pay
+ * again"). That would be false, and it would advise the customer against the
+ * one action that fixes the order: paying online.
+ */
+export const COURIER_COD_DISABLED = "COURIER_COD_DISABLED";
+
 /** True when the refusal is "this outlet is closed right now". */
 export function isStoreClosedRefusal(code?: string): boolean {
   return code === STORE_CLOSED;
@@ -43,7 +56,10 @@ export function isStoreClosedRefusal(code?: string): boolean {
  */
 export function isNonRetryableOrderFailure(code?: string): boolean {
   return (
-    code === "PAYMENT_RECONCILIATION_PENDING" || code === STORE_NOT_LINKED || code === STORE_CLOSED
+    code === "PAYMENT_RECONCILIATION_PENDING" ||
+    code === STORE_NOT_LINKED ||
+    code === STORE_CLOSED ||
+    code === COURIER_COD_DISABLED
   );
 }
 
@@ -79,6 +95,16 @@ export function describePaymentFailure(input: {
     return {
       title: "Online ordering unavailable",
       body: message,
+      showRetry: false,
+      showContactSupport: true,
+    };
+  }
+  if (code === COURIER_COD_DISABLED) {
+    // Refused before any write, so this is NOT the paid-but-pending branch.
+    // Say plainly that nothing was charged and name the action that works.
+    return {
+      title: "Pay online for delivery",
+      body: `${message} Nothing has been charged. Pay online to receive this delivery, or choose takeaway or dine-in if you want to pay cash.`,
       showRetry: false,
       showContactSupport: true,
     };

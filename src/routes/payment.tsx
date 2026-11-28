@@ -134,6 +134,9 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   // F2 (staging 2026-11-21, Test 9): the outlet is closed, so the server
   // refuses the gateway order. Its sentence is the honest thing to show.
   "STORE_CLOSED",
+  // Launch policy: delivery must be paid online. The server's sentence says so
+  // and says nothing was charged; `describePaymentFailure` mirrors that.
+  "COURIER_COD_DISABLED",
 ]);
 
 function orderFailureMessage(error: { code: string; message: string }): string {

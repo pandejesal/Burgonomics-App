@@ -14,6 +14,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   COUPON_NO_DISCOUNT,
+  COURIER_COD_DISABLED,
   describePaymentFailure,
   isNonRetryableOrderFailure,
   isStoreClosedRefusal,
@@ -67,6 +68,44 @@ describe("F2 — a closed outlet is shown honestly and never offered a Retry", (
     expect(view.message).toMatch(/closed/i);
     // A closed shop does not let the customer "escape" to takeaway either.
     expect(view.takeawaySelectable).toBe(false);
+  });
+});
+
+describe("launch policy — a delivery paid in cash is refused, and the customer is told the truth", () => {
+  const SERVER_SENTENCE =
+    "Delivery orders must be paid online. Courier cash collection is not available at launch. " +
+    "Cash is available for takeaway and dine-in only.";
+
+  it("classifies the refusal as non-retryable", () => {
+    expect(COURIER_COD_DISABLED).toBe("COURIER_COD_DISABLED");
+    expect(isNonRetryableOrderFailure(COURIER_COD_DISABLED)).toBe(true);
+    // Neighbouring cash refusals keep their existing behaviour.
+    expect(isNonRetryableOrderFailure("COD_LIMIT_EXCEEDED")).toBe(false);
+  });
+
+  it("never claims money moved and never says 'do not pay again'", () => {
+    // The `!retryable` catch-all in describePaymentFailure assumes money may
+    // have moved ("Payment received — order pending / Do not pay again"). This
+    // refusal happens BEFORE any write, so that copy would be a lie, and it
+    // would tell the customer not to do the one thing that fixes the order:
+    // pay online.
+    const content = describePaymentFailure({
+      status: "failed",
+      message: SERVER_SENTENCE,
+      retryable: false,
+      code: COURIER_COD_DISABLED,
+    });
+    expect(content.showRetry).toBe(false);
+    expect(content.body).toContain(SERVER_SENTENCE);
+    expect(content.body).toMatch(/nothing has been charged/i);
+    expect(content.body).not.toMatch(/payment received/i);
+    expect(content.body).not.toMatch(/do not pay again/i);
+    expect(content.title).toMatch(/pay online/i);
+  });
+
+  it("maps the code to a customer sentence instead of the generic fallback", () => {
+    expect(userMessageFor(COURIER_COD_DISABLED)).toMatch(/paid online/i);
+    expect(userMessageFor(COURIER_COD_DISABLED)).not.toBe("Something went wrong. Please try again.");
   });
 });
 
