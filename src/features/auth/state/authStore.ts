@@ -289,6 +289,11 @@ function nextChallengeEpoch(): number {
  */
 let identityEpoch = 0;
 
+/** Pure read-only view of the existing identity lifetime fence (no auth logic). */
+export function currentIdentityEpoch(): number {
+  return identityEpoch;
+}
+
 /**
  * Removes persisted tokens only when they are still the ones this attempt
  * wrote. A newer login may have replaced them while the storage await was in

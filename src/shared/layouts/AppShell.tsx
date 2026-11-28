@@ -17,6 +17,8 @@ interface AppShellProps {
   showTopBar?: boolean;
   contentClassName?: string;
   bottomSlot?: React.ReactNode;
+  /** Login opts into a normal-flow notice; every other screen keeps the floating one. */
+  consentPlacement?: "overlay" | "inline";
 }
 
 /** Phone-first mobile shell with optional top bar + bottom tab nav. */
@@ -29,13 +31,14 @@ export function AppShell({
   showTopBar = true,
   contentClassName,
   bottomSlot,
+  consentPlacement = "overlay",
 }: AppShellProps) {
   const isMounted = typeof document !== "undefined";
 
   return (
     <div className="app-shell bg-background text-text-primary" vaul-drawer-wrapper="">
       <OfflineBanner />
-      <ConsentBanner />
+      {consentPlacement !== "inline" && <ConsentBanner />}
       {showTopBar && title && <TopBar title={title} backTo={backTo} rightSlot={rightSlot} />}
       <main
         className={cn(
@@ -45,6 +48,7 @@ export function AppShell({
           contentClassName,
         )}
       >
+        {consentPlacement === "inline" && <ConsentBanner placement="inline" />}
         <PageTransition>{children}</PageTransition>
       </main>
       {bottomSlot && (isMounted ? createPortal(bottomSlot, document.body) : bottomSlot)}

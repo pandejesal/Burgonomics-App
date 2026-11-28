@@ -65,6 +65,8 @@ const fixture = vi.hoisted(() => {
     validateForPayment: vi.fn(),
     createPaymentOrder: vi.fn(),
     createOnlineDraft: vi.fn(),
+    // Quote fixture per case; the route reads it fresh on every tap.
+    fees: null as unknown as CheckoutFeesState,
     // Owner decision 2026-11-20: cash orders are created by the SERVER.
     createCashOrder: vi.fn(),
     verifyPayment: vi.fn(),
@@ -72,6 +74,17 @@ const fixture = vi.hoisted(() => {
     openCheckout: vi.fn(),
     navigate: vi.fn(),
     toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+    // Connectivity seen by the real route. `connectionStatusKnown: false` is a
+    // native cold-start guess; OBSERVED offline sets it true. Keep them apart.
+    appConfig: {
+      isOnline: true,
+      connectionStatusKnown: true,
+      browserOnlineEvidence: true,
+    } as {
+      isOnline: boolean;
+      connectionStatusKnown: boolean;
+      browserOnlineEvidence: boolean;
+    },
   };
 });
 
@@ -90,6 +103,22 @@ const totals = (grandTotal: number) => ({
     grandTotal,
     currency: "INR" as const,
   },
+});
+
+const defaultFees = (): CheckoutFeesReady => ({
+  status: "ready",
+  orderType: "delivery",
+  packagingFee: 0,
+  deliveryFee: 0,
+  deliveryQuoteId: "q_test",
+  provider: "test",
+  expiresAt: Date.now() + 3_600_000,
+});
+
+/** The retired COD policy's answer: branch flag on, no ceiling. */
+const legacyCashFees = (): CheckoutFeesState => ({
+  ...defaultFees(),
+  cashOnDelivery: { enabled: true, maxOrderValuePaise: null },
 });
 
 /* ── framework / shell ─────────────────────────────────────────────────── */
@@ -134,9 +163,21 @@ vi.mock("@/shared/components/common/ConfirmDialog", () => ({
 vi.mock("@/shared/hooks/useHydrated", () => ({ useHydrated: () => true }));
 vi.mock("@/core/state/appConfigStore", () => ({
   useAppConfig: Object.assign(
-    (select: (s: { isOnline: boolean }) => unknown) => select({ isOnline: true }),
-    { getState: () => ({ isOnline: true }) },
+    (
+      select: (s: {
+        isOnline: boolean;
+        connectionStatusKnown: boolean;
+        browserOnlineEvidence: boolean;
+      }) => unknown,
+    ) => select(fixture.appConfig),
+    { getState: () => fixture.appConfig },
   ),
+  // Same predicate as production: a native unconfirmed start is NOT offline.
+  selectObservedOffline: (s: {
+    isOnline: boolean;
+    connectionStatusKnown: boolean;
+    browserOnlineEvidence: boolean | null;
+  }) => !s.isOnline && (s.connectionStatusKnown || s.browserOnlineEvidence === false),
 }));
 vi.mock("@/core/config/env", () => ({
   appConfig: { integrations: { razorpayKeyId: "" } },
@@ -174,16 +215,9 @@ vi.mock("@/features/cart", () => ({
 }));
 vi.mock("@/features/checkout", () => {
   // Launch checkout keeps a live server quote; these route tests are about the
-  // bill/payment state machine, so the quote is a fixed usable one.
-  const readyFees = {
-    status: "ready" as const,
-    orderType: "delivery" as const,
-    packagingFee: 0,
-    deliveryFee: 0,
-    deliveryQuoteId: "q_test",
-    provider: "test",
-    expiresAt: Date.now() + 3_600_000,
-  };
+  // bill/payment state machine. The quote is a fixture per case so delivery's
+  // online-only rule can be tested with a legacy enabled cash flag too.
+  const fees = () => fixture.fees;
   const readyView = {
     payEnabled: true,
     status: "ready" as const,
@@ -196,14 +230,24 @@ vi.mock("@/features/checkout", () => {
   return {
     useCheckoutStore: Object.assign(
       (select: (s: typeof fixture.checkoutState) => unknown) => select(fixture.checkoutState),
-      { getState: () => ({ ...fixture.checkoutState, checkoutFees: readyFees, reset: vi.fn() }) },
+      { getState: () => ({ ...fixture.checkoutState, checkoutFees: fees(), reset: vi.fn() }) },
     ),
     useCheckoutFees: () => ({
-      state: readyFees,
+      state: fees(),
       view: readyView,
-      refresh: vi.fn(async () => readyFees),
+      refresh: vi.fn(async () => fees()),
     }),
-    deliveryQuoteView: () => readyView,
+    // Mirror the quote state so the "no quote yet" case is really gated,
+    // instead of being silently treated as a ready courier quote.
+    deliveryQuoteView: () =>
+      fees().status === "ready"
+        ? readyView
+        : {
+            ...readyView,
+            payEnabled: false,
+            status: fees().status,
+            message: "Getting delivery price",
+          },
     isDeliveryQuoteRefusal: () => false,
     ReviewItemsList: () => null,
   };
@@ -294,6 +338,10 @@ vi.mock("@/features/payments", async () => {
   };
 });
 
+import type {
+  CheckoutFeesReady,
+  CheckoutFeesState,
+} from "@/features/checkout/state/checkoutFeesTypes";
 import { Route as PaymentRoute } from "./payment";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 
@@ -312,6 +360,12 @@ beforeEach(() => {
   fixture.createCashOrder.mockReset();
   fixture.openCheckout.mockReset();
   fixture.initialize.mockReset();
+  fixture.fees = defaultFees();
+  fixture.appConfig = {
+    isOnline: true,
+    connectionStatusKnown: true,
+    browserOnlineEvidence: true,
+  };
 
   fixture.selection.activeStore = fixture.store;
   fixture.selection.fulfillment = null;
@@ -516,21 +570,43 @@ describe("payment route — valid supported modes still work", () => {
     expect(fixture.openCheckout).toHaveBeenCalledTimes(1);
   });
 
-  it("cash delivery still creates a COD order", async () => {
+  it("refuses delivery cash on the direct route, even with a legacy enabled quote", async () => {
     fixture.selection.fulfillment = "delivery";
+    fixture.fees = legacyCashFees();
     await mountPayment();
     await act(async () => usePaymentStore.getState().setMethod("cash"));
 
-    const pay = buttonWithText("Place COD Order");
-    expect(pay).toBeDefined();
-    expect(pay!.disabled).toBe(false);
+    // A restored/stale cash choice is corrected: no COD label, only online.
+    expect(usePaymentStore.getState().method).toBe("online");
+    expect(buttonWithText("Place COD Order")).toBeUndefined();
+    expect(buttonWithText("Pay Online")).toBeDefined();
+
+    // Action boundary: a method written straight to the live store after render
+    // (as a restored selection would be) must still not reach the cash creator.
+    const pay = buttonWithText("Pay Online");
+    usePaymentStore.setState({ method: "cash" });
     await act(async () => pay!.click());
     await act(async () => {});
 
-    // Owner decision 2026-11-20: the SERVER creates the cash order (it prices
-    // every line and stamps the cash marker); the app no longer writes it.
-    expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.createCashOrder).not.toHaveBeenCalled();
     expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
+    expect(fixture.validateForPayment).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("paid online only");
+  });
+
+  it("does not send a cash request for delivery when no quote exists", async () => {
+    fixture.selection.fulfillment = "delivery";
+    fixture.fees = { status: "idle" };
+    await mountPayment();
+    await act(async () => usePaymentStore.getState().setMethod("cash"));
+
+    const pay = buttonWithText("Place COD Order") ?? buttonWithText("Pay Online");
+    expect(pay).toBeDefined();
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    expect(fixture.createCashOrder).not.toHaveBeenCalled();
+    expect(fixture.validateForPayment).not.toHaveBeenCalled();
   });
 
   it.each(["takeaway", "dinein"] as const)(
@@ -550,4 +626,116 @@ describe("payment route — valid supported modes still work", () => {
       expect(fixture.createOnlineDraft).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("payment route — a mode switch cannot re-open delivery cash", () => {
+  it("refuses a counter cash selection once the live mode is delivery", async () => {
+    fixture.selection.fulfillment = "takeaway";
+    await mountPayment();
+    await act(async () => usePaymentStore.getState().setMethod("cash"));
+
+    const pay = buttonWithText("Place Order");
+    expect(pay).toBeDefined();
+
+    // Mutate the shared selection after render: only a live re-read can see it,
+    // exactly like a menu/store switch while this screen is open.
+    fixture.selection.fulfillment = "delivery";
+    fixture.fees = legacyCashFees();
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    expect(fixture.createCashOrder).not.toHaveBeenCalled();
+    expect(fixture.validateForPayment).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("paid online only");
+  });
+});
+
+describe("payment route — zero-due stays server-verified", () => {
+  it("places a server-verified zero-due delivery order without opening Razorpay", async () => {
+    fixture.selection.fulfillment = "delivery";
+    fixture.calculateTotals.mockResolvedValue(totals(0));
+    fixture.createCashOrder.mockResolvedValue({
+      success: true,
+      data: { id: "ord_zero", cashDuePaise: 0 },
+    });
+    await mountPayment();
+
+    const pay = buttonWithText("Place Zero-Due Order");
+    expect(pay).toBeDefined();
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    expect(fixture.createCashOrder).toHaveBeenCalledWith({ zeroDueOnly: true });
+    expect(fixture.createPaymentOrder).not.toHaveBeenCalled();
+    expect(fixture.openCheckout).not.toHaveBeenCalled();
+    expect(fixture.toast.success).toHaveBeenCalledWith("No payment to collect", expect.anything());
+  });
+
+  it("does not record a guessed capture when a stale zero-due bill is actually payable", async () => {
+    fixture.selection.fulfillment = "delivery";
+    fixture.calculateTotals.mockResolvedValue(totals(0));
+    fixture.createCashOrder.mockResolvedValue({
+      success: true,
+      data: { id: "ord_stale", cashDuePaise: 10900 },
+    });
+    await mountPayment();
+
+    const pay = buttonWithText("Place Zero-Due Order");
+    expect(pay).toBeDefined();
+    await act(async () => pay!.click());
+    await act(async () => {});
+
+    expect(fixture.createCashOrder).toHaveBeenCalledWith({ zeroDueOnly: true });
+    expect(fixture.navigate).not.toHaveBeenCalled();
+    expect(fixture.toast.success).not.toHaveBeenCalled();
+    expect(usePaymentStore.getState().status).toBe("failed");
+  });
+});
+
+/**
+ * The request boundary already refuses payable delivery cash. This pins the
+ * route's UI edge: an OBSERVED offline answer must not re-open a COD label or
+ * "Place COD Order" CTA from a restored selection just because the correction
+ * effect used to opt out whenever `isOnline` was false. The zero-due and live
+ * getState regressions above stay as they are — neither is duplicated here.
+ */
+describe("payment route — observed offline never re-opens payable delivery cash", () => {
+  it("legacy cash-enabled quote + stale cash selection stays online-only with no COD copy", async () => {
+    fixture.selection.fulfillment = "delivery";
+    fixture.fees = legacyCashFees();
+    // Authoritative offline evidence, distinct from an unconfirmed cold start.
+    fixture.appConfig = {
+      isOnline: false,
+      connectionStatusKnown: true,
+      browserOnlineEvidence: false,
+    };
+
+    await mountPayment();
+    await act(async () => {
+      // A restored/stale choice written after render: no re-render may be
+      // relied on to hide it, exactly like a persisted payment draft.
+      usePaymentStore.getState().setMethod("cash");
+      await Promise.resolve();
+    });
+    await act(async () => {});
+
+    expect(usePaymentStore.getState().method).toBe("online");
+    expect(buttonWithText("Place COD Order")).toBeUndefined();
+    expect(container.textContent).not.toContain("Cash on Delivery");
+    expect(container.textContent).not.toContain(
+      "Pay with cash at your doorstep when food is delivered",
+    );
+    expect(container.textContent).toContain("paid online only");
+
+    // Honest CTA while offline: no cash request is started from this state.
+    const pay = buttonWithText("Pay Online");
+    expect(pay).toBeDefined();
+    expect(pay!.disabled).toBe(true);
+    await act(async () => {
+      pay!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {});
+    expect(fixture.createCashOrder).not.toHaveBeenCalled();
+    expect(fixture.validateForPayment).not.toHaveBeenCalled();
+  });
 });

@@ -3,19 +3,24 @@ import { CreditCard, Coins, CheckCircle2, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/shared/components/common/Text";
 import type { PaymentMethod } from "@/features/payments/models";
-import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { selectObservedOffline, useAppConfig } from "@/core/state/appConfigStore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
+
+/** The route's decision for THIS bill; the list must not recompute it. */
+export interface CashEligibility {
+  allowed: boolean;
+  reason: string | null;
+}
 
 interface Props {
   value: PaymentMethod;
   onChange: (m: PaymentMethod) => void;
   disabled?: boolean;
+  cashEligibility: CashEligibility;
 }
 
-export function PaymentMethodList({ value, onChange, disabled }: Props) {
-  const fulfillment = useStoreSelection((s) => s.fulfillment);
+export function PaymentMethodList({ value, onChange, disabled, cashEligibility }: Props) {
   // Observed offline — never the raw `isOnline` flag, which is also false
   // during a native cold start before the plugin has answered anything.
   const observedOffline = useAppConfig(selectObservedOffline);
@@ -23,43 +28,55 @@ export function PaymentMethodList({ value, onChange, disabled }: Props) {
   // the copy must not claim the customer is offline.
   const onlineUnknown = useAppConfig((s) => !s.connectionStatusKnown);
 
-  const isDelivery = fulfillment === "delivery";
-  const cashTitle = isDelivery ? "Cash on Delivery" : "Pay at Store / Counter";
-  const cashDesc = isDelivery
-    ? "Pay with cash at your doorstep when food is delivered"
-    : "Pay with cash, card, or UPI at the counter when you collect";
+  // One decision, made by the route from the real total, fulfillment and
+  // quote. A null amount here would skip the branch ceiling and disagree with
+  // the request boundary, so the list never derives eligibility itself.
+  const cashAllowed = cashEligibility.allowed;
 
-  // Force cash only once offline is OBSERVED. While connectivity is merely
-  // unconfirmed the customer's own choice is left alone: switching it on every
-  // native launch would silently override a deliberate selection.
+  // Force cash only once offline is OBSERVED and the tender is actually
+  // offered. Delivery cash is never a fallback, offline or online.
   React.useEffect(() => {
-    if (observedOffline && value === "online") {
+    if (observedOffline && cashAllowed && value === "online") {
       onChange("cash");
       toast.warning("Offline Mode Active", {
-        description: "Payment switched to Cash on Delivery / Counter payment.",
+        description: "Payment switched to counter cash. Pay when you collect your order.",
       });
     }
-  }, [observedOffline, value, onChange]);
+  }, [observedOffline, cashAllowed, value, onChange]);
+
+  // A restored/stale cash choice must never stay selected on a mode that no
+  // longer offers cash. The route applies the same correction at its boundary.
+  React.useEffect(() => {
+    if (value === "cash" && !cashAllowed) onChange("online");
+  }, [value, cashAllowed, onChange]);
 
   const options = [
     {
       id: "online" as const,
       title: "Pay Online",
-      description: observedOffline
-        ? "Requires internet connection. Please select Pay on Delivery / Counter."
-        : onlineUnknown
-          ? "Checking connection…"
-          : "Fast & secure payment via UPI, Cards, NetBanking or Wallets",
+      description: onlineUnknown
+        ? "Checking connection…"
+        : observedOffline
+          ? cashAllowed
+            ? "Requires internet connection. Please select Pay at Store / Counter."
+            : (cashEligibility.reason ?? "Requires internet connection. Please pay online.")
+          : cashAllowed
+            ? "Fast & secure payment via UPI, Cards, NetBanking or Wallets"
+            : (cashEligibility.reason ?? "Please pay online."),
       Icon: CreditCard,
       accentClass: "bg-accent/10 text-accent border-accent/20",
     },
-    {
-      id: "cash" as const,
-      title: cashTitle,
-      description: cashDesc,
-      Icon: Coins,
-      accentClass: "bg-success/10 text-success border-success/20",
-    },
+    ...(cashAllowed
+      ? [
+          {
+            id: "cash" as const,
+            title: "Pay at Store / Counter",
+            description: "Pay with cash, card, or UPI at the counter when you collect",
+            Icon: Coins,
+            accentClass: "bg-success/10 text-success border-success/20",
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -3,6 +3,7 @@ import {
   DEFAULT_CASH_ON_DELIVERY,
   cashOnDeliveryAvailability,
   type CheckoutFeesState,
+  type CheckoutOrderType,
 } from "@/features/checkout/state/checkoutFeesTypes";
 import {
   parseCashOnDelivery,
@@ -10,59 +11,108 @@ import {
 } from "@/features/checkout/services/deliveryQuoteService";
 
 /**
- * CASH-FLOWS (owner decision 2026-11-20): cash on delivery is offered only
- * where the BRANCH allows it, and only under its per-order ceiling. The screen
- * must say why a cash option is gone, and a stale/absent quote must never hide
- * the only offline tender.
+ * Owner decision 2026-11-26: DELIVERY is paid online only (Razorpay). No cash
+ * at the doorstep for either courier, whatever an older quote or a restored
+ * selection says. Dine-in and takeaway keep the earlier branch switch/ceiling
+ * rules and remain payable at the counter.
  */
-const ready = (cashOnDelivery?: { enabled: boolean; maxOrderValuePaise: number | null }) =>
+const ready = (
+  cashOnDelivery?: { enabled: boolean; maxOrderValuePaise: number | null },
+  orderType: CheckoutOrderType = "takeaway",
+) =>
   ({
     status: "ready",
-    orderType: "delivery",
+    orderType,
     packagingFee: 15,
-    deliveryFee: 40,
-    deliveryQuoteId: "dfq_1",
-    provider: "borzo",
-    expiresAt: Date.now() + 60_000,
+    deliveryFee: orderType === "delivery" ? 40 : 0,
+    deliveryQuoteId: orderType === "delivery" ? "dfq_1" : null,
+    provider: orderType === "delivery" ? "borzo" : null,
+    expiresAt: orderType === "delivery" ? Date.now() + 60_000 : null,
     ...(cashOnDelivery ? { cashOnDelivery } : {}),
   }) as CheckoutFeesState;
 
 describe("cashOnDeliveryAvailability", () => {
-  it("keeps the option while the server has not answered (offline fallback)", () => {
-    expect(cashOnDeliveryAvailability({ status: "loading" }, 11500)).toEqual({
+  it("refuses delivery cash in every quote state, including the old offline fallback", () => {
+    const unsettled: CheckoutFeesState[] = [
+      { status: "loading" },
+      { status: "idle" },
+      { status: "error", code: null },
+      {
+        status: "unserviceable",
+        packagingFee: 0,
+        reason: null,
+        message: "Delivery isn't available to this address",
+      },
+    ];
+    for (const state of unsettled) {
+      const result = cashOnDeliveryAvailability(state, 11500, "delivery");
+      expect(result.allowed).toBe(false);
+      expect(result.reason ?? "").toContain("paid online only");
+    }
+  });
+
+  it("refuses delivery cash with a legacy branch flag on and no ceiling", () => {
+    const result = cashOnDeliveryAvailability(
+      ready({ enabled: true, maxOrderValuePaise: null }, "delivery"),
+      11500,
+      "delivery",
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason ?? "").toContain("paid online only");
+  });
+
+  it("refuses delivery cash at any bill size, even above a legacy ceiling", () => {
+    const result = cashOnDeliveryAvailability(
+      ready({ enabled: true, maxOrderValuePaise: 10000 }, "delivery"),
+      11500,
+      "delivery",
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason ?? "").toContain("paid online only");
+    expect(result.reason ?? "").not.toContain("₹100");
+  });
+
+  it("keeps counter cash while the quote is unknown (offline fallback unchanged)", () => {
+    expect(cashOnDeliveryAvailability({ status: "loading" }, 11500, "takeaway")).toEqual({
       allowed: true,
       reason: null,
     });
-    expect(cashOnDeliveryAvailability({ status: "idle" }, null).allowed).toBe(true);
+    expect(cashOnDeliveryAvailability({ status: "idle" }, null, "dinein").allowed).toBe(true);
   });
 
-  it("allows cash when the branch has it on and the bill is under the ceiling", () => {
+  it("allows counter cash when the branch has it on and the bill is under the ceiling", () => {
     expect(
-      cashOnDeliveryAvailability(ready({ enabled: true, maxOrderValuePaise: 500000 }), 11500),
+      cashOnDeliveryAvailability(
+        ready({ enabled: true, maxOrderValuePaise: 500000 }, "takeaway"),
+        11500,
+        "takeaway",
+      ),
     ).toEqual({ allowed: true, reason: null });
   });
 
-  it("refuses with the server's sentence when the branch switched it off", () => {
-    const result = cashOnDeliveryAvailability(
-      ready({ enabled: false, maxOrderValuePaise: null }),
+  it("keeps the branch refusal and ceiling for counter cash", () => {
+    const off = cashOnDeliveryAvailability(
+      ready({ enabled: false, maxOrderValuePaise: null }, "takeaway"),
       11500,
+      "takeaway",
     );
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("not available at this outlet");
+    expect(off.allowed).toBe(false);
+    expect(off.reason ?? "").toContain("not available at this outlet");
+
+    const capped = cashOnDeliveryAvailability(
+      ready({ enabled: true, maxOrderValuePaise: 10000 }, "dinein"),
+      11500,
+      "dinein",
+    );
+    expect(capped.allowed).toBe(false);
+    expect(capped.reason ?? "").toContain("₹100");
   });
 
-  it("refuses above the branch ceiling and names the ceiling", () => {
-    const result = cashOnDeliveryAvailability(
-      ready({ enabled: true, maxOrderValuePaise: 10000 }),
-      11500,
-    );
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("₹100");
-  });
-
-  it("falls back to the documented default when the field is absent", () => {
+  it("falls back to the documented counter default when the field is absent", () => {
     expect(DEFAULT_CASH_ON_DELIVERY).toEqual({ enabled: true, maxOrderValuePaise: null });
-    expect(cashOnDeliveryAvailability(ready(), 11500).allowed).toBe(true);
+    expect(
+      cashOnDeliveryAvailability(ready(undefined, "takeaway"), 11500, "takeaway").allowed,
+    ).toBe(true);
   });
 });
 

@@ -753,7 +753,10 @@ describe("D-01 — STORE_NOT_LINKED is shown honestly and is not retryable", () 
     expect(after?.disabled).toBe(true);
   });
 
-  it("clears the online refusal when the customer switches to cash", async () => {
+  it("clears the online refusal when the customer switches to counter cash", async () => {
+    // Delivery cash is retired; this method-switch regression is about counter
+    // cash, where the branch's own rule still applies.
+    fixture.fulfillment = "takeaway";
     await mount(CheckoutPage);
     await act(async () => buttonWithText("PAY")!.click());
     await act(async () => {});
@@ -956,25 +959,27 @@ describe("R8 — payment is gated on a live delivery quote", () => {
     expect(init.order.amount).toBe(36);
   });
 
-  it("cash on delivery is gated by the same quote states", async () => {
+  it("counter cash is gated by the same quote states", async () => {
+    fixture.fulfillment = "takeaway";
     await mount(PaymentPage);
     await act(async () => usePaymentStore.getState().setMethod("cash"));
 
     fixture.quote.status = "error";
     fixture.quote.payEnabled = false;
-    fixture.quote.message = "Delivery isn't available to this address";
+    fixture.quote.message = "We couldn't load your order price. Please try again.";
 
-    await act(async () => buttonWithText("Place COD Order")!.click());
+    await act(async () => buttonWithText("Place Order")!.click());
     await act(async () => {});
 
     expect(fixture.createCashOrder).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("Delivery isn't available to this address");
+    expect(container.textContent).toContain("We couldn't load your order price");
   });
 
-  it("cash on delivery proceeds once the quote is ready", async () => {
+  it("counter cash proceeds once the quote is ready", async () => {
+    fixture.fulfillment = "takeaway";
     await mount(PaymentPage);
     await act(async () => usePaymentStore.getState().setMethod("cash"));
-    await act(async () => buttonWithText("Place COD Order")!.click());
+    await act(async () => buttonWithText("Place Order")!.click());
     await act(async () => {});
 
     // The SERVER creates the cash order now (owner decision 2026-11-20).

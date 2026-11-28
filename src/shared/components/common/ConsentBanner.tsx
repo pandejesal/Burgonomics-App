@@ -38,7 +38,12 @@ export function dismissForSession(): void {
   if (hasStorage("sessionStorage")) window.sessionStorage.setItem(CONSENT_DISMISS_KEY, "true");
 }
 
-export function ConsentBanner() {
+export interface ConsentBannerProps {
+  /** `inline` keeps the notice in document flow; other screens keep the floating default. */
+  placement?: "overlay" | "inline";
+}
+
+export function ConsentBanner({ placement = "overlay" }: ConsentBannerProps) {
   // Checked at first render (static SPA — no SSR hydration to mismatch):
   // already consented → never show; dismissed this session → stay hidden
   // until the session ends, at which point the notice appears again.
@@ -61,7 +66,11 @@ export function ConsentBanner() {
   return (
     <aside
       aria-label="Privacy and Cookie Notice"
-      className="fixed bottom-36 left-4 right-4 z-[60] mx-auto max-w-[480px] rounded-2xl border border-divider bg-surface p-4 shadow-xl backdrop-blur-lg"
+      className={
+        placement === "inline"
+          ? "mx-4 max-w-[480px] rounded-2xl border border-divider bg-surface p-4 shadow-low"
+          : "fixed bottom-36 left-4 right-4 z-[60] mx-auto max-w-[480px] rounded-2xl border border-divider bg-surface p-4 shadow-xl backdrop-blur-lg"
+      }
     >
       <div className="flex items-start gap-3">
         <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">

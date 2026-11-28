@@ -40,6 +40,27 @@ export interface Store {
    */
   hours: StoreHours | null;
   /**
+   * Which document supplied {@link hours}. Absent on rows persisted before the
+   * field existed (treated as `"store"`). `"admin_store"` means this outlet was
+   * only ever seeded in the partner mirror (`admin_stores/{id}`), which is the
+   * same precedence the ordering gate applies server-side.
+   */
+  hoursSource?: "store" | "admin_store";
+  /**
+   * `admin_stores/{id}.hours`, read only when the storefront doc carries no
+   * usable hours. `null`/absent means the mirror had none either, or the
+   * lookup failed — readers then fall back to the documented default window.
+   * Kept separate from {@link hours} so the gate reports the real source.
+   */
+  adminStoreHours?: StoreHours | null;
+  /**
+   * Staff close flag, copied from the storefront doc. The server stamps it
+   * together with `isOpen: false`, but the flag alone is authoritative for the
+   * ordering gate (`storeStatusOverride === true` beats any configured hours),
+   * so a partially written doc cannot silently reopen a closed outlet.
+   */
+  storeStatusOverride?: boolean;
+  /**
    * Open-state as the store doc states it. `undefined` when the doc carries
    * neither an `isOpen` boolean nor `status: "CLOSED"` — unknown is modelled
    * explicitly so no reader can present it as "open" (or "closed") without

@@ -1,7 +1,7 @@
 import { MoonStar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
-import { KITCHEN_CLOSED_MESSAGE, KITCHEN_OPEN_LABEL } from "@/core/constants/operatingHours";
+import { kitchenClosedMessage } from "@/core/constants/operatingHours";
 
 interface KitchenClosedBannerProps {
   className?: string;
@@ -17,9 +17,9 @@ interface KitchenClosedBannerProps {
  * Menu browsing stays fully available behind it — only ordering is gated.
  */
 export function KitchenClosedBanner({ className, message }: KitchenClosedBannerProps) {
-  const { isOpen, minutesUntilOpen } = useKitchenHours();
+  const state = useKitchenHours();
 
-  if (isOpen) return null;
+  if (state.isOpen) return null;
 
   return (
     <div
@@ -34,16 +34,18 @@ export function KitchenClosedBanner({ className, message }: KitchenClosedBannerP
         <MoonStar className="h-4.5 w-4.5" aria-hidden />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="type-body font-semibold">{message ?? KITCHEN_CLOSED_MESSAGE}</p>
-        <p className="mt-1 type-caption">
-          You can browse the full menu now — checkout opens at {KITCHEN_OPEN_LABEL}
-          {minutesUntilOpen >= 60
-            ? ` (in ${Math.floor(minutesUntilOpen / 60)}h ${minutesUntilOpen % 60}m)`
-            : minutesUntilOpen > 0
-              ? ` (in ${minutesUntilOpen}m)`
-              : ""}
-          .
-        </p>
+        <p className="type-body font-semibold">{message ?? kitchenClosedMessage(state)}</p>
+        {!state.closedByStaff && (
+          <p className="mt-1 type-caption">
+            You can browse the full menu now — checkout opens at {state.openLabel}
+            {state.minutesUntilOpen >= 60
+              ? ` (in ${Math.floor(state.minutesUntilOpen / 60)}h ${state.minutesUntilOpen % 60}m)`
+              : state.minutesUntilOpen > 0
+                ? ` (in ${state.minutesUntilOpen}m)`
+                : ""}
+            .
+          </p>
+        )}
       </div>
     </div>
   );

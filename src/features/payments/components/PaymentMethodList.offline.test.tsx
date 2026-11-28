@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import type { CheckoutFeesState } from "@/features/checkout/state/checkoutFeesTypes";
 
 /**
  * PaymentMethodList — observed-offline contract.
@@ -55,7 +56,32 @@ async function load() {
   const { useAppConfig } = await import("@/core/state/appConfigStore");
   const { PaymentMethodList } = await import("./PaymentMethodList");
   const { useStoreSelection } = await import("@/features/stores/state/storeStore");
-  return { useAppConfig, PaymentMethodList, useStoreSelection };
+  const { useCheckoutStore } = await import("@/features/checkout/state/checkoutStore");
+  const { cashOnDeliveryAvailability } =
+    await import("@/features/checkout/state/checkoutFeesTypes");
+  // Same decision contract the route supplies: real quote, real mode and a
+  // concrete ₹900 bill. The list itself no longer derives eligibility.
+  const cashEligibility = (): ListProps["cashEligibility"] =>
+    cashOnDeliveryAvailability(
+      useCheckoutStore.getState().checkoutFees,
+      90_000,
+      useStoreSelection.getState().fulfillment,
+    );
+  return { useAppConfig, PaymentMethodList, useStoreSelection, useCheckoutStore, cashEligibility };
+}
+
+/** A restored quote still carrying the retired delivery cash flag. */
+function legacyCashFees(orderType: "delivery" | "takeaway"): CheckoutFeesState {
+  return {
+    status: "ready",
+    orderType,
+    packagingFee: 0,
+    deliveryFee: 0,
+    deliveryQuoteId: orderType === "delivery" ? "q_legacy_cash" : null,
+    provider: "test",
+    expiresAt: Date.now() + 3_600_000,
+    cashOnDelivery: { enabled: true, maxOrderValuePaise: null },
+  };
 }
 
 let root: Root | null = null;
@@ -68,7 +94,8 @@ type ListMethod = ListProps["value"];
 /** Mount with a controlled `value`/`onChange` pair the test can inspect. */
 async function mountList(
   Component: React.ComponentType<ListProps>,
-  initial: ListMethod = "online",
+  initial: ListMethod,
+  cashEligibility: ListProps["cashEligibility"],
 ) {
   const changes: ListMethod[] = [];
   function Harness() {
@@ -80,6 +107,7 @@ async function mountList(
           changes.push(next);
           setMethod(next);
         }}
+        cashEligibility={cashEligibility}
       />
     );
   }
@@ -95,6 +123,7 @@ async function mountList(
 }
 
 const onlineButton = () => document.querySelector<HTMLButtonElement>("#payment-option-online");
+const cashButton = () => document.querySelector<HTMLButtonElement>("#payment-option-cash");
 const bodyText = () => document.body.textContent ?? "";
 
 beforeEach(() => {
@@ -129,14 +158,14 @@ afterEach(async () => {
 describe("unconfirmed native start", () => {
   it("keeps the customer's online choice and emits no toast", async () => {
     setNative(true);
-    const { useAppConfig, PaymentMethodList, useStoreSelection } = await load();
+    const { useAppConfig, PaymentMethodList, useStoreSelection, cashEligibility } = await load();
     useStoreSelection.setState({ fulfillment: "delivery" });
 
     // Cold start: not yet confirmed by the plugin.
     expect(useAppConfig.getState().isOnline).toBe(false);
     expect(useAppConfig.getState().connectionStatusKnown).toBe(false);
 
-    const { changes } = await mountList(PaymentMethodList, "online");
+    const { changes } = await mountList(PaymentMethodList, "online", cashEligibility());
 
     // The choice must NOT be switched while merely unconfirmed.
     expect(changes).toEqual([]);
@@ -151,12 +180,14 @@ describe("unconfirmed native start", () => {
 });
 
 describe("observed offline", () => {
-  it("switches to cash once, with the toast, only after offline is observed", async () => {
+  // Counter cash remains a legitimate offline fallback. Delivery cash does not;
+  // that case has its own regression below, so this control uses a counter mode.
+  it("switches to counter cash once, with the toast, only after offline is observed", async () => {
     setNative(true);
-    const { useAppConfig, PaymentMethodList, useStoreSelection } = await load();
-    useStoreSelection.setState({ fulfillment: "delivery" });
+    const { useAppConfig, PaymentMethodList, useStoreSelection, cashEligibility } = await load();
+    useStoreSelection.setState({ fulfillment: "takeaway" });
 
-    const { current } = await mountList(PaymentMethodList, "online");
+    const { current } = await mountList(PaymentMethodList, "online", cashEligibility());
 
     // Authoritative native evidence arrives: genuinely offline.
     await act(async () => {
@@ -183,12 +214,12 @@ describe("web parity", () => {
     const restore = setNavigatorOnline(true);
     try {
       setNative(false);
-      const { useAppConfig, PaymentMethodList, useStoreSelection } = await load();
+      const { useAppConfig, PaymentMethodList, useStoreSelection, cashEligibility } = await load();
       useStoreSelection.setState({ fulfillment: "delivery" });
 
       expect(useAppConfig.getState().isOnline).toBe(true);
 
-      const { changes } = await mountList(PaymentMethodList, "online");
+      const { changes } = await mountList(PaymentMethodList, "online", cashEligibility());
 
       expect(changes).toEqual([]);
       expect(onlineButton()?.disabled).toBe(false);
@@ -198,22 +229,138 @@ describe("web parity", () => {
     }
   });
 
-  it("offline web start switches to cash once with the toast", async () => {
+  it("offline web start switches to counter cash once with the toast", async () => {
     const restore = setNavigatorOnline(false);
     try {
       setNative(false);
-      const { useAppConfig, PaymentMethodList, useStoreSelection } = await load();
-      useStoreSelection.setState({ fulfillment: "delivery" });
+      const { useAppConfig, PaymentMethodList, useStoreSelection, cashEligibility } = await load();
+      useStoreSelection.setState({ fulfillment: "takeaway" });
 
       expect(useAppConfig.getState().isOnline).toBe(false);
       expect(useAppConfig.getState().connectionStatusKnown).toBe(true);
 
-      const { current } = await mountList(PaymentMethodList, "online");
+      const { current } = await mountList(PaymentMethodList, "online", cashEligibility());
 
       expect(current()).toBe("cash");
       expect(toastWarning).toHaveBeenCalledTimes(1);
     } finally {
       restore();
     }
+  });
+});
+
+/**
+ * Delivery is Razorpay-only even when a persisted/legacy quote still says
+ * `cashOnDelivery.enabled: true`. The action boundary already refuses the
+ * request; these pin the UI edge the boundary cannot repair: a tender the
+ * customer cannot use must not be offered, auto-selected, or described as
+ * deliverable cash — online or after an OBSERVED offline answer.
+ */
+describe("payable delivery ignores a legacy cash-enabled quote", () => {
+  it("online delivery offers no delivery-cash tender and keeps the online choice", async () => {
+    setNative(true);
+    const {
+      useAppConfig,
+      PaymentMethodList,
+      useStoreSelection,
+      useCheckoutStore,
+      cashEligibility,
+    } = await load();
+    useStoreSelection.setState({ fulfillment: "delivery" });
+    useCheckoutStore.setState({ checkoutFees: legacyCashFees("delivery") });
+    // Authoritative online answer: no offline fallback is in play here.
+    useAppConfig.getState().setOnline(true);
+
+    const { changes } = await mountList(PaymentMethodList, "online", cashEligibility());
+
+    expect(changes).toEqual([]);
+    expect(bodyText()).not.toContain("Cash on Delivery");
+    expect(bodyText()).not.toContain("Pay with cash at your doorstep when food is delivered");
+    const cash = cashButton();
+    expect(cash === null || cash.getAttribute("aria-checked") !== "true").toBe(true);
+    expect(cash === null || cash.disabled).toBe(true);
+  });
+
+  it("observed-offline delivery never auto-selects cash or emits a fallback toast", async () => {
+    setNative(true);
+    const {
+      useAppConfig,
+      PaymentMethodList,
+      useStoreSelection,
+      useCheckoutStore,
+      cashEligibility,
+    } = await load();
+    useStoreSelection.setState({ fulfillment: "delivery" });
+    useCheckoutStore.setState({ checkoutFees: legacyCashFees("delivery") });
+
+    const { changes } = await mountList(PaymentMethodList, "online", cashEligibility());
+
+    // Authoritative native evidence, not the false-offline cold-start window.
+    await act(async () => {
+      useAppConfig.getState().setOnline(false);
+      await Promise.resolve();
+    });
+
+    expect(changes).toEqual([]);
+    expect(toastWarning).not.toHaveBeenCalled();
+    expect(bodyText()).not.toContain("Cash on Delivery");
+    expect(bodyText()).not.toContain("Pay with cash at your doorstep when food is delivered");
+
+    // A repeated offline signal must not open the tender either.
+    await act(async () => {
+      useAppConfig.getState().setOnline(false);
+      await Promise.resolve();
+    });
+    expect(changes).toEqual([]);
+    expect(toastWarning).not.toHaveBeenCalled();
+  });
+
+  it("a restored stale cash selection is not rendered as a delivery cash choice", async () => {
+    setNative(true);
+    const {
+      useAppConfig,
+      PaymentMethodList,
+      useStoreSelection,
+      useCheckoutStore,
+      cashEligibility,
+    } = await load();
+    useStoreSelection.setState({ fulfillment: "delivery" });
+    useCheckoutStore.setState({ checkoutFees: legacyCashFees("delivery") });
+    useAppConfig.getState().setOnline(true);
+
+    await mountList(PaymentMethodList, "cash", cashEligibility());
+
+    expect(cashButton()?.getAttribute("aria-checked")).not.toBe("true");
+    expect(bodyText()).not.toContain("Cash on Delivery");
+    expect(bodyText()).not.toContain("Pay with cash at your doorstep when food is delivered");
+  });
+});
+
+describe("counter cash fallback stays available when cash is permitted", () => {
+  it("observed-offline takeaway with a branch-enabled quote still offers counter cash", async () => {
+    setNative(true);
+    const {
+      useAppConfig,
+      PaymentMethodList,
+      useStoreSelection,
+      useCheckoutStore,
+      cashEligibility,
+    } = await load();
+    useStoreSelection.setState({ fulfillment: "takeaway" });
+    useCheckoutStore.setState({ checkoutFees: legacyCashFees("takeaway") });
+
+    const { current } = await mountList(PaymentMethodList, "online", cashEligibility());
+
+    await act(async () => {
+      useAppConfig.getState().setOnline(false);
+      await Promise.resolve();
+    });
+
+    expect(current()).toBe("cash");
+    expect(toastWarning).toHaveBeenCalledTimes(1);
+    expect(bodyText()).toContain("Pay at Store / Counter");
+    expect(bodyText()).toContain("Pay with cash, card, or UPI at the counter when you collect");
+    expect(bodyText()).not.toContain("Cash on Delivery");
+    expect(bodyText()).not.toContain("Pay with cash at your doorstep when food is delivered");
   });
 });

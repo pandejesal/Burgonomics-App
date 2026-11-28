@@ -63,7 +63,7 @@ function LoginScreen() {
   };
 
   return (
-    <AppShell title="Sign in" showTabs={false} showTopBar={false}>
+    <AppShell title="Sign in" showTabs={false} showTopBar={false} consentPlacement="inline">
       <PhoneLoginForm
         onSubmit={handlePhoneSubmit}
         isSubmitting={isBusy}

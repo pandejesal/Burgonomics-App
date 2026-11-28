@@ -87,7 +87,12 @@ beforeEach(() => {
   localStorage.clear();
   Object.defineProperty(navigator, "locks", {
     configurable: true,
-    value: { request: async (_key: string, callback: () => unknown) => callback() },
+    // Web Lock API fidelity: request(name, options?, callback). This suite does
+    // not exercise contention, so the callback still runs immediately.
+    value: {
+      request: async (_key: string, optionsOrCallback: any, maybeCallback?: any) =>
+        (maybeCallback ?? optionsOrCallback)(),
+    },
   });
   h.calculateTotals.mockReset();
   h.createCash.mockReset();

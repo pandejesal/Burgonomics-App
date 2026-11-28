@@ -12,6 +12,8 @@ const fixture = vi.hoisted(() => {
   return {
     lines,
     cartState,
+    // Delivery cash is retired; only the counter-cash reset case switches this.
+    fulfillment: "delivery" as "delivery" | "takeaway" | "dinein",
     cart: {
       calculateTotals: vi.fn(),
       validateCart: vi.fn(),
@@ -130,7 +132,9 @@ vi.mock("@/features/stores/state/storeStore", () => {
       etaMinutes: 20,
       supports: { delivery: true, takeaway: true, dineIn: false },
     },
-    fulfillment: "delivery",
+    get fulfillment() {
+      return fixture.fulfillment;
+    },
     setFulfillment: vi.fn(),
   };
   return {
@@ -271,6 +275,7 @@ beforeEach(() => {
   fixture.cart.validateCart.mockResolvedValue({ success: true, data: { valid: true, issues: [] } });
   usePaymentStore.getState().reset();
   useCheckoutStore.getState().reset();
+  fixture.fulfillment = "delivery";
   // R8: these cases test order/cleanup behaviour, not the quote state machine;
   // seed a live ready quote so PAY is gated on the flow under test.
   useCheckoutStore.setState({
@@ -317,7 +322,21 @@ async function placeOrder() {
 }
 
 describe("checkout selections reset after every successful order path", () => {
-  it("clears tip, redeemed points and notes after a cash order", async () => {
+  it("clears tip, redeemed points and notes after a counter cash order", async () => {
+    // Delivery cash is retired; this reset regression is about the counter
+    // tender, which keeps the branch switch/ceiling rules.
+    fixture.fulfillment = "takeaway";
+    useCheckoutStore.setState({
+      checkoutFees: {
+        status: "ready",
+        orderType: "takeaway",
+        packagingFee: 0,
+        deliveryFee: 0,
+        deliveryQuoteId: null,
+        provider: null,
+        expiresAt: null,
+      },
+    });
     usePaymentStore.getState().setMethod("cash");
     fixture.createOrder.mockResolvedValue({
       success: true,

@@ -7,8 +7,12 @@ export {
   KITCHEN_OPEN_LABEL,
   KITCHEN_CLOSE_LABEL,
   KITCHEN_CLOSED_MESSAGE,
+  KITCHEN_CLOSED_BY_STAFF_MESSAGE,
   getKitchenHours,
   isKitchenOpen,
   istMinutesSinceMidnight,
+  resolveOutletOpenState,
+  kitchenClosedMessage,
+  resetDefaultHoursWarningForTests,
 } from "./operatingHours";
-export type { KitchenHoursState } from "./operatingHours";
+export type { KitchenHoursState, OutletHoursDocuments, OutletHoursSource } from "./operatingHours";

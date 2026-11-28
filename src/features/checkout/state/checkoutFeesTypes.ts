@@ -16,10 +16,9 @@ import type { PricingFulfillment } from "@/shared/pricing/pricingEngine";
 export type CheckoutOrderType = PricingFulfillment;
 
 /**
- * Owner decision 2026-11-20: cash on delivery is in the launch scope, but each
- * BRANCH decides whether it is offered and up to what order value. This is the
- * server's answer from `POST /checkout/fees`; the create route re-reads the same
- * branch document and enforces it, so this only decides what the screen shows.
+ * Counter cash (2026-11-20): each BRANCH decides whether it is offered and up
+ * to what order value. Owner decision 2026-11-26 supersedes that for delivery:
+ * delivery is Razorpay-only, so the older branch answer is ignored there.
  */
 export interface CashOnDeliveryQuote {
   enabled: boolean;
@@ -151,19 +150,24 @@ export const DEFAULT_CASH_ON_DELIVERY: CashOnDeliveryQuote = {
   maxOrderValuePaise: null,
 };
 
+/** Delivery is Razorpay-only; the sentence is shown on every disabled cash option. */
+export const DELIVERY_ONLINE_ONLY_REASON =
+  "Delivery is paid online only. Please pay online with Razorpay.";
+
 /**
  * Whether the cash option may be CHOSEN for this bill.
  *
- * Fail-open while the quote is unknown: the option is the offline fallback and
- * hiding it during loading would strand a customer with no tender. Once the
- * server has answered, the branch's switch and ceiling are binding — and the
- * create route enforces the same values again, so a stale screen can never
- * place a cash order the branch refuses.
+ * Delivery is refused unconditionally — even while the quote is unknown, and
+ * even when a restored quote still carries the retired branch flag. Counter
+ * modes keep the old offline fallback, branch switch and ceiling: fail-open
+ * while the quote is unknown, then binding once the server has answered.
  */
 export function cashOnDeliveryAvailability(
   state: CheckoutFeesState,
   totalPaise: number | null,
+  fulfillment: CheckoutOrderType | null,
 ): { allowed: boolean; reason: string | null } {
+  if (fulfillment === "delivery") return { allowed: false, reason: DELIVERY_ONLINE_ONLY_REASON };
   if (state.status !== "ready") return { allowed: true, reason: null };
   const cod = state.cashOnDelivery ?? DEFAULT_CASH_ON_DELIVERY;
   if (cod.enabled !== true) {

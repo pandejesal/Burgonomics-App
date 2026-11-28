@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
 import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
-import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
+import { kitchenClosedMessage } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
 import { toUserMessage } from "@/core/errors/userMessages";
 import { includedGst } from "@/shared/pricing/pricingEngine";
@@ -243,9 +243,9 @@ function CartPage() {
   };
 
   const onCheckout = async () => {
-    // Ordering is gated outside 11:00–23:00 IST — the banner explains why.
+    // Ordering follows the active outlet's own hours — the banner explains why.
     if (!kitchen.isOpen) {
-      toast.error(KITCHEN_CLOSED_MESSAGE);
+      toast.error(kitchenClosedMessage(kitchen));
       return;
     }
     setCheckoutBusy(true);
@@ -333,7 +333,7 @@ function CartPage() {
               type="button"
               onClick={() => void onCheckout()}
               disabled={checkoutBusy || lines.length === 0 || !kitchen.isOpen}
-              title={!kitchen.isOpen ? KITCHEN_CLOSED_MESSAGE : undefined}
+              title={!kitchen.isOpen ? kitchenClosedMessage(kitchen) : undefined}
               className="flex min-h-12 min-w-0 flex-1 basis-[12rem] items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 type-button text-primary-foreground transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
               <span>{!kitchen.isOpen ? "Kitchen Closed" : "Proceed to Checkout"}</span>

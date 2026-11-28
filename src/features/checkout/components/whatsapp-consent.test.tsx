@@ -64,7 +64,14 @@ beforeEach(() => {
   localStorage.clear();
   Object.defineProperty(navigator, "locks", {
     configurable: true,
-    value: { request: async (_key: string, claim: () => unknown) => claim() },
+    // Web Lock API fidelity: both request(name, callback) and
+    // request(name, options, callback). Uncontended fixture grants the lock.
+    value: {
+      request: async (_key: string, optionsOrClaim: any, maybeClaim?: any) => {
+        const claim = maybeClaim ?? optionsOrClaim;
+        return claim({ name: _key, mode: "exclusive", ifAvailable: false, steal: false });
+      },
+    },
   });
   cash.createCashOrderOnServer.mockReset();
   draft.createOnlineDraftOnServer.mockReset();

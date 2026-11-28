@@ -20,16 +20,21 @@ import {
   createCashOrderOnServer,
   type CashOrderRequest,
 } from "@/features/payments/services/cashOrderService";
+import { cashPriceChangedPaise } from "@/features/payments/services/cashCheckoutDecision";
 import {
   basketHashOf,
-  claimPendingCashOrder,
+  claimPendingCashOrderUnlocked,
+  completeCashSubmit,
   ownsAttempt,
   type PendingCashOrder,
+  clearConfirmedCashReceiptAtomic,
+  clearConfirmedCashReceiptUnlocked,
   clearPendingCashOrder,
-  markPendingCashOrderConfirmed,
   peekConfirmedCashOrderId,
+  peekPendingCashOrder,
+  prepareCashSend,
   readPendingCashOrder,
-  updatePendingCashOrderAcceptedTotal,
+  withCashLock,
 } from "@/features/payments/services/pendingCashOrder";
 import {
   createOnlineDraftOnServer,
@@ -55,6 +60,10 @@ import { useCartStore } from "@/features/cart/state/cartStore";
 import { useStoreSelection } from "@/features/stores/state/storeStore";
 import { selectSelectedAddress, useAddressStore } from "@/features/addresses";
 import { useCheckoutStore } from "@/features/checkout/state/checkoutStore";
+import {
+  captureCompletionScope,
+  setCashSubmissionScope,
+} from "@/features/checkout/state/checkoutCompletionScope";
 import { usePaymentStore } from "@/features/payments/state/paymentStore";
 import { currentScopedUid } from "@/features/auth/utils/scopedPersistence";
 import type {
@@ -64,6 +73,27 @@ import type {
   OrderTrackingSnapshot,
 } from "@/features/orders/models";
 import { checkMinimumOrder, minOrderShortfallMessage } from "@/shared/pricing/pricingEngine";
+
+/**
+ * Server contract (cashOrderService TERMINAL_REFUSALS): these codes are
+ * VERIFIED no-writes. `retryable:false` by itself is not proof — an obscure or
+ * earlier outcome-unknown response must stay recoverable.
+ */
+const VERIFIED_CASH_NO_WRITE = new Set([
+  "COD_UNAVAILABLE",
+  "COD_LIMIT_EXCEEDED",
+  "ITEM_UNAVAILABLE",
+  "ITEM_PRICE_UNVERIFIED",
+  "PRODUCT_UNSUPPORTED",
+  "STORE_NOT_LINKED",
+  "STORE_CLOSED",
+  "DELIVERY_QUOTE_REQUIRED",
+  "DELIVERY_QUOTE_EXPIRED",
+  "DELIVERY_QUOTE_UNSUPPORTED",
+  "ORDER_NOT_OWNED",
+  "BRANCH_REQUIRED",
+  "INVALID_INPUT",
+]);
 
 // -- Tracking subscription contract ----------------------------------
 
@@ -131,16 +161,21 @@ export class OrderRepository {
   }
 
   async getOrder(id: string): Promise<ApiResult<Order | null>> {
-    const pending = typeof window === "undefined" ? null : readPendingCashOrder();
+    // Observation must not prune or migrate storage; receipt cleanup is an
+    // exact compare-and-clear under the account lock AFTER the read settles.
+    const pending = typeof window === "undefined" ? null : peekPendingCashOrder();
     const res = await this.service.getOrder(id);
-    if (res.success && res.data) {
-      if (
-        pending?.confirmed &&
-        pending.orderId === id &&
-        res.data.id === id &&
-        ownsAttempt(pending)
-      )
-        clearPendingCashOrder();
+    if (res.success && res.data && res.data.id === id) {
+      if (pending?.confirmed && pending.orderId === id) {
+        const uid = currentScopedUid();
+        if (uid)
+          void clearConfirmedCashReceiptAtomic(
+            uid,
+            pending.attemptId,
+            id,
+            pending.generation ?? 0,
+          ).catch(() => undefined);
+      }
       useOrdersStore.getState().upsert(res.data);
     }
     return res;
@@ -212,7 +247,8 @@ export class OrderRepository {
       // Confirmed ids survive any TTL and any basket: they are the only proof
       // of which order the server wrote. They are reported as NOT this basket
       // unless the live cart still hashes to the same attempt.
-      const record = readPendingCashOrder(Date.now(), this.currentBasketHash() ?? undefined);
+      // ROUTE observation: never expire, clear or close stored evidence here.
+      const record = peekPendingCashOrder(Date.now(), this.currentBasketHash() ?? undefined);
       if (!record) return null;
       const live = this.currentBasketHash();
       return { record, matchesBasket: live !== null && record.basketHash === live };
@@ -244,6 +280,35 @@ export class OrderRepository {
   ): Promise<ApiResult<Order>> {
     const uid = currentScopedUid();
     if (!uid) return fail("UNAUTHENTICATED", "Sign in to place a cash order.");
+    // Ownership is reset ONLY by the caller that actually won the account
+    // lock. A CASH_BUSY competitor must not erase the in-flight submission's
+    // epoch-bound scope (see createCashOrderLocked).
+    try {
+      // One account lock spans claim, POST and completion. `ifAvailable` yields
+      // null instead of queueing a duplicate submit; a dead tab releases its
+      // lock and the persisted same-id record is replayed with a new owner.
+      const result = await withCashLock(uid, () => this.createCashOrderLocked(opts, uid), {
+        ifAvailable: true,
+      });
+      return result ?? fail("CASH_BUSY", "Another checkout is being finished. Please retry.", true);
+    } catch {
+      return fail("CASH_STORAGE_UNAVAILABLE", "Your saved checkout could not be read.", true);
+    }
+  }
+
+  /** Caller MUST hold the account lock; no nested lock acquisition here. */
+  private async createCashOrderLocked(
+    opts: {
+      orderId?: string;
+      acceptedTotalPaise?: number;
+      attemptId?: string;
+      zeroDueOnly?: true;
+    },
+    uid: string,
+  ): Promise<ApiResult<Order>> {
+    // Inside the granted lock: the winner owns the submission scope from this
+    // point until its POST settles. A declined lock never reaches here.
+    setCashSubmissionScope(null);
     let prior: PendingCashOrder | null;
     try {
       // The TTL + basket gate lives in the storage layer: an attempt that is
@@ -257,11 +322,10 @@ export class OrderRepository {
         if (opts.zeroDueOnly && !prior.request.zeroDueOnly) {
           return fail("ATTEMPT_CHANGED", "Finish your previous cash checkout first.");
         }
-        if (!prior.request.zeroDueOnly && opts.attemptId && opts.acceptedTotalPaise !== undefined) {
-          updatePendingCashOrderAcceptedTotal(opts.acceptedTotalPaise);
-          prior.request.expectedTotalPaise = opts.acceptedTotalPaise;
-        }
-        return this.submitCashAttempt(prior);
+        // Captured AFTER preflight/totals awaits, against the live stores that
+        // produced this exact outbound request.
+        setCashSubmissionScope(captureCompletionScope());
+        return this.submitCashAttempt(prior, opts.acceptedTotalPaise);
       }
       const online = readPendingOnlineDraft();
       if (online) {
@@ -354,7 +418,7 @@ export class OrderRepository {
     if (isDelivery && address) request.addressId = address.id;
     try {
       const attemptId = generateSecureId(22);
-      saved = await claimPendingCashOrder(uid, attemptId, request);
+      saved = claimPendingCashOrderUnlocked(uid, attemptId, request);
       // Keep free text out of the durable replay record. In this tab, reuse
       // the original draft through a retry or explicit price confirmation.
       if (saved.attemptId === attemptId) {
@@ -380,32 +444,95 @@ export class OrderRepository {
     if (opts.zeroDueOnly && !saved.request.zeroDueOnly) {
       return fail("ATTEMPT_CHANGED", "Finish your previous cash checkout first.");
     }
+    setCashSubmissionScope(captureCompletionScope());
     return this.submitCashAttempt(saved);
   }
 
-  private async submitCashAttempt(saved: PendingCashOrder): Promise<ApiResult<Order>> {
+  /** Caller MUST hold the account lock; POST + completion stay in one scope. */
+  private async submitCashAttempt(
+    saved: PendingCashOrder,
+    acceptedTotalPaise?: number,
+  ): Promise<ApiResult<Order>> {
     const changed = () => fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
     if (!ownsAttempt(saved)) return changed();
-    if (saved.confirmed) return this.hydrateCashOrder(saved.orderId, saved);
+    if (saved.confirmed) {
+      const uid = currentScopedUid();
+      const captured = uid ? this.captureConfirmed(uid, saved.attemptId, saved.orderId) : null;
+      if (!captured) return changed();
+      return this.hydrateCashOrder(captured);
+    }
     const draft = this.cashNotes;
     const hasDraft = draft?.attemptId === saved.attemptId && draft.uid === saved.uid;
-    const created = await createCashOrderOnServer({
-      ...saved.request,
-      ...(saved.request.zeroDueOnly ? { expectedTotalPaise: 0 } : {}),
-      ...(hasDraft ? draft.fields : {}),
-      items: withCookingNotes(saved.request.items, hasDraft ? draft.lineNotes : []),
-      attemptId: saved.attemptId,
-    });
+    const uid = currentScopedUid();
+    if (!uid) return changed();
+    const stillUncertain = () =>
+      fail("CASH_UNCERTAIN", "We're still confirming your order. Please retry.", true);
+
+    // Storage alone classifies the freshly read record, verifies any accepted
+    // total against its exact marker, and prepares the outbound paise/proof in
+    // one write under the account lock. No caller-supplied lifecycle here.
+    let prepared: ReturnType<typeof prepareCashSend>;
+    try {
+      prepared = prepareCashSend({
+        uid,
+        attemptId: saved.attemptId,
+        orderId: saved.orderId,
+        expectedTotalPaise: saved.request.expectedTotalPaise,
+        ...(acceptedTotalPaise !== undefined ? { acceptedTotalPaise } : {}),
+        sessionNonce: generateSecureId(12),
+      });
+    } catch {
+      return fail("CASH_STORAGE_UNAVAILABLE", "Your saved checkout could not be read.", true);
+    }
+    if (!prepared) return changed();
+    const proof = prepared.proof;
+    const unresolvedBefore = prepared.unresolved;
+
+    let created: Awaited<ReturnType<typeof createCashOrderOnServer>>;
+    try {
+      created = await createCashOrderOnServer({
+        ...prepared.request,
+        ...(hasDraft ? draft.fields : {}),
+        items: withCookingNotes(prepared.request.items, hasDraft ? draft.lineNotes : []),
+        // Bound fields come only from the validated snapshot/proof.
+        orderId: proof.orderId,
+        attemptId: proof.attemptId,
+        expectedTotalPaise: proof.expectedTotalPaise,
+      });
+    } catch {
+      // Ambiguous transport: keep the tentative record for a same-ID replay.
+      completeCashSubmit(proof, { kind: "ambiguous" });
+      return fail(
+        "CASH_TRANSPORT_UNAVAILABLE",
+        "We couldn't place your order. Please retry.",
+        true,
+      );
+    }
     if (!ownsAttempt(saved)) return changed();
+
     if (!created.success) {
       if (saved.request.zeroDueOnly && created.error.code === "PRICE_CHANGED") {
+        // Only the locked, exact-identity completion may authorize a clear.
+        if (!completeCashSubmit(proof, { kind: "ambiguous" })) return changed();
+        if (unresolvedBefore) return stillUncertain();
         clearPendingCashOrder();
         if (hasDraft && this.cashNotes === draft) this.cashNotes = undefined;
         return created; // no attempt id: never offer a cash reconfirmation
       }
-      // A PRICE_CHANGED is a verified no-write, but the customer must reconfirm
-      // the SERVER's total — keep the same account-bound id for that retry.
-      if (created.error.code === "PRICE_CHANGED")
+      if (created.error.code === "PRICE_CHANGED") {
+        const authoritativePaise = cashPriceChangedPaise(created.error);
+        if (unresolvedBefore) {
+          // A reprice describes only THIS invocation; an earlier send may still
+          // finish. Keep uncertainty at the seam, never offer fresh tender.
+          if (!completeCashSubmit(proof, { kind: "ambiguous" })) return changed();
+          return stillUncertain();
+        }
+        if (authoritativePaise === null) {
+          if (!completeCashSubmit(proof, { kind: "ambiguous" })) return changed();
+          return created;
+        }
+        if (!completeCashSubmit(proof, { kind: "price_changed", paise: authoritativePaise }))
+          return changed();
         return {
           ...created,
           error: {
@@ -413,7 +540,10 @@ export class OrderRepository {
             details: { ...created.error.details, attemptId: saved.attemptId },
           },
         };
-      if (created.error.retryable === false && created.error.code !== "IDEMPOTENCY_CONFLICT") {
+      }
+      if (!completeCashSubmit(proof, { kind: "ambiguous" })) return changed();
+      if (unresolvedBefore) return stillUncertain();
+      if (created.error.retryable === false && VERIFIED_CASH_NO_WRITE.has(created.error.code)) {
         clearPendingCashOrder();
         if (hasDraft && this.cashNotes === draft) this.cashNotes = undefined;
       }
@@ -421,17 +551,27 @@ export class OrderRepository {
     }
 
     if (saved.request.zeroDueOnly && created.data.cashDuePaise !== 0) {
+      if (!completeCashSubmit(proof, { kind: "ambiguous" })) return changed();
       return fail(
         "RECEIPT_UNAVAILABLE",
         "We couldn't confirm the zero-due order. Check your orders before trying again.",
       );
     }
 
-    // Success is recorded durably: any later retry only hydrates this id and
-    // never POSTs again, even if the read-back failed here (M4).
+    if (
+      !completeCashSubmit(proof, {
+        kind: "confirmed",
+        receiptId: created.data.orderId,
+        cashDuePaise: created.data.cashDuePaise,
+      })
+    )
+      return stillUncertain(); // mismatched receipt: keep draft, no hydration
+    // Capture the exact confirmed incarnation applied above, inside the lock.
+    const captured = this.captureConfirmed(uid, proof.attemptId, created.data.orderId);
+    if (!captured) return stillUncertain();
+    // Only a MATCHING confirmation may dispose the in-memory draft.
     if (hasDraft && this.cashNotes === draft) this.cashNotes = undefined;
-    markPendingCashOrderConfirmed(saved.orderId, created.data.orderId);
-    return this.hydrateCashOrder(created.data.orderId, saved);
+    return this.hydrateCashOrder(captured);
   }
 
   /**
@@ -443,19 +583,44 @@ export class OrderRepository {
     return peekConfirmedCashOrderId();
   }
 
+  /** Exact confirmed incarnation captured INSIDE the lock, before any await. */
+  private captureConfirmed(uid: string, attemptId: string, orderId: string) {
+    const record = readPendingCashOrder();
+    if (
+      !record ||
+      !record.confirmed ||
+      record.uid !== uid ||
+      record.attemptId !== attemptId ||
+      record.orderId !== orderId ||
+      (record.generation !== undefined &&
+        (!Number.isSafeInteger(record.generation) || record.generation < 1))
+    )
+      return null;
+    return { uid, attemptId, orderId, generation: record.generation ?? 0 };
+  }
+
   /** Read a cash order's server document back into the UI (M4 retry path). */
   private async hydrateCashOrder(
-    orderId: string,
-    saved?: PendingCashOrder,
+    captured: NonNullable<ReturnType<OrderRepository["captureConfirmed"]>>,
   ): Promise<ApiResult<Order>> {
+    // The captured confirmed identity is required authority, bound before await.
+    const orderId = captured.orderId;
     const hydrated = await this.service.getOrder(orderId);
-    if (saved && !ownsAttempt(saved))
+    if (currentScopedUid() !== captured.uid)
       return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
     if (hydrated.success && hydrated.data?.id === orderId) {
+      // ONE conjunctive gate: the exact confirmed compare-and-clear, performed
+      // under the lock BEFORE any publication. Its boolean result is honoured.
+      const cleared = clearConfirmedCashReceiptUnlocked(
+        captured.uid,
+        captured.attemptId,
+        captured.orderId,
+        captured.generation,
+      );
+      if (!cleared) return fail("ATTEMPT_CHANGED", "This checkout is no longer active.");
       const order = hydrated.data;
       useOrdersStore.getState().upsert(order);
       useOrdersStore.getState().setActiveOrderId(order.id);
-      if (saved) clearPendingCashOrder();
       return ok(order);
     }
     return fail(

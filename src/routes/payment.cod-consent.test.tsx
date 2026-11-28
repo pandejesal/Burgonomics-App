@@ -231,7 +231,8 @@ vi.mock("@/features/stores/state/storeStore", () => {
       etaMinutes: 30,
       supports: { delivery: true, takeaway: true, dineIn: false },
     },
-    fulfillment: "delivery",
+    // Delivery is paid online only; COD reconfirmation stays a counter rule.
+    fulfillment: "takeaway",
   };
   return {
     useStoreSelection: Object.assign((select: (s: typeof state) => unknown) => select(state), {
@@ -356,7 +357,7 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     await mountCashPayment();
     expect(container.textContent).toContain("199");
 
-    const pay = buttonWithText("Place COD Order");
+    const pay = buttonWithText("Place Order");
     expect(pay?.disabled).toBe(false);
     await act(async () => pay!.click());
     await act(async () => {});
@@ -384,7 +385,7 @@ describe("COD — refreshed total needs explicit acceptance", () => {
     fixture.calculateTotals.mockResolvedValue(totals(199));
 
     await mountCashPayment();
-    await act(async () => buttonWithText("Place COD Order")!.click());
+    await act(async () => buttonWithText("Place Order")!.click());
     await act(async () => {});
 
     expect(container.querySelector("[data-testid='reprice-dialog']")).toBeNull();
@@ -406,10 +407,10 @@ describe("COD — refreshed total needs explicit acceptance", () => {
       .mockResolvedValue({ success: true, data: { id: "free", cashDuePaise: 0 } });
     await mountCashPayment();
     const click = async (label: string) => act(async () => buttonWithText(label)!.click());
-    await click("Place COD Order");
+    await click("Place Order");
     await click("Cancel");
     expect(fixture.createCashOrder).toHaveBeenCalledTimes(1);
-    await click("Place COD Order");
+    await click("Place Order");
     expect(fixture.createCashOrder).toHaveBeenNthCalledWith(2, {});
     await click("Continue");
     expect(fixture.createCashOrder).toHaveBeenNthCalledWith(3, {

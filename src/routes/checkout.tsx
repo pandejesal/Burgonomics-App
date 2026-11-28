@@ -25,7 +25,7 @@ import { Skeleton } from "@/shared/components/feedback/Skeleton";
 import { useHydrated } from "@/shared/hooks/useHydrated";
 import { useKitchenHours } from "@/shared/hooks/useKitchenHours";
 import { KitchenClosedBanner } from "@/shared/components/feedback/KitchenClosedBanner";
-import { KITCHEN_CLOSED_MESSAGE } from "@/core/constants/operatingHours";
+import { kitchenClosedMessage } from "@/core/constants/operatingHours";
 import { formatINR } from "@/core/utils/format";
 import { ConfirmDialog } from "@/shared/components/common/ConfirmDialog";
 import { needsRepriceAcceptance } from "@/features/checkout/utils/repriceAcceptance";
@@ -46,13 +46,20 @@ import {
   useCheckoutFees,
   deliveryQuoteView,
   isDeliveryQuoteRefusal,
-  cashOnDeliveryAvailability,
   AddressSelector,
   FulfillmentDetailsCard,
   PaymentMethodSelector,
   WhatsappOptInCheckbox,
   calculateHaversineKm,
 } from "@/features/checkout";
+import { cashOnDeliveryAvailability } from "@/features/checkout/state/checkoutFeesTypes";
+import { retirePriceChangedCashAttemptAtomic } from "@/features/payments/services/pendingCashOrder";
+import {
+  type CompletionScope,
+  captureCompletionScope,
+  cashSubmissionScope,
+  isCompletionScopeValid,
+} from "@/features/checkout/state/checkoutCompletionScope";
 import {
   useAddressStore,
   selectAddresses,
@@ -119,6 +126,18 @@ const CURATED_ORDER_FAILURE_CODES = new Set([
   "COD_LIMIT_EXCEEDED",
   "ORDER_SYNC_PENDING",
 ]);
+
+/**
+ * R5-B3. Account-only fence for money that may already have moved. A cart or
+ * note edit inside the SAME account lifetime is legitimate after verification:
+ * the order must still finalize and reconciliation must still be persisted.
+ * Only a different uid/session epoch may suppress those writes. The full-scope
+ * guard remains for cart/note clearing, reconciliation clearing and navigation.
+ */
+function isSameAccountIdentity(scope: CompletionScope): boolean {
+  const live = captureCompletionScope();
+  return live.uid === scope.uid && live.identityEpoch === scope.identityEpoch;
+}
 
 /**
  * True when the gateway must NOT open yet: the server's validated total differs
@@ -279,8 +298,13 @@ export function CheckoutPage() {
   const [repricePrompt, setRepricePrompt] = React.useState<{
     displayed: number;
     authoritative: number;
-    cash?: { attemptId: string; acceptedTotalPaise: number };
+    // The scope captured at the ACTUAL submission, not a fresh reading when
+    // the customer presses Continue. A newer basket/note/session must reject.
+    cash?: { attemptId: string; acceptedTotalPaise: number; scope: CompletionScope | null };
   } | null>(null);
+  // A confirmed order whose submission scope went stale is terminal: booking
+  // it again would create a second order. Show its id and block PAY.
+  const [terminalOrderId, setTerminalOrderId] = React.useState<string | null>(null);
   // The server total already accepted, so re-entry does not loop on the same
   // difference (the divergence is structural, not a one-off).
   const acceptedServerAmount = React.useRef<number | null>(null);
@@ -295,13 +319,31 @@ export function CheckoutPage() {
   // double-tap fires handlePlaceOrder twice (double order creation) before
   // the disabled button re-renders. Ref flips synchronously: no double fire.
   const placeOrderInFlight = React.useRef(false);
+  // R5-B4: the submission that currently owns the re-entry guard. A later
+  // callback may release `busy`/`placeOrderInFlight` only while it is still this
+  // exact submission; once a newer attempt binds, the old one owns nothing.
+  const activeSubmission = React.useRef<CompletionScope | null>(null);
+  const ownsGuard = (submission: CompletionScope | null) => activeSubmission.current === submission;
+  const releaseGuard = (submission: CompletionScope | null) => {
+    if (!ownsGuard(submission)) return false;
+    setBusy(false);
+    placeOrderInFlight.current = false;
+    return true;
+  };
+  // An unsafe retirement must not be followed by an automatic cash replay on
+  // the next tap; the customer has to choose a method again explicitly.
+  const cashRetirementBlocked = React.useRef(false);
   // Finding 5: the post-auth retry is deferred 300ms; hold the timer id so
   // unmount can cancel it, and route the call through the latest
   // `handlePlaceOrder` so the deferred execution sees fresh auth/guest state
   // instead of the render-scope closure captured when the sheet succeeded.
   const authRetryTimer = React.useRef<number | null>(null);
   const handlePlaceOrderRef = React.useRef<
-    (cash?: { attemptId: string; acceptedTotalPaise: number }) => Promise<void>
+    (cash?: {
+      attemptId: string;
+      acceptedTotalPaise: number;
+      scope: CompletionScope | null;
+    }) => Promise<void>
   >(async () => {});
   React.useEffect(() => {
     handlePlaceOrderRef.current = handlePlaceOrder;
@@ -396,12 +438,12 @@ export function CheckoutPage() {
   // Owner decision 2026-11-25 (#1): the delivery tip is HIDDEN at launch, so
   // "To Pay" is the server's own total and carries no tip.
   const finalPayable = Math.max(0, rawGrandTotal);
-  // Owner decision 2026-11-20: cash on delivery is offered only where the
-  // branch allows it, and only under its per-order ceiling. The quote carries
-  // that answer; the create route enforces it again on the server.
+  // Owner decision 2026-11-26: delivery is Razorpay-only. Counter cash keeps
+  // the branch switch/ceiling from the quote; the create route re-checks it.
   const codAvailability = cashOnDeliveryAvailability(
     feesState,
     totals ? Math.round(finalPayable * 100) : null,
+    fulfillment,
   );
   // Never leave a customer on a tender the branch refuses: switch the selection
   // back to online as soon as the server says cash is unavailable for this bill.
@@ -459,10 +501,15 @@ export function CheckoutPage() {
   // R8: the server refused the payment because the courier quote was missing or
   // had expired. Re-quote the CURRENT address, then surface the updated figure
   // through the existing price dialog — never open Razorpay on the stale one.
-  async function recoverFromQuoteRefusal() {
+  async function recoverFromQuoteRefusal(submittedScope: CompletionScope | null) {
     const displayed = totals?.grandTotal ?? null;
     const next = await refreshQuote();
     const recomputed = await cartRepository.calculateTotals();
+    // R5-B2: this re-quote belongs to the submission that earned the refusal.
+    // A cart/note/outlet/session change while it was pending must not publish
+    // a price the customer never saw or re-enter payment on newer state.
+    if (!submittedScope || !ownsGuard(submittedScope) || !isCompletionScopeValid(submittedScope))
+      return;
     if (next.status !== "ready" || !recomputed.success) {
       const message =
         next.status === "unserviceable"
@@ -485,9 +532,33 @@ export function CheckoutPage() {
 
   // Hoisted so the ref-sync effect also runs safely on the initial skeleton
   // render, which returns before the checkout body is initialized.
-  async function handlePlaceOrder(cash?: { attemptId: string; acceptedTotalPaise: number }) {
+  async function handlePlaceOrder(cash?: {
+    attemptId: string;
+    acceptedTotalPaise: number;
+    scope: CompletionScope | null;
+  }) {
     setValidationError(null);
     setOrderingUnavailable(false);
+
+    // Terminal once a real order was confirmed: no second PAY re-arms it.
+    if (terminalOrderId) {
+      const message = `Order ${terminalOrderId} was placed. Check your orders before paying again.`;
+      setValidationError(message);
+      toast.error("Order already placed", { description: message });
+      setBusy(false);
+      placeOrderInFlight.current = false;
+      return;
+    }
+
+    if (cashRetirementBlocked.current) {
+      const message =
+        "We couldn't safely update your payment method. Check your orders and try again.";
+      setValidationError(message);
+      toast.error("Could not place order", { description: message });
+      setBusy(false);
+      placeOrderInFlight.current = false;
+      return;
+    }
 
     if (!fulfillmentSupported) {
       setValidationError(fulfillmentBlockMessage);
@@ -538,7 +609,7 @@ export function CheckoutPage() {
     // Same for the kitchen window: a screen left open past 23:00 must not
     // send a payment for an order the kitchen can no longer accept.
     if (!kitchen.isOpen) {
-      setValidationError(KITCHEN_CLOSED_MESSAGE);
+      setValidationError(kitchenClosedMessage(kitchen));
       return;
     }
 
@@ -561,9 +632,31 @@ export function CheckoutPage() {
 
     // A lost response may already have created an order. Never switch tender
     // or start a parallel checkout while the other server attempt is unresolved.
+    // A confirmed receipt observed here belongs to an EARLIER order. Its basket
+    // hash excludes notes and it stores no note revision, so it cannot prove
+    // ownership of the note draft on screen now. Track the recovery: the cash
+    // success path still cleans the SAME basket, but leaves that draft alone.
+    // Only a fresh submission owns the mark captured below.
+    let confirmedRecovery = false;
     let recoveringZeroDue: boolean;
     try {
-      const cashPending = orderRepository.pendingCashAttempt()?.record ?? null;
+      // Keep the WHOLE observation. A confirmed receipt for an older basket is
+      // proof of a DIFFERENT order: navigate to that exact id and touch nothing
+      // else — no hydration/replay POST, no cart/note cleanup, no tender change.
+      // The newer checkout stays exactly as the customer left it.
+      const pendingAttempt = orderRepository.pendingCashAttempt();
+      if (pendingAttempt?.record.confirmed) {
+        confirmedRecovery = true;
+        if (!pendingAttempt.matchesBasket) {
+          void navigate({
+            to: "/orders/$orderId/track",
+            params: { orderId: pendingAttempt.record.orderId },
+            replace: true,
+          });
+          return;
+        }
+      }
+      const cashPending = pendingAttempt?.record ?? null;
       recoveringZeroDue = cashPending?.request.zeroDueOnly === true;
       if (paymentMethod !== "cash" && ((cashPending && !cashPending.request.zeroDueOnly) || cash)) {
         setValidationError("Finish your previous checkout before changing payment method.");
@@ -650,12 +743,20 @@ export function CheckoutPage() {
         useAuthStore.getState().user?.id ?? null,
         useStoreSelection.getState().activeStore?.id ?? null,
       );
+    // R5-B2: in-memory identity of THIS submission, captured before any await.
+    // Every online completion effect rechecks it against the live cart, draft,
+    // outlet and account lifetime so a late reply cannot act for a newer
+    // checkout. Cash/zero keep their own B1 scope gates below.
+    const submittedScope = captureCompletionScope();
+    // R5-B4: from here on this exact scope owns the guard until a newer
+    // submission replaces it, even while awaits are pending.
+    activeSubmission.current = submittedScope;
 
     // 1. Cart preflight validation
     const validation = await cartRepository.validateCart();
     if (!validation.success || !validation.data.valid) {
-      setBusy(false);
-      placeOrderInFlight.current = false;
+      if (!ownsGuard(submittedScope)) return;
+      releaseGuard(submittedScope);
       // Curated cart-issue copy passes through; the failure branch is typed
       // raw-capable (CartRepository), so it is logged + mapped, never shown.
       if (!validation.success)
@@ -668,6 +769,20 @@ export function CheckoutPage() {
       return;
     }
 
+    // A Continue replay belongs to the submission that earned the prompt.
+    // Revalidate that ORIGINAL scope after the preflight await: a cart/note or
+    // session change while it was pending must block the older replay request
+    // and preserve the newer state. No POST has happened yet.
+    if (cash && (!cash.scope || !isCompletionScopeValid(cash.scope))) {
+      if (!ownsGuard(submittedScope)) return;
+      releaseGuard(submittedScope);
+      const message =
+        "Your checkout changed while the updated total was open. Review your basket before continuing.";
+      setValidationError(message);
+      toast.error("Checkout changed", { description: message });
+      return;
+    }
+
     // D31–D33: redemption withdrew from the customer app. Pin the persisted
     // value to 0 before any create call so a legacy localStorage choice can
     // never reach an order, a coupon reprice, or the gateway payload.
@@ -676,12 +791,63 @@ export function CheckoutPage() {
     // The note draft belongs to the account/outlet that placed the order; it is
     // cleared only after success, only while it is still the exact draft
     // (`notesDraftMark`) captured above.
+    // Re-read both tender and mode: a restored cash choice or a mode switch
+    // after render must not reach the cash creator for a delivery order.
+    const liveFulfillment = useStoreSelection.getState().fulfillment ?? fulfillment;
+    // A reconfirmed PRICE_CHANGED total is authoritative; the displayed bill is
+    // stale. Use `??` so a valid accepted zero paise is not mistaken for absent.
+    const liveCodAvailability = cashOnDeliveryAvailability(
+      useCheckoutStore.getState().checkoutFees,
+      cash?.acceptedTotalPaise ?? (totals ? Math.round(finalPayable * 100) : null),
+      liveFulfillment,
+    );
+    const liveMethod = usePaymentStore.getState().method;
     // 2. Cash on Delivery / Pay at Counter Flow
-    if (paymentMethod === "cash" && !recoveringZeroDue) {
+    if (liveMethod === "cash" && !recoveringZeroDue && finalPayable > 0) {
+      if (!liveCodAvailability.allowed) {
+        // Retire under the account lock and wait for the result. If the declined
+        // attempt cannot be proven safe to retire, KEEP the cash tender: a
+        // switch here could replay an order that may already exist.
+        if (cash) {
+          const uid = useAuthStore.getState().user?.id ?? null;
+          let safe = false;
+          try {
+            safe = uid
+              ? await retirePriceChangedCashAttemptAtomic(
+                  uid,
+                  cash.attemptId,
+                  cash.acceptedTotalPaise,
+                )
+              : false;
+          } catch {
+            // Storage/lock rejection: `safe` stays false, so the cleanup below
+            // releases busy/in-flight and PAY stays usable.
+          }
+          if (!safe) {
+            if (!ownsGuard(submittedScope)) return;
+            cashRetirementBlocked.current = true;
+            const message =
+              "We couldn't safely update your payment method. Check your orders and try again.";
+            setValidationError(message);
+            toast.error("Could not place order", { description: message });
+            releaseGuard(submittedScope);
+            return;
+          }
+        }
+        if (!ownsGuard(submittedScope)) return;
+        setPaymentMethod("upi");
+        const message = liveCodAvailability.reason ?? "Delivery is paid online only.";
+        setValidationError(message);
+        toast.error(message);
+        releaseGuard(submittedScope);
+        return;
+      }
       try {
         // Only the cash creation endpoint can price this order and set the
         // server-owned cash channel required by the kitchen admission gate.
+        const routeScope = captureCompletionScope();
         const created = await orderRepository.createCashOrder(cash);
+        if (!ownsGuard(submittedScope)) return;
 
         if (!created.success) {
           const paise = cashPriceChangedPaise(created.error);
@@ -690,7 +856,11 @@ export function CheckoutPage() {
             setRepricePrompt({
               displayed: totals?.grandTotal ?? 0,
               authoritative: paise / 100,
-              cash: { attemptId, acceptedTotalPaise: paise },
+              cash: {
+                attemptId,
+                acceptedTotalPaise: paise,
+                scope: cashSubmissionScope() ?? captureCompletionScope(),
+              },
             });
             return;
           }
@@ -700,12 +870,33 @@ export function CheckoutPage() {
           return;
         }
 
+        // Only the submitted account lifetime/basket/draft may be completed.
+        // A changed cart/note or an ended session suppresses every success
+        // effect and makes the confirmed receipt terminal: its id is shown,
+        // PAY stays blocked, and no cleanup/navigation/reconciliation/tender
+        // change is performed.
+        // For a Continue replay the prompt-time scope is authoritative. The
+        // repository recaptures live state when it takes the account lock; that
+        // newer scope belongs to a different checkout and may NEVER authorise
+        // cleanup of the request this replay actually sent.
+        const submitted = cash ? cash.scope : (cashSubmissionScope() ?? routeScope);
+        if (!submitted || !isCompletionScopeValid(submitted)) {
+          const message = `Order ${created.data.id} was placed. Check your orders before paying again.`;
+          setTerminalOrderId(created.data.id);
+          setValidationError(message);
+          toast.error("Order already placed", { description: message });
+          return;
+        }
         AudioService.playSuccess();
         void HapticService.notification("success");
-        // D31–D33: no loyalty balance refresh — balances/ledger are server-owned
-        // and the customer app no longer presents them.
+        // D31–D33: no loyalty balance refresh — balances/ledger are server-owned.
+        // A recovered receipt proves an EARLIER order, not the current draft:
+        // the basket is still ours to clean, the note is not. A fresh
+        // submission still clears the exact mark it captured before the POST.
         void cartRepository.clear();
-        useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
+        if (!confirmedRecovery) {
+          useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
+        }
         void navigate({
           to: "/orders/$orderId/track",
           params: { orderId: created.data.id },
@@ -718,8 +909,7 @@ export function CheckoutPage() {
         setValidationError(msg);
         toast.error("Could not place order", { description: msg });
       } finally {
-        setBusy(false);
-        placeOrderInFlight.current = false;
+        releaseGuard(submittedScope);
       }
       return;
     }
@@ -729,7 +919,9 @@ export function CheckoutPage() {
     // must NOT mint an unpaid online draft or claim payment success.
     if (recoveringZeroDue || finalPayable <= 0) {
       try {
+        const zeroRouteScope = captureCompletionScope();
         const zeroDue = await orderRepository.createCashOrder({ zeroDueOnly: true });
+        if (!ownsGuard(submittedScope)) return;
         if (!zeroDue.success) {
           const message =
             zeroDue.error.code === "PRICE_CHANGED"
@@ -745,11 +937,24 @@ export function CheckoutPage() {
           );
           return;
         }
-        toast.success("No payment due", { description: "Your discount covered the full bill." });
-        AudioService.playSuccess();
-        void HapticService.notification("success");
-        void cartRepository.clear();
-        useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
+        const zeroScope = cashSubmissionScope() ?? zeroRouteScope;
+        if (!zeroScope || !isCompletionScopeValid(zeroScope)) {
+          const message = `Order ${zeroDue.data.id} was placed. Check your orders before paying again.`;
+          setTerminalOrderId(zeroDue.data.id);
+          setValidationError(message);
+          toast.error("Order already placed", { description: message });
+          return;
+        }
+        // A recovered older receipt is shown, but never cleans a newer cart.
+        if (!recoveringZeroDue) {
+          toast.success("No payment due", {
+            description: "Your discount covered the full bill.",
+          });
+          AudioService.playSuccess();
+          void HapticService.notification("success");
+          void cartRepository.clear();
+          useCheckoutStore.getState().clearNotesAfterCompletedOrder(notesDraftMark);
+        }
         void navigate({
           to: "/orders/$orderId/track",
           params: { orderId: zeroDue.data.id },
@@ -761,9 +966,20 @@ export function CheckoutPage() {
         setValidationError(msg);
         toast.error("Could not place order", { description: msg });
       } finally {
-        setBusy(false);
-        placeOrderInFlight.current = false;
+        releaseGuard(submittedScope);
       }
+      return;
+    }
+    // R5-B2: the online path used to trust the render-time state after the
+    // validateCart await. Recheck the submitted identity before any online
+    // effect: a changed basket/draft/session cannot mint a gateway order.
+    if (!ownsGuard(submittedScope)) return;
+    if (!isCompletionScopeValid(submittedScope)) {
+      releaseGuard(submittedScope);
+      const message =
+        "Your checkout changed while placing the order. Review your basket before trying again.";
+      setValidationError(message);
+      toast.error("Checkout changed", { description: message });
       return;
     }
     try {
@@ -778,20 +994,27 @@ export function CheckoutPage() {
             ? (quoteForPayment.deliveryQuoteId ?? undefined)
             : undefined,
       });
+      // R5-B2: rebind the reply to the live submission before publishing any
+      // outcome. A stale refusal must not re-quote/re-enter; a stale success
+      // must not publish a payment order or open a gateway for a newer basket.
+      if (!ownsGuard(submittedScope)) return;
+      if (!isCompletionScopeValid(submittedScope)) {
+        releaseGuard(submittedScope);
+        setPaymentStatus("idle");
+        return;
+      }
       if (!orderRes.success) {
         // A stale/missing quote is recoverable: re-quote, then show the updated
         // price through the existing dialog before retrying. No gateway has
         // opened, so nothing can have been charged.
         if (isDelivery && isDeliveryQuoteRefusal(orderRes.error.code)) {
-          setBusy(false);
-          placeOrderInFlight.current = false;
+          releaseGuard(submittedScope);
           setPaymentStatus("idle");
           setPaymentFailure(null);
-          await recoverFromQuoteRefusal();
+          await recoverFromQuoteRefusal(submittedScope);
           return;
         }
-        setBusy(false);
-        placeOrderInFlight.current = false;
+        releaseGuard(submittedScope);
         setPaymentStatus("failed");
         const message = orderFailureMessage(orderRes.error);
         setPaymentFailure({
@@ -818,8 +1041,7 @@ export function CheckoutPage() {
       if (
         needsRepriceAcceptance(displayedTotal, authoritativeTotal, acceptedServerAmount.current)
       ) {
-        setBusy(false);
-        placeOrderInFlight.current = false;
+        releaseGuard(submittedScope);
         setRepricePrompt({
           // The gate only returns true when both are finite numbers.
           displayed: displayedTotal as number,
@@ -832,17 +1054,33 @@ export function CheckoutPage() {
       setPaymentStatus("waiting");
 
       await razorpayAdapter.initialize({ order: orderRes.data });
+      // R5-B3: initialize() is itself an await. Recheck the bound submission
+      // before the modal can open; a superseded checkout gets no gateway order.
+      if (!ownsGuard(submittedScope)) return;
+      if (!isCompletionScopeValid(submittedScope)) {
+        releaseGuard(submittedScope);
+        setPaymentStatus("idle");
+        return;
+      }
       await razorpayAdapter.openCheckout(
         {
           onSuccess: async (result: PaymentResult) => {
             try {
               const verify = await paymentRepository.verifyPayment(result);
+              // R5-B3: money may have moved. Outcomes, finalization and
+              // reconciliation are account-bound only: a same-account cart/note
+              // edit still finalizes exactly once. A changed uid/epoch writes
+              // and publishes nothing. The server's verification is untouched.
+              if (!ownsGuard(submittedScope)) return;
+              if (!isSameAccountIdentity(submittedScope)) {
+                releaseGuard(submittedScope);
+                return;
+              }
               if (verify.success && verify.data.verified) {
                 // proceed to order finalization below
               } else if (!verify.success && verify.error.code === "TRANSFER_IN_PROGRESS") {
-                setBusy(false);
-                placeOrderInFlight.current = false;
-                const reconUid = useAuthStore.getState().user?.id ?? null;
+                releaseGuard(submittedScope);
+                const reconUid = submittedScope.uid;
                 usePaymentStore
                   .getState()
                   .setReconciliation(
@@ -871,9 +1109,8 @@ export function CheckoutPage() {
                 });
                 return;
               } else if (!verify.success && verify.error.code === "ORDER_TERMINAL") {
-                setBusy(false);
-                placeOrderInFlight.current = false;
-                const reconUid = useAuthStore.getState().user?.id ?? null;
+                releaseGuard(submittedScope);
+                const reconUid = submittedScope.uid;
                 usePaymentStore
                   .getState()
                   .setReconciliation(
@@ -903,8 +1140,7 @@ export function CheckoutPage() {
                 // Captured money: do not markPaymentFailed, do not invite re-pay.
                 return;
               } else {
-                setBusy(false);
-                placeOrderInFlight.current = false;
+                releaseGuard(submittedScope);
                 const outcome = resolveVerifyOutcome({
                   verify,
                   internalOrderId:
@@ -936,7 +1172,7 @@ export function CheckoutPage() {
                 // Unknown / possibly-captured outcome: persist reconciliation
                 // (which disables the pay button) and surface the recovery
                 // panel — never a failed state that invites a re-pay (A08 B9).
-                const reconUid = useAuthStore.getState().user?.id ?? null;
+                const reconUid = submittedScope.uid;
                 usePaymentStore
                   .getState()
                   .setReconciliation(
@@ -970,13 +1206,16 @@ export function CheckoutPage() {
                 transactionId: result.paymentId,
               });
 
-              setBusy(false);
-              placeOrderInFlight.current = false;
+              releaseGuard(submittedScope);
+              // R5-B3/R5-B4: a superseded attempt owns neither publication nor
+              // the guard; account identity gates money-time writes and full
+              // scope gates local cleanup/navigation/reconciliation clearing.
+              if (!ownsGuard(submittedScope) || !isSameAccountIdentity(submittedScope)) return;
               // Paid-but-no-order is NOT success: money moved, no order record.
               // Never clear the cart or navigate to tracking here — surface the
               // failure with the gateway payment id for support recovery.
               if (!created.success) {
-                const reconUid = useAuthStore.getState().user?.id ?? null;
+                const reconUid = submittedScope.uid;
                 usePaymentStore
                   .getState()
                   .setReconciliation(
@@ -1002,12 +1241,43 @@ export function CheckoutPage() {
                 });
                 return;
               }
+              if (!isCompletionScopeValid(submittedScope)) {
+                // Same account, newer basket/note: the money is finalized, so
+                // surface a visible non-retryable receipt with BOTH ids and
+                // keep PAY blocked. Never clear the newer cart/notes nor
+                // reconciliation, and never navigate to the superseded order.
+                const message = `Order ${created.data.id} was placed; payment ${result.paymentId}. Check your orders before paying again.`;
+                setTerminalOrderId(created.data.id);
+                setPaymentStatus("waiting");
+                setPaymentFailure({
+                  code: "PAYMENT_SYNC_PENDING",
+                  message,
+                  retryable: false,
+                  paymentId: result.paymentId,
+                });
+                setValidationError(message);
+                toast.info("Payment received — order placed", { description: message });
+                usePaymentStore
+                  .getState()
+                  .setReconciliation(
+                    true,
+                    "PAYMENT_SYNC_PENDING",
+                    created.data.id,
+                    result.orderId ?? null,
+                  );
+                persistPaymentReconciliation(submittedScope.uid, {
+                  internalOrderId: created.data.id,
+                  gatewayOrderId: result.orderId ?? null,
+                  reason: "PAYMENT_SYNC_PENDING",
+                });
+                return;
+              }
               setPaymentStatus("success");
               AudioService.playSuccess();
               void HapticService.notification("success");
               // D31–D33: balances/ledger stay server-owned; nothing to refresh
               // here because the app no longer presents a wallet.
-              const reconUid = useAuthStore.getState().user?.id ?? null;
+              const reconUid = submittedScope.uid;
               clearPaymentReconciliation(reconUid);
               usePaymentStore.getState().clearReconciliation();
               void cartRepository.clear();
@@ -1019,14 +1289,18 @@ export function CheckoutPage() {
                 replace: true,
               });
             } catch (err) {
-              setBusy(false);
-              placeOrderInFlight.current = false;
+              if (!ownsGuard(submittedScope)) return;
+              releaseGuard(submittedScope);
+              // R5-B3: guard BEFORE any reconciliation write or UI effect.
+              // Money may have moved, so a same-account basket/note edit still
+              // reconciles; a changed account/lifetime writes nothing.
+              if (!isSameAccountIdentity(submittedScope)) return;
               // Post-gateway unknown exception (verify/finalize threw after
               // money may have moved): persist reconciliation and surface the
               // recovery panel — never a failed state that invites a re-pay,
               // never a cart clear or confirmation navigation (A08 B9).
               console.error("[checkout] post-payment exception:", err);
-              const reconUid = useAuthStore.getState().user?.id ?? null;
+              const reconUid = submittedScope.uid;
               const store = usePaymentStore.getState();
               const boundInternal = store.internalOrderId ?? result.internalOrderId ?? null;
               const boundGateway = store.gatewayOrderId ?? result.orderId ?? null;
@@ -1050,8 +1324,11 @@ export function CheckoutPage() {
             }
           },
           onFailure: (err) => {
-            setBusy(false);
-            placeOrderInFlight.current = false;
+            if (!ownsGuard(submittedScope)) return;
+            releaseGuard(submittedScope);
+            // Pre-money callback bound to THIS submission: a stale attempt may
+            // only release its own spinner, never publish into newer state.
+            if (!isCompletionScopeValid(submittedScope)) return;
             setPaymentStatus("failed");
             // P1-8: gateway description text is not customer copy — log raw.
             console.error("[checkout] gateway onFailure:", err);
@@ -1060,8 +1337,9 @@ export function CheckoutPage() {
             });
           },
           onCancel: () => {
-            setBusy(false);
-            placeOrderInFlight.current = false;
+            if (!ownsGuard(submittedScope)) return;
+            releaseGuard(submittedScope);
+            if (!isCompletionScopeValid(submittedScope)) return;
             setPaymentStatus("cancelled");
             toast.info("Payment cancelled. You can retry when ready.");
           },
@@ -1069,8 +1347,11 @@ export function CheckoutPage() {
         paymentMethod,
       );
     } catch (payErr) {
-      setBusy(false);
-      placeOrderInFlight.current = false;
+      if (!ownsGuard(submittedScope)) return;
+      releaseGuard(submittedScope);
+      // Pre-money initiation failure: release busy/in-flight safely, but a
+      // superseded submission publishes no status/copy into the newer state.
+      if (!isCompletionScopeValid(submittedScope)) return;
       setPaymentStatus("failed");
       // P1-8: raw gateway/exception text never reaches the red alert box —
       // customers get an honest recovery path instead.
@@ -1110,6 +1391,7 @@ export function CheckoutPage() {
               type="button"
               onClick={() => void handlePlaceOrder()}
               disabled={
+                terminalOrderId !== null ||
                 busy ||
                 !isOnline ||
                 totals === null ||
@@ -1122,6 +1404,7 @@ export function CheckoutPage() {
                 (isAuthenticated && !quoteView.payEnabled)
               }
               aria-disabled={
+                terminalOrderId !== null ||
                 busy ||
                 !isOnline ||
                 totals === null ||
@@ -1134,29 +1417,31 @@ export function CheckoutPage() {
                 (isAuthenticated && !quoteView.payEnabled)
               }
               title={
-                !fulfillmentSupported
-                  ? !fulfillment
-                    ? "Choose a fulfillment method"
-                    : fulfillmentBlockMessage
-                  : onlineOrderingUnavailable
-                    ? "This outlet isn't taking online orders yet."
-                    : !isAuthenticated
-                      ? "Sign in to continue"
-                      : !quoteView.payEnabled
-                        ? (quoteView.message ?? "Getting delivery price")
-                        : reconciliationPending
-                          ? "We are confirming your payment — please do not pay again"
-                          : legacyNotesPending
-                            ? "Review your saved cooking note in the cart first"
-                            : !kitchen.isOpen
-                              ? KITCHEN_CLOSED_MESSAGE
-                              : !isOnline
-                                ? "Back online to place your order"
-                                : totalsFailed
-                                  ? "Couldn't compute your bill — retry above"
-                                  : totals === null
-                                    ? "Bill is still being computed"
-                                    : undefined
+                terminalOrderId !== null
+                  ? `Order ${terminalOrderId} placed — do not pay again`
+                  : !fulfillmentSupported
+                    ? !fulfillment
+                      ? "Choose a fulfillment method"
+                      : fulfillmentBlockMessage
+                    : onlineOrderingUnavailable
+                      ? "This outlet isn't taking online orders yet."
+                      : !isAuthenticated
+                        ? "Sign in to continue"
+                        : !quoteView.payEnabled
+                          ? (quoteView.message ?? "Getting delivery price")
+                          : reconciliationPending
+                            ? "We are confirming your payment — please do not pay again"
+                            : legacyNotesPending
+                              ? "Review your saved cooking note in the cart first"
+                              : !kitchen.isOpen
+                                ? kitchenClosedMessage(kitchen)
+                                : !isOnline
+                                  ? "Back online to place your order"
+                                  : totalsFailed
+                                    ? "Couldn't compute your bill — retry above"
+                                    : totals === null
+                                      ? "Bill is still being computed"
+                                      : undefined
               }
               className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 type-button text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
@@ -1643,7 +1928,10 @@ export function CheckoutPage() {
         <section className="rounded-[var(--radius-large)] border border-divider bg-surface p-4 sm:p-5">
           <PaymentMethodSelector
             selectedMethod={paymentMethod}
-            onSelectMethod={(method) => setPaymentMethod(method)}
+            onSelectMethod={(method) => {
+              cashRetirementBlocked.current = false;
+              setPaymentMethod(method);
+            }}
             isDelivery={isDelivery}
             isTakeaway={isTakeaway}
             cashDisabledReason={codAvailability.reason}
@@ -1691,8 +1979,19 @@ export function CheckoutPage() {
         onConfirm={() => {
           if (!repricePrompt) return;
           if (repricePrompt.cash) {
+            const { scope, ...cash } = repricePrompt.cash;
             setRepricePrompt(null);
-            void handlePlaceOrderRef.current(repricePrompt.cash);
+            // Continue belongs to the submission that earned this prompt. A
+            // cart/note edit or a session advance while it was open must not
+            // replay onto newer state.
+            if (!scope || !isCompletionScopeValid(scope)) {
+              const message =
+                "Your checkout changed while the updated total was open. Review your basket before continuing.";
+              setValidationError(message);
+              toast.error("Checkout changed", { description: message });
+              return;
+            }
+            void handlePlaceOrderRef.current({ ...cash, scope });
             return;
           }
           acceptedServerAmount.current = repricePrompt.authoritative;

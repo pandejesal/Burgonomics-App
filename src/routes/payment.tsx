@@ -56,6 +56,8 @@ import {
   isDeliveryQuoteRefusal,
 } from "@/features/checkout";
 import type { CartTotals } from "@/features/cart/models";
+import { cashOnDeliveryAvailability } from "@/features/checkout/state/checkoutFeesTypes";
+import { retirePriceChangedCashAttemptAtomic } from "@/features/payments/services/pendingCashOrder";
 import { useStoreSelection, storeSupportsFulfillment } from "@/features/stores/state/storeStore";
 import { useAuthStore, selectIsAuthenticated } from "@/features/auth/state/authStore";
 import { useAddressStore, selectSelectedAddress } from "@/features/addresses";
@@ -84,6 +86,12 @@ import {
 } from "@/features/payments/utils/paymentRecovery";
 import { PaymentRecoveryPanel } from "@/features/payments/components/PaymentRecoveryPanel";
 import { orderRepository, type PaymentDisplayStatus } from "@/features/orders";
+import {
+  type CompletionScope,
+  captureCompletionScope,
+  cashSubmissionScope,
+  isCompletionScopeValid,
+} from "@/features/checkout/state/checkoutCompletionScope";
 import type { Order } from "@/features/orders/models";
 import {
   classifyResumableOrder,
@@ -132,6 +140,29 @@ function orderFailureMessage(error: { code: string; message: string }): string {
   if (CURATED_ORDER_FAILURE_CODES.has(error.code)) return error.message;
   console.error("[payment] order/payment failure:", error);
   return toUserMessage(error);
+}
+
+/**
+ * R5-B2. Account-only fence for an OLD order (resume / cancel): paying an
+ * existing order must not depend on the cart or draft on screen now. The
+ * identity epoch still catches logout followed by login as the same uid.
+ */
+function isSameAccountIdentity(scope: CompletionScope): boolean {
+  const live = captureCompletionScope();
+  return live.uid === scope.uid && live.identityEpoch === scope.identityEpoch;
+}
+
+interface BoundSubmission {
+  scope: CompletionScope;
+  accountOnly: boolean;
+}
+
+/** Full scope for a fresh submission; account-only for an existing order. */
+function isLiveSubmission(submission: BoundSubmission | null): boolean {
+  if (!submission) return false;
+  return submission.accountOnly
+    ? isSameAccountIdentity(submission.scope)
+    : isCompletionScopeValid(submission.scope);
 }
 
 export const Route = createFileRoute("/payment")({
@@ -240,8 +271,13 @@ function PaymentPage() {
   const [repricePrompt, setRepricePrompt] = React.useState<{
     displayed: number;
     authoritative: number;
-    cash?: { attemptId: string; paise: number };
+    // Scope of the submission that earned the prompt; Continue must bind to
+    // it rather than re-reading a cart/note edited while the dialog is open.
+    cash?: { attemptId: string; paise: number; scope: CompletionScope | null };
   } | null>(null);
+  // A confirmed order with a stale submission scope is terminal: its id is
+  // shown and no further PAY can create a second order.
+  const [terminalOrderId, setTerminalOrderId] = React.useState<string | null>(null);
   // CUS-11: the accepted server total is what the To Pay bar must show while
   // Razorpay is open (display only; the gateway already has this amount).
   const [acceptedServerTotal, setAcceptedServerTotal] = React.useState<number | null>(null);
@@ -269,12 +305,28 @@ function PaymentPage() {
   // flips the hook count between renders (guest/empty → authed+filled) and
   // crashes with minified React #310.
   const isOnline = useAppConfig((s) => s.isOnline);
+  const connectionStatusKnown = useAppConfig((s) => s.connectionStatusKnown);
+  const browserOnlineEvidence = useAppConfig((s) => s.browserOnlineEvidence);
+  // Same predicate as the store selector, expressed through field selectors so
+  // route tests with a partial app-config mock keep their existing fixtures.
+  // `isOnline` alone is false during an unconfirmed native cold start.
+  const observedOffline =
+    !isOnline && (connectionStatusKnown === true || browserOnlineEvidence === false);
   const [preflightIssue, setPreflightIssue] = React.useState<string | null>(null);
   const [abandonmentOpen, setAbandonmentOpen] = React.useState(false);
   // Loop 11: synchronous re-entry guard — status flips async, so rapid
   // double-tap fires startPayment twice (double charge) before the button
   // shows loading. Reset on every terminal status below.
   const payInFlight = React.useRef(false);
+  // R5-B2: identity of the in-flight gateway submission. Captured before each
+  // money await and handed to callbacks, so a late result from an obsolete
+  // attempt cannot publish into a newer basket or account lifetime.
+  const boundSubmission = React.useRef<BoundSubmission | null>(null);
+  // R5-B4: a callback owns the shared re-entry guard only while it is still the
+  // bound submission. A late callback from a superseded attempt may neither
+  // clear a newer attempt's guard nor publish into its state.
+  const ownsBoundSubmission = (submission: BoundSubmission | null) =>
+    boundSubmission.current === submission;
 
   // Auth guard — send guests to login with return-to-payment.
   React.useEffect(() => {
@@ -324,12 +376,16 @@ function PaymentPage() {
   React.useEffect(() => {
     if (!hydrated || !isBootstrapped || !isAuthenticated || !resumeOrderId) return;
     let cancelled = false;
+    // R5-B2: the document read is owner-scoped, but a logout followed by a
+    // login as the SAME uid advances the identity epoch without unmounting
+    // this effect. Fail closed if that happened while the read was in flight.
+    const resumeIdentity = captureCompletionScope();
     setResumeStatus("loading");
     setResumeError(null);
     void orderRepository
       .getOrder(resumeOrderId)
       .then((res) => {
-        if (cancelled) return;
+        if (cancelled || !isSameAccountIdentity(resumeIdentity)) return;
         if (!res.success) {
           console.error("[payment] resume order read failed:", res.error);
           setResumeOrder(null);
@@ -341,7 +397,7 @@ function PaymentPage() {
         setResumeStatus(res.data ? "loaded" : "unavailable");
       })
       .catch((err: unknown) => {
-        if (cancelled) return;
+        if (cancelled || !isSameAccountIdentity(resumeIdentity)) return;
         console.error("[payment] resume order read threw:", err);
         setResumeOrder(null);
         setResumeError("We couldn't load this order. Please check your connection and try again.");
@@ -380,6 +436,42 @@ function PaymentPage() {
   // the amount compared against the server — so the comparison uses the server
   // bill exactly, with no tip term on either side.
   const displayedBillTotal = totals === null ? undefined : Math.max(0, totals.grandTotal);
+
+  // Owner decision 2026-11-26: delivery is Razorpay-only. A server-verified
+  // zero-due delivery bill still uses the cash creator with `zeroDueOnly`; it
+  // is not a cash tender and must stay available.
+  // One authoritative decision for rendering, the offline fallback and the
+  // stale-selection correction: real bill, real fulfillment, live quote. Until
+  // the bill exists cash is not offered, so a null total cannot skip the cap.
+  const codAvailability =
+    displayedBillTotal === undefined
+      ? { allowed: false, reason: "Your bill is still being calculated." }
+      : cashOnDeliveryAvailability(
+          feesState,
+          Math.round(displayedBillTotal * 100),
+          billingFulfillment,
+        );
+  const zeroDueBill = !resume && totals !== null && !totalsFailed && displayedBillTotal === 0;
+  React.useEffect(() => {
+    // Only a NATIVE UNCONFIRMED cold start is exempt: `isOnline` is false there
+    // without any answer from the plugin, so the customer's choice is left
+    // alone. Once offline is actually OBSERVED, the delivery-cash correction
+    // still applies — offline is not an excuse to keep a retired tender.
+    if (resume || zeroDueBill || (!isOnline && !observedOffline)) return;
+    if (method === "cash" && !codAvailability.allowed) {
+      setMethod("online");
+      setPreflightIssue(codAvailability.reason ?? "Delivery is paid online only.");
+    }
+  }, [
+    method,
+    codAvailability.allowed,
+    codAvailability.reason,
+    isOnline,
+    observedOffline,
+    resume,
+    zeroDueBill,
+    setMethod,
+  ]);
 
   const loadTotals = React.useCallback(async () => {
     try {
@@ -511,6 +603,18 @@ function PaymentPage() {
    * server's amount (`serverOrder.amount`) — never the stale displayed total.
    */
   const openGatewayForOrder = async (serverOrder: PaymentOrder) => {
+    // R5-B2: bind the callbacks to the identity that opened THIS gateway. An
+    // obsolete attempt must not publish through a later, still-valid session.
+    const submission = boundSubmission.current;
+    // R5-B3: a stale pre-money reply releases our own spinner/guard but never
+    // flips the status of a NEWER attempt that has since taken over the ref.
+    const releaseStale = () => {
+      // R5-B4: never clear a guard a newer submission now owns, and never flip
+      // its status. Only the owning callback may release this attempt's guard.
+      if (!ownsBoundSubmission(submission)) return;
+      payInFlight.current = false;
+      setStatus("idle");
+    };
     setOrder(serverOrder);
     setStatus("waiting");
     try {
@@ -526,10 +630,23 @@ function PaymentPage() {
         },
       });
 
+      // R5-B3: initialize() awaits; recheck the bound submission before the
+      // modal can open so a superseded attempt never starts a gateway order.
+      if (!isLiveSubmission(submission)) {
+        releaseStale();
+        return;
+      }
       await razorpayAdapter.openCheckout(
         {
-          onSuccess: (result: PaymentResult) => void handleSuccess(result),
+          onSuccess: (result: PaymentResult) => void handleSuccess(result, submission),
           onFailure: (err) => {
+            // Every gateway callback is bound to the submission that opened
+            // THIS modal; a stale one may only release its OWN re-entry guard.
+            if (!ownsBoundSubmission(submission)) return;
+            if (!isLiveSubmission(submission)) {
+              releaseStale();
+              return;
+            }
             setStatus("failed");
             // P1-8: a gateway description is provider text, not customer copy
             // (BAD_REQUEST_ERROR / bank decline strings) — log it raw and give
@@ -540,6 +657,11 @@ function PaymentPage() {
             toast.error("Payment failed", { description: message });
           },
           onCancel: () => {
+            if (!ownsBoundSubmission(submission)) return;
+            if (!isLiveSubmission(submission)) {
+              releaseStale();
+              return;
+            }
             // Razorpay fires `modal.ondismiss` even after `payment.failed`,
             // so a real failure must never be relabelled as "user cancelled":
             // that would hide the failure reason and re-offer a retry that
@@ -560,6 +682,14 @@ function PaymentPage() {
         method,
       );
     } catch (err) {
+      // A superseded initiation may not release the guard now owned by a newer
+      // attempt. A gateway that opened before a session/basket change still
+      // releases its own spinner without publishing into the newer state.
+      if (!ownsBoundSubmission(submission)) return;
+      if (submission && !isLiveSubmission(submission)) {
+        releaseStale();
+        return;
+      }
       setStatus("failed");
       // Raw exception text never reaches the failure panel/toast (P1-8).
       console.error("[payment] payment initiation exception:", err);
@@ -577,6 +707,49 @@ function PaymentPage() {
     },
     sideEffect: { clearCart?: boolean } = {},
   ) => {
+    // Every cash creator path (recovery, retry and reprice confirmation) shares
+    // this boundary. Zero-due is a server-verified order, not a cash tender.
+    if (!opts.zeroDueOnly && !resume) {
+      const liveCod = cashOnDeliveryAvailability(
+        useCheckoutStore.getState().checkoutFees,
+        // A reconfirm retry carries the SERVER's paise; the displayed bill is
+        // stale. `??` keeps a valid accepted zero paise distinct from absent.
+        opts.acceptedTotalPaise ??
+          (displayedBillTotal === undefined ? null : Math.round(displayedBillTotal * 100)),
+        useStoreSelection.getState().fulfillment ?? billingFulfillment,
+      );
+      if (!liveCod.allowed) {
+        // Atomic compare-and-retire under the account lock: only a proven-safe
+        // result may switch tender. No auto-pay, no success claim on failure.
+        if (opts.attemptId && opts.acceptedTotalPaise !== undefined) {
+          const uid = useAuthStore.getState().user?.id ?? null;
+          let safe = false;
+          try {
+            safe = uid
+              ? await retirePriceChangedCashAttemptAtomic(
+                  uid,
+                  opts.attemptId,
+                  opts.acceptedTotalPaise,
+                )
+              : false;
+          } catch {
+            // `safe` stays false: fail closed, no auto-pay, keep the tender.
+          }
+          if (!safe) {
+            setStatus("idle");
+            setPreflightIssue(
+              "We couldn't safely switch payment method. Check your orders and try again.",
+            );
+            return;
+          }
+        }
+        setMethod("online");
+        setStatus("idle");
+        setPreflightIssue(liveCod.reason ?? "Delivery is paid online only.");
+        return;
+      }
+    }
+    const routeScope = captureCompletionScope();
     const created = await orderRepository.createCashOrder(opts);
     if (!created.success) {
       if (opts.zeroDueOnly && created.error.code === "PRICE_CHANGED") {
@@ -599,7 +772,11 @@ function PaymentPage() {
         payInFlight.current = false;
         quoteRepricePrompt.current = true;
         setRepricePrompt({
-          cash: { attemptId: created.error.details.attemptId, paise: authoritativePaise },
+          cash: {
+            attemptId: created.error.details.attemptId,
+            paise: authoritativePaise,
+            scope: cashSubmissionScope() ?? captureCompletionScope(),
+          },
           displayed: totals?.grandTotal ?? 0,
           authoritative: authoritativePaise / 100,
         });
@@ -625,12 +802,23 @@ function PaymentPage() {
       });
       return;
     }
+    // Finish only when the submitted account lifetime, basket and draft are
+    // still intact. A stale callback is terminal: show the created order id,
+    // block PAY, and perform NO cart clear, navigation, reconciliation clear
+    // or tender change. Never return to an ordinary payable state.
+    const submitted = cashSubmissionScope() ?? routeScope;
+    if (!submitted || !isCompletionScopeValid(submitted)) {
+      const message = `Order ${created.data.id} was placed. Check your orders before trying again.`;
+      setTerminalOrderId(created.data.id);
+      setFailure({ code: "ORDER_SYNC_PENDING", message, retryable: false });
+      setStatus("failed");
+      return;
+    }
     const reconUid = useAuthStore.getState().user?.id ?? null;
     clearPaymentReconciliation(reconUid);
     usePaymentStore.getState().clearReconciliation();
     setStatus("success");
-    // M5: a 100%-discounted order is valid with zero collection due. Say so
-    // plainly rather than showing a ₹0 "amount to pay" as if it failed.
+    // M5: a 100%-discounted order is valid with zero collection due.
     if (isZeroCashDue(created.data.cashDuePaise)) {
       toast.success("No payment to collect", {
         description: "Your coupon covered the full bill — nothing is due at collection.",
@@ -639,9 +827,6 @@ function PaymentPage() {
     AudioService.playSuccess();
     void HapticService.notification("success");
     // A6-c11 item 1: NEVER clear the cart because an OLD attempt succeeded.
-    // Only the checkout whose own attempt just placed this order may clear it;
-    // a recovered/confirmed attempt from another basket leaves the live cart
-    // exactly as the customer built it.
     if (sideEffect.clearCart !== false) void cartRepository.clear();
     void navigate({
       to: "/order-confirmation/$orderId",
@@ -651,9 +836,30 @@ function PaymentPage() {
   };
 
   const startPayment = async () => {
+    // A confirmed order whose scope went stale is terminal: no later tap may
+    // re-arm PAY, even after the generic terminal-status effect releases the
+    // in-flight ref.
+    if (terminalOrderId) return;
     // Sync re-entry guard: a second tap before status flips must not start
     // a second payment. (Terminal statuses reset the ref, see effect below.)
     if (payInFlight.current) return;
+    // Delivery cash is refused at the action boundary, before recovery or any
+    // repository call. A restored/stale cash choice or an in-place mode switch
+    // cannot re-open a tender the owner retired for delivery orders.
+    if (!resume && !zeroDueBill) {
+      const liveMethod = usePaymentStore.getState().method;
+      const liveCod = cashOnDeliveryAvailability(
+        useCheckoutStore.getState().checkoutFees,
+        displayedBillTotal === undefined ? null : Math.round(displayedBillTotal * 100),
+        useStoreSelection.getState().fulfillment ?? billingFulfillment,
+      );
+      if (liveMethod === "cash" && !liveCod.allowed) {
+        setMethod("online");
+        setStatus("idle");
+        setPreflightIssue(liveCod.reason ?? "Delivery is paid online only.");
+        return;
+      }
+    }
     // M4 r2: recover BEFORE any preflight/quote/totals check. A confirmed cash
     // id from a lost response or failed receipt read is the only proof of which
     // order was written; navigate to its receipt and never POST again.
@@ -679,8 +885,11 @@ function PaymentPage() {
       try {
         await finishCash(
           savedCash.record.request.zeroDueOnly ? { zeroDueOnly: true } : {},
-          // Only the basket this attempt actually placed may be cleared.
-          { clearCart: savedCash.matchesBasket },
+          // Recovery of a confirmed ZERO-due order shows its receipt but never
+          // clears the cart; only a nonzero same-basket cash order may clear.
+          {
+            clearCart: savedCash.matchesBasket && savedCash.record.request.zeroDueOnly !== true,
+          },
         );
       } finally {
         payInFlight.current = false;
@@ -799,6 +1008,12 @@ function PaymentPage() {
         });
         return;
       }
+      // R5-B2: acceptance is a new submission. Bind the gateway callbacks to
+      // the live identity at this instant, not to the earlier prompt render.
+      boundSubmission.current = {
+        scope: captureCompletionScope(),
+        accountOnly: !!resume,
+      };
       pendingGatewayOrder.current = null;
       await openGatewayForOrder(heldOrder);
       return;
@@ -892,10 +1107,19 @@ function PaymentPage() {
     }
 
     // 3. ONLINE FLOW (Razorpay Checkout)
+    // R5-B3: hoisted so the initiation catch can fence a superseded attempt.
+    let submission = boundSubmission.current;
     try {
       // Creates the internal payment-pending order FIRST (contract §3) and
       // binds the gateway order to it — the id lives in the payment store.
       const quoteForPayment = useCheckoutStore.getState().checkoutFees;
+      // R5-B2: capture the submission identity before the await and hand the
+      // same value to every follow-on effect of this attempt.
+      submission = {
+        scope: captureCompletionScope(),
+        accountOnly: !!resume,
+      };
+      boundSubmission.current = submission;
       const orderRes = await paymentRepository.createPaymentOrder({
         // R8/R6: the server binds the charge to this courier quote.
         deliveryQuoteId:
@@ -907,6 +1131,13 @@ function PaymentPage() {
         resumeOrderId,
         resumeOrder: resumeOrder ?? undefined,
       });
+      // R5-B2: a reply that lands after a cart/note/session change must not
+      // publish a refusal, re-quote, prompt or open a gateway for that change.
+      if (!isLiveSubmission(submission)) {
+        payInFlight.current = false;
+        setStatus("idle");
+        return;
+      }
       if (!orderRes.success) {
         // A refusal that proves this order can never be paid again (paid,
         // foreign, missing, terminal) must not be offered as a retry.
@@ -931,6 +1162,9 @@ function PaymentPage() {
           const recalculated: ApiResult<CartTotals> = resume
             ? ok(resumeDisplayTotals(resume.totals, next, resume.fulfillment))
             : await cartRepository.calculateTotals();
+          // R5-B2: the re-quote belongs to the original submission. Nothing
+          // from it may publish or re-enter payment on a newer basket/session.
+          if (!isLiveSubmission(submission)) return;
           if (next.status !== "ready" || !recalculated.success) {
             const message =
               next.status === "unserviceable"
@@ -997,6 +1231,15 @@ function PaymentPage() {
 
       await openGatewayForOrder(orderRes.data);
     } catch (err) {
+      // R5-B4: an initiation catch from a superseded attempt may not clear the
+      // guard a newer submission now holds. The hoisted submission still fences
+      // a stale pre-money attempt that remains the owner.
+      if (!ownsBoundSubmission(submission)) return;
+      payInFlight.current = false;
+      if (submission && !isLiveSubmission(submission)) {
+        setStatus("idle");
+        return;
+      }
       setStatus("failed");
       // Raw exception text never reaches the failure panel/toast (P1-8).
       console.error("[payment] payment initiation exception:", err);
@@ -1006,11 +1249,18 @@ function PaymentPage() {
     }
   };
 
-  const handleSuccess = async (result: PaymentResult) => {
+  const handleSuccess = async (result: PaymentResult, submission: BoundSubmission | null) => {
+    // R5-B4: a post-money callback from a superseded attempt owns neither the
+    // guard it would release nor the right to publish into the newer attempt.
+    if (!ownsBoundSubmission(submission)) return;
+    // R5-B3: once the gateway has returned, money may have moved. Only the
+    // submitting account may drive verification/finalization/reconciliation;
+    // a different uid/session lifetime publishes nothing.
+    if (!submission || !isSameAccountIdentity(submission.scope)) return;
     // Contract §3: verification binds the gateway payment to the internal
     // order created before Razorpay opened (never to the gateway id alone).
     const internalOrderId = usePaymentStore.getState().internalOrderId;
-    const reconUid = useAuthStore.getState().user?.id ?? null;
+    const reconUid = submission.scope.uid;
     /**
      * Every uncertain post-gateway outcome funnels through here: persist the
      * uid-scoped reconciliation record (which blocks a new payment now and
@@ -1045,6 +1295,17 @@ function PaymentPage() {
         ...result,
         internalOrderId: internalOrderId ?? undefined,
       });
+      // R5-B5: verification awaits; a callback superseded while it was pending
+      // owns neither the newer guard nor the right to publish into its state.
+      // Return before any mutation — the newer attempt keeps its busy guard.
+      if (!ownsBoundSubmission(submission)) return;
+      // R5-B3: account-only ownership for outcomes/reconciliation. A same
+      // account basket/note edit must still finalize; a changed lifetime
+      // publishes nothing. The server's verification itself is untouched.
+      if (!isSameAccountIdentity(submission.scope)) {
+        payInFlight.current = false;
+        return;
+      }
       const outcome = resolveVerifyOutcome({
         verify,
         internalOrderId,
@@ -1086,10 +1347,43 @@ function PaymentPage() {
         confirmedOrderId: internalOrderId ?? verification.confirmedOrderId,
         transactionId: result.paymentId,
       });
+      // R5-B5: finalization awaits too. A superseded callback may not clear a
+      // guard a newer attempt now holds, so fence before the release.
+      if (!ownsBoundSubmission(submission)) return;
+      payInFlight.current = false;
+      // R5-B3: account identity gates money-time writes; full scope gates
+      // only local cleanup/navigation/reconciliation clearing.
+      if (!isSameAccountIdentity(submission.scope)) return;
       // Never celebrate before the order exists: money is taken at this point,
       // so a failed create must scream, not navigate to a confirmation page.
       if (!created.success) {
         enterReconciliation("PAYMENT_SYNC_PENDING", verification.confirmedOrderId || null);
+        return;
+      }
+      if (!isLiveSubmission(submission)) {
+        // Same account, newer basket/draft: finalized exactly once, so show a
+        // visible non-retryable receipt with BOTH ids and block PAY. Never
+        // clear the newer cart/reconciliation or navigate to the old order.
+        const message = `Order ${created.data.id} was placed; payment ${result.paymentId}. Check your orders before paying again.`;
+        setTerminalOrderId(created.data.id);
+        setStatus("failed");
+        setFailure({
+          code: "ORDER_ALREADY_PLACED",
+          message,
+          retryable: false,
+          paymentId: result.paymentId,
+        });
+        // Persist under the SUBMITTING uid for reload safety. Do not flip the
+        // in-memory reconciliation flag here: the visible surface must be the
+        // terminal FailurePanel carrying both ids, not the generic recovery
+        // panel bound to the older gateway order. PAY is already blocked by
+        // the terminal id and the non-retryable failure.
+        persistPaymentReconciliation(submission.scope.uid, {
+          internalOrderId: created.data.id,
+          gatewayOrderId: result.orderId ?? null,
+          reason: "PAYMENT_SYNC_PENDING",
+        });
+        toast.info("Payment received — order placed", { description: message });
         return;
       }
       clearPaymentReconciliation(reconUid);
@@ -1105,6 +1399,14 @@ function PaymentPage() {
         replace: true,
       });
     } catch (err) {
+      // R5-B5: the catch sits after the awaits too — a superseded callback
+      // must release nothing and write nothing into a newer attempt's state.
+      if (!ownsBoundSubmission(submission)) return;
+      payInFlight.current = false;
+      // R5-B3: guard BEFORE reconciliation/UI effects. A changed account
+      // writes nothing; same-account staleness still reconciles because money
+      // may have moved.
+      if (!submission || !isSameAccountIdentity(submission.scope)) return;
       // Post-gateway unknown exception (verify/finalize threw after money may
       // have moved): reconciliation, never a failed state that invites re-pay.
       logger.warn("payment.post_gateway_exception", {
@@ -1142,6 +1444,9 @@ function PaymentPage() {
    */
   const cancelAttempt = async () => {
     const boundOrder = order;
+    // R5-B2: a cancel reply is only allowed to reset/navigate in the same
+    // account lifetime with the same bound order it was requested for.
+    const cancelIdentity = captureCompletionScope();
     if (!boundOrder) {
       resetPayment();
       void navigate({ to: resumeOrderId ? "/orders" : "/checkout" });
@@ -1150,6 +1455,12 @@ function PaymentPage() {
 
     try {
       const cancellation = await paymentRepository.cancelPayment(boundOrder.orderId);
+      if (
+        !isSameAccountIdentity(cancelIdentity) ||
+        usePaymentStore.getState().order?.orderId !== boundOrder.orderId
+      ) {
+        return;
+      }
       if (!cancellation.success) {
         logger.warn("payment.cancel_refused", { code: cancellation.error.code });
         toast.info("This order can't be cancelled in the app", {
@@ -1161,6 +1472,12 @@ function PaymentPage() {
       resetPayment();
       void navigate({ to: resumeOrderId ? "/orders" : "/checkout" });
     } catch (err) {
+      if (
+        !isSameAccountIdentity(cancelIdentity) ||
+        usePaymentStore.getState().order?.orderId !== boundOrder.orderId
+      ) {
+        return;
+      }
       // Code only: an exception message is provider/transport text, never
       // customer copy and never a log field that could carry a reference.
       const code =
@@ -1210,7 +1527,8 @@ function PaymentPage() {
         : diningNotes;
 
   const isDelivery = billingFulfillment === "delivery";
-  const selectedCashLabel = isDelivery ? "Cash on Delivery" : "Pay at Store";
+  // Delivery has no cash label at all: even a stale selection is paid online.
+  const selectedCashLabel = isDelivery ? "Pay Online" : "Pay at Store";
   // Fail closed on a missing/unsupported mode: /payment is a public route, so
   // a deep link or an outlet switch while checkout was open must not authorise
   // a payment on a guessed mode. A resumed order carries its own mode.
@@ -1247,33 +1565,36 @@ function PaymentPage() {
               onClick={() => void startPayment()}
               loading={busy && !payBlocked}
               disabled={
-                !orderRepository.pendingCashAttempt() &&
-                (!fulfillmentSupported ||
-                  totals === null ||
-                  totalsFailed ||
-                  grandTotal < 0 ||
-                  !isOnline ||
-                  payBlocked ||
-                  !quoteView.payEnabled)
+                terminalOrderId !== null ||
+                (!orderRepository.pendingCashAttempt() &&
+                  (!fulfillmentSupported ||
+                    totals === null ||
+                    totalsFailed ||
+                    grandTotal < 0 ||
+                    !isOnline ||
+                    payBlocked ||
+                    !quoteView.payEnabled))
               }
               title={
-                !fulfillmentSupported
-                  ? !fulfillment
-                    ? "Choose a fulfillment method"
-                    : fulfillmentBlockMessage
-                  : !quoteView.payEnabled
-                    ? (quoteView.message ?? "Getting delivery price")
-                    : storeNotLinked
-                      ? failure?.message
-                      : payBlocked
-                        ? "We are confirming your payment — please do not pay again"
-                        : !isOnline
-                          ? "Back online to place your order"
-                          : totalsFailed
-                            ? "Couldn't compute your bill — retry above"
-                            : totals === null
-                              ? "The bill is still being computed"
-                              : undefined
+                terminalOrderId !== null
+                  ? `Order ${terminalOrderId} placed — do not pay again`
+                  : !fulfillmentSupported
+                    ? !fulfillment
+                      ? "Choose a fulfillment method"
+                      : fulfillmentBlockMessage
+                    : !quoteView.payEnabled
+                      ? (quoteView.message ?? "Getting delivery price")
+                      : storeNotLinked
+                        ? failure?.message
+                        : payBlocked
+                          ? "We are confirming your payment — please do not pay again"
+                          : !isOnline
+                            ? "Back online to place your order"
+                            : totalsFailed
+                              ? "Couldn't compute your bill — retry above"
+                              : totals === null
+                                ? "The bill is still being computed"
+                                : undefined
               }
               iconLeft={
                 (method === "online" || resume) &&
@@ -1305,11 +1626,9 @@ function PaymentPage() {
                           : "Retry checkout"
                         : !resume && totals !== null && !totalsFailed && finalPayable === 0
                           ? "Place Zero-Due Order"
-                          : method === "online" || resume
+                          : method === "online" || resume || isDelivery
                             ? "Pay Online"
-                            : isDelivery
-                              ? "Place COD Order"
-                              : "Place Order"}
+                            : "Place Order"}
             </AppButton>
           </div>
         </div>
@@ -1367,7 +1686,12 @@ function PaymentPage() {
               </div>
             </div>
           ) : (
-            <PaymentMethodList value={method} onChange={setMethod} disabled={busy} />
+            <PaymentMethodList
+              value={method}
+              onChange={setMethod}
+              disabled={busy}
+              cashEligibility={codAvailability}
+            />
           )}
         </section>
 
@@ -1729,9 +2053,19 @@ function PaymentPage() {
         onConfirm={() => {
           if (!repricePrompt) return;
           if (repricePrompt.cash) {
-            const { attemptId, paise } = repricePrompt.cash;
+            const { attemptId, paise, scope } = repricePrompt.cash;
             setRepricePrompt(null);
             quoteRepricePrompt.current = false;
+            // Continue is bound to the submission that earned this prompt.
+            // A newer cart/note or a session advance while it was open must
+            // not replay the cash order onto newer state.
+            if (!scope || !isCompletionScopeValid(scope)) {
+              const message =
+                "Your checkout changed while the updated total was open. Review your basket before continuing.";
+              setFailure({ code: "ATTEMPT_CHANGED", message, retryable: false });
+              setStatus("failed");
+              return;
+            }
             payInFlight.current = true;
             setStatus("waiting");
             void finishCash({ attemptId, acceptedTotalPaise: paise })
@@ -1781,6 +2115,9 @@ function PaymentPage() {
           setAcceptedServerTotal(repricePrompt.authoritative);
           pendingGatewayOrder.current = null; // consumed: one open per order
           setRepricePrompt(null);
+          // R5-B3: acceptance is a new submission; bind the gateway to the
+          // identity at this instant so its callbacks/catch are not stale.
+          boundSubmission.current = { scope: captureCompletionScope(), accountOnly: !!resume };
           payInFlight.current = true;
           setPreflightIssue(null);
           setFailure(null);

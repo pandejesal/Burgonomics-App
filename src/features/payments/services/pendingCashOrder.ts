@@ -66,6 +66,110 @@ export interface PendingCashOrder {
    * to this value; anything else is an abandoned basket and is retired.
    */
   basketHash?: string;
+  /** Incremented on EVERY write; a stale generation never authorises a retire. */
+  generation?: number;
+  /**
+   * Positive evidence that the SERVER definitively declined THIS attempt with
+   * PRICE_CHANGED. Written only by the repository when that exact POST came
+   * back as a verified no-write — never inferred from `confirmed === false`.
+   */
+  priceChangeDeclined?: {
+    uid?: string;
+    attemptId: string;
+    orderId?: string;
+    acceptedTotalPaise: number;
+    generation: number;
+    /** Only a marker created with positive no-earlier-unresolved provenance. */
+    proven?: "fresh";
+  };
+  /**
+   * Non-personal proof of the exact request currently on the wire. The account
+   * Web Lock (not this field) is the liveness signal: a persisted proof with no
+   * live holder is stale and is recovered by an idempotent same-ID replay.
+   */
+  activeProof?: CashSubmitProof;
+  /** Durable non-personal evidence that a request was actually sent. */
+  sent?: boolean;
+  /**
+   * Conservative latch: an earlier request may still have reached the server.
+   * Survives retries, refusals, transport failures, lookup misses and age;
+   * only a matching positive receipt (or authoritative resolution) clears it.
+   */
+  unknownEarlierSend?: { generation: number };
+}
+
+export interface CashSubmitProof {
+  uid: string;
+  attemptId: string;
+  orderId: string;
+  expectedTotalPaise: number;
+  generation: number;
+  sessionNonce: string;
+}
+
+function generationOf(record: PendingCashOrder): number {
+  return typeof record.generation === "number" ? record.generation : 0;
+}
+
+/** Persisted revisions start at 1; 0 is only an effective legacy fallback. */
+function isSafeRevision(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
+}
+
+export type CashLifecycle = "never-sent" | "unknown" | "settled-no-write";
+
+/**
+ * Conservative classification of the stored record BEFORE any new send mutates
+ * its provenance. Only an explicit never-sent record or a marker created with
+ * positive no-earlier-unresolved provenance can be treated as settled.
+ */
+/**
+ * The ONLY authority for treating a stored record as a verified no-write.
+ * Every bound field must match the current stored incarnation; legacy,
+ * incomplete, stale or foreign markers are never trusted.
+ */
+function isTrustedNoWriteMarker(record: PendingCashOrder): boolean {
+  const marker = record.priceChangeDeclined;
+  const nonempty = (value: unknown): value is string =>
+    typeof value === "string" && value.length > 0;
+  if (
+    !marker ||
+    !nonempty(record.uid) ||
+    !nonempty(record.attemptId) ||
+    !nonempty(record.orderId) ||
+    marker.uid !== record.uid ||
+    marker.attemptId !== record.attemptId ||
+    marker.orderId !== record.orderId ||
+    // Bind the request to the stored identity; never normalise an ID to trust it.
+    record.request?.orderId !== record.orderId ||
+    !isSafeRevision(record.generation) ||
+    !isSafeRevision(marker.generation) ||
+    marker.generation !== record.generation ||
+    !Number.isSafeInteger(record.request?.expectedTotalPaise) ||
+    record.request.expectedTotalPaise < 0 ||
+    !Number.isSafeInteger(marker.acceptedTotalPaise) ||
+    marker.acceptedTotalPaise < 0 ||
+    record.request.zeroDueOnly === true ||
+    marker.proven !== "fresh" ||
+    record.sent !== true ||
+    record.confirmed ||
+    record.activeProof ||
+    record.unknownEarlierSend
+  )
+    return false;
+  return true;
+}
+
+export function classifyCashLifecycle(record: PendingCashOrder): CashLifecycle {
+  const hasEvidence =
+    record.confirmed ||
+    record.sent === true ||
+    record.activeProof ||
+    record.unknownEarlierSend ||
+    record.priceChangeDeclined;
+  if (!hasEvidence && record.sent === false && typeof record.generation === "number")
+    return "never-sent";
+  return isTrustedNoWriteMarker(record) ? "settled-no-write" : "unknown";
 }
 
 /** Deterministic, non-cryptographic hash of the basket identity. */
@@ -135,6 +239,11 @@ function readRaw(key = storageKey()): string | null {
     return current ?? legacy;
   }
   return current;
+}
+
+/** Observation only: no legacy-key migration or any other side effect. */
+function peekRaw(key = storageKey()): string | null {
+  return window.localStorage.getItem(key);
 }
 
 function writeRaw(value: string | null, key = storageKey()): void {
@@ -215,16 +324,22 @@ export function readPendingCashOrder(
     ) {
       throw new Error("Unreadable cash receipt record");
     }
-    // A CONFIRMED id must survive a failed read and any TTL: it is the only
-    // proof of which order was written. Only unconfirmed attempts age out.
-    if (record.confirmed) return record;
+    const hasEvidence =
+      record.confirmed ||
+      record.sent === true ||
+      record.unknownEarlierSend ||
+      record.priceChangeDeclined ||
+      record.activeProof;
+    if (hasEvidence) return record;
     const createdMs = typeof record.createdAtMs === "number" ? record.createdAtMs : 0;
     const expired =
       typeof nowMs === "number" && Number.isFinite(nowMs) && createdMs > 0
         ? nowMs >= createdMs + PENDING_CASH_ORDER_TTL_MS
         : false;
     const basketChanged = basketHash !== undefined && record.basketHash !== basketHash;
-    if (expired || basketChanged) {
+    // Only an EXPLICITLY never-sent record may be pruned; absent/legacy status
+    // is unknown evidence and must survive.
+    if ((expired || basketChanged) && record.sent === false) {
       writeRaw(null);
       return null;
     }
@@ -250,9 +365,88 @@ export function savePendingCashOrder(
     createdAtMs: now,
     updatedAtMs: now,
     basketHash: basketHashOf(request),
+    generation: 1,
+    // A freshly claimed attempt has NOT been sent yet. Legacy records without
+    // this field are treated as unknown, never as explicitly unsent.
+    sent: false,
   };
   writeRaw(JSON.stringify(record));
   return record;
+}
+
+/**
+ * Non-mutating observation for ROUTE reads. Expired / basket-mismatched rows are
+ * reported as absent but are NOT erased here: only a mutation path under the
+ * account lock may remove stored evidence, and a confirmed/uncertain record is
+ * never closed by a reader.
+ */
+export function peekPendingCashOrder(
+  nowMs: number = Date.now(),
+  basketHash?: string,
+): PendingCashOrder | null {
+  const raw = peekRaw(); // observational: no migration or pruning side effect
+  if (!raw) return null;
+  try {
+    const record = JSON.parse(raw) as PendingCashOrder;
+    if (!record || typeof record.orderId !== "string" || !record.orderId || !record.request)
+      return null;
+    const hasEvidence =
+      record.confirmed ||
+      record.sent === true ||
+      record.unknownEarlierSend ||
+      record.priceChangeDeclined ||
+      record.activeProof;
+    if (hasEvidence) return record;
+    const createdMs = typeof record.createdAtMs === "number" ? record.createdAtMs : 0;
+    const expired = createdMs > 0 && nowMs >= createdMs + PENDING_CASH_ORDER_TTL_MS;
+    const basketChanged = basketHash !== undefined && record.basketHash !== basketHash;
+    return expired || basketChanged ? (record.sent === false ? null : record) : record;
+  } catch {
+    return null;
+  }
+}
+
+/** The account-scoped Web Lock key used by EVERY cash mutation path. */
+export function cashLockKey(uid: string): string {
+  return storageKey(uid);
+}
+
+export function hasCashLockSupport(): boolean {
+  return typeof navigator !== "undefined" && typeof navigator.locks?.request === "function";
+}
+
+/**
+ * The single transaction boundary. Fails closed when Web Locks are unavailable;
+ * `ifAvailable` yields null when busy and NEVER queues a duplicate submit.
+ * Holding the returned async callback holds the lock through its completion.
+ */
+export async function withCashLock<T>(
+  uid: string,
+  action: () => T | Promise<T>,
+  options?: { ifAvailable?: boolean },
+): Promise<T | null> {
+  if (!hasCashLockSupport()) throw new Error("Cash checkout requires Web Locks");
+  const key = cashLockKey(uid);
+  if (options?.ifAvailable) {
+    return navigator.locks.request(key, { ifAvailable: true }, async (lock) =>
+      // The API passes null when the lock was NOT granted; never run the action.
+      lock === null ? null : await action(),
+    );
+  }
+  return navigator.locks.request(key, async () => await action());
+}
+
+/** Claim inside an account lock that the caller ALREADY holds (no re-entry). */
+export function claimPendingCashOrderUnlocked(
+  uid: string,
+  attemptId: string,
+  request: CashOrderRequest,
+): PendingCashOrder {
+  if (uid !== currentScopedUid()) throw new Error("Cash checkout account changed");
+  return (
+    readPendingCashOrder(Date.now(), basketHashOf(request)) ??
+    savePendingCashOrder(attemptId, request.orderId, request)
+  );
 }
 
 /**
@@ -269,13 +463,9 @@ export async function claimPendingCashOrder(
   attemptId: string,
   request: CashOrderRequest,
 ): Promise<PendingCashOrder> {
-  return navigator.locks.request(storageKey(uid), () => {
-    if (uid !== currentScopedUid()) throw new Error("Cash checkout account changed");
-    return (
-      readPendingCashOrder(Date.now(), basketHashOf(request)) ??
-      savePendingCashOrder(attemptId, request.orderId, request)
-    );
-  });
+  return (await withCashLock(uid, () =>
+    claimPendingCashOrderUnlocked(uid, attemptId, request),
+  )) as PendingCashOrder;
 }
 
 export function ownsAttempt(record: PendingCashOrder): boolean {
@@ -287,8 +477,15 @@ export function ownsAttempt(record: PendingCashOrder): boolean {
 export function markPendingCashOrderConfirmed(orderId: string, receiptId = orderId): void {
   const record = readPendingCashOrder();
   if (!record || record.orderId !== orderId) return;
+  if (record.generation !== undefined && !isSafeRevision(record.generation)) return;
   writeRaw(
-    JSON.stringify({ ...record, orderId: receiptId, confirmed: true, updatedAtMs: Date.now() }),
+    JSON.stringify({
+      ...record,
+      orderId: receiptId,
+      confirmed: true,
+      generation: generationOf(record) + 1,
+      updatedAtMs: Date.now(),
+    }),
   );
 }
 
@@ -296,24 +493,367 @@ export function markPendingCashOrderConfirmed(orderId: string, receiptId = order
 export function updatePendingCashOrderAcceptedTotal(paise: number): void {
   const record = readPendingCashOrder();
   if (!record || record.request.zeroDueOnly) return;
+  if (record.generation !== undefined && !isSafeRevision(record.generation)) return;
   writeRaw(
     JSON.stringify({
       ...record,
       request: { ...record.request, expectedTotalPaise: paise },
+      generation: generationOf(record) + 1,
       updatedAtMs: Date.now(),
     }),
   );
 }
 
+function isNonEmptyId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+/**
+ * Shared guarded outbound validation. The caller's identity is compared to the
+ * FRESH stored incarnation only; an absent legacy generation compares as
+ * effective 0 for unresolved recovery, while a PRESENT malformed generation
+ * rejects. No caller value can normalise invalid saved state into permission.
+ */
+function validOutboundIdentity(
+  record: PendingCashOrder,
+  claimed: { uid: string; attemptId: string; orderId: string },
+  outboundPaise: number,
+): boolean {
+  const activeUid = currentScopedUid();
+  if (
+    !isNonEmptyId(activeUid) ||
+    !isNonEmptyId(record.uid) ||
+    !isNonEmptyId(record.attemptId) ||
+    !isNonEmptyId(record.orderId) ||
+    record.uid !== activeUid ||
+    record.uid !== claimed.uid ||
+    record.attemptId !== claimed.attemptId ||
+    record.orderId !== claimed.orderId ||
+    record.confirmed ||
+    !record.request ||
+    record.request.orderId !== record.orderId ||
+    (record.generation !== undefined && !isSafeRevision(record.generation)) ||
+    !Number.isSafeInteger(record.request.expectedTotalPaise) ||
+    record.request.expectedTotalPaise < 0 ||
+    !Number.isSafeInteger(outboundPaise) ||
+    outboundPaise < 0 ||
+    (record.request.zeroDueOnly === true && outboundPaise !== 0)
+  )
+    return false;
+  return true;
+}
+
+/**
+ * Bind the exact request being sent. Call ONLY under the account lock, just
+ * before the POST. Any earlier no-write proof is cleared first, so a delayed
+ * old refusal can never decorate the newer request. A proof is not a durable
+ * busy flag: a reload after the lock is released replays the same id.
+ */
+export function beginCashSubmit(
+  proof: Omit<CashSubmitProof, "generation">,
+): CashSubmitProof | null {
+  const record = readPendingCashOrder();
+  if (
+    !record ||
+    !validOutboundIdentity(record, proof, proof.expectedTotalPaise) ||
+    record.request.expectedTotalPaise !== proof.expectedTotalPaise
+  )
+    return null;
+  const generation = generationOf(record) + 1;
+  const bound: CashSubmitProof = { ...proof, generation };
+  // A send overlapping an earlier still-unresolved proof keeps that uncertainty
+  // durably; a fresh/serial send starts without it.
+  const unknownEarlierSend =
+    classifyCashLifecycle(record) === "unknown" ? { generation } : undefined;
+  writeRaw(
+    JSON.stringify({
+      ...record,
+      generation,
+      sent: true,
+      unknownEarlierSend,
+      priceChangeDeclined: undefined,
+      activeProof: bound,
+      updatedAtMs: Date.now(),
+    }),
+  );
+  return bound;
+}
+
+export interface CashSendPreparation {
+  proof: CashSubmitProof;
+  expectedTotalPaise: number;
+  unresolved: boolean;
+  /** Exact validated outbound body; the repository must send this snapshot. */
+  request: ReplayableCashRequest;
+}
+
+/**
+ * ONE storage-owned classify/compare/prepare transition, called under the
+ * account lock. The lifecycle decision is taken from the freshly read stored
+ * incarnation (uid, attempt/order identity, generation and pre-update paise);
+ * the caller's identity is used ONLY for comparison, never as authority.
+ */
+export function prepareCashSend(claimed: {
+  uid: string;
+  attemptId: string;
+  orderId: string;
+  expectedTotalPaise: number;
+  acceptedTotalPaise?: number;
+  sessionNonce: string;
+}): CashSendPreparation | null {
+  const record = readPendingCashOrder();
+  if (!record || record.confirmed) return null;
+  // Reject inconsistent saved state BEFORE any proof write or send.
+  if (!validOutboundIdentity(record, claimed, record.request.expectedTotalPaise)) return null;
+  if (record.request.expectedTotalPaise !== claimed.expectedTotalPaise) return null;
+
+  const beforeGeneration = generationOf(record);
+  const beforePaise = record.request.expectedTotalPaise;
+  // Legacy/absent provenance defaults to unknown; only a positively classified
+  // settled no-write may be treated otherwise.
+  const earlierUnresolved =
+    classifyCashLifecycle(record) === "unknown" ||
+    !!record.unknownEarlierSend ||
+    !!record.activeProof;
+  const markerValid =
+    isTrustedNoWriteMarker(record) &&
+    record.priceChangeDeclined?.acceptedTotalPaise === claimed.acceptedTotalPaise;
+
+  const requestedAccepted = claimed.acceptedTotalPaise;
+  const canAccept = requestedAccepted !== undefined && markerValid && !earlierUnresolved;
+  const outbound = canAccept ? (requestedAccepted as number) : beforePaise;
+  if (!validOutboundIdentity(record, claimed, outbound)) return null;
+  const outboundRequest: ReplayableCashRequest = {
+    ...record.request,
+    expectedTotalPaise: outbound,
+  };
+
+  const generation = beforeGeneration + 1;
+  if (!isSafeRevision(generation)) return null; // no proof/saved write past MAX_SAFE_INTEGER
+  const proof: CashSubmitProof = {
+    uid: claimed.uid,
+    attemptId: claimed.attemptId,
+    orderId: claimed.orderId,
+    expectedTotalPaise: outbound,
+    generation,
+    sessionNonce: claimed.sessionNonce,
+  };
+  const unresolved = earlierUnresolved || (requestedAccepted !== undefined && !markerValid);
+  writeRaw(
+    JSON.stringify({
+      ...record,
+      generation,
+      sent: true,
+      request: outboundRequest,
+      priceChangeDeclined: canAccept ? undefined : record.priceChangeDeclined,
+      activeProof: proof,
+      unknownEarlierSend: unresolved ? { generation } : undefined,
+      updatedAtMs: Date.now(),
+    }),
+  );
+  return { proof, expectedTotalPaise: outbound, unresolved, request: outboundRequest };
+}
+
+export type CashCompletion =
+  | { kind: "price_changed"; paise: number }
+  | { kind: "confirmed"; receiptId: string; cashDuePaise: number }
+  | { kind: "ambiguous" };
+
+/**
+ * Apply a completion ONLY under the same account lock, and only if the stored
+ * record still matches every identity field that was actually sent. A stale
+ * completion applies nothing; an ambiguous outcome keeps the tentative record.
+ */
+export function completeCashSubmit(proof: CashSubmitProof, outcome: CashCompletion): boolean {
+  // Observation-only: a rejected completion must not migrate/prune/write bytes.
+  const record = peekPendingCashOrder();
+  if (
+    !record ||
+    !isSafeRevision(record.generation) ||
+    !isSafeRevision(proof.generation) ||
+    record.generation !== proof.generation ||
+    record.uid !== proof.uid ||
+    record.attemptId !== proof.attemptId ||
+    record.orderId !== proof.orderId ||
+    record.request.expectedTotalPaise !== proof.expectedTotalPaise ||
+    record.activeProof?.sessionNonce !== proof.sessionNonce
+  )
+    return false;
+  // A positive receipt must describe the EXACT submitted order and amount.
+  if (
+    outcome.kind === "confirmed" &&
+    (outcome.receiptId !== proof.orderId ||
+      !Number.isSafeInteger(outcome.cashDuePaise) ||
+      outcome.cashDuePaise !== proof.expectedTotalPaise)
+  )
+    return false;
+  const generation = record.generation + 1;
+  if (!isSafeRevision(generation)) return false; // next revision outside safe domain
+  const base = {
+    ...record,
+    generation,
+    activeProof: undefined,
+    // An outcome-unknown completion is itself evidence that the earlier send
+    // may still finish; only a matched receipt clears it below.
+    unknownEarlierSend: outcome.kind === "ambiguous" ? { generation } : record.unknownEarlierSend,
+    updatedAtMs: Date.now(),
+  };
+  if (outcome.kind === "price_changed") {
+    writeRaw(
+      JSON.stringify({
+        ...base,
+        priceChangeDeclined: {
+          // Identity comes only from the validated proof of THIS send.
+          uid: proof.uid,
+          attemptId: proof.attemptId,
+          orderId: proof.orderId,
+          acceptedTotalPaise: outcome.paise,
+          generation,
+          proven: record.unknownEarlierSend ? undefined : "fresh",
+        },
+      }),
+    );
+  } else if (outcome.kind === "confirmed") {
+    writeRaw(
+      JSON.stringify({
+        ...base,
+        confirmed: true,
+        orderId: outcome.receiptId,
+        priceChangeDeclined: undefined,
+        unknownEarlierSend: undefined,
+      }),
+    );
+  } else {
+    writeRaw(JSON.stringify(base));
+  }
+  return true;
+}
+
+/**
+ * Stamp POSITIVE evidence that THIS attempt's POST was definitively declined by
+ * PRICE_CHANGED. Only the order repository calls this, from the branch that
+ * actually saw the server's verified no-write. A confirmed, zero-due or
+ * foreign-account record is never marked.
+ */
+export function markPriceChangedDeclined(attemptId: string, acceptedTotalPaise: number): boolean {
+  const record = readPendingCashOrder();
+  if (
+    !record ||
+    record.confirmed ||
+    record.request.zeroDueOnly ||
+    record.attemptId !== attemptId ||
+    record.uid !== currentScopedUid() ||
+    (record.generation !== undefined && !isSafeRevision(record.generation))
+  )
+    return false;
+  const generation = generationOf(record) + 1;
+  writeRaw(
+    JSON.stringify({
+      ...record,
+      generation,
+      priceChangeDeclined: { attemptId, acceptedTotalPaise, generation },
+      updatedAtMs: Date.now(),
+    }),
+  );
+  return true;
+}
+
+/**
+ * Compare-and-retire ONLY the attempt that carries positive PRICE_CHANGED
+ * evidence for this exact accepted total, account and generation.
+ *
+ * `!confirmed` is deliberately not sufficient: an unconfirmed record may be an
+ * in-flight retry whose outcome is still unknown. A newer write (generation
+ * change) or a confirmed success keeps the record, so its receipt and draft are
+ * never dropped.
+ */
+export function retirePriceChangedCashAttempt(
+  attemptId: string,
+  acceptedTotalPaise: number,
+): boolean {
+  const record = readPendingCashOrder();
+  if (
+    !record ||
+    record.confirmed ||
+    record.activeProof ||
+    record.unknownEarlierSend ||
+    record.uid !== currentScopedUid()
+  )
+    return false;
+  const marker = record.priceChangeDeclined;
+  if (!record.request || record.request.zeroDueOnly) return false;
+  if (!isTrustedNoWriteMarker(record)) return false;
+  if (marker?.attemptId !== attemptId || marker.acceptedTotalPaise !== acceptedTotalPaise)
+    return false;
+  clearPendingCashOrder();
+  return true;
+}
+
+/** Atomic retirement under the SAME account lock; routes wait for this result. */
+export async function retirePriceChangedCashAttemptAtomic(
+  uid: string,
+  attemptId: string,
+  acceptedTotalPaise: number,
+): Promise<boolean> {
+  const result = await withCashLock(uid, () =>
+    retirePriceChangedCashAttempt(attemptId, acceptedTotalPaise),
+  );
+  return result === true;
+}
+
 /** The confirmed id to hydrate before any preflight, if one exists. */
 export function peekConfirmedCashOrderId(): string | null {
-  const record = readPendingCashOrder();
+  // Observation only: no legacy migration, TTL prune or write.
+  const record = peekPendingCashOrder();
   return record?.confirmed ? record.orderId : null;
 }
 
 /** Clear after a completed hydration or a VERIFIED no-write refusal. */
 export function clearPendingCashOrder(): void {
   writeRaw(null);
+}
+
+/**
+ * Exact compare-and-clear of a CONFIRMED receipt. Call ONLY while the account
+ * lock is already held (e.g. from hydrate), so no nested lock is requested.
+ */
+export function clearConfirmedCashReceiptUnlocked(
+  uid: string,
+  attemptId: string,
+  orderId: string,
+  generation: number,
+): boolean {
+  // Observation-only: a rejected compare-and-clear must not mutate bytes.
+  const record = peekPendingCashOrder();
+  if (
+    !record ||
+    !record.confirmed ||
+    record.uid !== uid ||
+    record.attemptId !== attemptId ||
+    record.orderId !== orderId ||
+    // A malformed present revision cannot be laundered into legacy effective 0.
+    (record.generation !== undefined && !isSafeRevision(record.generation)) ||
+    !Number.isSafeInteger(generation) ||
+    generation < 0 ||
+    generationOf(record) !== generation // genuine absent legacy generation compares 0
+  )
+    return false;
+  clearPendingCashOrder();
+  return true;
+}
+
+/** Route-facing exact receipt cleanup, under the SAME account lock. */
+export async function clearConfirmedCashReceiptAtomic(
+  uid: string,
+  attemptId: string,
+  orderId: string,
+  generation: number,
+): Promise<boolean> {
+  return (
+    (await withCashLock(uid, () =>
+      clearConfirmedCashReceiptUnlocked(uid, attemptId, orderId, generation),
+    )) === true
+  );
 }
 
 /** Purge one specific account's key (account deletion / switch). */
