@@ -1,21 +1,29 @@
 /**
- * Outlet ordering hours — single source of truth.
+ * Outlet ordering hours — single source of truth for the CUSTOMER APP.
  *
- * An outlet's OWN configured hours decide when customers can order. The
- * customer app and the Cloud Functions backend run the same resolver over the
- * same precedence:
+ * An outlet's OWN configured hours decide when this app lets a customer order.
+ * Precedence:
  *
  *   staff close (`storeStatusOverride` / `isOpen: false`)
  *     → `stores/{id}.hours`
  *     → `admin_stores/{id}.hours`
  *     → `branches/{id}.operatingHours`
- *     → documented default 11:00 AM – 11:00 PM IST.
+ *     → documented default 11:00 AM – 11:00 PM IST, only when NO source is
+ *       configured at all.
+ *
+ * The backend does NOT run this resolver. Its only open/closed gate is the
+ * staff close (`storeStatusOverride` / `isOpen`, in
+ * functions/src/modules/payments/outletStatus.ts), so an order sent outside
+ * these hours by anything other than this app is not refused on hours.
+ * Verified 28 Nov 2026; server-side hours enforcement is a tracked, held item.
+ * An earlier version of this comment claimed the two ran the same resolver.
  *
  * Hours are always interpreted in Asia/Kolkata, regardless of the device
  * timezone. A handset set to UTC must not see the kitchen open at 05:30.
- * Overnight windows (`close < open`) are supported. Malformed hours fall back
- * to the next source, then the documented default, and warn once — the gate
- * never crashes because an outlet has a bad document.
+ * Overnight windows (`close < open`) are supported. A malformed source is
+ * skipped in favour of the next one. If no source parses but at least one was
+ * configured, the outlet is held CLOSED and `hoursInvalid` is set: the default
+ * window is never used to paper over a broken schedule. Nothing here throws.
  */
 
 /** IANA zone every configured schedule is expressed in. */
@@ -84,12 +92,10 @@ export function resetDefaultHoursWarningForTests(): void {
   defaultHoursWarningLogged = false;
 }
 
-function logDefaultHoursOnce(reason: string): void {
+function logDefaultHoursOnce(reason: string, outcome: string): void {
   if (defaultHoursWarningLogged) return;
   defaultHoursWarningLogged = true;
-  console.warn(
-    `[outletHours] ${reason}; using documented default ${KITCHEN_OPEN_LABEL}–${KITCHEN_CLOSE_LABEL} IST.`,
-  );
+  console.warn(`[outletHours] ${reason}; ${outcome}.`);
 }
 
 /**
@@ -202,9 +208,11 @@ export function istMinutesSinceMidnight(now: Date = new Date()): number {
 }
 
 /**
- * The one pure ordering-gate resolver, shared (same algorithm and vectors) with
- * the backend. Staff closes win before any hours; hours are then read in
- * store → admin_store → branch order, with the documented default last.
+ * The one pure ordering-gate resolver in the customer app. The backend has no
+ * equivalent (see the file header). Staff closes win before any hours; hours
+ * are then read in store → admin_store → branch order. The documented default
+ * applies only when no source is configured; a configured-but-unreadable
+ * schedule fails closed with `hoursInvalid: true`.
  */
 export function resolveOutletOpenState(docs: OutletHoursDocuments = {}): KitchenHoursState {
   const now = docs.now instanceof Date && !Number.isNaN(docs.now.getTime()) ? docs.now : new Date();
@@ -239,8 +247,20 @@ export function resolveOutletOpenState(docs: OutletHoursDocuments = {}): Kitchen
       (adminStore && adminStore.hours != null) ||
       (branch && branch.operatingHours != null);
     malformedHours = hasBadField;
-    if (hasBadField) logDefaultHoursOnce("configured hours could not be parsed");
-    else logDefaultHoursOnce("no configured hours were found");
+    // The two outcomes differ, so the log says which one happened: the old
+    // single message claimed the default window was in use even when the
+    // outlet was being held closed.
+    if (hasBadField) {
+      logDefaultHoursOnce(
+        "configured hours could not be parsed",
+        "the outlet is held closed until they are fixed",
+      );
+    } else {
+      logDefaultHoursOnce(
+        "no configured hours were found",
+        `using documented default ${KITCHEN_OPEN_LABEL}–${KITCHEN_CLOSE_LABEL} IST`,
+      );
+    }
   }
 
   const closedByStaff =
